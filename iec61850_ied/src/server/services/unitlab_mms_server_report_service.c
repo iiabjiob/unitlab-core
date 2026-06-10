@@ -7,17 +7,22 @@
 
 /* Report service owns BRCB value encoding and unconfirmed InformationReport construction. */
 
-static const char* const report_control_block_fields[] = {
+static const char* const buffered_report_control_block_fields[] = {
     "RptID", "RptEna", "DatSet", "ConfRev", "OptFlds", "BufTm", "SqNum",
     "TrgOps", "IntgPd", "GI", "PurgeBuf", "EntryID", "TimeOfEntry", "ResvTms"
+};
+
+static const char* const unbuffered_report_control_block_fields[] = {
+    "RptID", "RptEna", "DatSet", "ConfRev", "OptFlds", "BufTm", "SqNum",
+    "TrgOps", "IntgPd", "GI", "Resv"
 };
 
 const char* const* server_runtime_report_control_block_fields(size_t* field_count)
 {
     if (field_count != NULL) {
-        *field_count = sizeof(report_control_block_fields) / sizeof(report_control_block_fields[0]);
+        *field_count = sizeof(buffered_report_control_block_fields) / sizeof(buffered_report_control_block_fields[0]);
     }
-    return report_control_block_fields;
+    return buffered_report_control_block_fields;
 }
 
 static int server_runtime_encode_report_control_block_structure_field_value(
@@ -477,7 +482,7 @@ static int server_runtime_encode_report_control_block_structure_field_value(
         value_element.value_bytes = (const uint8_t*)(report_id_reference != NULL && report_id_reference[0] != '\0' ? report_id_reference : "LD0/LLN0.BR.Events");
         value_element.value_length = strlen((const char*)value_element.value_bytes);
     }
-    else if (strcmp(field_name, "RptEna") == 0 || strcmp(field_name, "GI") == 0 || strcmp(field_name, "PurgeBuf") == 0) {
+    else if (strcmp(field_name, "RptEna") == 0 || strcmp(field_name, "GI") == 0 || strcmp(field_name, "PurgeBuf") == 0 || strcmp(field_name, "Resv") == 0) {
         if (strcmp(field_name, "RptEna") == 0 && server_runtime != NULL && server_runtime->brcb_rpt_ena != 0U) {
             bool_value[0] = 0x01U;
         }
@@ -631,24 +636,16 @@ int server_runtime_encode_report_control_block_value(
     size_t* encoded_length,
     UnitLabMmsDiagnostic* diagnostic)
 {
-    static const char* const report_control_block_fields[] = {
-        "RptID",
-        "RptEna",
-        "DatSet",
-        "ConfRev",
-        "OptFlds",
-        "BufTm",
-        "SqNum",
-        "TrgOps",
-        "IntgPd",
-        "GI",
-        "PurgeBuf",
-        "EntryID",
-        "TimeOfEntry",
-        "ResvTms"
-    };
+    const UnitLabIedModelReportControl* report = server_runtime_active_model_report_control(server_runtime);
+    const char* const* fields = buffered_report_control_block_fields;
+    size_t field_count = sizeof(buffered_report_control_block_fields) / sizeof(buffered_report_control_block_fields[0]);
     uint8_t structure_bytes[2048U];
     size_t structure_length = 0U;
+
+    if (report != NULL && !report->is_buffered) {
+        fields = unbuffered_report_control_block_fields;
+        field_count = sizeof(unbuffered_report_control_block_fields) / sizeof(unbuffered_report_control_block_fields[0]);
+    }
 
     if (encoded_length != NULL) {
         *encoded_length = 0U;
@@ -658,13 +655,13 @@ int server_runtime_encode_report_control_block_value(
         return 0;
     }
 
-    for (size_t index = 0U; index < sizeof(report_control_block_fields) / sizeof(report_control_block_fields[0]); index++) {
+    for (size_t index = 0U; index < field_count; index++) {
         uint8_t field_bytes[128U];
         size_t field_length = 0U;
 
         if (!server_runtime_encode_report_control_block_structure_field_value(
                 server_runtime,
-                report_control_block_fields[index],
+                fields[index],
                 report_id_reference,
                 data_set_reference,
                 field_bytes,

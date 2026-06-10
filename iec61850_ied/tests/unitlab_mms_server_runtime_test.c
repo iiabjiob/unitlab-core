@@ -6412,6 +6412,85 @@ static void test_server_runtime_named_variable_list_attributes_handles_large_mod
     assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"MMXU120$MX$A$phsA$cVal$mag$f", strlen("MMXU120$MX$A$phsA$cVal$mag$f")) == 1);
 }
 
+
+static void test_server_runtime_model_urcb_read_uses_unbuffered_rcb_shape(void)
+{
+    static const uint32_t expected_tags[] = { 10U, 3U, 10U, 6U, 4U, 6U, 6U, 4U, 6U, 3U, 3U };
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabIedModelPlan model_plan;
+    UnitLabIedModelLogicalDevice logical_device;
+    UnitLabIedModelDataSet data_set;
+    UnitLabIedModelReportControl report;
+    UnitLabMmsBerElement rcb_element;
+    UnitLabMmsBerElement child_element;
+    uint8_t rcb_bytes[1024U];
+    size_t rcb_length = 0U;
+    size_t consumed_length = 0U;
+    size_t child_offset = 0U;
+    size_t child_count = 0U;
+
+    memset(&model_plan, 0, sizeof(model_plan));
+    memset(&logical_device, 0, sizeof(logical_device));
+    memset(&data_set, 0, sizeof(data_set));
+    memset(&report, 0, sizeof(report));
+    snprintf(logical_device.inst, sizeof(logical_device.inst), "%s", "KINTE06SMPMEAS");
+    snprintf(data_set.logical_device_inst, sizeof(data_set.logical_device_inst), "%s", "KINTE06SMPMEAS");
+    snprintf(data_set.logical_node_name, sizeof(data_set.logical_node_name), "%s", "LLN0");
+    snprintf(data_set.name, sizeof(data_set.name), "%s", "MEAS_RCB1");
+    snprintf(report.logical_device_inst, sizeof(report.logical_device_inst), "%s", "KINTE06SMPMEAS");
+    snprintf(report.logical_node_name, sizeof(report.logical_node_name), "%s", "LLN0");
+    snprintf(report.name, sizeof(report.name), "%s", "urcbA");
+    snprintf(report.rpt_id, sizeof(report.rpt_id), "%s", "KINTE06SMPMEAS/LLN0.urcbA");
+    report.is_buffered = 0;
+    report.data_set_index = 0U;
+    report.conf_rev_known = 1;
+    report.conf_rev = 1U;
+    report.buffer_time_ms_known = 1;
+    report.buffer_time_ms = 100U;
+    report.integrity_period_ms_known = 1;
+    report.integrity_period_ms = 1000U;
+
+    model_plan.logical_devices = &logical_device;
+    model_plan.logical_device_count = 1U;
+    model_plan.data_sets = &data_set;
+    model_plan.data_set_count = 1U;
+    model_plan.reports = &report;
+    model_plan.report_count = 1U;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &model_plan) == 1);
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(server_runtime_select_report_control_by_reference(&server_runtime, "KINTE06SMPMEAS.LLN0.RP.urcbA") == 1);
+    assert(server_runtime_encode_report_control_block_value(
+        &server_runtime,
+        "KINTE06SMPMEAS/LLN0.urcbA",
+        "KINTE06SMPMEAS/LLN0$MEAS_RCB1",
+        rcb_bytes,
+        sizeof(rcb_bytes),
+        &rcb_length,
+        &diagnostic) == 1);
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+
+    unitlab_mms_ber_element_init(&rcb_element);
+    assert(unitlab_mms_ber_read(&rcb_element, rcb_bytes, rcb_length, &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == rcb_length);
+    assert_ber_tag(&rcb_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 2U);
+    while (child_offset < rcb_element.value_length) {
+        size_t child_consumed_length = 0U;
+
+        unitlab_mms_ber_element_init(&child_element);
+        assert(unitlab_mms_ber_read(&child_element, &rcb_element.value_bytes[child_offset], rcb_element.value_length - child_offset, &child_consumed_length, &diagnostic) == 1);
+        assert(child_count < sizeof(expected_tags) / sizeof(expected_tags[0]));
+        assert_ber_tag(&child_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, expected_tags[child_count]);
+        child_offset += child_consumed_length;
+        child_count++;
+    }
+    assert(child_count == sizeof(expected_tags) / sizeof(expected_tags[0]));
+    assert(contains_bytes(rcb_element.value_bytes, rcb_element.value_length, (const uint8_t*)"KINTE06SMPMEAS/LLN0.urcbA", strlen("KINTE06SMPMEAS/LLN0.urcbA")) == 1);
+    assert(contains_bytes(rcb_element.value_bytes, rcb_element.value_length, (const uint8_t*)"KINTE06SMPMEAS/LLN0$MEAS_RCB1", strlen("KINTE06SMPMEAS/LLN0$MEAS_RCB1")) == 1);
+}
+
 int main(void)
 {
     test_server_runtime_init_captures_default_snapshot();
@@ -6431,6 +6510,7 @@ int main(void)
     test_server_runtime_apply_iedscout_buffered_report_control_block_read_builds_response();
     test_server_runtime_apply_iedscout_buffered_report_control_block_container_read_builds_response();
     test_server_runtime_build_brcb_read_uses_default_advertised_domain();
+    test_server_runtime_model_urcb_read_uses_unbuffered_rcb_shape();
     test_server_runtime_build_brcb_scalar_multi_read_uses_direct_data_access_results();
     test_server_runtime_brcb_read_uses_model_report_dataset_reference();
     test_server_runtime_reads_model_backed_rcb_dataset_aliases();

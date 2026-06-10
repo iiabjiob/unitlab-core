@@ -312,7 +312,7 @@ static int server_runtime_encode_gva_leaf_type_spec(
         value_bytes = value_single;
         value_length = sizeof(value_single);
     }
-    else if (strcmp(component_name, "GI") == 0 || strcmp(component_name, "RptEna") == 0 || strcmp(component_name, "PurgeBuf") == 0) {
+    else if (strcmp(component_name, "GI") == 0 || strcmp(component_name, "RptEna") == 0 || strcmp(component_name, "PurgeBuf") == 0 || strcmp(component_name, "Resv") == 0) {
         tag_number = 3U;
         value_bytes = NULL;
         value_length = 0U;

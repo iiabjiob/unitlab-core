@@ -107,6 +107,9 @@ static const char* server_runtime_write_report_control_field_name(const char* ob
     if (server_runtime_write_reference_matches_report_control_field(object_reference, "Owner")) {
         return "Owner";
     }
+    if (server_runtime_write_reference_matches_report_control_field(object_reference, "Resv")) {
+        return "Resv";
+    }
     return NULL;
 }
 

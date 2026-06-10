@@ -965,7 +965,7 @@ static int append_report_variable_prefixes_for_logical_device(
     const UnitLabIedModelReportControl* report,
     const char* logical_device_inst)
 {
-    static const char* const report_fields[] = {
+    static const char* const buffered_report_fields[] = {
         "RptID",
         "RptEna",
         "DatSet",
@@ -979,11 +979,25 @@ static int append_report_variable_prefixes_for_logical_device(
         "PurgeBuf",
         "EntryID",
         "TimeOfEntry",
-        "ResvTms",
-        "Owner"
+        "ResvTms"
+    };
+    static const char* const unbuffered_report_fields[] = {
+        "RptID",
+        "RptEna",
+        "DatSet",
+        "ConfRev",
+        "OptFlds",
+        "BufTm",
+        "SqNum",
+        "TrgOps",
+        "IntgPd",
+        "GI",
+        "Resv"
     };
     char report_path[256U];
     const char* report_fc;
+    const char* const* report_fields = buffered_report_fields;
+    size_t report_field_count = sizeof(buffered_report_fields) / sizeof(buffered_report_fields[0]);
 
     if (names == NULL || count == NULL || report == NULL || logical_device_inst == NULL) {
         return 0;
@@ -992,6 +1006,10 @@ static int append_report_variable_prefixes_for_logical_device(
         return 1;
     }
     report_fc = report->is_buffered ? "BR" : "RP";
+    if (!report->is_buffered) {
+        report_fields = unbuffered_report_fields;
+        report_field_count = sizeof(unbuffered_report_fields) / sizeof(unbuffered_report_fields[0]);
+    }
     int written = snprintf(report_path, sizeof(report_path), "%s$%s$%s", report->logical_node_name, report_fc, report->name);
     if (written <= 0 || (size_t)written >= sizeof(report_path)) {
         return 0;
@@ -999,7 +1017,7 @@ static int append_report_variable_prefixes_for_logical_device(
     if (!append_mms_variable_path_prefixes(names, count, report_path)) {
         return 0;
     }
-    for (size_t index = 0U; index < sizeof(report_fields) / sizeof(report_fields[0]); index++) {
+    for (size_t index = 0U; index < report_field_count; index++) {
         written = snprintf(report_path, sizeof(report_path), "%s$%s$%s$%s", report->logical_node_name, report_fc, report->name, report_fields[index]);
         if (written <= 0 || (size_t)written >= sizeof(report_path)) {
             return 0;

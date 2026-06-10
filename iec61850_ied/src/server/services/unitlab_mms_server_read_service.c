@@ -1001,30 +1001,37 @@ static int server_runtime_build_read_response_value(
         *value_supported = 1;
         return 1;
     }
-    read_report = server_runtime_read_find_report_control(server_runtime, object_reference, "Owner");
-    if (read_report != NULL) {
-        server_runtime_read_format_report_references(
-            server_runtime,
-            read_report,
-            rcb_report_id_reference,
-            sizeof(rcb_report_id_reference),
-            rcb_data_set_reference,
-            sizeof(rcb_data_set_reference));
-    }
-    if (read_report != NULL || server_runtime_object_reference_matches_report_control_field(object_reference, "Owner")) {
-        if (!server_runtime_encode_report_control_block_field_value(
-                server_runtime,
-                "Owner",
-                rcb_report_id_reference,
-                rcb_data_set_reference,
-                buffer,
-                buffer_length,
-                encoded_length,
-                diagnostic)) {
-            return 0;
+    {
+        static const char* const supplemental_rcb_fields[] = { "Owner", "Resv" };
+        for (size_t supplemental_index = 0U; supplemental_index < sizeof(supplemental_rcb_fields) / sizeof(supplemental_rcb_fields[0]); supplemental_index++) {
+            const char* supplemental_field = supplemental_rcb_fields[supplemental_index];
+            read_report = server_runtime_read_find_report_control(server_runtime, object_reference, supplemental_field);
+            if (read_report != NULL) {
+                (void)server_runtime_select_report_control_by_reference(server_runtime, object_reference);
+                server_runtime_read_format_report_references(
+                    server_runtime,
+                    read_report,
+                    rcb_report_id_reference,
+                    sizeof(rcb_report_id_reference),
+                    rcb_data_set_reference,
+                    sizeof(rcb_data_set_reference));
+            }
+            if (read_report != NULL || server_runtime_object_reference_matches_report_control_field(object_reference, supplemental_field)) {
+                if (!server_runtime_encode_report_control_block_field_value(
+                        server_runtime,
+                        supplemental_field,
+                        rcb_report_id_reference,
+                        rcb_data_set_reference,
+                        buffer,
+                        buffer_length,
+                        encoded_length,
+                        diagnostic)) {
+                    return 0;
+                }
+                *value_supported = 1;
+                return 1;
+            }
         }
-        *value_supported = 1;
-        return 1;
     }
     {
         size_t rcb_field_count = 0U;
@@ -1039,6 +1046,7 @@ static int server_runtime_build_read_response_value(
             (void)legacy_suffix;
             read_report = server_runtime_read_find_report_control(server_runtime, object_reference, rcb_fields[rcb_field_index]);
             if (read_report != NULL) {
+                (void)server_runtime_select_report_control_by_reference(server_runtime, object_reference);
                 server_runtime_read_format_report_references(
                     server_runtime,
                     read_report,
