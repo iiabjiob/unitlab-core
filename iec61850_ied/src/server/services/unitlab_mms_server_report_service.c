@@ -296,30 +296,6 @@ static void server_runtime_update_report_sequence(UnitLabMmsServerRuntime* serve
     server_runtime_encode_binary_time_6(timestamp_ms, server_runtime->brcb_time_of_entry, sizeof(server_runtime->brcb_time_of_entry));
 }
 
-static const char* server_runtime_report_data_ref_with_dataset_prefix(
-    const char* data_ref,
-    const char* dataset_reference,
-    char* buffer,
-    size_t buffer_length)
-{
-    const char* dataset_slash;
-    const char* data_ref_slash;
-    size_t dataset_prefix_length;
-
-    if (data_ref == NULL || data_ref[0] == '\0') {
-        return NULL;
-    }
-    dataset_slash = dataset_reference != NULL ? strchr(dataset_reference, '/') : NULL;
-    data_ref_slash = strchr(data_ref, '/');
-    if (dataset_slash == NULL || dataset_slash == dataset_reference || data_ref_slash == NULL || buffer == NULL || buffer_length == 0U) {
-        return data_ref;
-    }
-
-    dataset_prefix_length = (size_t)(dataset_slash - dataset_reference);
-    snprintf(buffer, buffer_length, "%.*s%s", (int)dataset_prefix_length, dataset_reference, data_ref_slash);
-    return buffer;
-}
-
 static int server_runtime_report_replace_trailing_component(const char* reference, const char* replacement, char* buffer, size_t buffer_length)
 {
     const char* separator = NULL;
@@ -932,14 +908,12 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
         for (size_t included_index = 0U; included_index < included_member_count; included_index++) {
             size_t index = included_member_indices[included_index];
             const char* data_ref = NULL;
-            char normalized_data_ref[192U];
             const UnitLabIedModelSignal* signal = server_runtime_data_set_member_signal(server_runtime, data_set, index);
             if (signal == NULL) {
                 server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "InformationReport DataSet member is outside the model signal range.");
                 return 0;
             }
             data_ref = signal->data_set_entry_variable[0] != '\0' ? signal->data_set_entry_variable : signal->object_reference;
-            data_ref = server_runtime_report_data_ref_with_dataset_prefix(data_ref, dataset_reference, normalized_data_ref, sizeof(normalized_data_ref));
             if (data_ref == NULL || data_ref[0] == '\0') {
                 server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "GI report DataSet member is missing a data reference.");
                 return 0;

@@ -929,7 +929,7 @@ static void test_server_runtime_gi_report_uses_model_dataset_members(void)
         },
         {
             .data_set_index = 2U,
-            .reference = "LD0/GGIO1.Ind2.stVal[ST]",
+            .reference = "LD1/GGIO1.Ind2.stVal[ST]",
             .kind = "FCDA",
             .fc = "ST",
             .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER,
@@ -1024,7 +1024,8 @@ static void test_server_runtime_gi_report_uses_model_dataset_members(void)
     unitlab_mms_association_frame_init(&report_frame);
     assert(unitlab_mms_association_frame_decode(&report_frame, report_bytes, report_length, &consumed_length, &diagnostic));
     assert(consumed_length == report_length);
-    assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"IED1LD0/GGIO1$ST$Ind2$stVal", strlen("IED1LD0/GGIO1$ST$Ind2$stVal")) == 1);
+    assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"IED1LD1/GGIO1$ST$Ind2$stVal", strlen("IED1LD1/GGIO1$ST$Ind2$stVal")) == 1);
+    assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"IED1LD0/GGIO1$ST$Ind2$stVal", strlen("IED1LD0/GGIO1$ST$Ind2$stVal")) == 0);
     assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"IED1IED1LD0", strlen("IED1IED1LD0")) == 0);
     assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"\x86\x01\x0B", 3U) == 1);
     assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"\x84\x02\x05\xE0", 4U) == 1);
