@@ -708,6 +708,129 @@ static int server_runtime_try_encode_leaf_metadata_read(
     return 1;
 }
 
+static int server_runtime_component_is_functional_constraint(const char* component)
+{
+    static const char* const functional_constraints[] = {
+        "ST", "MX", "CO", "CF", "DC", "EX", "SP", "SG", "SE", "SV"
+    };
+
+    if (component == NULL) {
+        return 0;
+    }
+    for (size_t index = 0U; index < sizeof(functional_constraints) / sizeof(functional_constraints[0]); index++) {
+        if (strcmp(component, functional_constraints[index]) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int server_runtime_reference_has_model_fc_path(const char* object_reference, int* is_fc_root)
+{
+    char component[16U][64U];
+    size_t component_count = 0U;
+    size_t offset = 0U;
+
+    if (is_fc_root != NULL) {
+        *is_fc_root = 0;
+    }
+    if (object_reference == NULL || object_reference[0] == '\0') {
+        return 0;
+    }
+    for (size_t index = 0U;; index++) {
+        char ch = object_reference[index];
+        if (ch == '/' || ch == '$' || ch == '.' || ch == '\0') {
+            if (offset != 0U) {
+                if (component_count >= sizeof(component) / sizeof(component[0])) {
+                    return 0;
+                }
+                component[component_count][offset] = '\0';
+                component_count++;
+                offset = 0U;
+            }
+            if (ch == '\0') {
+                break;
+            }
+        } else if (offset + 1U < sizeof(component[0])) {
+            component[component_count][offset++] = ch;
+        } else {
+            return 0;
+        }
+    }
+    if (component_count < 3U) {
+        return 0;
+    }
+    for (size_t index = 2U; index < component_count; index++) {
+        if (server_runtime_component_is_functional_constraint(component[index])) {
+            if (is_fc_root != NULL) {
+                *is_fc_root = (index + 1U == component_count) ? 1 : 0;
+            }
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int server_runtime_try_encode_model_placeholder_read(
+    const char* object_reference,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    int* value_supported,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    UnitLabIedModelSignal synthetic_signal;
+    int is_fc_root = 0;
+
+    if (value_supported != NULL) {
+        *value_supported = 0;
+    }
+    if (object_reference == NULL || buffer == NULL || encoded_length == NULL || value_supported == NULL) {
+        return 0;
+    }
+    if (!server_runtime_reference_has_model_fc_path(object_reference, &is_fc_root)) {
+        return 0;
+    }
+    if (is_fc_root) {
+        if (!server_runtime_encode_ber_element(
+                UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+                1,
+                2U,
+                NULL,
+                0U,
+                buffer,
+                buffer_length,
+                encoded_length,
+                diagnostic)) {
+            return 0;
+        }
+        *value_supported = 1;
+        return 1;
+    }
+
+    memset(&synthetic_signal, 0, sizeof(synthetic_signal));
+    if (server_runtime_object_reference_has_suffix(object_reference, ".q")) {
+        synthetic_signal.initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER;
+        snprintf(synthetic_signal.initial_value, sizeof(synthetic_signal.initial_value), "%s", "0");
+    } else if (server_runtime_object_reference_has_suffix(object_reference, ".t")) {
+        synthetic_signal.initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_STRING;
+        snprintf(synthetic_signal.initial_value, sizeof(synthetic_signal.initial_value), "%s", "1970-01-01T00:00:00Z");
+    } else if (server_runtime_object_reference_has_suffix(object_reference, ".f")) {
+        synthetic_signal.initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_REAL;
+        snprintf(synthetic_signal.initial_value, sizeof(synthetic_signal.initial_value), "%s", "0.0");
+    } else if (server_runtime_object_reference_has_suffix(object_reference, ".stVal")) {
+        synthetic_signal.initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER;
+        snprintf(synthetic_signal.initial_value, sizeof(synthetic_signal.initial_value), "%s", "0");
+    } else {
+        return 0;
+    }
+    if (!server_runtime_encode_mms_data_value(&synthetic_signal, buffer, buffer_length, encoded_length, diagnostic)) {
+        return 0;
+    }
+    *value_supported = 1;
+    return 1;
+}
+
 static int server_runtime_build_read_response_value(
     UnitLabMmsServerRuntime* server_runtime,
     const char* object_reference,
@@ -783,6 +906,10 @@ static int server_runtime_build_read_response_value(
         if (diagnostic != NULL && diagnostic->code != UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED) {
             return 0;
         }
+    }
+
+    if (server_runtime_try_encode_model_placeholder_read(object_reference, buffer, buffer_length, encoded_length, value_supported, diagnostic)) {
+        return 1;
     }
 
 

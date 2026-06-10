@@ -3979,6 +3979,36 @@ static void test_server_runtime_build_read_failure_uses_data_access_error_access
     assert_read_response_failure_access_result(response_bytes, response_length, 17U);
 }
 
+static void test_server_runtime_model_placeholder_reads_keep_discovery_flow_alive(void)
+{
+    static const uint32_t expected_tags[] = { 2U, 7U };
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabIedServerConfig config = {
+        .bind_address = "127.0.0.1",
+        .port = 102,
+    };
+    uint8_t response_bytes[512U];
+    size_t response_length = 0U;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_READ, 35U, 7U, 1000U, 100U, &diagnostic) == 1);
+    snprintf(server_runtime.pending_request.object_reference, sizeof(server_runtime.pending_request.object_reference), "%s", "KINTE06SMPCTRL.GGIO1.MX");
+    snprintf(server_runtime.pending_request.attribute_reference, sizeof(server_runtime.pending_request.attribute_reference), "%s", "MX");
+    server_runtime.pending_request.read_object_reference_count = 2U;
+    snprintf(server_runtime.pending_request.read_object_references[0], sizeof(server_runtime.pending_request.read_object_references[0]), "%s", "KINTE06SMPCTRL.GGIO1.MX");
+    snprintf(server_runtime.pending_request.read_attribute_references[0], sizeof(server_runtime.pending_request.read_attribute_references[0]), "%s", "MX");
+    snprintf(server_runtime.pending_request.read_object_references[1], sizeof(server_runtime.pending_request.read_object_references[1]), "%s", "KINTE06SMPCTRL.GGIO1.MX.AnIn1.mag.f");
+    snprintf(server_runtime.pending_request.read_attribute_references[1], sizeof(server_runtime.pending_request.read_attribute_references[1]), "%s", "f");
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert_read_response_access_result_tags(response_bytes, response_length, 35U, expected_tags, sizeof(expected_tags) / sizeof(expected_tags[0]));
+}
+
 static void test_server_runtime_mixed_multi_read_preserves_access_result_failures(void)
 {
     static const uint32_t expected_tags[] = { 10U, 0U };
@@ -6406,6 +6436,7 @@ int main(void)
     test_server_runtime_reads_model_backed_rcb_dataset_aliases();
     test_server_runtime_second_model_rcb_gi_uses_second_dataset();
     test_server_runtime_build_read_failure_uses_data_access_error_access_result();
+    test_server_runtime_model_placeholder_reads_keep_discovery_flow_alive();
     test_server_runtime_mixed_multi_read_preserves_access_result_failures();
     test_server_runtime_build_ordinary_ln_gva_response_exposes_fc_roots();
     test_server_runtime_build_model_fc_root_gva_response_exposes_dataset_do_tree();

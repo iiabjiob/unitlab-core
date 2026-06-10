@@ -689,9 +689,24 @@ int server_runtime_encode_mms_data_value(
             element.value_bytes = NULL;
             element.value_length = 0U;
             return unitlab_mms_ber_write(&element, buffer, buffer_length, encoded_length, diagnostic);
-        case UNITLAB_IED_FIXTURE_VALUE_REAL:
-            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "Real read response values are not yet supported by the native wire server.");
-            return 0;
+        case UNITLAB_IED_FIXTURE_VALUE_REAL: {
+            float real_value = (float)strtod(signal->initial_value, NULL);
+            uint32_t real_bits = 0U;
+            uint8_t real_bytes[5U];
+
+            memcpy(&real_bits, &real_value, sizeof(real_bits));
+            real_bytes[0] = 0x08U;
+            real_bytes[1] = (uint8_t)((real_bits >> 24U) & 0xFFU);
+            real_bytes[2] = (uint8_t)((real_bits >> 16U) & 0xFFU);
+            real_bytes[3] = (uint8_t)((real_bits >> 8U) & 0xFFU);
+            real_bytes[4] = (uint8_t)(real_bits & 0xFFU);
+            element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+            element.tag.constructed = 0;
+            element.tag.tag_number = 7U;
+            element.value_bytes = real_bytes;
+            element.value_length = sizeof(real_bytes);
+            return unitlab_mms_ber_write(&element, buffer, buffer_length, encoded_length, diagnostic);
+        }
         case UNITLAB_IED_FIXTURE_VALUE_UNKNOWN:
         default:
             server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "Read response value kind is unsupported.");
