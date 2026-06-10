@@ -178,6 +178,11 @@ static int test_compile_builds_model_plan_through_c_api(void)
         passed &= expect_string(plan->signals[3].object_reference, "IED1LD0.XCBR1.Pos.ctlModel", "fourth signal enum object ref");
         passed &= expect_true(plan->signals[3].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_INTEGER, "fourth signal enum default kind");
         passed &= expect_string(plan->signals[3].initial_value, "1", "fourth signal enum default value");
+        passed &= expect_true(plan->signals[3].enum_type_known == 1, "fourth signal enum metadata should be known");
+        passed &= expect_string(plan->signals[3].enum_type_id, "CtlModelKind", "fourth signal enum type id");
+        passed &= expect_true(plan->signals[3].enum_value_count == 1U, "fourth signal enum value count");
+        passed &= expect_true(plan->signals[3].enum_values[0].ord == 1, "fourth signal enum ord");
+        passed &= expect_string(plan->signals[3].enum_values[0].text, "direct-with-normal-security", "fourth signal enum text");
         passed &= expect_string(plan->signals[4].reference, "LD0/XCBR1.Beh.subState.stVal[ST]", "fifth signal SDO ref");
         passed &= expect_string(plan->signals[4].object_reference, "IED1LD0.XCBR1.Beh.subState.stVal", "fifth signal SDO object ref");
         passed &= expect_true(plan->signals[4].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_INTEGER, "fifth signal SDO typed default kind");
@@ -457,14 +462,84 @@ static int test_compile_reports_missing_template_kinds(void)
     passed &= expect_true(unitlab_scl_compile_diagnostic_at(result, 4U, &diagnostic) == 1, "missing DAType diagnostic should be readable");
     passed &= expect_string(diagnostic.code, "SCL_TEMPLATE_DATYPE_MISSING", "missing DAType code");
     passed &= expect_true(unitlab_scl_compile_diagnostic_at(result, 5U, &diagnostic) == 1, "missing EnumType diagnostic should be readable");
+    passed &= expect_string(diagnostic.severity, "warning", "missing EnumType severity");
     passed &= expect_string(diagnostic.code, "SCL_TEMPLATE_ENUMTYPE_MISSING", "missing EnumType code");
 
     const UnitLabIedModelPlan* plan = unitlab_scl_compile_model_plan(result);
     passed &= expect_true(plan != NULL, "partial model plan should be readable for missing templates");
     if (plan != NULL) {
         passed &= expect_true(plan->data_set_count == 1U, "missing template DataSet should still be represented");
-        passed &= expect_true(plan->data_sets[0].member_count == 0U, "missing template members should not become DataSet signals");
-        passed &= expect_true(plan->signal_count == 0U, "missing template members should not produce runtime signals");
+        passed &= expect_true(plan->data_sets[0].member_count == 1U, "missing EnumType member should compile with fallback");
+        passed &= expect_true(plan->signal_count == 1U, "missing EnumType member should produce fallback integer signal");
+        passed &= expect_true(plan->signals[0].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_INTEGER, "missing EnumType fallback kind");
+        passed &= expect_string(plan->signals[0].initial_value, "0", "missing EnumType fallback value");
+        passed &= expect_true(plan->signals[0].enum_type_known == 0, "missing EnumType should not expose enum metadata");
+    }
+
+    unitlab_scl_compile_result_free(result);
+    return passed;
+}
+
+
+static int test_compile_preserves_enum_unknown_leaf_metadata(void)
+{
+    const char* scl =
+        "<SCL>"
+        "<IED name=\"IED1\"><AccessPoint name=\"AP1\"><Server><LDevice inst=\"Protection\">"
+        "<LN0><DataSet name=\"dsProtection\">"
+        "<FCDA ldInst=\"Protection\" prefix=\"Frq\" lnClass=\"PTUF\" lnInst=\"1\" doName=\"Str\" daName=\"dirGeneral\" fc=\"ST\" />"
+        "</DataSet></LN0>"
+        "<LN prefix=\"Frq\" lnClass=\"PTUF\" inst=\"1\" lnType=\"PTUF_TYPE\" />"
+        "</LDevice></Server></AccessPoint></IED>"
+        "<DataTypeTemplates>"
+        "<LNodeType id=\"PTUF_TYPE\" lnClass=\"PTUF\"><DO name=\"Str\" type=\"ACD_STR\" /></LNodeType>"
+        "<DOType id=\"ACD_STR\" cdc=\"ACD\">"
+        "<DA name=\"general\" fc=\"ST\" bType=\"BOOLEAN\" />"
+        "<DA name=\"dirGeneral\" fc=\"ST\" bType=\"Enum\" type=\"DirectionKind\" />"
+        "<DA name=\"q\" fc=\"ST\" bType=\"Quality\" />"
+        "<DA name=\"t\" fc=\"ST\" bType=\"Timestamp\" />"
+        "</DOType>"
+        "<EnumType id=\"DirectionKind\"><EnumVal ord=\"0\">unknown</EnumVal><EnumVal ord=\"1\">forward</EnumVal></EnumType>"
+        "</DataTypeTemplates>"
+        "</SCL>";
+    UnitLabSclCompileResult* result = NULL;
+    char error[128];
+    int passed = 1;
+
+    passed &= expect_true(unitlab_scl_compile_from_memory(scl, strlen(scl), "IED1", &result, error, sizeof(error)) == 1,
+        "enum SCL should compile through C API");
+    passed &= expect_true(result != NULL, "enum compile result should be allocated");
+    passed &= expect_true(unitlab_scl_compile_diagnostic_count(result) == 0U, "valid enum SCL should compile without diagnostics");
+
+    const UnitLabIedModelPlan* plan = unitlab_scl_compile_model_plan(result);
+    passed &= expect_true(plan != NULL, "enum model plan should be available");
+    if (plan != NULL) {
+        passed &= expect_true(plan->signal_count == 1U, "enum FCDA should compile one signal");
+        passed &= expect_string(plan->signals[0].reference, "Protection/FrqPTUF1.Str.dirGeneral[ST]", "enum signal reference");
+        passed &= expect_string(plan->signals[0].object_reference, "IED1Protection.FrqPTUF1.Str.dirGeneral", "enum object reference");
+        passed &= expect_string(plan->signals[0].data_set_entry_variable, "IED1Protection/FrqPTUF1$ST$Str$dirGeneral", "enum canonical DataSet entry");
+        passed &= expect_true(plan->signals[0].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_INTEGER, "enum signal must use integer value kind");
+        passed &= expect_string(plan->signals[0].initial_value, "0", "enum signal should default to ord zero");
+        passed &= expect_true(plan->signals[0].enum_type_known == 1, "enum type should be known");
+        passed &= expect_string(plan->signals[0].enum_type_id, "DirectionKind", "enum type id");
+        passed &= expect_true(plan->signals[0].enum_value_count == 2U, "enum values should be preserved");
+        passed &= expect_true(plan->signals[0].enum_values[0].ord == 0, "enum unknown ord");
+        passed &= expect_string(plan->signals[0].enum_values[0].text, "unknown", "enum unknown text");
+        passed &= expect_true(plan->signals[0].enum_values[1].ord == 1, "enum forward ord");
+        passed &= expect_string(plan->signals[0].enum_values[1].text, "forward", "enum forward text");
+    }
+
+    size_t json_size = unitlab_scl_compile_normalized_json_size(result);
+    char* json = (char*)malloc(json_size);
+    size_t written_size = 0U;
+    passed &= expect_true(json != NULL, "enum normalized JSON buffer should allocate");
+    if (json != NULL) {
+        passed &= expect_true(unitlab_scl_compile_normalized_json(result, json, json_size, &written_size) == 1,
+            "enum normalized JSON should write");
+        passed &= expect_contains(json, "\"enumTypeKnown\":true", "normalized JSON enum flag");
+        passed &= expect_contains(json, "\"enumTypeId\":\"DirectionKind\"", "normalized JSON enum type id");
+        passed &= expect_contains(json, "\"enumValues\":[{\"ord\":0,\"text\":\"unknown\"},{\"ord\":1,\"text\":\"forward\"}]", "normalized JSON enum values");
+        free(json);
     }
 
     unitlab_scl_compile_result_free(result);
@@ -601,6 +676,7 @@ int main(void)
     passed &= test_compile_reports_unresolved_sdo_path();
     passed &= test_compile_reports_unresolved_nested_attribute_path();
     passed &= test_compile_reports_missing_template_kinds();
+    passed &= test_compile_preserves_enum_unknown_leaf_metadata();
     passed &= test_compile_reports_invalid_selected_ied();
     passed &= test_compile_exports_network_metadata();
     passed &= test_compile_reports_malformed_xml();

@@ -154,6 +154,11 @@ int unitlab_mms_server_runtime_update_signal_int32(
     const char* object_reference,
     int32_t value,
     UnitLabMmsDiagnostic* diagnostic);
+int unitlab_mms_server_runtime_update_signal_enum(
+    UnitLabMmsServerRuntime* server_runtime,
+    const char* object_reference,
+    int value,
+    UnitLabMmsDiagnostic* diagnostic);
 int unitlab_mms_server_runtime_update_signal_boolean(
     UnitLabMmsServerRuntime* server_runtime,
     const char* object_reference,

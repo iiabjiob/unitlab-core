@@ -1739,6 +1739,96 @@ static void test_server_runtime_update_signal_value_changes_read_value(void)
     unitlab_free_ied_model_plan(&plan);
 }
 
+
+static void test_server_runtime_enum_signal_reads_and_updates_as_integer(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabIedServerConfig config = { .bind_address = "127.0.0.1", .port = 102 };
+    UnitLabIedModelPlan plan;
+    UnitLabIedModelLogicalDevice logical_devices[1U];
+    UnitLabIedModelLogicalNode logical_nodes[1U];
+    UnitLabIedModelDataSet data_sets[1U];
+    UnitLabIedModelSignal signals[1U];
+    uint8_t response_bytes[1024U];
+    size_t response_length = 0U;
+
+    memset(&plan, 0, sizeof(plan));
+    memset(logical_devices, 0, sizeof(logical_devices));
+    memset(logical_nodes, 0, sizeof(logical_nodes));
+    memset(data_sets, 0, sizeof(data_sets));
+    memset(signals, 0, sizeof(signals));
+
+    snprintf(logical_devices[0].inst, sizeof(logical_devices[0].inst), "%s", "IED1Protection");
+    snprintf(logical_nodes[0].logical_device_inst, sizeof(logical_nodes[0].logical_device_inst), "%s", "IED1Protection");
+    snprintf(logical_nodes[0].name, sizeof(logical_nodes[0].name), "%s", "FrqPTUF1");
+    snprintf(data_sets[0].reference, sizeof(data_sets[0].reference), "%s", "IED1/AP1/Protection/LLN0.dsProtection");
+    snprintf(data_sets[0].logical_device_inst, sizeof(data_sets[0].logical_device_inst), "%s", "IED1Protection");
+    snprintf(data_sets[0].logical_node_name, sizeof(data_sets[0].logical_node_name), "%s", "LLN0");
+    snprintf(data_sets[0].name, sizeof(data_sets[0].name), "%s", "dsProtection");
+    data_sets[0].first_signal_index = 0U;
+    data_sets[0].member_count = 1U;
+
+    snprintf(signals[0].reference, sizeof(signals[0].reference), "%s", "Protection/FrqPTUF1.Str.dirGeneral[ST]");
+    snprintf(signals[0].kind, sizeof(signals[0].kind), "%s", "FCDA");
+    signals[0].data_set_index = 0U;
+    signals[0].member_index = 0U;
+    snprintf(signals[0].logical_device_inst, sizeof(signals[0].logical_device_inst), "%s", "IED1Protection");
+    snprintf(signals[0].logical_node_name, sizeof(signals[0].logical_node_name), "%s", "FrqPTUF1");
+    snprintf(signals[0].data_object_name, sizeof(signals[0].data_object_name), "%s", "Str");
+    snprintf(signals[0].data_attribute_path, sizeof(signals[0].data_attribute_path), "%s", "dirGeneral");
+    snprintf(signals[0].object_reference, sizeof(signals[0].object_reference), "%s", "IED1Protection.FrqPTUF1.Str.dirGeneral");
+    snprintf(signals[0].data_set_entry_variable, sizeof(signals[0].data_set_entry_variable), "%s", "IED1Protection/FrqPTUF1$ST$Str$dirGeneral");
+    signals[0].data_set_entry_component_known = 1;
+    snprintf(signals[0].data_set_entry_component, sizeof(signals[0].data_set_entry_component), "%s", "dirGeneral");
+    snprintf(signals[0].fc, sizeof(signals[0].fc), "%s", "ST");
+    signals[0].initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER;
+    snprintf(signals[0].initial_value, sizeof(signals[0].initial_value), "%s", "0");
+    signals[0].enum_type_known = 1;
+    snprintf(signals[0].enum_type_id, sizeof(signals[0].enum_type_id), "%s", "DirectionKind");
+    signals[0].enum_value_count = 2U;
+    signals[0].enum_values[0].ord = 0;
+    snprintf(signals[0].enum_values[0].text, sizeof(signals[0].enum_values[0].text), "%s", "unknown");
+    signals[0].enum_values[1].ord = 1;
+    snprintf(signals[0].enum_values[1].text, sizeof(signals[0].enum_values[1].text), "%s", "forward");
+
+    plan.logical_device_count = 1U;
+    plan.logical_devices = logical_devices;
+    plan.logical_node_count = 1U;
+    plan.logical_nodes = logical_nodes;
+    plan.data_set_count = 1U;
+    plan.data_sets = data_sets;
+    plan.signal_count = 1U;
+    plan.signals = signals;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+
+    assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_READ, 91U, 7U, 1000U, 100U, &diagnostic) == 1);
+    snprintf(server_runtime.pending_request.object_reference, sizeof(server_runtime.pending_request.object_reference), "%s", "IED1Protection.FrqPTUF1.ST.Str.dirGeneral");
+    snprintf(server_runtime.pending_request.attribute_reference, sizeof(server_runtime.pending_request.attribute_reference), "%s", "dirGeneral");
+    server_runtime.pending_request.read_object_reference_count = 1U;
+    snprintf(server_runtime.pending_request.read_object_references[0], sizeof(server_runtime.pending_request.read_object_references[0]), "%s", "IED1Protection.FrqPTUF1.ST.Str.dirGeneral");
+    snprintf(server_runtime.pending_request.read_attribute_references[0], sizeof(server_runtime.pending_request.read_attribute_references[0]), "%s", "dirGeneral");
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x85\x01\x00", 3U) == 1);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"unknown", strlen("unknown")) == 0);
+
+    unitlab_mms_pending_request_init(&server_runtime.pending_request);
+    assert(unitlab_mms_server_runtime_update_signal_enum(&server_runtime, "IED1Protection/FrqPTUF1$ST$Str$dirGeneral", 1, &diagnostic));
+    response_length = 0U;
+    assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_READ, 92U, 7U, 1000U, 100U, &diagnostic) == 1);
+    snprintf(server_runtime.pending_request.object_reference, sizeof(server_runtime.pending_request.object_reference), "%s", "IED1Protection.FrqPTUF1.ST.Str.dirGeneral");
+    snprintf(server_runtime.pending_request.attribute_reference, sizeof(server_runtime.pending_request.attribute_reference), "%s", "dirGeneral");
+    server_runtime.pending_request.read_object_reference_count = 1U;
+    snprintf(server_runtime.pending_request.read_object_references[0], sizeof(server_runtime.pending_request.read_object_references[0]), "%s", "IED1Protection.FrqPTUF1.ST.Str.dirGeneral");
+    snprintf(server_runtime.pending_request.read_attribute_references[0], sizeof(server_runtime.pending_request.read_attribute_references[0]), "%s", "dirGeneral");
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x85\x01\x01", 3U) == 1);
+}
+
 static void test_server_runtime_signal_update_aliases_share_stored_dataset_value(void)
 {
     UnitLabMmsServerRuntime server_runtime;
@@ -6741,6 +6831,7 @@ int main(void)
     test_server_runtime_gi_report_uses_stored_quality_timestamp_members();
     test_server_runtime_data_change_report_uses_stored_quality_timestamp_members();
     test_server_runtime_update_signal_value_changes_read_value();
+    test_server_runtime_enum_signal_reads_and_updates_as_integer();
     test_server_runtime_signal_update_aliases_share_stored_dataset_value();
     test_server_runtime_update_dataset_member_queues_report_when_enabled();
     test_server_runtime_multiple_dataset_updates_share_one_data_change_report();

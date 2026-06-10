@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 
 namespace unitlab::iec61850::scl {
 namespace {
@@ -49,6 +50,17 @@ bool parse_u32(const std::string& value, uint32_t* out)
     const unsigned long parsed = std::strtoul(value.c_str(), &end, 10);
     if (end == value.c_str() || *end != '\0') return false;
     *out = static_cast<uint32_t>(parsed);
+    return true;
+}
+
+bool parse_i32(const std::string& value, int32_t* out)
+{
+    if (value.empty() || out == nullptr) return false;
+    char* end = nullptr;
+    const long parsed = std::strtol(value.c_str(), &end, 10);
+    if (end == value.c_str() || *end != '\0') return false;
+    if (parsed < static_cast<long>(std::numeric_limits<int32_t>::min()) || parsed > static_cast<long>(std::numeric_limits<int32_t>::max())) return false;
+    *out = static_cast<int32_t>(parsed);
     return true;
 }
 
@@ -307,15 +319,32 @@ std::vector<SclDaTemplate> parse_da_type_bdas(pugi::xml_node da_type)
     return attributes;
 }
 
-std::string parse_enum_type_first_value(pugi::xml_node enum_type)
+std::vector<SclEnumValueTemplate> parse_enum_type_values(pugi::xml_node enum_type)
 {
+    std::vector<SclEnumValueTemplate> values;
     for (pugi::xml_node child : enum_type.children()) {
         if (!is_node(child, "EnumVal")) continue;
-        std::string value = attr(child, "ord");
-        if (value.empty()) value = attr(child, "value");
-        return value;
+        std::string ord_text = attr(child, "ord");
+        if (ord_text.empty()) ord_text = attr(child, "value");
+        SclEnumValueTemplate value;
+        if (!parse_i32(ord_text, &value.ord)) continue;
+        value.text = child.child_value();
+        if (value.text.empty()) value.text = attr(child, "desc");
+        if (value.text.empty()) value.text = ord_text;
+        values.push_back(value);
     }
-    return {};
+    std::stable_sort(values.begin(), values.end(), [](const SclEnumValueTemplate& left, const SclEnumValueTemplate& right) {
+        return left.ord < right.ord;
+    });
+    return values;
+}
+
+std::string enum_type_default_value(const std::vector<SclEnumValueTemplate>& values)
+{
+    if (values.empty()) return {};
+    const auto zero = std::find_if(values.begin(), values.end(), [](const SclEnumValueTemplate& value) { return value.ord == 0; });
+    if (zero != values.end()) return std::to_string(zero->ord);
+    return std::to_string(values.front().ord);
 }
 
 SclDataTypeTemplates parse_data_type_templates(pugi::xml_node root)
@@ -343,7 +372,8 @@ SclDataTypeTemplates parse_data_type_templates(pugi::xml_node root)
         } else if (is_node(child, "EnumType")) {
             SclEnumTypeTemplate type;
             type.id = attr(child, "id");
-            type.first_value = parse_enum_type_first_value(child);
+            type.values = parse_enum_type_values(child);
+            type.first_value = enum_type_default_value(type.values);
             if (!type.id.empty()) templates.enum_types.push_back(type);
         }
     }

@@ -21,6 +21,13 @@
 #define UNITLAB_IED_MODEL_RPT_OPT_ENTRY_ID 64U
 #define UNITLAB_IED_MODEL_RPT_OPT_CONF_REV 128U
 
+#define UNITLAB_IED_MODEL_MAX_ENUM_VALUES 32U
+
+typedef struct UnitLabIedModelEnumValue {
+    int32_t ord;
+    char text[128];
+} UnitLabIedModelEnumValue;
+
 typedef struct UnitLabIedModelLogicalDevice {
     char inst[128];
 } UnitLabIedModelLogicalDevice;
@@ -79,6 +86,10 @@ typedef struct UnitLabIedModelSignal {
     char fc[32];
     UnitLabIedFixtureValueKind initial_value_kind;
     char initial_value[128];
+    int enum_type_known;
+    char enum_type_id[128];
+    size_t enum_value_count;
+    UnitLabIedModelEnumValue enum_values[UNITLAB_IED_MODEL_MAX_ENUM_VALUES];
 } UnitLabIedModelSignal;
 
 typedef struct UnitLabIedModelNamespaceAttribute {

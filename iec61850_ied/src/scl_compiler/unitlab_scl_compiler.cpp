@@ -180,6 +180,21 @@ std::vector<std::string> split_path(const std::string& path)
     return parts;
 }
 
+void append_member_diagnostic_with_severity(
+    UnitLabSclCompileResult& result,
+    const char* severity,
+    const char* code,
+    const char* message,
+    const SclIed& ied,
+    const SclAccessPoint& access_point,
+    const SclLogicalDevice& device,
+    const SclLogicalNode& node,
+    const SclDataSet& data_set,
+    const SclMember& member)
+{
+    result.diagnostics.push_back(contextual_diagnostic(severity, code, message, ied.name.c_str(), access_point.name.c_str(), device.inst.c_str(), node.name.c_str(), data_set.name.c_str(), "", signal_ref(member, device.inst).c_str()));
+}
+
 void append_member_diagnostic(
     UnitLabSclCompileResult& result,
     const char* code,
@@ -191,7 +206,7 @@ void append_member_diagnostic(
     const SclDataSet& data_set,
     const SclMember& member)
 {
-    result.diagnostics.push_back(contextual_diagnostic("error", code, message, ied.name.c_str(), access_point.name.c_str(), device.inst.c_str(), node.name.c_str(), data_set.name.c_str(), "", signal_ref(member, device.inst).c_str()));
+    append_member_diagnostic_with_severity(result, "error", code, message, ied, access_point, device, node, data_set, member);
 }
 
 const char* missing_do_type_code = "SCL_TEMPLATE_DOTYPE_MISSING";
@@ -298,9 +313,27 @@ SclResolvedValueType resolve_attribute_value_type_with_diagnostic(
     return {};
 }
 
-bool resolved_enum_type_missing(const SclDataTypeTemplates& templates, const SclResolvedValueType& resolved)
+
+void append_enum_resolution_diagnostics(
+    UnitLabSclCompileResult& result,
+    const SclDataTypeTemplates& templates,
+    const SclResolvedValueType& resolved,
+    const SclIed& ied,
+    const SclAccessPoint& access_point,
+    const SclLogicalDevice& device,
+    const SclLogicalNode& node,
+    const SclDataSet& data_set,
+    const SclMember& member)
 {
-    return resolved.b_type == "Enum" && !resolved.type.empty() && find_enum_type(templates, resolved.type) == nullptr;
+    if (resolved.b_type != "Enum" || resolved.type.empty()) return;
+    const SclEnumTypeTemplate* enum_type = find_enum_type(templates, resolved.type);
+    if (enum_type == nullptr) {
+        append_member_diagnostic_with_severity(result, "warning", "SCL_TEMPLATE_ENUMTYPE_MISSING", "Enum leaf references a missing EnumType template; runtime value defaults to integer 0.", ied, access_point, device, node, data_set, member);
+        return;
+    }
+    if (enum_type->values.empty()) {
+        append_member_diagnostic_with_severity(result, "warning", "SCL_ENUM_VALUE_DEFAULTED", "EnumType has no usable EnumVal entries; runtime value defaults to integer 0.", ied, access_point, device, node, data_set, member);
+    }
 }
 
 UnitLabIedFixtureValueKind value_kind_for_b_type(const std::string& b_type)
@@ -400,6 +433,19 @@ void append_compiled_signal(
     signal.initial_value_kind = value_kind_for_b_type(resolved_type.b_type);
     const std::string default_value = default_value_for_resolved_type(templates, resolved_type, signal.initial_value_kind);
     copy_string(signal.initial_value, sizeof(signal.initial_value), default_value.c_str());
+    if (resolved_type.b_type == "Enum" && !resolved_type.type.empty()) {
+        const SclEnumTypeTemplate* enum_type = find_enum_type(templates, resolved_type.type);
+        if (enum_type != nullptr) {
+            signal.enum_type_known = 1;
+            copy_string(signal.enum_type_id, sizeof(signal.enum_type_id), resolved_type.type.c_str());
+            const size_t enum_count = std::min(enum_type->values.size(), static_cast<size_t>(UNITLAB_IED_MODEL_MAX_ENUM_VALUES));
+            signal.enum_value_count = enum_count;
+            for (size_t index = 0U; index < enum_count; index++) {
+                signal.enum_values[index].ord = enum_type->values[index].ord;
+                copy_string(signal.enum_values[index].text, sizeof(signal.enum_values[index].text), enum_type->values[index].text.c_str());
+            }
+        }
+    }
     result.signals.push_back(signal);
 }
 
@@ -458,10 +504,7 @@ size_t append_compiled_attribute_leaves(
     if (effective_fc != member.fc) {
         return 0U;
     }
-    if (resolved_enum_type_missing(templates, resolved_type)) {
-        append_member_diagnostic(result, "SCL_TEMPLATE_ENUMTYPE_MISSING", "DataSet member leaf references a missing EnumType template.", ied, access_point, device, node, data_set, member);
-        return 0U;
-    }
+    append_enum_resolution_diagnostics(result, templates, resolved_type, ied, access_point, device, node, data_set, member);
     append_compiled_signal(result, data_set_index, member_index, member_domain, member_ln, member, fallback_ld_inst, attribute_path, resolved_type, templates);
     member_index++;
     return 1U;
@@ -628,10 +671,7 @@ void compile_ied(UnitLabSclCompileResult& result, const SclIed& ied, const SclDa
 
                         const SclResolvedValueType resolved_type = resolve_attribute_value_type_with_diagnostic(result, templates, member_do_type, split_path(member.da_name), ied, access_point, device, node, data_set, member);
                         if (resolved_type.b_type.empty()) continue;
-                        if (resolved_enum_type_missing(templates, resolved_type)) {
-                            append_member_diagnostic(result, "SCL_TEMPLATE_ENUMTYPE_MISSING", "DataSet FCDA member references a missing EnumType template.", ied, access_point, device, node, data_set, member);
-                            continue;
-                        }
+                        append_enum_resolution_diagnostics(result, templates, resolved_type, ied, access_point, device, node, data_set, member);
                         append_compiled_signal(result, data_set_index, valid_member_index, member_domain, member_ln, member, device.inst, member.da_name, resolved_type, templates);
                         valid_member_index++;
                     }
@@ -799,6 +839,10 @@ std::string normalized_json_for_result(const UnitLabSclCompileResult& result)
     model["signals"] = json::array();
     for (size_t index = 0U; index < result.plan.signal_count; index++) {
         const UnitLabIedModelSignal& signal = result.plan.signals[index];
+        json enum_values = json::array();
+        for (size_t enum_index = 0U; enum_index < signal.enum_value_count; enum_index++) {
+            enum_values.push_back({{"ord", signal.enum_values[enum_index].ord}, {"text", signal.enum_values[enum_index].text}});
+        }
         model["signals"].push_back({
             {"reference", signal.reference},
             {"kind", signal.kind},
@@ -815,6 +859,9 @@ std::string normalized_json_for_result(const UnitLabSclCompileResult& result)
             {"fc", signal.fc},
             {"initialValueKind", static_cast<int>(signal.initial_value_kind)},
             {"initialValue", signal.initial_value},
+            {"enumTypeKnown", signal.enum_type_known != 0},
+            {"enumTypeId", signal.enum_type_id},
+            {"enumValues", enum_values},
         });
     }
     document["model"] = model;

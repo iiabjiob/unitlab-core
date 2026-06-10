@@ -56,7 +56,8 @@ struct SclDaTemplate { std::string name; std::string fc; std::string b_type; std
 struct SclLNodeTypeTemplate { std::string id; std::vector<SclDoTemplate> data_objects; };
 struct SclDoTypeTemplate { std::string id; std::vector<SclDaTemplate> data_attributes; std::vector<SclSdoTemplate> sub_data_objects; };
 struct SclDaTypeTemplate { std::string id; std::vector<SclDaTemplate> basic_data_attributes; };
-struct SclEnumTypeTemplate { std::string id; std::string first_value; };
+struct SclEnumValueTemplate { int32_t ord = 0; std::string text; };
+struct SclEnumTypeTemplate { std::string id; std::string first_value; std::vector<SclEnumValueTemplate> values; };
 struct SclResolvedValueType { std::string b_type; std::string type; };
 
 struct SclDataTypeTemplates {
