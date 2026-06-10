@@ -6459,7 +6459,7 @@ static void test_server_runtime_named_variable_list_attributes_handles_large_mod
 
 static void test_server_runtime_model_urcb_read_uses_unbuffered_rcb_shape(void)
 {
-    static const uint32_t expected_tags[] = { 10U, 3U, 10U, 6U, 4U, 6U, 6U, 4U, 6U, 3U, 3U };
+    static const uint32_t expected_tags[] = { 10U, 3U, 3U, 10U, 6U, 4U, 6U, 6U, 4U, 6U, 3U };
     UnitLabMmsServerRuntime server_runtime;
     UnitLabMmsDiagnostic diagnostic;
     UnitLabIedModelPlan model_plan;

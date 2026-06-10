@@ -13,8 +13,8 @@ static const char* const buffered_report_control_block_fields[] = {
 };
 
 static const char* const unbuffered_report_control_block_fields[] = {
-    "RptID", "RptEna", "DatSet", "ConfRev", "OptFlds", "BufTm", "SqNum",
-    "TrgOps", "IntgPd", "GI", "Resv"
+    "RptID", "RptEna", "Resv", "DatSet", "ConfRev", "OptFlds", "BufTm",
+    "SqNum", "TrgOps", "IntgPd", "GI"
 };
 
 const char* const* server_runtime_report_control_block_fields(size_t* field_count)

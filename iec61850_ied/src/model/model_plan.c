@@ -984,6 +984,7 @@ static int append_report_variable_prefixes_for_logical_device(
     static const char* const unbuffered_report_fields[] = {
         "RptID",
         "RptEna",
+        "Resv",
         "DatSet",
         "ConfRev",
         "OptFlds",
@@ -991,8 +992,7 @@ static int append_report_variable_prefixes_for_logical_device(
         "SqNum",
         "TrgOps",
         "IntgPd",
-        "GI",
-        "Resv"
+        "GI"
     };
     char report_path[256U];
     const char* report_fc;
