@@ -658,6 +658,41 @@ static int server_runtime_collect_model_gva_children(
     return 1;
 }
 
+static int server_runtime_collect_model_logical_node_fc_names(
+    const UnitLabIedModelPlan* plan,
+    const char* domain_id,
+    const char* logical_node_name,
+    char*** names,
+    size_t* count,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    if (names != NULL) {
+        *names = NULL;
+    }
+    if (count != NULL) {
+        *count = 0U;
+    }
+    if (plan == NULL || domain_id == NULL || logical_node_name == NULL || names == NULL || count == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Model logical-node GVA collection requires plan, domain, LN, names, and count.");
+        return 0;
+    }
+    for (size_t signal_index = 0U; signal_index < plan->signal_count; signal_index++) {
+        const UnitLabIedModelSignal* signal = &plan->signals[signal_index];
+
+        if (strcmp(signal->logical_device_inst, domain_id) != 0 || strcmp(signal->logical_node_name, logical_node_name) != 0 || signal->fc[0] == '\0') {
+            continue;
+        }
+        if (!server_runtime_append_unique_gva_name(names, count, signal->fc)) {
+            unitlab_free_ied_model_name_list(*names, *count);
+            *names = NULL;
+            *count = 0U;
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Cannot collect model GVA FC names.");
+            return 0;
+        }
+    }
+    return 1;
+}
+
 static int server_runtime_join_attribute_path(const char* prefix, const char* component_name, char* output, size_t output_size)
 {
     int written = 0;
@@ -818,6 +853,145 @@ static int server_runtime_encode_model_gva_component_tree(
     }
     if (component_length > buffer_length) {
         server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Model GVA component output buffer is too small.");
+        return 0;
+    }
+    memcpy(buffer, component_bytes, component_length);
+    *encoded_length = component_length;
+    return 1;
+}
+
+static int server_runtime_encode_model_fc_root_gva_component_tree(
+    const UnitLabIedModelPlan* plan,
+    const char* domain_id,
+    const char* logical_node_name,
+    const char* fc,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    uint8_t component_name_bytes[256U];
+    uint8_t child_component_bytes[32768U];
+    uint8_t component_components_wrapper_bytes[33792U];
+    uint8_t component_structure_bytes[34816U];
+    uint8_t component_type_wrapper_bytes[35840U];
+    uint8_t component_content_bytes[36864U];
+    uint8_t component_bytes[38912U];
+    char** data_object_names = NULL;
+    size_t data_object_count = 0U;
+    size_t component_name_length = 0U;
+    size_t child_component_bytes_length = 0U;
+    size_t component_components_wrapper_length = 0U;
+    size_t component_structure_length = 0U;
+    size_t component_type_wrapper_length = 0U;
+    size_t component_content_length = 0U;
+    size_t component_length = 0U;
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (plan == NULL || domain_id == NULL || logical_node_name == NULL || fc == NULL || buffer == NULL || encoded_length == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Model FC-root GVA component encoding requires plan, domain, LN, FC, buffer, and encoded_length.");
+        return 0;
+    }
+    if (!server_runtime_encode_ber_element(
+            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+            0,
+            0U,
+            (const uint8_t*)fc,
+            strlen(fc),
+            component_name_bytes,
+            sizeof(component_name_bytes),
+            &component_name_length,
+            diagnostic)) {
+        return 0;
+    }
+    if (!server_runtime_collect_model_gva_children(
+            plan,
+            domain_id,
+            logical_node_name,
+            fc,
+            NULL,
+            NULL,
+            &data_object_names,
+            &data_object_count,
+            diagnostic)) {
+        return 0;
+    }
+    for (size_t data_object_index = 0U; data_object_index < data_object_count; data_object_index++) {
+        size_t data_object_length = 0U;
+
+        if (!server_runtime_encode_model_gva_component_tree(
+                plan,
+                domain_id,
+                logical_node_name,
+                fc,
+                data_object_names[data_object_index],
+                NULL,
+                data_object_names[data_object_index],
+                &child_component_bytes[child_component_bytes_length],
+                sizeof(child_component_bytes) - child_component_bytes_length,
+                &data_object_length,
+                diagnostic)) {
+            unitlab_free_ied_model_name_list(data_object_names, data_object_count);
+            return 0;
+        }
+        child_component_bytes_length += data_object_length;
+    }
+    unitlab_free_ied_model_name_list(data_object_names, data_object_count);
+    if (!server_runtime_encode_ber_element(
+            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+            1,
+            1U,
+            child_component_bytes,
+            child_component_bytes_length,
+            component_components_wrapper_bytes,
+            sizeof(component_components_wrapper_bytes),
+            &component_components_wrapper_length,
+            diagnostic)
+        || !server_runtime_encode_ber_element(
+            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+            1,
+            2U,
+            component_components_wrapper_bytes,
+            component_components_wrapper_length,
+            component_structure_bytes,
+            sizeof(component_structure_bytes),
+            &component_structure_length,
+            diagnostic)
+        || !server_runtime_encode_ber_element(
+            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+            1,
+            1U,
+            component_structure_bytes,
+            component_structure_length,
+            component_type_wrapper_bytes,
+            sizeof(component_type_wrapper_bytes),
+            &component_type_wrapper_length,
+            diagnostic)) {
+        return 0;
+    }
+    if (component_name_length + component_type_wrapper_length > sizeof(component_content_bytes)) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Model FC-root GVA component encoding buffer is too small.");
+        return 0;
+    }
+    memcpy(component_content_bytes, component_name_bytes, component_name_length);
+    memcpy(&component_content_bytes[component_name_length], component_type_wrapper_bytes, component_type_wrapper_length);
+    component_content_length = component_name_length + component_type_wrapper_length;
+    if (!server_runtime_encode_ber_element(
+            UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL,
+            1,
+            16U,
+            component_content_bytes,
+            component_content_length,
+            component_bytes,
+            sizeof(component_bytes),
+            &component_length,
+            diagnostic)) {
+        return 0;
+    }
+    if (component_length > buffer_length) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Model FC-root GVA component output buffer is too small.");
         return 0;
     }
     memcpy(buffer, component_bytes, component_length);
@@ -1112,6 +1286,7 @@ int server_runtime_build_get_variable_access_attributes_response_service(
     char fc_root_logical_node[128U];
     char fc_root_fc[32U];
     int use_model_fc_root = 0;
+    int use_model_logical_node_root = 0;
     int use_model_lln0_report_tree = 0;
     int use_model_lln0_unbuffered_report_tree = 0;
     const char* root_parent_component_name = NULL;
@@ -1251,6 +1426,19 @@ int server_runtime_build_get_variable_access_attributes_response_service(
             return 0;
         }
     }
+    else if (server_runtime->model_plan != NULL && domain_id[0] != '\0' && strchr(item_id, '$') == NULL && strchr(item_id, '.') == NULL) {
+        snprintf(logical_node_for_gva, sizeof(logical_node_for_gva), "%s", item_id);
+        use_model_logical_node_root = 1;
+        if (!server_runtime_collect_model_logical_node_fc_names(
+                server_runtime->model_plan,
+                domain_id,
+                item_id,
+                &names,
+                &name_count,
+                diagnostic)) {
+            return 0;
+        }
+    }
     else if (strcmp(item_id, "XCBR1") == 0) {
         snprintf(logical_node_for_gva, sizeof(logical_node_for_gva), "%s", "XCBR1");
         if (!server_runtime_copy_static_names(xcbr1_gva_children, sizeof(xcbr1_gva_children) / sizeof(xcbr1_gva_children[0]), &names, &name_count, diagnostic)) {
@@ -1358,6 +1546,19 @@ int server_runtime_build_get_variable_access_attributes_response_service(
                 return 0;
             }
             unitlab_free_ied_model_name_list(report_names, report_count);
+        } else if (use_model_logical_node_root != 0) {
+            if (!server_runtime_encode_model_fc_root_gva_component_tree(
+                    server_runtime->model_plan,
+                    domain_id,
+                    logical_node_for_gva,
+                    names[index],
+                    &component_bytes[component_bytes_length],
+                    sizeof(component_bytes) - component_bytes_length,
+                    &component_length,
+                    diagnostic)) {
+                unitlab_free_ied_model_name_list(names, name_count);
+                return 0;
+            }
         } else if (use_model_fc_root != 0) {
             if (!server_runtime_encode_model_gva_component_tree(
                     server_runtime->model_plan,

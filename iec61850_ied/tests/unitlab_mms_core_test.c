@@ -1,5 +1,6 @@
 #include "protocols/mms/unitlab_mms_core.h"
 #include "model/model_plan.h"
+#include "server/unitlab_mms_server_runtime_internal.h"
 
 #include <assert.h>
 #include <stdint.h>
@@ -409,6 +410,19 @@ static int name_list_contains(char** names, size_t count, const char* expected)
     return 0;
 }
 
+static int byte_sequence_contains(const uint8_t* buffer, size_t buffer_length, const uint8_t* expected, size_t expected_length)
+{
+    if (buffer == NULL || expected == NULL || expected_length == 0U || buffer_length < expected_length) {
+        return 0;
+    }
+    for (size_t index = 0U; index + expected_length <= buffer_length; index++) {
+        if (memcmp(&buffer[index], expected, expected_length) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static void test_get_name_list_browse_collection_filters_continue_after(void)
 {
     UnitLabMmsPendingRequest request;
@@ -584,6 +598,59 @@ static void test_collects_logical_node_variables_for_directory_browse_class_one(
 }
 
 
+static void test_model_gva_logical_node_root_uses_fc_groups(void)
+{
+    UnitLabMmsServerRuntime runtime;
+    UnitLabIedModelPlan plan;
+    UnitLabIedModelLogicalDevice logical_devices[1U];
+    UnitLabIedModelLogicalNode logical_nodes[1U];
+    UnitLabIedModelSignal signals[3U];
+    UnitLabMmsDiagnostic diagnostic;
+    uint8_t response[1024U];
+    size_t response_length = 0U;
+    const uint8_t component_st[] = { 0x80U, 0x02U, 'S', 'T' };
+    const uint8_t component_spcso8[] = { 0x80U, 0x06U, 'S', 'P', 'C', 'S', 'O', '8' };
+    const uint8_t component_stval[] = { 0x80U, 0x05U, 's', 't', 'V', 'a', 'l' };
+    const uint8_t component_q[] = { 0x80U, 0x01U, 'q' };
+    const uint8_t component_t[] = { 0x80U, 0x01U, 't' };
+
+    memset(&runtime, 0, sizeof(runtime));
+    memset(&plan, 0, sizeof(plan));
+    memset(logical_devices, 0, sizeof(logical_devices));
+    memset(logical_nodes, 0, sizeof(logical_nodes));
+    memset(signals, 0, sizeof(signals));
+
+    snprintf(logical_devices[0].inst, sizeof(logical_devices[0].inst), "%s", "LD0");
+    snprintf(logical_nodes[0].logical_device_inst, sizeof(logical_nodes[0].logical_device_inst), "%s", "LD0");
+    snprintf(logical_nodes[0].name, sizeof(logical_nodes[0].name), "%s", "AIDDIZGGIO1");
+    for (size_t index = 0U; index < 3U; index++) {
+        snprintf(signals[index].logical_device_inst, sizeof(signals[index].logical_device_inst), "%s", "LD0");
+        snprintf(signals[index].logical_node_name, sizeof(signals[index].logical_node_name), "%s", "AIDDIZGGIO1");
+        snprintf(signals[index].fc, sizeof(signals[index].fc), "%s", "ST");
+        snprintf(signals[index].data_object_name, sizeof(signals[index].data_object_name), "%s", "SPCSO8");
+    }
+    snprintf(signals[0].data_attribute_path, sizeof(signals[0].data_attribute_path), "%s", "stVal");
+    snprintf(signals[1].data_attribute_path, sizeof(signals[1].data_attribute_path), "%s", "q");
+    snprintf(signals[2].data_attribute_path, sizeof(signals[2].data_attribute_path), "%s", "t");
+
+    plan.logical_device_count = 1U;
+    plan.logical_devices = logical_devices;
+    plan.logical_node_count = 1U;
+    plan.logical_nodes = logical_nodes;
+    plan.signal_count = 3U;
+    plan.signals = signals;
+    runtime.model_plan = &plan;
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(server_runtime_build_get_variable_access_attributes_response_service(&runtime, 12U, "LD0.AIDDIZGGIO1", response, sizeof(response), &response_length, &diagnostic) == 1);
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(byte_sequence_contains(response, response_length, component_st, sizeof(component_st)) == 1);
+    assert(byte_sequence_contains(response, response_length, component_spcso8, sizeof(component_spcso8)) == 1);
+    assert(byte_sequence_contains(response, response_length, component_stval, sizeof(component_stval)) == 1);
+    assert(byte_sequence_contains(response, response_length, component_q, sizeof(component_q)) == 1);
+    assert(byte_sequence_contains(response, response_length, component_t, sizeof(component_t)) == 1);
+}
+
 static void test_collects_vmd_named_variable_lists_for_browse_class_two_scope_zero(void)
 {
     UnitLabMmsPendingRequest request;
@@ -751,6 +818,7 @@ int main(void)
     test_collects_flattened_domain_named_variables_for_real_model_discovery();
     test_collects_aa_specific_get_name_list_as_empty_list();
     test_collects_logical_node_variables_for_directory_browse_class_one();
+    test_model_gva_logical_node_root_uses_fc_groups();
     test_runtime_apply_semantic_decode_failure();
     printf("unitlab-mms-core: ok\n");
     return 0;
