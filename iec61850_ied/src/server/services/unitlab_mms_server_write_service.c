@@ -29,10 +29,43 @@ static int server_runtime_decode_write_boolean(const uint8_t* value_bytes, size_
 
 static int server_runtime_decode_optional_fields_mask(const uint8_t* value_bytes, size_t value_length, uint8_t* mask)
 {
+    uint8_t wire_mask;
+    uint8_t decoded_mask = 0U;
+
     if (value_bytes == NULL || mask == NULL || value_length != 3U || value_bytes[0] != 0x06U) {
         return 0;
     }
-    *mask = (uint8_t)((value_bytes[1] & 0x7FU) | ((value_bytes[2] & 0x80U) != 0U ? UNITLAB_IED_MODEL_RPT_OPT_CONF_REV : 0U));
+    if ((value_bytes[1] & 0x80U) != 0U || (value_bytes[2] & 0x7FU) != 0U) {
+        return 0;
+    }
+
+    wire_mask = value_bytes[1];
+    if ((wire_mask & 0x40U) != 0U) {
+        decoded_mask |= UNITLAB_IED_MODEL_RPT_OPT_SEQ_NUM;
+    }
+    if ((wire_mask & 0x20U) != 0U) {
+        decoded_mask |= UNITLAB_IED_MODEL_RPT_OPT_TIME_STAMP;
+    }
+    if ((wire_mask & 0x10U) != 0U) {
+        decoded_mask |= UNITLAB_IED_MODEL_RPT_OPT_REASON_FOR_INCLUSION;
+    }
+    if ((wire_mask & 0x08U) != 0U) {
+        decoded_mask |= UNITLAB_IED_MODEL_RPT_OPT_DATA_SET;
+    }
+    if ((wire_mask & 0x04U) != 0U) {
+        decoded_mask |= UNITLAB_IED_MODEL_RPT_OPT_DATA_REFERENCE;
+    }
+    if ((wire_mask & 0x02U) != 0U) {
+        decoded_mask |= UNITLAB_IED_MODEL_RPT_OPT_BUFFER_OVERFLOW;
+    }
+    if ((wire_mask & 0x01U) != 0U) {
+        decoded_mask |= UNITLAB_IED_MODEL_RPT_OPT_ENTRY_ID;
+    }
+    if ((value_bytes[2] & 0x80U) != 0U) {
+        decoded_mask |= UNITLAB_IED_MODEL_RPT_OPT_CONF_REV;
+    }
+
+    *mask = decoded_mask;
     return 1;
 }
 

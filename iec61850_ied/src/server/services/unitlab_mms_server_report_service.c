@@ -74,9 +74,32 @@ static int server_runtime_report_optional_field_enabled(const UnitLabMmsServerRu
 static void server_runtime_encode_report_optional_fields_bitstring(const UnitLabMmsServerRuntime* server_runtime, const UnitLabIedModelReportControl* report, uint8_t* buffer)
 {
     uint8_t mask = server_runtime_report_optional_fields_mask(server_runtime, report);
+    uint8_t wire_mask = 0U;
+
+    if ((mask & UNITLAB_IED_MODEL_RPT_OPT_SEQ_NUM) != 0U) {
+        wire_mask |= 0x40U;
+    }
+    if ((mask & UNITLAB_IED_MODEL_RPT_OPT_TIME_STAMP) != 0U) {
+        wire_mask |= 0x20U;
+    }
+    if ((mask & UNITLAB_IED_MODEL_RPT_OPT_REASON_FOR_INCLUSION) != 0U) {
+        wire_mask |= 0x10U;
+    }
+    if ((mask & UNITLAB_IED_MODEL_RPT_OPT_DATA_SET) != 0U) {
+        wire_mask |= 0x08U;
+    }
+    if ((mask & UNITLAB_IED_MODEL_RPT_OPT_DATA_REFERENCE) != 0U) {
+        wire_mask |= 0x04U;
+    }
+    if ((mask & UNITLAB_IED_MODEL_RPT_OPT_BUFFER_OVERFLOW) != 0U) {
+        wire_mask |= 0x02U;
+    }
+    if ((mask & UNITLAB_IED_MODEL_RPT_OPT_ENTRY_ID) != 0U) {
+        wire_mask |= 0x01U;
+    }
 
     buffer[0] = 0x06U;
-    buffer[1] = (uint8_t)(mask & 0x7FU);
+    buffer[1] = wire_mask;
     buffer[2] = (uint8_t)((mask & UNITLAB_IED_MODEL_RPT_OPT_CONF_REV) != 0U ? 0x80U : 0x00U);
 }
 

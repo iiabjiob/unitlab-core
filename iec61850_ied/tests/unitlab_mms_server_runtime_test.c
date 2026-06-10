@@ -2091,7 +2091,7 @@ static void test_server_runtime_report_option_fields_use_model_masks(void)
     snprintf(server_runtime.pending_request.read_attribute_references[0], sizeof(server_runtime.pending_request.read_attribute_references[0]), "%s", "brcbEvents");
 
     assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
-    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x84\x03\x06\x11\x00", 5U) == 1);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x84\x03\x06\x44\x00", 5U) == 1);
     assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x84\x02\x02\x44", 4U) == 1);
     assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x84\x03\x06\x7F\x80", 5U) == 0);
     assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x84\x02\x02\x64", 4U) == 0);
@@ -2130,7 +2130,7 @@ static void test_server_runtime_report_option_scalar_reads_use_model_masks(void)
     snprintf(server_runtime.pending_request.read_attribute_references[1], sizeof(server_runtime.pending_request.read_attribute_references[1]), "%s", "TrgOps");
 
     assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
-    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x84\x03\x06\x25\x80", 5U) == 1);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x84\x03\x06\x52\x80", 5U) == 1);
     assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x84\x02\x02\x54", 4U) == 1);
     assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x84\x03\x06\x7F\x80", 5U) == 0);
     assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x84\x02\x02\x64", 4U) == 0);
@@ -2165,7 +2165,7 @@ static void test_server_runtime_information_report_omits_disabled_optional_field
     assert(unitlab_mms_server_runtime_queue_data_change_report_value(&server_runtime, "IED1LD0/PGGIO1$ST$Ind1$stVal", &value_byte, 1U, &diagnostic));
     assert(unitlab_mms_server_runtime_build_pending_gi_report_bytes(&server_runtime, report_bytes, sizeof(report_bytes), &report_length, &diagnostic));
 
-    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x84\x03\x06\x11\x00", 5U) == 1);
+    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x84\x03\x06\x44\x00", 5U) == 1);
     assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x86\x01\x00", 3U) == 1);
     assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"IED1LD0/PGGIO1$ST$Ind1$stVal", strlen("IED1LD0/PGGIO1$ST$Ind1$stVal")) == 1);
     assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"IED1LD0/LLN0$dsEvents", strlen("IED1LD0/LLN0$dsEvents")) == 0);
@@ -2502,7 +2502,7 @@ static void test_server_runtime_disabled_rcb_accepts_option_and_trigger_writes(v
     uint8_t request_bytes[512U];
     uint8_t response_bytes[1024U];
     uint8_t value_byte = 0x01U;
-    const uint8_t opt_flds_value[] = { 0x06U, 0x01U, 0x00U };
+    const uint8_t opt_flds_value[] = { 0x06U, 0x40U, 0x00U };
     const uint8_t trg_ops_value[] = { 0x02U, 0x0CU };
     UnitLabMmsBerElement data_element;
     UnitLabIedModelPlan plan;
@@ -2557,7 +2557,7 @@ static void test_server_runtime_disabled_rcb_accepts_option_and_trigger_writes(v
     snprintf(server_runtime.pending_request.read_object_references[1], sizeof(server_runtime.pending_request.read_object_references[1]), "%s", "IED1LD0.LLN0.BR.brcbEvents.TrgOps");
     snprintf(server_runtime.pending_request.read_attribute_references[1], sizeof(server_runtime.pending_request.read_attribute_references[1]), "%s", "TrgOps");
     assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
-    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x84\x03\x06\x01\x00", 5U) == 1);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x84\x03\x06\x40\x00", 5U) == 1);
     assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x84\x02\x02\x0C", 4U) == 1);
     assert(unitlab_mms_pending_request_complete(&server_runtime.pending_request, 0U, &diagnostic));
 
@@ -6494,6 +6494,12 @@ static void test_server_runtime_model_urcb_read_uses_unbuffered_rcb_shape(void)
     report.buffer_time_ms = 100U;
     report.integrity_period_ms_known = 1;
     report.integrity_period_ms = 1000U;
+    report.optional_fields_mask = UNITLAB_IED_MODEL_RPT_OPT_SEQ_NUM
+        | UNITLAB_IED_MODEL_RPT_OPT_TIME_STAMP
+        | UNITLAB_IED_MODEL_RPT_OPT_REASON_FOR_INCLUSION
+        | UNITLAB_IED_MODEL_RPT_OPT_DATA_SET
+        | UNITLAB_IED_MODEL_RPT_OPT_ENTRY_ID
+        | UNITLAB_IED_MODEL_RPT_OPT_CONF_REV;
 
     model_plan.logical_devices = &logical_device;
     model_plan.logical_device_count = 1U;
@@ -6533,6 +6539,7 @@ static void test_server_runtime_model_urcb_read_uses_unbuffered_rcb_shape(void)
     assert(child_count == sizeof(expected_tags) / sizeof(expected_tags[0]));
     assert(contains_bytes(rcb_element.value_bytes, rcb_element.value_length, (const uint8_t*)"KINTE06SMPMEAS/LLN0.urcbA", strlen("KINTE06SMPMEAS/LLN0.urcbA")) == 1);
     assert(contains_bytes(rcb_element.value_bytes, rcb_element.value_length, (const uint8_t*)"KINTE06SMPMEAS/LLN0$MEAS_RCB1", strlen("KINTE06SMPMEAS/LLN0$MEAS_RCB1")) == 1);
+    assert(contains_bytes(rcb_element.value_bytes, rcb_element.value_length, (const uint8_t*)"\x84\x03\x06\x79\x80", 5U) == 1);
 }
 
 int main(void)
