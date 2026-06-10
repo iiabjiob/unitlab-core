@@ -16,6 +16,7 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <time.h>
 
 static UnitLabMmsPdu make_information_report_pdu(void)
 {
@@ -1400,6 +1401,46 @@ static void test_server_runtime_updates_quality_timestamp_next_to_value_leaf(voi
     assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x83\x01\xFF", 3U) == 1);
     assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x84\x02\x12\x34", 4U) == 1);
     assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x91\x08\x01\x02\x03\x04\x05\x06\x07\x08", 10U) == 1);
+
+    unitlab_free_ied_model_plan(&plan);
+}
+
+static void test_server_runtime_default_timestamp_uses_current_utc_time(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabIedServerConfig config = { .bind_address = "127.0.0.1", .port = 102 };
+    UnitLabIedModelPlan plan;
+    uint8_t response_bytes[1024U];
+    const uint8_t utc_time_tag[2U] = { 0x91U, 0x08U };
+    size_t response_length = 0U;
+    size_t timestamp_offset = 0U;
+    uint64_t before_seconds = (uint64_t)time(NULL);
+    uint64_t after_seconds = 0U;
+    uint32_t timestamp_seconds = 0U;
+
+    assert(build_runtime_quality_timestamp_plan(&plan) == 1);
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+
+    assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_READ, 67U, 7U, 1000U, 100U, &diagnostic) == 1);
+    server_runtime.pending_request.read_object_reference_count = 1U;
+    snprintf(server_runtime.pending_request.read_object_references[0], sizeof(server_runtime.pending_request.read_object_references[0]), "%s", "IED1LD0.PGGIO1.ST.Ind1.t");
+    snprintf(server_runtime.pending_request.read_attribute_references[0], sizeof(server_runtime.pending_request.read_attribute_references[0]), "%s", "t");
+
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    after_seconds = (uint64_t)time(NULL);
+    assert(find_bytes_offset(response_bytes, response_length, utc_time_tag, sizeof(utc_time_tag), &timestamp_offset) == 1);
+    assert(timestamp_offset + 10U <= response_length);
+    timestamp_seconds = ((uint32_t)response_bytes[timestamp_offset + 2U] << 24U)
+        | ((uint32_t)response_bytes[timestamp_offset + 3U] << 16U)
+        | ((uint32_t)response_bytes[timestamp_offset + 4U] << 8U)
+        | (uint32_t)response_bytes[timestamp_offset + 5U];
+    assert(timestamp_seconds > 0U);
+    assert((uint64_t)timestamp_seconds >= before_seconds);
+    assert((uint64_t)timestamp_seconds <= after_seconds + 1U);
 
     unitlab_free_ied_model_plan(&plan);
 }
@@ -6692,6 +6733,7 @@ int main(void)
     test_server_runtime_gi_report_uses_model_dataset_members();
     test_server_runtime_gi_report_handles_large_model_dataset();
     test_server_runtime_updates_quality_timestamp_next_to_value_leaf();
+    test_server_runtime_default_timestamp_uses_current_utc_time();
     test_server_runtime_queued_report_uses_event_value_snapshot();
     test_server_runtime_different_report_kinds_are_queued_in_order();
     test_server_runtime_quality_update_queues_quality_change_report();

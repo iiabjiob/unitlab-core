@@ -4,6 +4,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 
 #include "wire/orchestration/unitlab_mms_wire_builder.h"
 #include "wire/ber/unitlab_mms_ber.h"
@@ -789,6 +790,24 @@ int server_runtime_encode_current_signal_value(
     return server_runtime_encode_mms_data_value(signal, buffer, buffer_length, encoded_length, diagnostic);
 }
 
+static void server_runtime_encode_current_utc_time(uint8_t* timestamp, size_t timestamp_length)
+{
+    time_t now = time(NULL);
+    uint32_t seconds = now > (time_t)0 ? (uint32_t)now : 0U;
+
+    if (timestamp == NULL || timestamp_length < 8U) {
+        return;
+    }
+    timestamp[0] = (uint8_t)((seconds >> 24U) & 0xFFU);
+    timestamp[1] = (uint8_t)((seconds >> 16U) & 0xFFU);
+    timestamp[2] = (uint8_t)((seconds >> 8U) & 0xFFU);
+    timestamp[3] = (uint8_t)(seconds & 0xFFU);
+    timestamp[4] = 0U;
+    timestamp[5] = 0U;
+    timestamp[6] = 0U;
+    timestamp[7] = 0U;
+}
+
 static int server_runtime_encode_context_data(
     uint32_t tag_number,
     const uint8_t* value_bytes,
@@ -899,7 +918,7 @@ int server_runtime_encode_current_signal_timestamp(
     UnitLabMmsDiagnostic* diagnostic)
 {
     const UnitLabMmsServerRuntimeSignalValue* runtime_value = NULL;
-    const uint8_t default_timestamp[8U] = { 0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U };
+    uint8_t default_timestamp[8U];
     const uint8_t* timestamp_bytes = default_timestamp;
     size_t timestamp_length = sizeof(default_timestamp);
 
@@ -907,6 +926,7 @@ int server_runtime_encode_current_signal_timestamp(
         server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Current signal timestamp encoding requires runtime, signal, and output buffer.");
         return 0;
     }
+    server_runtime_encode_current_utc_time(default_timestamp, sizeof(default_timestamp));
     runtime_value = server_runtime_find_signal_metadata_value(server_runtime, signal);
     if (runtime_value != NULL && runtime_value->timestamp_value_length != 0U) {
         timestamp_bytes = runtime_value->timestamp_value;
