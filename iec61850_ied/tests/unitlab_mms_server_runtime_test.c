@@ -2434,6 +2434,45 @@ static void test_server_runtime_integrity_poll_queues_full_dataset_report(void)
     unitlab_free_ied_model_plan(&plan);
 }
 
+static void test_server_runtime_integrity_poll_uses_active_report_control(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabIedServerConfig config = { .bind_address = "127.0.0.1", .port = 102 };
+    UnitLabIedModelPlan plan;
+
+    assert(build_two_model_backed_rcb_plan(&plan) == 1);
+    plan.reports[0].trigger_options_mask = UNITLAB_IED_MODEL_TRG_OPT_INTEGRITY | UNITLAB_IED_MODEL_TRG_OPT_GI;
+    plan.reports[0].integrity_period_ms_known = 1;
+    plan.reports[0].integrity_period_ms = 100U;
+    plan.reports[1].trigger_options_mask = UNITLAB_IED_MODEL_TRG_OPT_DATA_CHANGED | UNITLAB_IED_MODEL_TRG_OPT_GI;
+    plan.reports[1].integrity_period_ms_known = 1;
+    plan.reports[1].integrity_period_ms = 0U;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_session_begin_association(&server_runtime.session, &diagnostic));
+    assert(unitlab_mms_session_complete_association(&server_runtime.session, 1U, &diagnostic));
+    assert(server_runtime_select_report_control_by_reference(&server_runtime, "System.LLN0.BR.brcbB.RptEna") == 1);
+    assert(server_runtime.active_report_index == 1U);
+    assert(unitlab_mms_server_runtime_reserve_report_control(&server_runtime, &diagnostic));
+    assert(unitlab_mms_server_runtime_enable_report_control(&server_runtime, &diagnostic));
+    server_runtime.brcb_rpt_ena = 1U;
+
+    assert(server_runtime_poll_integrity_report(&server_runtime, 1000U, &diagnostic));
+    assert(server_runtime.pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_NONE);
+    assert(server_runtime.pending_gi_report == 0U);
+    assert(server_runtime.next_integrity_report_ms == 0U);
+    assert(server_runtime_poll_integrity_report(&server_runtime, 1100U, &diagnostic));
+    assert(server_runtime.pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_NONE);
+    assert(server_runtime.pending_gi_report == 0U);
+    assert(server_runtime.next_integrity_report_ms == 0U);
+
+    unitlab_free_ied_model_plan(&plan);
+}
+
 static void test_server_runtime_information_report_requires_model_dataset(void)
 {
     UnitLabMmsServerRuntime server_runtime;
@@ -6632,6 +6671,7 @@ int main(void)
     test_server_runtime_full_report_queue_coalesces_before_drop_newest();
     test_server_runtime_dataset_write_without_rptena_does_not_queue_report();
     test_server_runtime_integrity_poll_queues_full_dataset_report();
+    test_server_runtime_integrity_poll_uses_active_report_control();
     test_server_runtime_information_report_requires_model_dataset();
     test_server_runtime_gi_requires_enabled_rptena();
     test_server_runtime_disabled_rcb_accepts_option_and_trigger_writes();

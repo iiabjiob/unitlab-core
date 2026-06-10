@@ -196,7 +196,7 @@ static const char* native_wire_test_tick_reference(const UnitLabMmsServerRuntime
     if (server_runtime == NULL || server_runtime->model_plan == NULL || server_runtime->model_plan->report_count == 0U || server_runtime->model_plan->reports == NULL) {
         return NULL;
     }
-    report = &server_runtime->model_plan->reports[0];
+    report = server_runtime_active_model_report_control(server_runtime);
     if (report->data_set_index >= server_runtime->model_plan->data_set_count || server_runtime->model_plan->data_sets == NULL || server_runtime->model_plan->signals == NULL) {
         return NULL;
     }

@@ -1167,7 +1167,7 @@ static int server_runtime_queue_quality_change_report_member(UnitLabMmsServerRun
         || server_runtime->model_plan == NULL || server_runtime->model_plan->report_count == 0U || server_runtime->model_plan->reports == NULL) {
         return 0;
     }
-    report = &server_runtime->model_plan->reports[0];
+    report = server_runtime_active_model_report_control(server_runtime);
     if (!server_runtime_report_quality_change_trigger_enabled(server_runtime, report)
         || report->data_set_index >= server_runtime->model_plan->data_set_count
         || server_runtime->model_plan->data_sets == NULL
@@ -1208,7 +1208,7 @@ int server_runtime_poll_integrity_report(UnitLabMmsServerRuntime* server_runtime
         server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
         return 1;
     }
-    report = &server_runtime->model_plan->reports[0];
+    report = server_runtime_active_model_report_control(server_runtime);
     interval_ms = server_runtime_report_integrity_period_ms_or_default(report);
     if (!server_runtime_report_integrity_trigger_enabled(server_runtime, report) || interval_ms == 0U) {
         server_runtime->next_integrity_report_ms = 0U;
@@ -1293,7 +1293,7 @@ int unitlab_mms_server_runtime_update_signal_value(
     runtime_value->encoded_value_length = encoded_value_length;
 
     if (server_runtime->brcb_rpt_ena != 0U && server_runtime->model_plan != NULL && server_runtime->model_plan->report_count != 0U && server_runtime->model_plan->reports != NULL) {
-        const UnitLabIedModelReportControl* report = &server_runtime->model_plan->reports[0];
+        const UnitLabIedModelReportControl* report = server_runtime_active_model_report_control(server_runtime);
         const UnitLabIedModelDataSet* data_set = NULL;
         if (value_changed && server_runtime_report_data_change_trigger_enabled(server_runtime, report)) {
             queued_kind = UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_CHANGE;
