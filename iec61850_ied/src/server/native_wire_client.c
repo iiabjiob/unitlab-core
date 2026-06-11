@@ -558,27 +558,32 @@ static void emit_get_name_list_identifiers(const UnitLabMmsPdu* pdu)
     fflush(stdout);
 }
 
-static int extract_first_get_name_list_identifier(const uint8_t* frame, size_t frame_length, char* identifier, size_t identifier_size)
+static size_t extract_get_name_list_identifiers(
+    const uint8_t* frame,
+    size_t frame_length,
+    char identifiers[][128U],
+    size_t max_identifiers)
 {
     UnitLabMmsAssociationFrame association_frame;
     UnitLabMmsPdu pdu;
     UnitLabMmsDiagnostic diagnostic;
     UnitLabMmsBerElement list_element;
-    UnitLabMmsBerElement item_element;
     size_t consumed = 0U;
-    size_t item_consumed = 0U;
-    size_t copy_length;
+    size_t offset = 0U;
+    size_t count = 0U;
 
-    if (identifier != NULL && identifier_size > 0U) {
-        identifier[0] = '\0';
+    if (identifiers != NULL) {
+        for (size_t index = 0U; index < max_identifiers; index++) {
+            identifiers[index][0] = '\0';
+        }
     }
-    if (frame == NULL || frame_length == 0U || identifier == NULL || identifier_size == 0U) {
-        return 0;
+    if (frame == NULL || frame_length == 0U || identifiers == NULL || max_identifiers == 0U) {
+        return 0U;
     }
     unitlab_mms_diagnostic_clear(&diagnostic);
     unitlab_mms_association_frame_init(&association_frame);
     if (!unitlab_mms_association_frame_decode(&association_frame, frame, frame_length, &consumed, &diagnostic)) {
-        return 0;
+        return 0U;
     }
     unitlab_mms_pdu_init(&pdu);
     if (association_frame.presentation.payload_bytes == NULL
@@ -586,28 +591,33 @@ static int extract_first_get_name_list_identifier(const uint8_t* frame, size_t f
         || !unitlab_mms_pdu_decode(&pdu, association_frame.presentation.payload_bytes, association_frame.presentation.payload_length, &consumed, &diagnostic)
         || pdu.kind != UNITLAB_MMS_PDU_CONFIRMED_RESPONSE
         || pdu.service_kind != UNITLAB_MMS_SERVICE_GET_NAME_LIST) {
-        return 0;
+        return 0U;
     }
     unitlab_mms_ber_element_init(&list_element);
     if (!unitlab_mms_ber_read(&list_element, pdu.service_bytes, pdu.service_length, &consumed, &diagnostic)
         || list_element.tag.tag_class != UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC
-        || list_element.tag.tag_number != 0U
-        || list_element.value_length == 0U) {
-        return 0;
+        || list_element.tag.tag_number != 0U) {
+        return 0U;
     }
-    unitlab_mms_ber_element_init(&item_element);
-    if (!unitlab_mms_ber_read(&item_element, list_element.value_bytes, list_element.value_length, &item_consumed, &diagnostic)
-        || item_consumed == 0U
-        || item_element.tag.tag_class != UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL
-        || item_element.tag.tag_number != 26U
-        || item_element.value_length == 0U
-        || !bytes_are_printable_ascii(item_element.value_bytes, item_element.value_length)) {
-        return 0;
+    while (offset < list_element.value_length && count < max_identifiers) {
+        UnitLabMmsBerElement item_element;
+        size_t item_consumed = 0U;
+        unitlab_mms_ber_element_init(&item_element);
+        if (!unitlab_mms_ber_read(&item_element, &list_element.value_bytes[offset], list_element.value_length - offset, &item_consumed, &diagnostic) || item_consumed == 0U) {
+            break;
+        }
+        if (item_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL
+            && item_element.tag.tag_number == 26U
+            && item_element.value_length > 0U
+            && bytes_are_printable_ascii(item_element.value_bytes, item_element.value_length)) {
+            size_t copy_length = item_element.value_length < 127U ? item_element.value_length : 127U;
+            memcpy(identifiers[count], item_element.value_bytes, copy_length);
+            identifiers[count][copy_length] = '\0';
+            count++;
+        }
+        offset += item_consumed;
     }
-    copy_length = item_element.value_length < identifier_size - 1U ? item_element.value_length : identifier_size - 1U;
-    memcpy(identifier, item_element.value_bytes, copy_length);
-    identifier[copy_length] = '\0';
-    return 1;
+    return count;
 }
 
 static void emit_mms_frame_summary(const uint8_t* frame, size_t frame_length)
@@ -1500,24 +1510,23 @@ int unitlab_run_native_wire_client_with_options(
                     goto fail;
                 }
             }
-            if (invoke_id > UINT32_MAX - 6U) {
+            if (invoke_id > UINT32_MAX - 12U) {
                 set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_INVOKE_INVALID", "Native wire client discover invokeBase leaves too few invoke IDs for the sequence.");
                 goto fail;
             }
-            next_invoke_id = invoke_id + 7U;
+            next_invoke_id = invoke_id + 13U;
             state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_GET_NAME_LIST_REQUESTED;
             if (!emit_state_response(state)) {
                 set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its discover state.");
                 goto fail;
             }
             {
-                char data_set_item[128U];
-                char brcb_name[128U];
-                char brcb_item[256U];
+                char data_set_items[4U][128U];
+                char brcb_names[4U][128U];
+                size_t data_set_count = 0U;
+                size_t brcb_count = 0U;
+                uint32_t followup_invoke_id = invoke_id + 5U;
 
-                data_set_item[0] = '\0';
-                brcb_name[0] = '\0';
-                brcb_item[0] = '\0';
                 if (!emit_discover_get_name_list_step(data_fd, "vmd-logical-devices", 9U, 0U, NULL, NULL, invoke_id, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)
                     || !emit_discover_get_name_list_step(data_fd, "lln0-data-attributes", 1U, 1U, domain_id, "LLN0", invoke_id + 1U, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)
                     || !emit_discover_get_name_list_step(data_fd, "domain-datasets", 2U, 1U, domain_id, NULL, invoke_id + 2U, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
@@ -1525,38 +1534,41 @@ int unitlab_run_native_wire_client_with_options(
                     set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_FAILED", diagnostic.message);
                     goto fail;
                 }
-                (void)extract_first_get_name_list_identifier(report_frame, report_length, data_set_item, sizeof(data_set_item));
+                data_set_count = extract_get_name_list_identifiers(report_frame, report_length, data_set_items, 4U);
                 if (!emit_discover_get_name_list_step(data_fd, "lln0-brcbs", 4U, 1U, domain_id, "LLN0", invoke_id + 3U, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
                     state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
                     set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_FAILED", diagnostic.message);
                     goto fail;
                 }
-                (void)extract_first_get_name_list_identifier(report_frame, report_length, brcb_name, sizeof(brcb_name));
+                brcb_count = extract_get_name_list_identifiers(report_frame, report_length, brcb_names, 4U);
                 if (!emit_discover_get_name_list_step(data_fd, "lln0-urcbs", 5U, 1U, domain_id, "LLN0", invoke_id + 4U, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
                     state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
                     set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_FAILED", diagnostic.message);
                     goto fail;
                 }
-                if (brcb_name[0] != '\0') {
-                    snprintf(brcb_item, sizeof(brcb_item), "LLN0$BR$%s$RptEna", brcb_name);
-                    if (!emit_discover_attributes_step(data_fd, "first-brcb-attrs", domain_id, brcb_item, invoke_id + 5U, 0, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
-                        state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
-                        set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_FAILED", diagnostic.message);
-                        goto fail;
-                    }
-                } else {
-                    printf("native-wire-client: discover-skip=first-brcb-attrs reason=no-brcb\n");
+                if (brcb_count == 0U) {
+                    printf("native-wire-client: discover-skip=brcb-attrs reason=no-brcb\n");
                     fflush(stdout);
                 }
-                if (data_set_item[0] != '\0') {
-                    if (!emit_discover_attributes_step(data_fd, "first-dataset-members", "LD0", data_set_item, invoke_id + 6U, 1, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
+                for (size_t index = 0U; index < brcb_count; index++) {
+                    char brcb_item[256U];
+                    snprintf(brcb_item, sizeof(brcb_item), "LLN0$BR$%s$RptEna", brcb_names[index]);
+                    if (!emit_discover_attributes_step(data_fd, "brcb-attrs", domain_id, brcb_item, followup_invoke_id++, 0, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
                         state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
                         set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_FAILED", diagnostic.message);
                         goto fail;
                     }
-                } else {
-                    printf("native-wire-client: discover-skip=first-dataset-members reason=no-dataset\n");
+                }
+                if (data_set_count == 0U) {
+                    printf("native-wire-client: discover-skip=dataset-members reason=no-dataset\n");
                     fflush(stdout);
+                }
+                for (size_t index = 0U; index < data_set_count; index++) {
+                    if (!emit_discover_attributes_step(data_fd, "dataset-members", domain_id, data_set_items[index], followup_invoke_id++, 1, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
+                        state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
+                        set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_FAILED", diagnostic.message);
+                        goto fail;
+                    }
                 }
             }
             state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_READY;
