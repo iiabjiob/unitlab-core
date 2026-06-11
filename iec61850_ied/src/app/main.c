@@ -280,8 +280,8 @@ static int run_scl_native_wire_mode(const SimulatorOptions* options)
         fprintf(stderr, "SCL_REQUIRED: --scl PATH is required.\n");
         return 64;
     }
-    if (options->metadata_probe || options->gi_probe || options->native_wire_client_start) {
-        fprintf(stderr, "INVALID_ARGUMENT: --scl currently supports --dry-run, --smoke-start, --native-smoke-start, --native-wire-start, or linked server start.\n");
+    if (options->native_wire_client_start) {
+        fprintf(stderr, "INVALID_ARGUMENT: --scl currently supports --dry-run, --smoke-start, --native-smoke-start, --native-wire-start, --metadata-probe, --gi-probe, or linked server start.\n");
         return 64;
     }
 
@@ -330,6 +330,44 @@ static int run_scl_native_wire_mode(const SimulatorOptions* options)
     server_config.port = options->port;
     server_config.control_port = options->port < 65535 ? options->port + 1 : 0;
     server_config.native_test_report_tick_ms = options->native_test_report_tick_ms;
+
+    if (options->metadata_probe || options->gi_probe) {
+        UnitLabIedFixtureModel fixture_model;
+        UnitLabIedModelLoadResult probe_result;
+
+        memset(&fixture_model, 0, sizeof(fixture_model));
+        snprintf(fixture_model.ied_name, sizeof(fixture_model.ied_name), "%s", options->ied_name);
+        snprintf(fixture_model.access_point_name, sizeof(fixture_model.access_point_name), "%s", "AP1");
+
+        if (options->metadata_probe) {
+            if (!unitlab_probe_ied_server_metadata(&fixture_model, model_plan, &server_config, &probe_result)) {
+                fprintf(stderr, "%s: %s\n", probe_result.code, probe_result.message);
+                fprintf(stderr, "libiec61850=%s\n", libiec61850_status());
+                unitlab_scl_compile_result_free(compile_result);
+                return 69;
+            }
+            printf("unitlab-iec61850-ied-sim: SCL metadata probe accepted\n");
+        }
+        else {
+            if (!unitlab_probe_ied_server_gi(&fixture_model, model_plan, &server_config, options->report_key, &probe_result)) {
+                fprintf(stderr, "%s: %s\n", probe_result.code, probe_result.message);
+                fprintf(stderr, "libiec61850=%s\n", libiec61850_status());
+                unitlab_scl_compile_result_free(compile_result);
+                return 69;
+            }
+            printf("unitlab-iec61850-ied-sim: SCL GI probe accepted\n");
+            if (options->report_key != NULL) {
+                printf("reportKey=%s\n", options->report_key);
+            }
+        }
+        printf("ied=%s\n", options->ied_name);
+        printf("endpoint=%s:%d\n", options->bind_address, options->port);
+        printf("dataSets=%zu\n", model_plan->data_set_count);
+        printf("reports=%zu\n", model_plan->report_count);
+        printf("libiec61850=%s\n", libiec61850_status());
+        unitlab_scl_compile_result_free(compile_result);
+        return 0;
+    }
 
     if (options->native_smoke_start) {
         UnitLabMmsServerRuntime server_runtime;

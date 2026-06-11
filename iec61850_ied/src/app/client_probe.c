@@ -63,6 +63,23 @@ static int format_ref(char* buffer, size_t buffer_size, UnitLabIedModelLoadResul
     return 1;
 }
 
+static int format_domain_ref(char* buffer, size_t buffer_size, UnitLabIedModelLoadResult* result, const char* code, const char* ied_name, const char* logical_device_inst)
+{
+    if (ied_name != NULL && logical_device_inst != NULL && strncmp(logical_device_inst, ied_name, strlen(ied_name)) == 0) {
+        return format_ref(buffer, buffer_size, result, code, "%s", logical_device_inst, "", "");
+    }
+    return format_ref(buffer, buffer_size, result, code, "%s%s", ied_name, logical_device_inst, "");
+}
+
+static int format_logical_node_ref(char* buffer, size_t buffer_size, UnitLabIedModelLoadResult* result, const char* code, const char* ied_name, const char* logical_device_inst, const char* logical_node_name)
+{
+    char domain_ref[256];
+    if (!format_domain_ref(domain_ref, sizeof(domain_ref), result, code, ied_name, logical_device_inst)) {
+        return 0;
+    }
+    return format_ref(buffer, buffer_size, result, code, "%s/%s", domain_ref, logical_node_name, "");
+}
+
 static const char* connect_host(const UnitLabIedServerConfig* config)
 {
     if (strcmp(config->bind_address, "0.0.0.0") == 0) {
@@ -339,15 +356,13 @@ static int verify_logical_devices(
     int passed = 1;
     for (size_t index = 0U; index < plan->logical_device_count; index++) {
         char logical_device_ref[256];
-        if (!format_ref(
+        if (!format_domain_ref(
                 logical_device_ref,
                 sizeof(logical_device_ref),
                 result,
                 "IEC61850_METADATA_PROBE_LD_REF_OVERFLOW",
-                "%s%s",
                 fixture->ied_name,
-                plan->logical_devices[index].inst,
-                "")) {
+                plan->logical_devices[index].inst)) {
             passed = 0;
             break;
         }
@@ -371,12 +386,11 @@ static int verify_data_objects(
     for (size_t index = 0U; index < plan->signal_count; index++) {
         const UnitLabIedModelSignal* signal = &plan->signals[index];
         char logical_node_ref[256];
-        if (!format_ref(
+        if (!format_logical_node_ref(
                 logical_node_ref,
                 sizeof(logical_node_ref),
                 result,
                 "IEC61850_METADATA_PROBE_LN_REF_OVERFLOW",
-                "%s%s/%s",
                 fixture->ied_name,
                 signal->logical_device_inst,
                 signal->logical_node_name)) {
@@ -408,12 +422,11 @@ static int verify_data_sets(
     for (size_t index = 0U; index < plan->data_set_count; index++) {
         const UnitLabIedModelDataSet* data_set = &plan->data_sets[index];
         char logical_node_ref[256];
-        if (!format_ref(
+        if (!format_logical_node_ref(
                 logical_node_ref,
                 sizeof(logical_node_ref),
                 result,
                 "IEC61850_METADATA_PROBE_LN_REF_OVERFLOW",
-                "%s%s/%s",
                 fixture->ied_name,
                 data_set->logical_device_inst,
                 data_set->logical_node_name)) {
@@ -478,21 +491,60 @@ static int verify_data_sets(
 
             const UnitLabIedModelSignal* signal = &plan->signals[signal_index];
             const char* actual_member = (const char*)LinkedList_getData(member);
-            char expected_suffix[256];
-            if (!format_ref(
-                    expected_suffix,
-                    sizeof(expected_suffix),
+            char expected_domain_ref[256];
+            char expected_acsi_ref[512];
+            char expected_acsi_object_ref[384];
+            const char* object_reference = signal->object_reference;
+            size_t logical_device_inst_length = strlen(signal->logical_device_inst);
+            size_t logical_node_name_length = strlen(signal->logical_node_name);
+            if (strncmp(object_reference, signal->logical_device_inst, logical_device_inst_length) == 0 && object_reference[logical_device_inst_length] == '.') {
+                object_reference += logical_device_inst_length + 1U;
+            }
+            if (strncmp(object_reference, signal->logical_node_name, logical_node_name_length) == 0 && object_reference[logical_node_name_length] == '.') {
+                if (snprintf(expected_acsi_object_ref, sizeof(expected_acsi_object_ref), "%s", object_reference) < 0) {
+                    set_probe_result(result, 0, "IEC61850_METADATA_PROBE_DATASET_MEMBER_REF_OVERFLOW", "IEC 61850 metadata probe could not format a DataSet member reference.");
+                    LinkedList_destroy(members);
+                    return 0;
+                }
+            }
+            else {
+                int written = snprintf(expected_acsi_object_ref, sizeof(expected_acsi_object_ref), "%s.%s", signal->logical_node_name, object_reference);
+                if (written < 0 || (size_t)written >= sizeof(expected_acsi_object_ref)) {
+                    set_probe_result(result, 0, "IEC61850_METADATA_PROBE_DATASET_MEMBER_REF_OVERFLOW", "IEC 61850 metadata probe DataSet member reference is too long.");
+                    LinkedList_destroy(members);
+                    return 0;
+                }
+            }
+            if (!format_domain_ref(
+                    expected_domain_ref,
+                    sizeof(expected_domain_ref),
                     result,
                     "IEC61850_METADATA_PROBE_DATASET_MEMBER_REF_OVERFLOW",
-                    "/%s.%s[%s]",
-                    signal->logical_node_name,
-                    signal->object_reference,
+                    fixture->ied_name,
+                    signal->logical_device_inst)
+                || !format_ref(
+                    expected_acsi_ref,
+                    sizeof(expected_acsi_ref),
+                    result,
+                    "IEC61850_METADATA_PROBE_DATASET_MEMBER_REF_OVERFLOW",
+                    "%s/%s[%s]",
+                    expected_domain_ref,
+                    expected_acsi_object_ref,
                     signal->fc)) {
                 LinkedList_destroy(members);
                 return 0;
             }
-            if (actual_member == NULL || strstr(actual_member, expected_suffix) == NULL) {
-                set_probe_result(result, 0, "IEC61850_METADATA_PROBE_DATASET_MEMBER_MISMATCH", "IEC 61850 metadata probe found an unexpected DataSet member order or reference.");
+            if (actual_member == NULL || (strstr(actual_member, expected_acsi_ref) == NULL && strstr(actual_member, signal->data_set_entry_variable) == NULL)) {
+                char message[1536];
+                snprintf(
+                    message,
+                    sizeof(message),
+                    "IEC 61850 metadata probe found an unexpected DataSet member at index %zu: expected %s or %s, got %s.",
+                    member_index,
+                    expected_acsi_ref,
+                    signal->data_set_entry_variable,
+                    actual_member != NULL ? actual_member : "<null>");
+                set_probe_result(result, 0, "IEC61850_METADATA_PROBE_DATASET_MEMBER_MISMATCH", message);
                 LinkedList_destroy(members);
                 return 0;
             }
@@ -512,12 +564,11 @@ static int verify_reports(
     for (size_t index = 0U; index < plan->report_count; index++) {
         const UnitLabIedModelReportControl* report = &plan->reports[index];
         char logical_node_ref[256];
-        if (!format_ref(
+        if (!format_logical_node_ref(
                 logical_node_ref,
                 sizeof(logical_node_ref),
                 result,
                 "IEC61850_METADATA_PROBE_LN_REF_OVERFLOW",
-                "%s%s/%s",
                 fixture->ied_name,
                 report->logical_device_inst,
                 report->logical_node_name)) {
@@ -661,12 +712,11 @@ static int probe_gi_report(
 
     char logical_node_ref[256];
     char rcb_ref[384];
-    int passed = format_ref(
+    int passed = format_logical_node_ref(
         logical_node_ref,
         sizeof(logical_node_ref),
         result,
         "IEC61850_GI_PROBE_LN_REF_OVERFLOW",
-        "%s%s/%s",
         fixture->ied_name,
         report->logical_device_inst,
         report->logical_node_name);

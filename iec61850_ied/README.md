@@ -106,6 +106,25 @@ Run the libIEC61850-backed server on port `12448`:
 ./scripts/run-lib-wire-dev.sh
 ```
 
+For SCD-backed real-device debugging, start one selected IED model and probe it from a second shell:
+
+```bash
+iec61850_ied/build-libiec61850/unitlab-iec61850-ied-sim \
+  --scl /workspace/.refs/sld-rev2.scd \
+  --ied KINTE13LVC01 \
+  --bind 127.0.0.1 \
+  --port 12448
+
+iec61850_ied/build-libiec61850/unitlab-iec61850-ied-sim \
+  --scl /workspace/.refs/sld-rev2.scd \
+  --ied KINTE13LVC01 \
+  --bind 127.0.0.1 \
+  --port 12448 \
+  --metadata-probe
+```
+
+`--metadata-probe` and `--gi-probe` connect to an already running endpoint. They do not start an MMS server themselves. Capture filter: `tcp port 12448`.
+
 Capture each run separately, then diff the pcaps only after confirming the same browse tree, datasets, report-control names, and NamPlt namespace fields are present on both wires.
 
 ## Build
