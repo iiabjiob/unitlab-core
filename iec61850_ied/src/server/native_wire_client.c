@@ -1003,6 +1003,23 @@ static int emit_read_response(
         diagnostic);
 }
 
+static int emit_write_bool_response(
+    int data_fd,
+    const char* domain_id,
+    const char* item_id,
+    uint8_t boolean_value,
+    uint32_t invoke_id,
+    uint8_t* scratch,
+    size_t scratch_length,
+    uint8_t* request,
+    size_t request_length,
+    uint8_t* response,
+    size_t response_length,
+    size_t* encoded_response_length,
+    uint8_t* text_buffer,
+    size_t text_buffer_length,
+    UnitLabMmsDiagnostic* diagnostic);
+
 static int emit_get_attributes_response(
     int data_fd,
     const char* domain_id,
@@ -1143,6 +1160,69 @@ static int emit_discover_read_step(
         data_fd,
         domain_id,
         item_id,
+        invoke_id,
+        scratch,
+        scratch_length,
+        request,
+        request_length,
+        response,
+        response_length,
+        encoded_response_length,
+        text_buffer,
+        text_buffer_length,
+        diagnostic);
+}
+
+static int emit_discovered_rcb_bool_step(
+    int data_fd,
+    const char* label,
+    const char* domain_id,
+    const char* rcb_item,
+    const char* field_name,
+    uint8_t boolean_value,
+    uint32_t invoke_id,
+    uint8_t* scratch,
+    size_t scratch_length,
+    uint8_t* request,
+    size_t request_length,
+    uint8_t* response,
+    size_t response_length,
+    size_t* encoded_response_length,
+    uint8_t* text_buffer,
+    size_t text_buffer_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    char item_id[384U];
+    int written;
+
+    if (domain_id == NULL || domain_id[0] == '\0' || rcb_item == NULL || rcb_item[0] == '\0' || field_name == NULL || field_name[0] == '\0') {
+        if (diagnostic != NULL) {
+            diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT;
+            snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Native wire client discovered RCB write requires domain, RCB item, and field.");
+        }
+        return 0;
+    }
+    written = snprintf(item_id, sizeof(item_id), "%s$%s", rcb_item, field_name);
+    if (written < 0 || (size_t)written >= sizeof(item_id)) {
+        if (diagnostic != NULL) {
+            diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL;
+            snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Native wire client discovered RCB field item is too long.");
+        }
+        return 0;
+    }
+    printf(
+        "native-wire-client: %s invoke=%u domain=%s item=%s value=%s\n",
+        label != NULL ? label : "rcb-write",
+        (unsigned)invoke_id,
+        domain_id,
+        item_id,
+        boolean_value != 0U ? "true" : "false");
+    fflush(stdout);
+    return emit_write_bool_response(
+        data_fd,
+        domain_id,
+        item_id,
+        boolean_value,
         invoke_id,
         scratch,
         scratch_length,
@@ -1557,6 +1637,9 @@ int unitlab_run_native_wire_client_with_options(
     uint8_t read_request[2048U];
     uint8_t report_frame[2048U];
     size_t report_length = 0U;
+    char discovered_domain[128U];
+    char discovered_brcb_items[4U][320U];
+    size_t discovered_brcb_count = 0U;
     UnitLabMmsDiagnostic diagnostic;
     const char* initial_read_domain = "XCBR1";
     const char* initial_read_item = "ST$Pos$stVal";
@@ -1571,6 +1654,8 @@ int unitlab_run_native_wire_client_with_options(
         set_result(result, "NATIVE_WIRE_CLIENT_INVALID_ARGUMENT", "Native wire client requires config and result.");
         return 0;
     }
+    discovered_domain[0] = '\0';
+    memset(discovered_brcb_items, 0, sizeof(discovered_brcb_items));
     if (config->bind_address == NULL || config->bind_address[0] == '\0') {
         set_result(result, "NATIVE_WIRE_CLIENT_HOST_REQUIRED", "Native wire client requires a target host.");
         return 0;
@@ -1736,6 +1821,10 @@ int unitlab_run_native_wire_client_with_options(
                 int more_follows = 0;
                 char last_identifier[128U];
 
+                discovered_domain[0] = '\0';
+                memset(discovered_brcb_items, 0, sizeof(discovered_brcb_items));
+                discovered_brcb_count = 0U;
+
                 if (!emit_discover_get_name_list_step(data_fd, "vmd-logical-devices", 9U, 0U, NULL, NULL, invoke_id, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)
                     || !emit_discover_get_name_list_step(data_fd, "domain-logical-nodes", 1U, 1U, domain_id, NULL, invoke_id + 1U, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
                     state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
@@ -1839,6 +1928,13 @@ int unitlab_run_native_wire_client_with_options(
                         goto fail;
                     }
                     snprintf(brcb_read_item, sizeof(brcb_read_item), "%s$BR$%s", brcb_logical_nodes[index], brcb_names[index]);
+                    if (discovered_brcb_count < 4U) {
+                        snprintf(discovered_domain, sizeof(discovered_domain), "%s", domain_id);
+                        snprintf(discovered_brcb_items[discovered_brcb_count], sizeof(discovered_brcb_items[discovered_brcb_count]), "%s", brcb_read_item);
+                        printf("native-wire-client: discovered-brcb[%zu] domain=%s item=%s\n", discovered_brcb_count, discovered_domain, discovered_brcb_items[discovered_brcb_count]);
+                        fflush(stdout);
+                        discovered_brcb_count++;
+                    }
                     if (!emit_discover_read_step(data_fd, "brcb-values", domain_id, brcb_read_item, followup_invoke_id++, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
                         state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
                         set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_FAILED", diagnostic.message);
@@ -2043,6 +2139,98 @@ int unitlab_run_native_wire_client_with_options(
             state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_READY;
             if (!emit_state_response(state)) {
                 set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its ready state after attribute request.");
+                goto fail;
+            }
+            continue;
+        }
+        if (strncmp(command, "rptena", 6U) == 0 && (command[6] == '\0' || command[6] == ' ' || command[6] == '\t')) {
+            char* saveptr = NULL;
+            char* index_text = strtok_r(command + 6U, " \t", &saveptr);
+            char* invoke_id_text = strtok_r(NULL, " \t", &saveptr);
+            char* extra = strtok_r(NULL, " \t", &saveptr);
+            uint32_t rcb_index = 0U;
+            uint32_t invoke_id = next_invoke_id++;
+
+            if (extra != NULL) {
+                set_result(result, "NATIVE_WIRE_CLIENT_RPTENA_COMMAND_INVALID", "Usage: rptena [discoveredRcbIndex] [invokeId].");
+                goto fail;
+            }
+            if (index_text != NULL && !parse_uint32_token(index_text, &rcb_index)) {
+                set_result(result, "NATIVE_WIRE_CLIENT_RPTENA_INDEX_INVALID", "Native wire client discovered RCB index must be unsigned.");
+                goto fail;
+            }
+            if (invoke_id_text != NULL) {
+                if (!parse_invoke_id_token(invoke_id_text, &invoke_id)) {
+                    set_result(result, "NATIVE_WIRE_CLIENT_RPTENA_INVOKE_INVALID", "Native wire client RptEna invokeId must be in range 1..4294967295.");
+                    goto fail;
+                }
+                if (invoke_id >= next_invoke_id) {
+                    next_invoke_id = invoke_id + 1U;
+                }
+            }
+            if (discovered_brcb_count == 0U || rcb_index >= discovered_brcb_count) {
+                set_result(result, "NATIVE_WIRE_CLIENT_RPTENA_NO_DISCOVERED_RCB", "Run discover first and select an existing discovered BRCB index.");
+                goto fail;
+            }
+            state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_WRITE_REQUESTED;
+            if (!emit_state_response(state)) {
+                set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its write-requested state.");
+                goto fail;
+            }
+            if (!emit_discovered_rcb_bool_step(data_fd, "rptena", discovered_domain, discovered_brcb_items[rcb_index], "RptEna", 1U, invoke_id, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
+                state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
+                set_result(result, "NATIVE_WIRE_CLIENT_RPTENA_FAILED", diagnostic.message);
+                goto fail;
+            }
+            state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_READY;
+            if (!emit_state_response(state)) {
+                set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its ready state after RptEna.");
+                goto fail;
+            }
+            continue;
+        }
+        if (strncmp(command, "gi", 2U) == 0 && (command[2] == '\0' || command[2] == ' ' || command[2] == '\t')) {
+            char* saveptr = NULL;
+            char* index_text = strtok_r(command + 2U, " \t", &saveptr);
+            char* invoke_id_text = strtok_r(NULL, " \t", &saveptr);
+            char* extra = strtok_r(NULL, " \t", &saveptr);
+            uint32_t rcb_index = 0U;
+            uint32_t invoke_id = next_invoke_id++;
+
+            if (extra != NULL) {
+                set_result(result, "NATIVE_WIRE_CLIENT_GI_COMMAND_INVALID", "Usage: gi [discoveredRcbIndex] [invokeId].");
+                goto fail;
+            }
+            if (index_text != NULL && !parse_uint32_token(index_text, &rcb_index)) {
+                set_result(result, "NATIVE_WIRE_CLIENT_GI_INDEX_INVALID", "Native wire client discovered RCB index must be unsigned.");
+                goto fail;
+            }
+            if (invoke_id_text != NULL) {
+                if (!parse_invoke_id_token(invoke_id_text, &invoke_id)) {
+                    set_result(result, "NATIVE_WIRE_CLIENT_GI_INVOKE_INVALID", "Native wire client GI invokeId must be in range 1..4294967295.");
+                    goto fail;
+                }
+                if (invoke_id >= next_invoke_id) {
+                    next_invoke_id = invoke_id + 1U;
+                }
+            }
+            if (discovered_brcb_count == 0U || rcb_index >= discovered_brcb_count) {
+                set_result(result, "NATIVE_WIRE_CLIENT_GI_NO_DISCOVERED_RCB", "Run discover first and select an existing discovered BRCB index.");
+                goto fail;
+            }
+            state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_WRITE_REQUESTED;
+            if (!emit_state_response(state)) {
+                set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its write-requested state.");
+                goto fail;
+            }
+            if (!emit_discovered_rcb_bool_step(data_fd, "gi", discovered_domain, discovered_brcb_items[rcb_index], "GI", 1U, invoke_id, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
+                state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
+                set_result(result, "NATIVE_WIRE_CLIENT_GI_FAILED", diagnostic.message);
+                goto fail;
+            }
+            state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_READY;
+            if (!emit_state_response(state)) {
+                set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its ready state after GI.");
                 goto fail;
             }
             continue;
