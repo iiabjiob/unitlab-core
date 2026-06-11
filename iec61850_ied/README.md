@@ -93,8 +93,9 @@ After the client reports `native-wire-client: ready`, stdin accepts:
 
 - `read <domain> <item> [invokeId]`
 - `get-name-list <class> <scope> <domain|-> <continueAfter|-> [invokeId]`
+- `write-bool <domain> <item> <true|false|1|0> [invokeId]`
 
-Both commands emit the confirmed response as `wire-frame=<hex>`. For IEDScout-style top-level LD browse use `get-name-list 9 0 - -`; for domain DataSet browse use `get-name-list 2 1 <domain> -`.
+Commands emit confirmed responses as `wire-frame=<hex>`. `write-bool` also emits an immediate post-write frame when the server sends one, for example a GI information report after `GI=true`. For IEDScout-style top-level LD browse use `get-name-list 9 0 - -`; for domain DataSet browse use `get-name-list 2 1 <domain> -`; for RCB enable/GI use `write-bool IED1LD0 'LLN0$BR$brcbEvents$RptEna' true` then `write-bool IED1LD0 'LLN0$BR$brcbEvents$GI' true`.
 
 ## Apples-to-Apples Capture
 
