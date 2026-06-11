@@ -89,7 +89,12 @@ Native wire client Read targets are configurable for capture parity. Start the c
 unitlab-iec61850-ied-sim --fixture examples/single-report.fixture.json --ied IED1 --bind 127.0.0.1 --port 12447 --native-wire-client-start --native-client-read-domain XCBR1 --native-client-read-item 'ST$Pos$stVal'
 ```
 
-After the client reports `native-wire-client: ready`, stdin accepts `read <domain> <item> [invokeId]` and emits the confirmed response as `wire-frame=<hex>`.
+After the client reports `native-wire-client: ready`, stdin accepts:
+
+- `read <domain> <item> [invokeId]`
+- `get-name-list <class> <scope> <domain|-> <continueAfter|-> [invokeId]`
+
+Both commands emit the confirmed response as `wire-frame=<hex>`. For IEDScout-style top-level LD browse use `get-name-list 9 0 - -`; for domain DataSet browse use `get-name-list 2 1 <domain> -`.
 
 ## Apples-to-Apples Capture
 

@@ -23,6 +23,7 @@ typedef enum {
     UNITLAB_NATIVE_WIRE_CLIENT_STATE_ASSOCIATED,
     UNITLAB_NATIVE_WIRE_CLIENT_STATE_READY,
     UNITLAB_NATIVE_WIRE_CLIENT_STATE_READ_REQUESTED,
+    UNITLAB_NATIVE_WIRE_CLIENT_STATE_GET_NAME_LIST_REQUESTED,
     UNITLAB_NATIVE_WIRE_CLIENT_STATE_REPORT_REQUESTED,
     UNITLAB_NATIVE_WIRE_CLIENT_STATE_STOPPED,
     UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED,
@@ -47,6 +48,8 @@ static const char* state_name(UnitLabNativeWireClientState state)
         return "ready";
     case UNITLAB_NATIVE_WIRE_CLIENT_STATE_READ_REQUESTED:
         return "read-requested";
+    case UNITLAB_NATIVE_WIRE_CLIENT_STATE_GET_NAME_LIST_REQUESTED:
+        return "get-name-list-requested";
     case UNITLAB_NATIVE_WIRE_CLIENT_STATE_REPORT_REQUESTED:
         return "report-requested";
     case UNITLAB_NATIVE_WIRE_CLIENT_STATE_STOPPED:
@@ -215,6 +218,35 @@ static int send_report_control_command(int control_fd, const char* command)
     return send_all(control_fd, (const uint8_t*)command, length) && send_all(control_fd, (const uint8_t*)"\n", 1U);
 }
 
+static int emit_confirmed_response(
+    int data_fd,
+    const uint8_t* request,
+    size_t request_length,
+    uint8_t* response,
+    size_t response_length,
+    size_t* encoded_response_length,
+    uint8_t* text_buffer,
+    size_t text_buffer_length,
+    const char* failure_message,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    if (!send_all(data_fd, request, request_length) || !read_tpkt_frame(data_fd, response, response_length, encoded_response_length)) {
+        if (diagnostic != NULL) {
+            diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR;
+            snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", failure_message);
+        }
+        return 0;
+    }
+    if (encoded_response_length == NULL || !format_hex_response(response, *encoded_response_length, (char*)text_buffer, text_buffer_length)) {
+        if (diagnostic != NULL) {
+            diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL;
+            snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Native wire client could not format the confirmed response.");
+        }
+        return 0;
+    }
+    return emit_text_response((const char*)text_buffer);
+}
+
 static int emit_read_response(
     int data_fd,
     const char* domain_id,
@@ -243,21 +275,85 @@ static int emit_read_response(
     if (!unitlab_mms_build_read_request_frame(domain_id, item_id, invoke_id, scratch, scratch_length, request, request_length, &encoded_request_length, diagnostic)) {
         return 0;
     }
-    if (!send_all(data_fd, request, encoded_request_length) || !read_tpkt_frame(data_fd, response, response_length, encoded_response_length)) {
-        if (diagnostic != NULL) {
-            diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR;
-            snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Native wire client could not receive the confirmed-read response.");
-        }
+    return emit_confirmed_response(
+        data_fd,
+        request,
+        encoded_request_length,
+        response,
+        response_length,
+        encoded_response_length,
+        text_buffer,
+        text_buffer_length,
+        "Native wire client could not receive the confirmed-read response.",
+        diagnostic);
+}
+
+static int emit_get_name_list_response(
+    int data_fd,
+    uint32_t object_class,
+    uint32_t object_scope,
+    const char* domain_id,
+    const char* continue_after,
+    uint32_t invoke_id,
+    uint8_t* scratch,
+    size_t scratch_length,
+    uint8_t* request,
+    size_t request_length,
+    uint8_t* response,
+    size_t response_length,
+    size_t* encoded_response_length,
+    uint8_t* text_buffer,
+    size_t text_buffer_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    size_t encoded_request_length = 0U;
+
+    if (!unitlab_mms_build_get_name_list_request_frame(
+            object_class,
+            object_scope,
+            domain_id,
+            continue_after,
+            invoke_id,
+            scratch,
+            scratch_length,
+            request,
+            request_length,
+            &encoded_request_length,
+            diagnostic)) {
         return 0;
     }
-    if (encoded_response_length == NULL || !format_hex_response(response, *encoded_response_length, (char*)text_buffer, text_buffer_length)) {
-        if (diagnostic != NULL) {
-            diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL;
-            snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Native wire client could not format the confirmed-read response.");
-        }
+    return emit_confirmed_response(
+        data_fd,
+        request,
+        encoded_request_length,
+        response,
+        response_length,
+        encoded_response_length,
+        text_buffer,
+        text_buffer_length,
+        "Native wire client could not receive the GetNameList response.",
+        diagnostic);
+}
+
+static int parse_uint32_token(const char* text, uint32_t* value)
+{
+    char* end = NULL;
+    unsigned long parsed;
+
+    if (text == NULL || value == NULL) {
         return 0;
     }
-    return emit_text_response((const char*)text_buffer);
+    parsed = strtoul(text, &end, 10);
+    if (text == end || end == NULL || *end != '\0' || parsed > UINT32_MAX) {
+        return 0;
+    }
+    *value = (uint32_t)parsed;
+    return 1;
+}
+
+static int parse_invoke_id_token(const char* text, uint32_t* value)
+{
+    return parse_uint32_token(text, value) && *value != 0U;
 }
 
 int unitlab_run_native_wire_client_with_options(
@@ -430,13 +526,10 @@ int unitlab_run_native_wire_client_with_options(
                 goto fail;
             }
             if (invoke_id_text != NULL) {
-                char* end = NULL;
-                unsigned long parsed = strtoul(invoke_id_text, &end, 10);
-                if (invoke_id_text == end || end == NULL || *end != '\0' || parsed == 0UL || parsed > UINT32_MAX) {
+                if (!parse_invoke_id_token(invoke_id_text, &invoke_id)) {
                     set_result(result, "NATIVE_WIRE_CLIENT_READ_INVOKE_INVALID", "Native wire client read invokeId must be in range 1..4294967295.");
                     goto fail;
                 }
-                invoke_id = (uint32_t)parsed;
                 if (invoke_id >= next_invoke_id) {
                     next_invoke_id = invoke_id + 1U;
                 }
@@ -468,6 +561,76 @@ int unitlab_run_native_wire_client_with_options(
             state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_READY;
             if (!emit_state_response(state)) {
                 set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its ready state after read.");
+                goto fail;
+            }
+            continue;
+        }
+        if (strncmp(command, "get-name-list ", 14U) == 0) {
+            char* saveptr = NULL;
+            char* class_text = strtok_r(command + 14U, " \t", &saveptr);
+            char* scope_text = strtok_r(NULL, " \t", &saveptr);
+            char* domain_text = strtok_r(NULL, " \t", &saveptr);
+            char* continue_text = strtok_r(NULL, " \t", &saveptr);
+            char* invoke_id_text = strtok_r(NULL, " \t", &saveptr);
+            char* extra = strtok_r(NULL, " \t", &saveptr);
+            const char* domain_id = NULL;
+            const char* continue_after = NULL;
+            uint32_t object_class = 0U;
+            uint32_t object_scope = 0U;
+            uint32_t invoke_id = next_invoke_id++;
+
+            if (class_text == NULL || scope_text == NULL || domain_text == NULL || continue_text == NULL || extra != NULL) {
+                set_result(result, "NATIVE_WIRE_CLIENT_GET_NAME_LIST_COMMAND_INVALID", "Usage: get-name-list <class> <scope> <domain|-> <continueAfter|-> [invokeId].");
+                goto fail;
+            }
+            if (!parse_uint32_token(class_text, &object_class) || !parse_uint32_token(scope_text, &object_scope)) {
+                set_result(result, "NATIVE_WIRE_CLIENT_GET_NAME_LIST_ARGUMENT_INVALID", "Native wire client GetNameList class and scope must be unsigned integers.");
+                goto fail;
+            }
+            if (strcmp(domain_text, "-") != 0) {
+                domain_id = domain_text;
+            }
+            if (strcmp(continue_text, "-") != 0) {
+                continue_after = continue_text;
+            }
+            if (invoke_id_text != NULL) {
+                if (!parse_invoke_id_token(invoke_id_text, &invoke_id)) {
+                    set_result(result, "NATIVE_WIRE_CLIENT_GET_NAME_LIST_INVOKE_INVALID", "Native wire client GetNameList invokeId must be in range 1..4294967295.");
+                    goto fail;
+                }
+                if (invoke_id >= next_invoke_id) {
+                    next_invoke_id = invoke_id + 1U;
+                }
+            }
+            state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_GET_NAME_LIST_REQUESTED;
+            if (!emit_state_response(state)) {
+                set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its get-name-list-requested state.");
+                goto fail;
+            }
+            if (!emit_get_name_list_response(
+                    data_fd,
+                    object_class,
+                    object_scope,
+                    domain_id,
+                    continue_after,
+                    invoke_id,
+                    scratch,
+                    sizeof(scratch),
+                    read_request,
+                    sizeof(read_request),
+                    report_frame,
+                    sizeof(report_frame),
+                    &report_length,
+                    frame,
+                    sizeof(frame),
+                    &diagnostic)) {
+                state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
+                set_result(result, "NATIVE_WIRE_CLIENT_GET_NAME_LIST_FAILED", diagnostic.message);
+                goto fail;
+            }
+            state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_READY;
+            if (!emit_state_response(state)) {
+                set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its ready state after GetNameList.");
                 goto fail;
             }
             continue;
