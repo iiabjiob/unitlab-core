@@ -319,6 +319,189 @@ static void emit_service_access_results(const UnitLabMmsPdu* pdu)
     fflush(stdout);
 }
 
+static int decode_object_name_domain_item(const UnitLabMmsBerElement* object_name, char* domain, size_t domain_size, char* item, size_t item_size)
+{
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsBerElement child;
+    size_t consumed = 0U;
+    size_t offset = 0U;
+
+    if (object_name == NULL || domain == NULL || item == NULL || domain_size == 0U || item_size == 0U) {
+        return 0;
+    }
+    domain[0] = '\0';
+    item[0] = '\0';
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    if (object_name->tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && !object_name->tag.constructed && object_name->tag.tag_number == 0U) {
+        size_t item_length = object_name->value_length < item_size - 1U ? object_name->value_length : item_size - 1U;
+        memcpy(item, object_name->value_bytes, item_length);
+        item[item_length] = '\0';
+        return 1;
+    }
+    if (!(object_name->tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && object_name->tag.constructed && object_name->tag.tag_number == 1U)) {
+        return 0;
+    }
+    unitlab_mms_ber_element_init(&child);
+    if (!unitlab_mms_ber_read(&child, object_name->value_bytes, object_name->value_length, &consumed, &diagnostic)
+        || child.tag.tag_class != UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL
+        || child.tag.tag_number != 26U) {
+        return 0;
+    }
+    {
+        size_t domain_length = child.value_length < domain_size - 1U ? child.value_length : domain_size - 1U;
+        memcpy(domain, child.value_bytes, domain_length);
+        domain[domain_length] = '\0';
+    }
+    offset += consumed;
+    unitlab_mms_ber_element_init(&child);
+    if (!unitlab_mms_ber_read(&child, &object_name->value_bytes[offset], object_name->value_length - offset, &consumed, &diagnostic)
+        || child.tag.tag_class != UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL
+        || child.tag.tag_number != 26U) {
+        return 0;
+    }
+    {
+        size_t item_length = child.value_length < item_size - 1U ? child.value_length : item_size - 1U;
+        memcpy(item, child.value_bytes, item_length);
+        item[item_length] = '\0';
+    }
+    return 1;
+}
+
+static void emit_gva_components_from_bytes(
+    const uint8_t* bytes,
+    size_t length,
+    size_t depth,
+    size_t* component_count,
+    size_t* printed_count)
+{
+    UnitLabMmsDiagnostic diagnostic;
+    size_t offset = 0U;
+
+    if (bytes == NULL || component_count == NULL || printed_count == NULL || depth > 16U) {
+        return;
+    }
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    while (offset < length) {
+        UnitLabMmsBerElement element;
+        size_t consumed = 0U;
+        unitlab_mms_ber_element_init(&element);
+        if (!unitlab_mms_ber_read(&element, &bytes[offset], length - offset, &consumed, &diagnostic) || consumed == 0U) {
+            break;
+        }
+        if (element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL && element.tag.constructed && element.tag.tag_number == 16U) {
+            UnitLabMmsBerElement first_child;
+            size_t child_consumed = 0U;
+            unitlab_mms_ber_element_init(&first_child);
+            if (unitlab_mms_ber_read(&first_child, element.value_bytes, element.value_length, &child_consumed, &diagnostic)
+                && first_child.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC
+                && !first_child.tag.constructed
+                && first_child.tag.tag_number == 0U
+                && bytes_are_printable_ascii(first_child.value_bytes, first_child.value_length)) {
+                if (*printed_count < 16U) {
+                    printf("mms-summary: gva-component[%zu]=\"", *component_count);
+                    fwrite(first_child.value_bytes, 1U, first_child.value_length, stdout);
+                    printf("\"\n");
+                    (*printed_count)++;
+                }
+                (*component_count)++;
+            } else {
+                emit_gva_components_from_bytes(element.value_bytes, element.value_length, depth + 1U, component_count, printed_count);
+            }
+        } else if (element.tag.constructed) {
+            emit_gva_components_from_bytes(element.value_bytes, element.value_length, depth + 1U, component_count, printed_count);
+        }
+        offset += consumed;
+    }
+}
+
+static void emit_get_variable_access_attributes_summary(const UnitLabMmsPdu* pdu)
+{
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsBerElement mms_deletable;
+    size_t consumed = 0U;
+    size_t component_count = 0U;
+    size_t printed = 0U;
+
+    if (pdu == NULL || pdu->service_bytes == NULL || pdu->service_length == 0U) {
+        return;
+    }
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_ber_element_init(&mms_deletable);
+    if (!unitlab_mms_ber_read(&mms_deletable, pdu->service_bytes, pdu->service_length, &consumed, &diagnostic) || consumed >= pdu->service_length) {
+        return;
+    }
+    emit_gva_components_from_bytes(&pdu->service_bytes[consumed], pdu->service_length - consumed, 0U, &component_count, &printed);
+    if (component_count > 0U) {
+        printf("mms-summary: gva-component-count=%zu", component_count);
+        if (component_count > printed) {
+            printf(" printed=%zu", printed);
+        }
+        printf("\n");
+        fflush(stdout);
+    }
+}
+
+static void emit_get_named_variable_list_attributes_summary(const UnitLabMmsPdu* pdu)
+{
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsBerElement deletable;
+    UnitLabMmsBerElement list;
+    size_t consumed = 0U;
+    size_t offset = 0U;
+    size_t member_count = 0U;
+    size_t printed = 0U;
+
+    if (pdu == NULL || pdu->service_bytes == NULL || pdu->service_length == 0U) {
+        return;
+    }
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_ber_element_init(&deletable);
+    if (!unitlab_mms_ber_read(&deletable, pdu->service_bytes, pdu->service_length, &consumed, &diagnostic)) {
+        return;
+    }
+    printf("mms-summary: nvl-deletable=%s\n", deletable.value_length > 0U && deletable.value_bytes[0] != 0U ? "true" : "false");
+    unitlab_mms_ber_element_init(&list);
+    if (!unitlab_mms_ber_read(&list, &pdu->service_bytes[consumed], pdu->service_length - consumed, &consumed, &diagnostic)
+        || !(list.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && list.tag.constructed && list.tag.tag_number == 1U)) {
+        return;
+    }
+    while (offset < list.value_length) {
+        UnitLabMmsBerElement member;
+        UnitLabMmsBerElement variable_spec;
+        UnitLabMmsBerElement object_name;
+        char domain[128U];
+        char item[256U];
+        size_t member_consumed = 0U;
+        size_t nested_consumed = 0U;
+
+        unitlab_mms_ber_element_init(&member);
+        if (!unitlab_mms_ber_read(&member, &list.value_bytes[offset], list.value_length - offset, &member_consumed, &diagnostic) || member_consumed == 0U) {
+            break;
+        }
+        if (printed < 16U
+            && member.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL
+            && member.tag.constructed
+            && member.tag.tag_number == 16U
+            && unitlab_mms_ber_read(&variable_spec, member.value_bytes, member.value_length, &nested_consumed, &diagnostic)
+            && variable_spec.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC
+            && variable_spec.tag.constructed
+            && variable_spec.tag.tag_number == 0U
+            && unitlab_mms_ber_read(&object_name, variable_spec.value_bytes, variable_spec.value_length, &nested_consumed, &diagnostic)
+            && decode_object_name_domain_item(&object_name, domain, sizeof(domain), item, sizeof(item))) {
+            printf("mms-summary: nvl-member[%zu]=%s/%s\n", member_count, domain[0] != '\0' ? domain : "<vmd>", item);
+            printed++;
+        }
+        offset += member_consumed;
+        member_count++;
+    }
+    printf("mms-summary: nvl-member-count=%zu", member_count);
+    if (member_count > printed) {
+        printf(" printed=%zu", printed);
+    }
+    printf("\n");
+    fflush(stdout);
+}
+
 static void emit_get_name_list_identifiers(const UnitLabMmsPdu* pdu)
 {
     UnitLabMmsDiagnostic diagnostic;
@@ -411,6 +594,12 @@ static void emit_mms_frame_summary(const uint8_t* frame, size_t frame_length)
     }
     if (pdu.kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE && pdu.service_kind == UNITLAB_MMS_SERVICE_GET_NAME_LIST) {
         emit_get_name_list_identifiers(&pdu);
+    }
+    if (pdu.kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE && pdu.service_kind == UNITLAB_MMS_SERVICE_GET_VARIABLE_ACCESS_ATTRIBUTES) {
+        emit_get_variable_access_attributes_summary(&pdu);
+    }
+    if (pdu.kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE && pdu.service_kind == UNITLAB_MMS_SERVICE_GET_NAMED_VARIABLE_LIST_ATTRIBUTES) {
+        emit_get_named_variable_list_attributes_summary(&pdu);
     }
 }
 
