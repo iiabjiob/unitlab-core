@@ -1961,6 +1961,22 @@ static int server_runtime_parse_named_variable_list_reference(
     return 1;
 }
 
+static int server_runtime_logical_device_matches_request(const char* actual_logical_device, const char* requested_logical_device)
+{
+    size_t actual_length;
+    size_t requested_length;
+
+    if (actual_logical_device == NULL || requested_logical_device == NULL || actual_logical_device[0] == '\0' || requested_logical_device[0] == '\0') {
+        return 0;
+    }
+    if (strcmp(actual_logical_device, requested_logical_device) == 0) {
+        return 1;
+    }
+    actual_length = strlen(actual_logical_device);
+    requested_length = strlen(requested_logical_device);
+    return actual_length > requested_length && strcmp(&actual_logical_device[actual_length - requested_length], requested_logical_device) == 0;
+}
+
 static const UnitLabIedModelDataSet* server_runtime_find_named_variable_list_data_set(
     const UnitLabMmsServerRuntime* server_runtime,
     const char* request_reference,
@@ -2022,6 +2038,57 @@ static const UnitLabIedModelDataSet* server_runtime_find_named_variable_list_dat
             snprintf(logical_node_name, logical_node_name_size, "%s", data_set->logical_node_name);
             snprintf(list_name, list_name_size, "%s", data_set->name);
             return data_set;
+        }
+    }
+
+    {
+        const UnitLabIedModelDataSet* matched_data_set = NULL;
+
+        for (size_t index = 0U; index < server_runtime->model_plan->data_set_count; index++) {
+            const UnitLabIedModelDataSet* data_set = &server_runtime->model_plan->data_sets[index];
+
+            if (!server_runtime_logical_device_matches_request(data_set->logical_device_inst, logical_device_inst)
+                || strcmp(data_set->logical_node_name, logical_node_name) != 0
+                || strcmp(data_set->name, list_name) != 0) {
+                continue;
+            }
+            if (matched_data_set != NULL) {
+                return NULL;
+            }
+            matched_data_set = data_set;
+        }
+        if (matched_data_set != NULL) {
+            snprintf(logical_device_inst, logical_device_inst_size, "%s", matched_data_set->logical_device_inst);
+            snprintf(logical_node_name, logical_node_name_size, "%s", matched_data_set->logical_node_name);
+            snprintf(list_name, list_name_size, "%s", matched_data_set->name);
+            return matched_data_set;
+        }
+    }
+
+    {
+        const UnitLabIedModelReportControl* matched_report = NULL;
+
+        for (size_t index = 0U; index < server_runtime->model_plan->report_count; index++) {
+            const UnitLabIedModelReportControl* report = &server_runtime->model_plan->reports[index];
+
+            if (!server_runtime_logical_device_matches_request(report->logical_device_inst, logical_device_inst)
+                || strcmp(report->logical_node_name, logical_node_name) != 0
+                || strcmp(report->name, list_name) != 0) {
+                continue;
+            }
+            if (matched_report != NULL) {
+                return NULL;
+            }
+            matched_report = report;
+        }
+        if (matched_report != NULL) {
+            const UnitLabIedModelDataSet* data_set = server_runtime_model_report_data_set(server_runtime, matched_report);
+            if (data_set != NULL) {
+                snprintf(logical_device_inst, logical_device_inst_size, "%s", data_set->logical_device_inst);
+                snprintf(logical_node_name, logical_node_name_size, "%s", data_set->logical_node_name);
+                snprintf(list_name, list_name_size, "%s", data_set->name);
+                return data_set;
+            }
         }
     }
 

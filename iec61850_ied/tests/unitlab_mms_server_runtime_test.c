@@ -398,7 +398,7 @@ static void assert_named_variable_list_attributes_member(const UnitLabMmsBerElem
     assert(offset == object_name.value_length);
 }
 
-static void assert_named_variable_list_attributes_response_shape(const UnitLabMmsPdu* response_pdu, const char* expected_member_token_0, const char* expected_member_token_1, const char* expected_member_token_2, size_t expected_member_token_count)
+static void assert_named_variable_list_attributes_response_shape(const UnitLabMmsPdu* response_pdu, const char* expected_domain, const char* expected_member_token_0, const char* expected_member_token_1, const char* expected_member_token_2, size_t expected_member_token_count)
 {
     UnitLabMmsBerElement deletable_element;
     UnitLabMmsBerElement list_of_variable_element;
@@ -425,21 +425,21 @@ static void assert_named_variable_list_attributes_response_shape(const UnitLabMm
     unitlab_mms_ber_element_init(&member);
     assert(unitlab_mms_ber_read(&member, list_of_variable_element.value_bytes, list_of_variable_element.value_length, &member_consumed_length, &diagnostic) == 1);
     assert(member_consumed_length > 0U);
-    assert_named_variable_list_attributes_member(&member, "LD0", expected_member_token_0);
+    assert_named_variable_list_attributes_member(&member, expected_domain, expected_member_token_0);
     offset += member_consumed_length;
 
     if (expected_member_token_count > 1U) {
         unitlab_mms_ber_element_init(&member);
         assert(unitlab_mms_ber_read(&member, &list_of_variable_element.value_bytes[offset], list_of_variable_element.value_length - offset, &member_consumed_length, &diagnostic) == 1);
         assert(member_consumed_length > 0U);
-        assert_named_variable_list_attributes_member(&member, "LD0", expected_member_token_1);
+        assert_named_variable_list_attributes_member(&member, expected_domain, expected_member_token_1);
         offset += member_consumed_length;
     }
     if (expected_member_token_count > 2U) {
         unitlab_mms_ber_element_init(&member);
         assert(unitlab_mms_ber_read(&member, &list_of_variable_element.value_bytes[offset], list_of_variable_element.value_length - offset, &member_consumed_length, &diagnostic) == 1);
         assert(member_consumed_length > 0U);
-        assert_named_variable_list_attributes_member(&member, "LD0", expected_member_token_2);
+        assert_named_variable_list_attributes_member(&member, expected_domain, expected_member_token_2);
         offset += member_consumed_length;
     }
     assert(offset == list_of_variable_element.value_length);
@@ -6367,6 +6367,7 @@ static void test_server_runtime_apply_named_variable_list_attributes_request_and
 
         assert_named_variable_list_attributes_response_shape(
             &response_pdu,
+            "LD0",
             cases[index].expected_member_token_0,
             cases[index].expected_member_token_1,
             cases[index].expected_member_token_2,
@@ -6380,7 +6381,7 @@ static void test_server_runtime_apply_named_variable_list_attributes_request_and
 }
 
 
-static void test_server_runtime_apply_named_variable_list_attributes_request_and_build_response_matches_live_fixture_style(void)
+static void test_server_runtime_named_variable_list_attributes_accepts_logical_ld_alias(void)
 {
     UnitLabMmsServerRuntime server_runtime;
     UnitLabMmsDiagnostic diagnostic;
@@ -6403,20 +6404,20 @@ static void test_server_runtime_apply_named_variable_list_attributes_request_and
     memset(&plan, 0, sizeof(plan));
     memset(data_sets, 0, sizeof(data_sets));
     memset(signals, 0, sizeof(signals));
-    snprintf(data_sets[0].logical_device_inst, sizeof(data_sets[0].logical_device_inst), "%s", "LD0");
+    snprintf(data_sets[0].logical_device_inst, sizeof(data_sets[0].logical_device_inst), "%s", "IED1LD0");
     snprintf(data_sets[0].logical_node_name, sizeof(data_sets[0].logical_node_name), "%s", "LLN0");
     snprintf(data_sets[0].name, sizeof(data_sets[0].name), "%s", "dsEvents");
     data_sets[0].first_signal_index = 0U;
     data_sets[0].member_count = 2U;
-    snprintf(signals[0].logical_device_inst, sizeof(signals[0].logical_device_inst), "%s", "LD0");
+    snprintf(signals[0].logical_device_inst, sizeof(signals[0].logical_device_inst), "%s", "IED1LD0");
     snprintf(signals[0].logical_node_name, sizeof(signals[0].logical_node_name), "%s", "XCBR1");
     snprintf(signals[0].object_reference, sizeof(signals[0].object_reference), "%s", "Pos.stVal");
-    snprintf(signals[0].data_set_entry_variable, sizeof(signals[0].data_set_entry_variable), "%s", "LD0/XCBR1$ST$Pos$stVal");
+    snprintf(signals[0].data_set_entry_variable, sizeof(signals[0].data_set_entry_variable), "%s", "IED1LD0/XCBR1$ST$Pos$stVal");
     snprintf(signals[0].fc, sizeof(signals[0].fc), "%s", "ST");
-    snprintf(signals[1].logical_device_inst, sizeof(signals[1].logical_device_inst), "%s", "LD0");
+    snprintf(signals[1].logical_device_inst, sizeof(signals[1].logical_device_inst), "%s", "IED1LD0");
     snprintf(signals[1].logical_node_name, sizeof(signals[1].logical_node_name), "%s", "PGGIO1");
     snprintf(signals[1].object_reference, sizeof(signals[1].object_reference), "%s", "Ind1.stVal");
-    snprintf(signals[1].data_set_entry_variable, sizeof(signals[1].data_set_entry_variable), "%s", "LD0/PGGIO1$ST$Ind1$stVal");
+    snprintf(signals[1].data_set_entry_variable, sizeof(signals[1].data_set_entry_variable), "%s", "IED1LD0/PGGIO1$ST$Ind1$stVal");
     snprintf(signals[1].fc, sizeof(signals[1].fc), "%s", "ST");
     plan.data_set_count = 1U;
     plan.data_sets = data_sets;
@@ -6470,7 +6471,7 @@ static void test_server_runtime_apply_named_variable_list_attributes_request_and
         assert(response_pdu.has_invoke_id == 1);
         assert(response_pdu.invoke_id == 13U);
         assert(response_pdu.service_kind == UNITLAB_MMS_SERVICE_GET_NAMED_VARIABLE_LIST_ATTRIBUTES);
-        assert_named_variable_list_attributes_response_shape(&response_pdu, "XCBR1$ST$Pos$stVal", "PGGIO1$ST$Ind1$stVal", NULL, 2U);
+        assert_named_variable_list_attributes_response_shape(&response_pdu, "IED1LD0", "XCBR1$ST$Pos$stVal", "PGGIO1$ST$Ind1$stVal", NULL, 2U);
         assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"XCBR1$ST$Pos$stVal", strlen("XCBR1$ST$Pos$stVal")) == 1);
         assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"PGGIO1$ST$Ind1$stVal", strlen("PGGIO1$ST$Ind1$stVal")) == 1);
         unitlab_mms_semantic_result_init(&semantic_result);
@@ -6568,7 +6569,7 @@ static void test_server_runtime_named_variable_list_attributes_returns_expanded_
         assert(consumed_length == frame.presentation.payload_length);
         assert(response_pdu.kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE);
         assert(response_pdu.service_kind == UNITLAB_MMS_SERVICE_GET_NAMED_VARIABLE_LIST_ATTRIBUTES);
-        assert_named_variable_list_attributes_response_shape(&response_pdu, "PGGIO1$ST$Ind1$stVal", "PGGIO1$ST$Ind1$q", "PGGIO1$ST$Ind1$t", 3U);
+        assert_named_variable_list_attributes_response_shape(&response_pdu, "LD0", "PGGIO1$ST$Ind1$stVal", "PGGIO1$ST$Ind1$q", "PGGIO1$ST$Ind1$t", 3U);
         assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"PGGIO1$ST$Ind1$stVal", strlen("PGGIO1$ST$Ind1$stVal")) == 1);
         assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"PGGIO1$ST$Ind1$q", strlen("PGGIO1$ST$Ind1$q")) == 1);
         assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"PGGIO1$ST$Ind1$t", strlen("PGGIO1$ST$Ind1$t")) == 1);
@@ -6899,7 +6900,7 @@ int main(void)
     test_server_runtime_apply_iedscout_logical_node_directory_request_class_one_builds_response();
     test_server_runtime_apply_iedscout_vmd_directory_request_scope_zero_builds_response();
     test_server_runtime_apply_named_variable_list_attributes_request_and_build_response_roundtrips();
-    test_server_runtime_apply_named_variable_list_attributes_request_and_build_response_matches_live_fixture_style();
+    test_server_runtime_named_variable_list_attributes_accepts_logical_ld_alias();
     test_server_runtime_named_variable_list_attributes_returns_expanded_leaf_members();
     test_server_runtime_named_variable_list_attributes_handles_large_model_dataset();
     test_server_runtime_apply_iedscout_aa_specific_directory_request_scope_two_builds_response();
