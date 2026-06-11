@@ -779,6 +779,23 @@ static int emit_read_response(
         diagnostic);
 }
 
+static int emit_get_attributes_response(
+    int data_fd,
+    const char* domain_id,
+    const char* item_id,
+    uint32_t invoke_id,
+    int named_variable_list,
+    uint8_t* scratch,
+    size_t scratch_length,
+    uint8_t* request,
+    size_t request_length,
+    uint8_t* response,
+    size_t response_length,
+    size_t* encoded_response_length,
+    uint8_t* text_buffer,
+    size_t text_buffer_length,
+    UnitLabMmsDiagnostic* diagnostic);
+
 static int emit_get_name_list_response(
     int data_fd,
     uint32_t object_class,
@@ -823,6 +840,96 @@ static int emit_get_name_list_response(
         text_buffer,
         text_buffer_length,
         "Native wire client could not receive the GetNameList response.",
+        diagnostic);
+}
+
+static int emit_discover_get_name_list_step(
+    int data_fd,
+    const char* label,
+    uint32_t object_class,
+    uint32_t object_scope,
+    const char* domain_id,
+    const char* continue_after,
+    uint32_t invoke_id,
+    uint8_t* scratch,
+    size_t scratch_length,
+    uint8_t* request,
+    size_t request_length,
+    uint8_t* response,
+    size_t response_length,
+    size_t* encoded_response_length,
+    uint8_t* text_buffer,
+    size_t text_buffer_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    printf(
+        "native-wire-client: discover-step=%s invoke=%u class=%u scope=%u domain=%s continue-after=%s\n",
+        label != NULL ? label : "get-name-list",
+        (unsigned)invoke_id,
+        (unsigned)object_class,
+        (unsigned)object_scope,
+        domain_id != NULL ? domain_id : "<none>",
+        continue_after != NULL ? continue_after : "<none>");
+    fflush(stdout);
+    return emit_get_name_list_response(
+        data_fd,
+        object_class,
+        object_scope,
+        domain_id,
+        continue_after,
+        invoke_id,
+        scratch,
+        scratch_length,
+        request,
+        request_length,
+        response,
+        response_length,
+        encoded_response_length,
+        text_buffer,
+        text_buffer_length,
+        diagnostic);
+}
+
+static int emit_discover_attributes_step(
+    int data_fd,
+    const char* label,
+    const char* domain_id,
+    const char* item_id,
+    uint32_t invoke_id,
+    int named_variable_list,
+    uint8_t* scratch,
+    size_t scratch_length,
+    uint8_t* request,
+    size_t request_length,
+    uint8_t* response,
+    size_t response_length,
+    size_t* encoded_response_length,
+    uint8_t* text_buffer,
+    size_t text_buffer_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    printf(
+        "native-wire-client: discover-step=%s invoke=%u domain=%s item=%s\n",
+        label != NULL ? label : "attributes",
+        (unsigned)invoke_id,
+        domain_id != NULL ? domain_id : "<none>",
+        item_id != NULL ? item_id : "<none>");
+    fflush(stdout);
+    return emit_get_attributes_response(
+        data_fd,
+        domain_id,
+        item_id,
+        invoke_id,
+        named_variable_list,
+        scratch,
+        scratch_length,
+        request,
+        request_length,
+        response,
+        response_length,
+        encoded_response_length,
+        text_buffer,
+        text_buffer_length,
         diagnostic);
 }
 
@@ -1324,6 +1431,51 @@ int unitlab_run_native_wire_client_with_options(
             break;
         }
         command[strcspn(command, "\r\n")] = '\0';
+        if (strncmp(command, "discover ", 9U) == 0) {
+            char* saveptr = NULL;
+            char* domain_id = strtok_r(command + 9U, " 	", &saveptr);
+            char* invoke_id_text = strtok_r(NULL, " 	", &saveptr);
+            char* extra = strtok_r(NULL, " 	", &saveptr);
+            uint32_t invoke_id = next_invoke_id;
+
+            if (domain_id == NULL || extra != NULL) {
+                set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_COMMAND_INVALID", "Usage: discover <domain> [invokeBase].");
+                goto fail;
+            }
+            if (invoke_id_text != NULL) {
+                if (!parse_invoke_id_token(invoke_id_text, &invoke_id)) {
+                    set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_INVOKE_INVALID", "Native wire client discover invokeBase must be in range 1..4294967295.");
+                    goto fail;
+                }
+            }
+            if (invoke_id > UINT32_MAX - 6U) {
+                set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_INVOKE_INVALID", "Native wire client discover invokeBase leaves too few invoke IDs for the sequence.");
+                goto fail;
+            }
+            next_invoke_id = invoke_id + 7U;
+            state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_GET_NAME_LIST_REQUESTED;
+            if (!emit_state_response(state)) {
+                set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its discover state.");
+                goto fail;
+            }
+            if (!emit_discover_get_name_list_step(data_fd, "vmd-logical-devices", 9U, 0U, NULL, NULL, invoke_id, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)
+                || !emit_discover_get_name_list_step(data_fd, "lln0-data-attributes", 1U, 1U, domain_id, "LLN0", invoke_id + 1U, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)
+                || !emit_discover_get_name_list_step(data_fd, "domain-datasets", 2U, 1U, domain_id, NULL, invoke_id + 2U, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)
+                || !emit_discover_get_name_list_step(data_fd, "lln0-brcbs", 4U, 1U, domain_id, "LLN0", invoke_id + 3U, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)
+                || !emit_discover_get_name_list_step(data_fd, "lln0-urcbs", 5U, 1U, domain_id, "LLN0", invoke_id + 4U, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)
+                || !emit_discover_attributes_step(data_fd, "brcb-events-attrs", domain_id, "LLN0$BR$brcbEvents$RptEna", invoke_id + 5U, 0, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)
+                || !emit_discover_attributes_step(data_fd, "dataset-events-members", "LD0", "LLN0$dsEvents", invoke_id + 6U, 1, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
+                state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
+                set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_FAILED", diagnostic.message);
+                goto fail;
+            }
+            state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_READY;
+            if (!emit_state_response(state)) {
+                set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its ready state after discover.");
+                goto fail;
+            }
+            continue;
+        }
         if (strncmp(command, "read ", 5U) == 0) {
             char* saveptr = NULL;
             char* domain_id = strtok_r(command + 5U, " \t", &saveptr);
