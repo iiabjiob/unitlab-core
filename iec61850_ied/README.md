@@ -83,6 +83,14 @@ Validate a captured native checkpoint with:
 scripts/check-native-wire-pcap.py artifacts/native-wire-discover-rptEna-GI-03.pcapng --port 12447 --min-reports 5
 ```
 
+Native wire client Read targets are configurable for capture parity. Start the client with:
+
+```bash
+unitlab-iec61850-ied-sim --fixture examples/single-report.fixture.json --ied IED1 --bind 127.0.0.1 --port 12447 --native-wire-client-start --native-client-read-domain XCBR1 --native-client-read-item 'ST$Pos$stVal'
+```
+
+After the client reports `native-wire-client: ready`, stdin accepts `read <domain> <item> [invokeId]` and emits the confirmed response as `wire-frame=<hex>`.
+
 ## Apples-to-Apples Capture
 
 Use the same fixture for both backends:

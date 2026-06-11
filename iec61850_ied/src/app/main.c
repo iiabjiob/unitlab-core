@@ -34,6 +34,9 @@ typedef struct SimulatorOptions {
     int gi_probe;
     int native_test_report_tick_ms;
     const char* report_key;
+    const char* native_client_read_domain;
+    const char* native_client_read_item;
+    uint32_t native_client_read_invoke_id;
 } SimulatorOptions;
 
 static const char* libiec61850_status(void);
@@ -73,6 +76,9 @@ static void print_usage(const char* program_name)
     printf("  --native-smoke-start Exercise the native server-runtime boundary once, then exit.\n");
     printf("  --native-wire-start  Start a native wire server that can emit live reports over TCP.\n");
     printf("  --native-wire-client-start  Start a native wire client that connects and emits wire frames.\n");
+    printf("  --native-client-read-domain DOMAIN  Initial native wire client Read domain. Default: XCBR1.\n");
+    printf("  --native-client-read-item ITEM      Initial native wire client Read item. Default: ST$Pos$stVal.\n");
+    printf("  --native-client-read-invoke-id ID   Initial native wire client Read invokeId. Default: 3.\n");
     printf("  --discover-probe Connect to the endpoint and print the LD/LN/DataSet/ReportControl browse tree, then exit.\n");
     printf("  --metadata-probe Connect to the endpoint and verify DataSet/BRCB metadata, then exit.\n");
     printf("  --gi-probe       Connect to the endpoint, enable report(s), request GI, verify fixture values, then exit.\n");
@@ -95,6 +101,18 @@ static int parse_int(const char* value, int* out)
     return 1;
 }
 
+
+static int parse_uint32(const char* value, uint32_t* out)
+{
+    char* end = NULL;
+    unsigned long parsed = strtoul(value, &end, 10);
+    if (value == end || end == NULL || *end != '\0' || parsed == 0UL || parsed > UINT32_MAX) {
+        return 0;
+    }
+    *out = (uint32_t)parsed;
+    return 1;
+}
+
 static int parse_args(int argc, char** argv, SimulatorOptions* options)
 {
     options->fixture_path = NULL;
@@ -112,6 +130,9 @@ static int parse_args(int argc, char** argv, SimulatorOptions* options)
     options->gi_probe = 0;
     options->native_test_report_tick_ms = 0;
     options->report_key = NULL;
+    options->native_client_read_domain = NULL;
+    options->native_client_read_item = NULL;
+    options->native_client_read_invoke_id = 0U;
 
     for (int index = 1; index < argc; index++) {
         const char* arg = argv[index];
@@ -153,6 +174,21 @@ static int parse_args(int argc, char** argv, SimulatorOptions* options)
         }
         if (strcmp(arg, "--report-key") == 0 && index + 1 < argc) {
             options->report_key = argv[++index];
+            continue;
+        }
+        if (strcmp(arg, "--native-client-read-domain") == 0 && index + 1 < argc) {
+            options->native_client_read_domain = argv[++index];
+            continue;
+        }
+        if (strcmp(arg, "--native-client-read-item") == 0 && index + 1 < argc) {
+            options->native_client_read_item = argv[++index];
+            continue;
+        }
+        if (strcmp(arg, "--native-client-read-invoke-id") == 0 && index + 1 < argc) {
+            if (!parse_uint32(argv[++index], &options->native_client_read_invoke_id)) {
+                fprintf(stderr, "INVALID_NATIVE_CLIENT_READ_INVOKE_ID: expected invokeId in range 1..4294967295.\n");
+                return -1;
+            }
             continue;
         }
         if (strcmp(arg, "--native-test-report-tick-ms") == 0 && index + 1 < argc) {
@@ -219,6 +255,18 @@ static int parse_args(int argc, char** argv, SimulatorOptions* options)
     }
     if (options->native_test_report_tick_ms != 0 && !options->native_wire_start) {
         fprintf(stderr, "INVALID_ARGUMENT: --native-test-report-tick-ms requires --native-wire-start.\n");
+        return -1;
+    }
+    if (options->native_client_read_domain != NULL && options->native_client_read_domain[0] == '\0') {
+        fprintf(stderr, "INVALID_ARGUMENT: --native-client-read-domain cannot be empty.\n");
+        return -1;
+    }
+    if (options->native_client_read_item != NULL && options->native_client_read_item[0] == '\0') {
+        fprintf(stderr, "INVALID_ARGUMENT: --native-client-read-item cannot be empty.\n");
+        return -1;
+    }
+    if ((options->native_client_read_domain != NULL || options->native_client_read_item != NULL || options->native_client_read_invoke_id != 0U) && !options->native_wire_client_start) {
+        fprintf(stderr, "INVALID_ARGUMENT: native client Read options require --native-wire-client-start.\n");
         return -1;
     }
 
@@ -762,9 +810,15 @@ int main(int argc, char** argv)
     if (options.native_wire_client_start) {
         UnitLabMmsDiagnostic wire_diagnostic;
         UnitLabIedModelLoadResult wire_result;
+        UnitLabNativeWireClientOptions wire_client_options;
+
+        memset(&wire_client_options, 0, sizeof(wire_client_options));
+        wire_client_options.initial_read_domain = options.native_client_read_domain;
+        wire_client_options.initial_read_item = options.native_client_read_item;
+        wire_client_options.initial_read_invoke_id = options.native_client_read_invoke_id;
 
         unitlab_mms_diagnostic_clear(&wire_diagnostic);
-        if (!unitlab_run_native_wire_client(&server_config, &wire_result, signal_stop_requested, NULL)) {
+        if (!unitlab_run_native_wire_client_with_options(&server_config, &wire_client_options, &wire_result, signal_stop_requested, NULL)) {
             fprintf(stderr, "%s: %s\n", wire_result.code, wire_result.message);
             unitlab_free_ied_model_plan(&model_plan);
             unitlab_free_ied_fixture_model(&fixture_model);

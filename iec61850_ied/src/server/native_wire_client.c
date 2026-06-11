@@ -22,6 +22,7 @@ typedef enum {
     UNITLAB_NATIVE_WIRE_CLIENT_STATE_ASSOCIATING,
     UNITLAB_NATIVE_WIRE_CLIENT_STATE_ASSOCIATED,
     UNITLAB_NATIVE_WIRE_CLIENT_STATE_READY,
+    UNITLAB_NATIVE_WIRE_CLIENT_STATE_READ_REQUESTED,
     UNITLAB_NATIVE_WIRE_CLIENT_STATE_REPORT_REQUESTED,
     UNITLAB_NATIVE_WIRE_CLIENT_STATE_STOPPED,
     UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED,
@@ -44,6 +45,8 @@ static const char* state_name(UnitLabNativeWireClientState state)
         return "associated";
     case UNITLAB_NATIVE_WIRE_CLIENT_STATE_READY:
         return "ready";
+    case UNITLAB_NATIVE_WIRE_CLIENT_STATE_READ_REQUESTED:
+        return "read-requested";
     case UNITLAB_NATIVE_WIRE_CLIENT_STATE_REPORT_REQUESTED:
         return "report-requested";
     case UNITLAB_NATIVE_WIRE_CLIENT_STATE_STOPPED:
@@ -212,8 +215,54 @@ static int send_report_control_command(int control_fd, const char* command)
     return send_all(control_fd, (const uint8_t*)command, length) && send_all(control_fd, (const uint8_t*)"\n", 1U);
 }
 
-int unitlab_run_native_wire_client(
+static int emit_read_response(
+    int data_fd,
+    const char* domain_id,
+    const char* item_id,
+    uint32_t invoke_id,
+    uint8_t* scratch,
+    size_t scratch_length,
+    uint8_t* request,
+    size_t request_length,
+    uint8_t* response,
+    size_t response_length,
+    size_t* encoded_response_length,
+    uint8_t* text_buffer,
+    size_t text_buffer_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    size_t encoded_request_length = 0U;
+
+    if (domain_id == NULL || domain_id[0] == '\0' || item_id == NULL || item_id[0] == '\0') {
+        if (diagnostic != NULL) {
+            diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT;
+            snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Native wire client read target requires domain and item.");
+        }
+        return 0;
+    }
+    if (!unitlab_mms_build_read_request_frame(domain_id, item_id, invoke_id, scratch, scratch_length, request, request_length, &encoded_request_length, diagnostic)) {
+        return 0;
+    }
+    if (!send_all(data_fd, request, encoded_request_length) || !read_tpkt_frame(data_fd, response, response_length, encoded_response_length)) {
+        if (diagnostic != NULL) {
+            diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR;
+            snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Native wire client could not receive the confirmed-read response.");
+        }
+        return 0;
+    }
+    if (encoded_response_length == NULL || !format_hex_response(response, *encoded_response_length, (char*)text_buffer, text_buffer_length)) {
+        if (diagnostic != NULL) {
+            diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL;
+            snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Native wire client could not format the confirmed-read response.");
+        }
+        return 0;
+    }
+    return emit_text_response((const char*)text_buffer);
+}
+
+int unitlab_run_native_wire_client_with_options(
     const UnitLabIedServerConfig* config,
+    const UnitLabNativeWireClientOptions* options,
     UnitLabIedModelLoadResult* result,
     UnitLabIedServerStopRequested stop_requested,
     void* stop_context)
@@ -226,10 +275,13 @@ int unitlab_run_native_wire_client(
     uint8_t association_request[2048U];
     size_t association_length = 0U;
     uint8_t read_request[2048U];
-    size_t read_length = 0U;
     uint8_t report_frame[2048U];
     size_t report_length = 0U;
     UnitLabMmsDiagnostic diagnostic;
+    const char* initial_read_domain = "XCBR1";
+    const char* initial_read_item = "ST$Pos$stVal";
+    uint32_t initial_read_invoke_id = 3U;
+    uint32_t next_invoke_id = 4U;
     UnitLabNativeWireClientState state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_INIT;
 
     if (result != NULL) {
@@ -246,6 +298,18 @@ int unitlab_run_native_wire_client(
     if (config->port <= 0 || config->port > 65535 || config->control_port <= 0 || config->control_port > 65535) {
         set_result(result, "NATIVE_WIRE_CLIENT_PORT_INVALID", "Native wire client target ports are invalid.");
         return 0;
+    }
+    if (options != NULL) {
+        if (options->initial_read_domain != NULL && options->initial_read_domain[0] != '\0') {
+            initial_read_domain = options->initial_read_domain;
+        }
+        if (options->initial_read_item != NULL && options->initial_read_item[0] != '\0') {
+            initial_read_item = options->initial_read_item;
+        }
+        if (options->initial_read_invoke_id != 0U) {
+            initial_read_invoke_id = options->initial_read_invoke_id;
+            next_invoke_id = initial_read_invoke_id + 1U;
+        }
     }
 
     if (!emit_state_response(state)) {
@@ -312,13 +376,28 @@ int unitlab_run_native_wire_client(
         goto fail;
     }
 
-    if (!unitlab_mms_build_read_request_frame("XCBR1", "ST$Pos$stVal", 3U, scratch, sizeof(scratch), read_request, sizeof(read_request), &read_length, &diagnostic)) {
-        set_result(result, "NATIVE_WIRE_CLIENT_FRAME_BUILD_FAILED", diagnostic.message);
+    state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_READ_REQUESTED;
+    if (!emit_state_response(state)) {
+        set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its read-requested state.");
         goto fail;
     }
-    if (!send_all(data_fd, read_request, read_length) || !read_tpkt_frame(data_fd, report_frame, sizeof(report_frame), &report_length)) {
+    if (!emit_read_response(
+            data_fd,
+            initial_read_domain,
+            initial_read_item,
+            initial_read_invoke_id,
+            scratch,
+            sizeof(scratch),
+            read_request,
+            sizeof(read_request),
+            report_frame,
+            sizeof(report_frame),
+            &report_length,
+            frame,
+            sizeof(frame),
+            &diagnostic)) {
         state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
-        set_result(result, "NATIVE_WIRE_CLIENT_READ_FAILED", "Native wire client could not receive the initial confirmed-read response.");
+        set_result(result, "NATIVE_WIRE_CLIENT_READ_FAILED", diagnostic.message);
         goto fail;
     }
 
@@ -331,17 +410,68 @@ int unitlab_run_native_wire_client(
         set_result(result, "NATIVE_WIRE_CLIENT_READY_FAILED", "Native wire client could not emit its ready banner.");
         goto fail;
     }
-    if (!format_hex_response(report_frame, report_length, (char*)frame, sizeof(frame)) || !emit_text_response((const char*)frame)) {
-        set_result(result, "NATIVE_WIRE_CLIENT_RESPONSE_FAILED", "Native wire client could not emit the initial confirmed-read response.");
-        goto fail;
-    }
 
     while (stop_requested == NULL || !stop_requested(stop_context)) {
-        char command[128U];
+        char command[512U];
         if (fgets(command, sizeof(command), stdin) == NULL) {
             break;
         }
         command[strcspn(command, "\r\n")] = '\0';
+        if (strncmp(command, "read ", 5U) == 0) {
+            char* saveptr = NULL;
+            char* domain_id = strtok_r(command + 5U, " \t", &saveptr);
+            char* item_id = strtok_r(NULL, " \t", &saveptr);
+            char* invoke_id_text = strtok_r(NULL, " \t", &saveptr);
+            char* extra = strtok_r(NULL, " \t", &saveptr);
+            uint32_t invoke_id = next_invoke_id++;
+
+            if (domain_id == NULL || item_id == NULL || extra != NULL) {
+                set_result(result, "NATIVE_WIRE_CLIENT_READ_COMMAND_INVALID", "Usage: read <domain> <item> [invokeId].");
+                goto fail;
+            }
+            if (invoke_id_text != NULL) {
+                char* end = NULL;
+                unsigned long parsed = strtoul(invoke_id_text, &end, 10);
+                if (invoke_id_text == end || end == NULL || *end != '\0' || parsed == 0UL || parsed > UINT32_MAX) {
+                    set_result(result, "NATIVE_WIRE_CLIENT_READ_INVOKE_INVALID", "Native wire client read invokeId must be in range 1..4294967295.");
+                    goto fail;
+                }
+                invoke_id = (uint32_t)parsed;
+                if (invoke_id >= next_invoke_id) {
+                    next_invoke_id = invoke_id + 1U;
+                }
+            }
+            state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_READ_REQUESTED;
+            if (!emit_state_response(state)) {
+                set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its read-requested state.");
+                goto fail;
+            }
+            if (!emit_read_response(
+                    data_fd,
+                    domain_id,
+                    item_id,
+                    invoke_id,
+                    scratch,
+                    sizeof(scratch),
+                    read_request,
+                    sizeof(read_request),
+                    report_frame,
+                    sizeof(report_frame),
+                    &report_length,
+                    frame,
+                    sizeof(frame),
+                    &diagnostic)) {
+                state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
+                set_result(result, "NATIVE_WIRE_CLIENT_READ_FAILED", diagnostic.message);
+                goto fail;
+            }
+            state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_READY;
+            if (!emit_state_response(state)) {
+                set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its ready state after read.");
+                goto fail;
+            }
+            continue;
+        }
         if (strcmp(command, "emit-report") == 0) {
             state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_REPORT_REQUESTED;
             if (!emit_state_response(state)) {
@@ -393,4 +523,13 @@ fail:
     }
     emit_state_response(state);
     return 0;
+}
+
+int unitlab_run_native_wire_client(
+    const UnitLabIedServerConfig* config,
+    UnitLabIedModelLoadResult* result,
+    UnitLabIedServerStopRequested stop_requested,
+    void* stop_context)
+{
+    return unitlab_run_native_wire_client_with_options(config, NULL, result, stop_requested, stop_context);
 }
