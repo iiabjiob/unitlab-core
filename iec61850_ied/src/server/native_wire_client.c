@@ -206,6 +206,33 @@ static const char* access_result_label(const UnitLabMmsBerElement* element)
     return "success";
 }
 
+static int bytes_are_printable_ascii(const uint8_t* bytes, size_t length)
+{
+    if (bytes == NULL) {
+        return 0;
+    }
+    for (size_t index = 0U; index < length; index++) {
+        if (bytes[index] < 0x20U || bytes[index] > 0x7EU) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static void print_hex_value(const uint8_t* bytes, size_t length)
+{
+    static const char hex_digits[] = "0123456789abcdef";
+    size_t limit = length < 32U ? length : 32U;
+
+    for (size_t index = 0U; index < limit; index++) {
+        fputc(hex_digits[(bytes[index] >> 4U) & 0x0FU], stdout);
+        fputc(hex_digits[bytes[index] & 0x0FU], stdout);
+    }
+    if (length > limit) {
+        fputs("...", stdout);
+    }
+}
+
 static uint32_t decode_unsigned_bytes(const uint8_t* bytes, size_t length)
 {
     uint32_t value = 0U;
@@ -258,17 +285,90 @@ static void emit_service_access_results(const UnitLabMmsPdu* pdu)
                 (unsigned)decode_unsigned_bytes(result.value_bytes, result.value_length));
         } else {
             printf(
-                "mms-summary: accessResult[%zu]=%s tag=%u length=%zu\n",
+                "mms-summary: accessResult[%zu]=%s tag=%u length=%zu",
                 index,
                 access_result_label(&result),
                 (unsigned)result.tag.tag_number,
                 result.value_length);
+            if (result.value_bytes != NULL && result.value_length > 0U) {
+                if (bytes_are_printable_ascii(result.value_bytes, result.value_length)) {
+                    size_t printable_length = result.value_length < 96U ? result.value_length : 96U;
+                    printf(" value-string=\"");
+                    fwrite(result.value_bytes, 1U, printable_length, stdout);
+                    if (result.value_length > printable_length) {
+                        fputs("...", stdout);
+                    }
+                    printf("\"");
+                } else if (result.value_length <= 4U && (result.tag.tag_number == 5U || result.tag.tag_number == 6U)) {
+                    printf(" value-uint=%u", (unsigned)decode_unsigned_bytes(result.value_bytes, result.value_length));
+                } else {
+                    printf(" value-hex=");
+                    print_hex_value(result.value_bytes, result.value_length);
+                }
+            }
+            printf("\n");
         }
         fflush(stdout);
         offset += result_consumed;
         index++;
     }
     printf("mms-summary: accessResult-count=%zu\n", index);
+    fflush(stdout);
+}
+
+static void emit_get_name_list_identifiers(const UnitLabMmsPdu* pdu)
+{
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsBerElement list_element;
+    UnitLabMmsBerElement more_follows_element;
+    size_t consumed = 0U;
+    size_t offset = 0U;
+    size_t index = 0U;
+    size_t printed = 0U;
+
+    if (pdu == NULL || pdu->service_bytes == NULL || pdu->service_length == 0U) {
+        return;
+    }
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_ber_element_init(&list_element);
+    if (!unitlab_mms_ber_read(&list_element, pdu->service_bytes, pdu->service_length, &consumed, &diagnostic)
+        || list_element.tag.tag_class != UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC
+        || list_element.tag.tag_number != 0U) {
+        return;
+    }
+
+    while (offset < list_element.value_length) {
+        UnitLabMmsBerElement identifier;
+        size_t identifier_consumed = 0U;
+        unitlab_mms_ber_element_init(&identifier);
+        if (!unitlab_mms_ber_read(&identifier, &list_element.value_bytes[offset], list_element.value_length - offset, &identifier_consumed, &diagnostic) || identifier_consumed == 0U) {
+            break;
+        }
+        if (printed < 16U && identifier.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL && identifier.tag.tag_number == 26U) {
+            printf("mms-summary: identifier[%zu]=\"", index);
+            fwrite(identifier.value_bytes, 1U, identifier.value_length, stdout);
+            printf("\"\n");
+            printed++;
+        }
+        offset += identifier_consumed;
+        index++;
+    }
+    printf("mms-summary: identifier-count=%zu", index);
+    if (index > printed) {
+        printf(" printed=%zu", printed);
+    }
+
+    if (consumed < pdu->service_length) {
+        size_t more_follows_consumed = 0U;
+        unitlab_mms_ber_element_init(&more_follows_element);
+        if (unitlab_mms_ber_read(&more_follows_element, &pdu->service_bytes[consumed], pdu->service_length - consumed, &more_follows_consumed, &diagnostic)
+            && more_follows_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC
+            && more_follows_element.tag.tag_number == 1U
+            && more_follows_element.value_length > 0U) {
+            printf(" moreFollows=%s", more_follows_element.value_bytes[0] != 0U ? "true" : "false");
+        }
+    }
+    printf("\n");
     fflush(stdout);
 }
 
@@ -305,6 +405,9 @@ static void emit_mms_frame_summary(const uint8_t* frame, size_t frame_length)
     if (pdu.kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE
         && (pdu.service_kind == UNITLAB_MMS_SERVICE_READ || pdu.service_kind == UNITLAB_MMS_SERVICE_WRITE)) {
         emit_service_access_results(&pdu);
+    }
+    if (pdu.kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE && pdu.service_kind == UNITLAB_MMS_SERVICE_GET_NAME_LIST) {
+        emit_get_name_list_identifiers(&pdu);
     }
 }
 
