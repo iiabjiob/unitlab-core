@@ -70,10 +70,19 @@ typedef struct {
     char rcb_item[320U];
 } UnitLabNativeSubscriptionModel;
 
-static UnitLabNativeDiscoveredDeviceModel discovered_model;
-static UnitLabNativeSubscriptionModel subscription_model;
-static char discovered_data_set_members[UNITLAB_NATIVE_DISCOVERY_MAX_DATA_SET_MEMBERS][384U];
-static size_t discovered_data_set_member_count = 0U;
+typedef struct {
+    UnitLabNativeDiscoveredDeviceModel discovered_model;
+    UnitLabNativeSubscriptionModel subscription_model;
+    char discovered_data_set_members[UNITLAB_NATIVE_DISCOVERY_MAX_DATA_SET_MEMBERS][384U];
+    size_t discovered_data_set_member_count;
+} UnitLabNativeClientSessionState;
+
+static UnitLabNativeClientSessionState native_client_session;
+
+#define discovered_model native_client_session.discovered_model
+#define subscription_model native_client_session.subscription_model
+#define discovered_data_set_members native_client_session.discovered_data_set_members
+#define discovered_data_set_member_count native_client_session.discovered_data_set_member_count
 
 static const char* state_name(UnitLabNativeWireClientState state)
 {
