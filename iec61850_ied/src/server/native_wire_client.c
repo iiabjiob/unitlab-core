@@ -71,8 +71,16 @@ typedef struct {
 } UnitLabNativeSubscriptionModel;
 
 typedef struct {
+    char reference[384U];
+    size_t member_start;
+    size_t member_count;
+} UnitLabNativeDiscoveredDataSet;
+
+typedef struct {
     UnitLabNativeDiscoveredDeviceModel discovered_model;
     UnitLabNativeSubscriptionModel subscription_model;
+    UnitLabNativeDiscoveredDataSet discovered_data_sets[UNITLAB_NATIVE_DISCOVERY_MAX_DATA_SETS];
+    size_t discovered_data_set_count;
     char discovered_data_set_members[UNITLAB_NATIVE_DISCOVERY_MAX_DATA_SET_MEMBERS][384U];
     size_t discovered_data_set_member_count;
 } UnitLabNativeClientSessionState;
@@ -139,6 +147,8 @@ static void reset_discovered_model(UnitLabNativeClientSessionState* session)
     }
     memset(&session->discovered_model, 0, sizeof(session->discovered_model));
     memset(&session->subscription_model, 0, sizeof(session->subscription_model));
+    memset(session->discovered_data_sets, 0, sizeof(session->discovered_data_sets));
+    session->discovered_data_set_count = 0U;
     memset(session->discovered_data_set_members, 0, sizeof(session->discovered_data_set_members));
     session->discovered_data_set_member_count = 0U;
 }
@@ -620,6 +630,55 @@ static int discovered_data_set_member_exists(const UnitLabNativeClientSessionSta
     return 0;
 }
 
+static int discovered_data_set_index_by_reference(const UnitLabNativeClientSessionState* session, const char* reference, size_t* data_set_index)
+{
+    if (session == NULL || reference == NULL || reference[0] == '\0') {
+        return 0;
+    }
+    for (size_t index = 0U; index < session->discovered_data_set_count; index++) {
+        if (strcmp(session->discovered_data_sets[index].reference, reference) == 0) {
+            if (data_set_index != NULL) {
+                *data_set_index = index;
+            }
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int discovered_data_set_contains_member(const UnitLabNativeClientSessionState* session, const char* data_set_reference, const char* member_reference)
+{
+    size_t data_set_index = 0U;
+    const UnitLabNativeDiscoveredDataSet* data_set;
+
+    if (!discovered_data_set_index_by_reference(session, data_set_reference, &data_set_index) || member_reference == NULL || member_reference[0] == '\0') {
+        return 0;
+    }
+    data_set = &session->discovered_data_sets[data_set_index];
+    for (size_t index = 0U; index < data_set->member_count; index++) {
+        size_t member_index = data_set->member_start + index;
+        if (member_index < session->discovered_data_set_member_count && strcmp(session->discovered_data_set_members[member_index], member_reference) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static UnitLabNativeDiscoveredDataSet* append_discovered_data_set(UnitLabNativeClientSessionState* session, const char* data_set_reference)
+{
+    UnitLabNativeDiscoveredDataSet* data_set;
+
+    if (session == NULL || data_set_reference == NULL || data_set_reference[0] == '\0' || session->discovered_data_set_count >= UNITLAB_NATIVE_DISCOVERY_MAX_DATA_SETS) {
+        return NULL;
+    }
+    data_set = &session->discovered_data_sets[session->discovered_data_set_count];
+    memset(data_set, 0, sizeof(*data_set));
+    snprintf(data_set->reference, sizeof(data_set->reference), "%s", data_set_reference);
+    data_set->member_start = session->discovered_data_set_member_count;
+    session->discovered_data_set_count++;
+    return data_set;
+}
+
 static int copy_printable_value(const UnitLabMmsBerElement* element, char* buffer, size_t buffer_size)
 {
     size_t copy_length;
@@ -632,7 +691,7 @@ static int copy_printable_value(const UnitLabMmsBerElement* element, char* buffe
     return 1;
 }
 
-static size_t collect_get_named_variable_list_members_from_frame(UnitLabNativeClientSessionState* session, const uint8_t* frame, size_t frame_length)
+static size_t collect_get_named_variable_list_members_from_frame(UnitLabNativeClientSessionState* session, const char* data_set_reference, const uint8_t* frame, size_t frame_length)
 {
     UnitLabMmsAssociationFrame association_frame;
     UnitLabMmsPdu pdu;
@@ -642,8 +701,9 @@ static size_t collect_get_named_variable_list_members_from_frame(UnitLabNativeCl
     size_t consumed = 0U;
     size_t offset = 0U;
     size_t added = 0U;
+    UnitLabNativeDiscoveredDataSet* data_set = NULL;
 
-    if (session == NULL || frame == NULL || frame_length == 0U) {
+    if (session == NULL || data_set_reference == NULL || data_set_reference[0] == '\0' || frame == NULL || frame_length == 0U) {
         return 0U;
     }
     unitlab_mms_diagnostic_clear(&diagnostic);
@@ -666,6 +726,10 @@ static size_t collect_get_named_variable_list_members_from_frame(UnitLabNativeCl
     unitlab_mms_ber_element_init(&list);
     if (!unitlab_mms_ber_read(&list, &pdu.service_bytes[consumed], pdu.service_length - consumed, &consumed, &diagnostic)
         || !(list.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && list.tag.constructed && list.tag.tag_number == 1U)) {
+        return 0U;
+    }
+    data_set = append_discovered_data_set(session, data_set_reference);
+    if (data_set == NULL) {
         return 0U;
     }
     while (offset < list.value_length && session->discovered_data_set_member_count < sizeof(session->discovered_data_set_members) / sizeof(session->discovered_data_set_members[0])) {
@@ -692,14 +756,18 @@ static size_t collect_get_named_variable_list_members_from_frame(UnitLabNativeCl
             && unitlab_mms_ber_read(&object_name, variable_spec.value_bytes, variable_spec.value_length, &nested_consumed, &diagnostic)
             && decode_object_name_domain_item(&object_name, domain, sizeof(domain), item, sizeof(item))) {
             snprintf(reference, sizeof(reference), "%s/%s", domain[0] != '\0' ? domain : "<vmd>", item);
-            if (!discovered_data_set_member_exists(session, reference)) {
-                snprintf(session->discovered_data_set_members[session->discovered_data_set_member_count], sizeof(session->discovered_data_set_members[session->discovered_data_set_member_count]), "%s", reference);
-                printf("native-wire-client: discovered-dataset-member[%zu]=%s\n", session->discovered_data_set_member_count, session->discovered_data_set_members[session->discovered_data_set_member_count]);
-                fflush(stdout);
-                session->discovered_data_set_member_count++;
-                session->discovered_model.data_set_member_count = session->discovered_data_set_member_count;
-                added++;
-            }
+            snprintf(session->discovered_data_set_members[session->discovered_data_set_member_count], sizeof(session->discovered_data_set_members[session->discovered_data_set_member_count]), "%s", reference);
+            printf(
+                "native-wire-client: discovered-dataset-member[%zu.%zu] dataset=%s ref=%s\n",
+                session->discovered_data_set_count - 1U,
+                data_set->member_count,
+                data_set->reference,
+                session->discovered_data_set_members[session->discovered_data_set_member_count]);
+            fflush(stdout);
+            session->discovered_data_set_member_count++;
+            data_set->member_count++;
+            session->discovered_model.data_set_member_count = session->discovered_data_set_member_count;
+            added++;
         }
         offset += member_consumed;
     }
@@ -950,6 +1018,7 @@ static void emit_information_report_summary(UnitLabNativeClientSessionState* ses
     size_t opt_flds_length = 0U;
     int has_data_reference = 0;
     int has_reason = 0;
+    int report_data_set_discovered = 0;
 
     if (pdu == NULL || pdu->service_bytes == NULL || pdu->service_length == 0U) {
         return;
@@ -1010,9 +1079,10 @@ static void emit_information_report_summary(UnitLabNativeClientSessionState* ses
     }
     if (report_opt_bit_enabled(opt_flds, opt_flds_length, 4U) && read_next_report_value(values_wrapper.value_bytes, values_wrapper.value_length, &values_offset, &value, &diagnostic)) {
         (void)copy_printable_value(&value, session->discovered_model.last_report_data_set, sizeof(session->discovered_model.last_report_data_set));
+        report_data_set_discovered = discovered_data_set_index_by_reference(session, session->discovered_model.last_report_data_set, NULL);
         printf("mms-summary: report.DatSet=");
         print_report_value_summary(&value);
-        printf("\n");
+        printf(" discovered=%s\n", report_data_set_discovered ? "true" : "false");
     }
     if (report_opt_bit_enabled(opt_flds, opt_flds_length, 3U) && read_next_report_value(values_wrapper.value_bytes, values_wrapper.value_length, &values_offset, &value, &diagnostic)) {
         printf("mms-summary: report.BufOvfl=");
@@ -1053,13 +1123,15 @@ static void emit_information_report_summary(UnitLabNativeClientSessionState* ses
             }
             {
                 char reference[384U];
-                int matched = copy_printable_value(&next, reference, sizeof(reference)) && discovered_data_set_member_exists(session, reference);
-                if (matched) {
+                int copied = copy_printable_value(&next, reference, sizeof(reference));
+                int global_matched = copied && discovered_data_set_member_exists(session, reference);
+                int data_set_matched = copied && discovered_data_set_contains_member(session, session->discovered_model.last_report_data_set, reference);
+                if (data_set_matched) {
                     matched_data_ref_count++;
                 }
                 printf("mms-summary: report.dataRef[%zu]=", data_ref_count);
                 print_report_value_summary(&next);
-                printf(" discovered-match=%s\n", matched ? "true" : "false");
+                printf(" discovered-match=%s dataset-match=%s\n", global_matched ? "true" : "false", data_set_matched ? "true" : "false");
             }
             data_ref_count++;
         }
@@ -2475,12 +2547,14 @@ int unitlab_run_native_wire_client_with_options(
                     fflush(stdout);
                 }
                 for (size_t index = 0U; index < data_set_count; index++) {
+                    char data_set_reference[384U];
+                    snprintf(data_set_reference, sizeof(data_set_reference), "%s/%s", domain_id, data_set_items[index]);
                     if (!emit_discover_attributes_step(&session, data_fd, "dataset-members", domain_id, data_set_items[index], followup_invoke_id++, 1, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
                         state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
                         set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_FAILED", diagnostic.message);
                         goto fail;
                     }
-                    (void)collect_get_named_variable_list_members_from_frame(&session, report_frame, report_length);
+                    (void)collect_get_named_variable_list_members_from_frame(&session, data_set_reference, report_frame, report_length);
                 }
                 next_invoke_id = followup_invoke_id;
                 emit_discovered_model_summary(&session, "discover");
