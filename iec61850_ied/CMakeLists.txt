@@ -77,6 +77,7 @@ add_executable(unitlab-iec61850-ied-sim
   src/fixture/fixture_parser.c
   src/model/libiec61850_model_builder.c
   src/app/main.c
+  src/server/native_wire_client_ber_helpers.c
   src/server/native_wire_client.c
   src/server/native_wire_client_discovery.c
   src/server/native_wire_client_session.c

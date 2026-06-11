@@ -3,70 +3,10 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "native_wire_client_ber_helpers.h"
 #include "wire/ber/unitlab_mms_ber.h"
 #include "wire/mms/unitlab_mms_pdu.h"
 #include "wire/orchestration/unitlab_mms_association_frame.h"
-
-static int bytes_are_printable_ascii(const uint8_t* bytes, size_t length)
-{
-    if (bytes == NULL || length == 0U) {
-        return 0;
-    }
-    for (size_t index = 0U; index < length; index++) {
-        if (bytes[index] < 0x20U || bytes[index] > 0x7eU) {
-            return 0;
-        }
-    }
-    return 1;
-}
-
-static int decode_object_name_domain_item(const UnitLabMmsBerElement* object_name, char* domain, size_t domain_size, char* item, size_t item_size)
-{
-    UnitLabMmsDiagnostic diagnostic;
-    UnitLabMmsBerElement child;
-    size_t consumed = 0U;
-    size_t offset = 0U;
-
-    if (object_name == NULL || domain == NULL || item == NULL || domain_size == 0U || item_size == 0U) {
-        return 0;
-    }
-    domain[0] = '\0';
-    item[0] = '\0';
-    unitlab_mms_diagnostic_clear(&diagnostic);
-    if (object_name->tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && !object_name->tag.constructed && object_name->tag.tag_number == 0U) {
-        size_t item_length = object_name->value_length < item_size - 1U ? object_name->value_length : item_size - 1U;
-        memcpy(item, object_name->value_bytes, item_length);
-        item[item_length] = '\0';
-        return 1;
-    }
-    if (!(object_name->tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && object_name->tag.constructed && object_name->tag.tag_number == 1U)) {
-        return 0;
-    }
-    unitlab_mms_ber_element_init(&child);
-    if (!unitlab_mms_ber_read(&child, object_name->value_bytes, object_name->value_length, &consumed, &diagnostic)
-        || child.tag.tag_class != UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL
-        || child.tag.tag_number != 26U) {
-        return 0;
-    }
-    {
-        size_t domain_length = child.value_length < domain_size - 1U ? child.value_length : domain_size - 1U;
-        memcpy(domain, child.value_bytes, domain_length);
-        domain[domain_length] = '\0';
-    }
-    offset += consumed;
-    unitlab_mms_ber_element_init(&child);
-    if (!unitlab_mms_ber_read(&child, &object_name->value_bytes[offset], object_name->value_length - offset, &consumed, &diagnostic)
-        || child.tag.tag_class != UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL
-        || child.tag.tag_number != 26U) {
-        return 0;
-    }
-    {
-        size_t item_length = child.value_length < item_size - 1U ? child.value_length : item_size - 1U;
-        memcpy(item, child.value_bytes, item_length);
-        item[item_length] = '\0';
-    }
-    return 1;
-}
 
 static size_t collect_get_named_variable_list_members_from_frame(UnitLabNativeClientSessionState* session, const char* data_set_reference, const uint8_t* frame, size_t frame_length)
 {
@@ -131,7 +71,7 @@ static size_t collect_get_named_variable_list_members_from_frame(UnitLabNativeCl
             && variable_spec.tag.constructed
             && variable_spec.tag.tag_number == 0U
             && unitlab_mms_ber_read(&object_name, variable_spec.value_bytes, variable_spec.value_length, &nested_consumed, &diagnostic)
-            && decode_object_name_domain_item(&object_name, domain, sizeof(domain), item, sizeof(item))) {
+            && unitlab_native_client_decode_object_name_domain_item(&object_name, domain, sizeof(domain), item, sizeof(item))) {
             snprintf(reference, sizeof(reference), "%s/%s", domain[0] != '\0' ? domain : "<vmd>", item);
             snprintf(session->discovered_data_set_members[session->discovered_data_set_member_count], sizeof(session->discovered_data_set_members[session->discovered_data_set_member_count]), "%s", reference);
             printf(
@@ -211,7 +151,7 @@ static size_t extract_get_name_list_identifiers(
         if (item_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL
             && item_element.tag.tag_number == 26U
             && item_element.value_length > 0U
-            && bytes_are_printable_ascii(item_element.value_bytes, item_element.value_length)) {
+            && unitlab_native_client_bytes_are_printable_ascii(item_element.value_bytes, item_element.value_length)) {
             size_t copy_length = item_element.value_length < 127U ? item_element.value_length : 127U;
             memcpy(identifiers[count], item_element.value_bytes, copy_length);
             identifiers[count][copy_length] = '\0';

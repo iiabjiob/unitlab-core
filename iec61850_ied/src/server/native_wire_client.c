@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 200112L
 #include "native_wire_client.h"
+#include "native_wire_client_ber_helpers.h"
 #include "native_wire_client_session.h"
 #include "native_wire_client_discovery.h"
 
@@ -258,19 +259,6 @@ static const char* access_result_label(const UnitLabMmsBerElement* element)
     return "success";
 }
 
-static int bytes_are_printable_ascii(const uint8_t* bytes, size_t length)
-{
-    if (bytes == NULL) {
-        return 0;
-    }
-    for (size_t index = 0U; index < length; index++) {
-        if (bytes[index] < 0x20U || bytes[index] > 0x7EU) {
-            return 0;
-        }
-    }
-    return 1;
-}
-
 static void print_hex_value(const uint8_t* bytes, size_t length)
 {
     static const char hex_digits[] = "0123456789abcdef";
@@ -364,7 +352,7 @@ static void print_data_value_summary(const UnitLabMmsBerElement* value)
     }
     if (value->tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && value->tag.tag_number == 3U && value->value_length == 1U) {
         printf("%s", value->value_bytes[0] != 0U ? "true" : "false");
-    } else if (bytes_are_printable_ascii(value->value_bytes, value->value_length)) {
+    } else if (unitlab_native_client_bytes_are_printable_ascii(value->value_bytes, value->value_length)) {
         size_t printable_length = value->value_length < 96U ? value->value_length : 96U;
         printf("\"");
         fwrite(value->value_bytes, 1U, printable_length, stdout);
@@ -479,7 +467,7 @@ static void emit_service_access_results(const UnitLabMmsPdu* pdu)
                 (unsigned)result.tag.tag_number,
                 result.value_length);
             if (result.value_bytes != NULL && result.value_length > 0U) {
-                if (bytes_are_printable_ascii(result.value_bytes, result.value_length)) {
+                if (unitlab_native_client_bytes_are_printable_ascii(result.value_bytes, result.value_length)) {
                     size_t printable_length = result.value_length < 96U ? result.value_length : 96U;
                     printf(" value-string=\"");
                     fwrite(result.value_bytes, 1U, printable_length, stdout);
@@ -505,58 +493,10 @@ static void emit_service_access_results(const UnitLabMmsPdu* pdu)
     fflush(stdout);
 }
 
-static int decode_object_name_domain_item(const UnitLabMmsBerElement* object_name, char* domain, size_t domain_size, char* item, size_t item_size)
-{
-    UnitLabMmsDiagnostic diagnostic;
-    UnitLabMmsBerElement child;
-    size_t consumed = 0U;
-    size_t offset = 0U;
-
-    if (object_name == NULL || domain == NULL || item == NULL || domain_size == 0U || item_size == 0U) {
-        return 0;
-    }
-    domain[0] = '\0';
-    item[0] = '\0';
-    unitlab_mms_diagnostic_clear(&diagnostic);
-    if (object_name->tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && !object_name->tag.constructed && object_name->tag.tag_number == 0U) {
-        size_t item_length = object_name->value_length < item_size - 1U ? object_name->value_length : item_size - 1U;
-        memcpy(item, object_name->value_bytes, item_length);
-        item[item_length] = '\0';
-        return 1;
-    }
-    if (!(object_name->tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && object_name->tag.constructed && object_name->tag.tag_number == 1U)) {
-        return 0;
-    }
-    unitlab_mms_ber_element_init(&child);
-    if (!unitlab_mms_ber_read(&child, object_name->value_bytes, object_name->value_length, &consumed, &diagnostic)
-        || child.tag.tag_class != UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL
-        || child.tag.tag_number != 26U) {
-        return 0;
-    }
-    {
-        size_t domain_length = child.value_length < domain_size - 1U ? child.value_length : domain_size - 1U;
-        memcpy(domain, child.value_bytes, domain_length);
-        domain[domain_length] = '\0';
-    }
-    offset += consumed;
-    unitlab_mms_ber_element_init(&child);
-    if (!unitlab_mms_ber_read(&child, &object_name->value_bytes[offset], object_name->value_length - offset, &consumed, &diagnostic)
-        || child.tag.tag_class != UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL
-        || child.tag.tag_number != 26U) {
-        return 0;
-    }
-    {
-        size_t item_length = child.value_length < item_size - 1U ? child.value_length : item_size - 1U;
-        memcpy(item, child.value_bytes, item_length);
-        item[item_length] = '\0';
-    }
-    return 1;
-}
-
 static int copy_printable_value(const UnitLabMmsBerElement* element, char* buffer, size_t buffer_size)
 {
     size_t copy_length;
-    if (element == NULL || buffer == NULL || buffer_size == 0U || element->value_bytes == NULL || !bytes_are_printable_ascii(element->value_bytes, element->value_length)) {
+    if (element == NULL || buffer == NULL || buffer_size == 0U || element->value_bytes == NULL || !unitlab_native_client_bytes_are_printable_ascii(element->value_bytes, element->value_length)) {
         return 0;
     }
     copy_length = element->value_length < buffer_size - 1U ? element->value_length : buffer_size - 1U;
@@ -594,7 +534,7 @@ static void emit_gva_components_from_bytes(
                 && first_child.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC
                 && !first_child.tag.constructed
                 && first_child.tag.tag_number == 0U
-                && bytes_are_printable_ascii(first_child.value_bytes, first_child.value_length)) {
+                && unitlab_native_client_bytes_are_printable_ascii(first_child.value_bytes, first_child.value_length)) {
                 if (*printed_count < 16U) {
                     printf("mms-summary: gva-component[%zu]=\"", *component_count);
                     fwrite(first_child.value_bytes, 1U, first_child.value_length, stdout);
@@ -685,7 +625,7 @@ static void emit_get_named_variable_list_attributes_summary(const UnitLabMmsPdu*
             && variable_spec.tag.constructed
             && variable_spec.tag.tag_number == 0U
             && unitlab_mms_ber_read(&object_name, variable_spec.value_bytes, variable_spec.value_length, &nested_consumed, &diagnostic)
-            && decode_object_name_domain_item(&object_name, domain, sizeof(domain), item, sizeof(item))) {
+            && unitlab_native_client_decode_object_name_domain_item(&object_name, domain, sizeof(domain), item, sizeof(item))) {
             printf("mms-summary: nvl-member[%zu]=%s/%s\n", member_count, domain[0] != '\0' ? domain : "<vmd>", item);
             printed++;
         }
@@ -825,7 +765,7 @@ static void emit_information_report_summary(UnitLabNativeClientSessionState* ses
     unitlab_mms_ber_element_init(&list_name);
     if (unitlab_mms_ber_read(&list_name, list_name_wrapper.value_bytes, list_name_wrapper.value_length, &inner_consumed, &diagnostic)
         && list_name.value_bytes != NULL
-        && bytes_are_printable_ascii(list_name.value_bytes, list_name.value_length)) {
+        && unitlab_native_client_bytes_are_printable_ascii(list_name.value_bytes, list_name.value_length)) {
         printf("mms-summary: report.variable-list=");
         print_report_value_summary(&list_name);
         printf("\n");
@@ -908,7 +848,7 @@ static void emit_information_report_summary(UnitLabNativeClientSessionState* ses
                 && !next.tag.constructed
                 && next.tag.tag_number == 10U
                 && next.value_bytes != NULL
-                && bytes_are_printable_ascii(next.value_bytes, next.value_length))) {
+                && unitlab_native_client_bytes_are_printable_ascii(next.value_bytes, next.value_length))) {
                 values_offset = checkpoint;
                 break;
             }
