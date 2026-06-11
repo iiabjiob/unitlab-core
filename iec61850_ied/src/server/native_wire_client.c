@@ -48,7 +48,20 @@ typedef struct {
     char last_report_data_set[160U];
 } UnitLabNativeDiscoveredDeviceModel;
 
+typedef struct {
+    int rpt_enabled;
+    int gi_requested;
+    int last_report_received;
+    size_t selected_rcb_index;
+    uint32_t last_rptena_invoke_id;
+    uint32_t last_gi_invoke_id;
+    size_t async_report_count;
+    char rcb_domain[128U];
+    char rcb_item[320U];
+} UnitLabNativeSubscriptionModel;
+
 static UnitLabNativeDiscoveredDeviceModel discovered_model;
+static UnitLabNativeSubscriptionModel subscription_model;
 static char discovered_data_set_members[32U][384U];
 static size_t discovered_data_set_member_count = 0U;
 
@@ -109,8 +122,30 @@ static void set_result(UnitLabIedModelLoadResult* result, const char* code, cons
 static void reset_discovered_model(void)
 {
     memset(&discovered_model, 0, sizeof(discovered_model));
+    memset(&subscription_model, 0, sizeof(subscription_model));
     memset(discovered_data_set_members, 0, sizeof(discovered_data_set_members));
     discovered_data_set_member_count = 0U;
+}
+
+static void emit_subscription_summary(const char* phase)
+{
+    printf(
+        "native-wire-client: subscription-summary phase=%s rcb=%s/%s rcb-index=%zu rptEna=%s rptEna-invoke=%u giRequested=%s gi-invoke=%u lastReportReceived=%s asyncReports=%zu lastReportValues=%zu lastReportDataRefs=%zu lastReportMatchedDataRefs=%zu lastReportReasons=%zu\n",
+        phase != NULL ? phase : "snapshot",
+        subscription_model.rcb_domain[0] != '\0' ? subscription_model.rcb_domain : "<none>",
+        subscription_model.rcb_item[0] != '\0' ? subscription_model.rcb_item : "<none>",
+        subscription_model.selected_rcb_index,
+        subscription_model.rpt_enabled ? "true" : "false",
+        subscription_model.last_rptena_invoke_id,
+        subscription_model.gi_requested ? "true" : "false",
+        subscription_model.last_gi_invoke_id,
+        subscription_model.last_report_received ? "true" : "false",
+        subscription_model.async_report_count,
+        discovered_model.last_report_value_count,
+        discovered_model.last_report_data_ref_count,
+        discovered_model.last_report_matched_data_ref_count,
+        discovered_model.last_report_reason_count);
+    fflush(stdout);
 }
 
 static void emit_discovered_model_summary(const char* phase)
@@ -1043,8 +1078,10 @@ static void emit_information_report_summary(const UnitLabMmsPdu* pdu)
     discovered_model.last_report_value_count = value_count;
     discovered_model.last_report_reason_count = reason_count;
     discovered_model.last_report_matched_data_ref_count = matched_data_ref_count;
+    subscription_model.last_report_received = 1;
     printf("mms-summary: report.dataRef-count=%zu value-count=%zu reason-count=%zu\n", data_ref_count, value_count, reason_count);
     emit_discovered_model_summary("report");
+    emit_subscription_summary("report");
     fflush(stdout);
 }
 
@@ -1287,6 +1324,39 @@ static int send_report_control_command(int control_fd, const char* command)
 {
     size_t length = strlen(command);
     return send_all(control_fd, (const uint8_t*)command, length) && send_all(control_fd, (const uint8_t*)"\n", 1U);
+}
+
+static int emit_async_data_frame_if_ready(
+    int data_fd,
+    uint8_t* response,
+    size_t response_length,
+    size_t* encoded_response_length,
+    uint8_t* text_buffer,
+    size_t text_buffer_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    int available = read_tpkt_frame_if_available(data_fd, response, response_length, encoded_response_length, 0);
+    if (available < 0) {
+        if (diagnostic != NULL) {
+            diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR;
+            snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Native wire client could not receive an async data frame.");
+        }
+        return -1;
+    }
+    if (available == 0) {
+        return 0;
+    }
+    printf("native-wire-client: async-report\n");
+    if (encoded_response_length == NULL || !emit_wire_frame_response(response, *encoded_response_length, text_buffer, text_buffer_length)) {
+        if (diagnostic != NULL) {
+            diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL;
+            snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Native wire client could not format the async data frame.");
+        }
+        return -1;
+    }
+    subscription_model.async_report_count++;
+    emit_subscription_summary("async-report");
+    return 1;
 }
 
 static int emit_confirmed_response(
@@ -2135,6 +2205,37 @@ int unitlab_run_native_wire_client_with_options(
 
     while (stop_requested == NULL || !stop_requested(stop_context)) {
         char command[512U];
+        fd_set read_set;
+        int max_fd = data_fd;
+        int ready;
+
+        FD_ZERO(&read_set);
+        if (data_fd >= 0) {
+            FD_SET(data_fd, &read_set);
+        }
+        FD_SET(STDIN_FILENO, &read_set);
+        if (STDIN_FILENO > max_fd) {
+            max_fd = STDIN_FILENO;
+        }
+        do {
+            ready = select(max_fd + 1, &read_set, NULL, NULL, NULL);
+        } while (ready < 0 && errno == EINTR);
+        if (ready < 0) {
+            state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
+            set_result(result, "NATIVE_WIRE_CLIENT_SELECT_FAILED", "Native wire client command/report wait failed.");
+            goto fail;
+        }
+        if (data_fd >= 0 && FD_ISSET(data_fd, &read_set)) {
+            int async_frame = emit_async_data_frame_if_ready(data_fd, report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic);
+            if (async_frame < 0) {
+                state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
+                set_result(result, "NATIVE_WIRE_CLIENT_ASYNC_REPORT_FAILED", diagnostic.message);
+                goto fail;
+            }
+        }
+        if (!FD_ISSET(STDIN_FILENO, &read_set)) {
+            continue;
+        }
         if (fgets(command, sizeof(command), stdin) == NULL) {
             break;
         }
@@ -2519,6 +2620,7 @@ int unitlab_run_native_wire_client_with_options(
             discovered_brcb_count = 0U;
             reset_discovered_model();
             emit_discovered_model_summary("close-ied");
+            emit_subscription_summary("close-ied");
             state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_READY;
             if (!emit_state_response(state)) {
                 set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its ready state after close-ied.");
@@ -2579,6 +2681,12 @@ int unitlab_run_native_wire_client_with_options(
                 set_result(result, "NATIVE_WIRE_CLIENT_RPTENA_FAILED", diagnostic.message);
                 goto fail;
             }
+            subscription_model.rpt_enabled = 1;
+            subscription_model.selected_rcb_index = rcb_index;
+            subscription_model.last_rptena_invoke_id = invoke_id;
+            snprintf(subscription_model.rcb_domain, sizeof(subscription_model.rcb_domain), "%s", discovered_domain);
+            snprintf(subscription_model.rcb_item, sizeof(subscription_model.rcb_item), "%s", discovered_brcb_items[rcb_index]);
+            emit_subscription_summary("rptena");
             state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_READY;
             if (!emit_state_response(state)) {
                 set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its ready state after RptEna.");
@@ -2625,6 +2733,12 @@ int unitlab_run_native_wire_client_with_options(
                 set_result(result, "NATIVE_WIRE_CLIENT_GI_FAILED", diagnostic.message);
                 goto fail;
             }
+            subscription_model.gi_requested = 1;
+            subscription_model.selected_rcb_index = rcb_index;
+            subscription_model.last_gi_invoke_id = invoke_id;
+            snprintf(subscription_model.rcb_domain, sizeof(subscription_model.rcb_domain), "%s", discovered_domain);
+            snprintf(subscription_model.rcb_item, sizeof(subscription_model.rcb_item), "%s", discovered_brcb_items[rcb_index]);
+            emit_subscription_summary("gi");
             state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_READY;
             if (!emit_state_response(state)) {
                 set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its ready state after GI.");
