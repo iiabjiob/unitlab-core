@@ -2858,6 +2858,24 @@ int unitlab_run_native_wire_client_with_options(
             }
             continue;
         }
+        if (strcmp(command, "disconnect") == 0) {
+            if (data_fd >= 0) {
+                close(data_fd);
+                data_fd = -1;
+            }
+            if (control_fd >= 0) {
+                close(control_fd);
+                control_fd = -1;
+            }
+            printf("native-wire-client: disconnected\n");
+            state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_STOPPED;
+            if (!emit_state_response(state)) {
+                set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its stopped state after disconnect.");
+                goto fail;
+            }
+            set_result(result, "NATIVE_WIRE_CLIENT_DISCONNECTED", "Native wire client disconnected.");
+            return 1;
+        }
         if (strcmp(command, "exit") == 0 || strcmp(command, "quit") == 0 || strcmp(command, "stop") == 0) {
             break;
         }
