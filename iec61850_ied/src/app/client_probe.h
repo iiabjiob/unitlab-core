@@ -5,6 +5,10 @@
 #include "model/model_plan.h"
 #include "server/server_runtime.h"
 
+int unitlab_probe_ied_server_discovery(
+    const UnitLabIedServerConfig* config,
+    UnitLabIedModelLoadResult* result);
+
 int unitlab_probe_ied_server_metadata(
     const UnitLabIedFixtureModel* fixture,
     const UnitLabIedModelPlan* plan,

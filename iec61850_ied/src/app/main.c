@@ -29,6 +29,7 @@ typedef struct SimulatorOptions {
     int native_smoke_start;
     int native_wire_start;
     int native_wire_client_start;
+    int discover_probe;
     int metadata_probe;
     int gi_probe;
     int native_test_report_tick_ms;
@@ -59,7 +60,7 @@ static int immediate_stop_requested(void* context)
 
 static void print_usage(const char* program_name)
 {
-    printf("Usage: %s (--fixture PATH | --scl PATH) --ied NAME [--bind ADDRESS] [--port PORT] [--dry-run] [--smoke-start] [--native-smoke-start] [--native-wire-start] [--native-wire-client-start] [--metadata-probe] [--gi-probe] [--report-key KEY] [--native-test-report-tick-ms MS]\n", program_name);
+    printf("Usage: %s (--fixture PATH | --scl PATH) --ied NAME [--bind ADDRESS] [--port PORT] [--dry-run] [--smoke-start] [--native-smoke-start] [--native-wire-start] [--native-wire-client-start] [--discover-probe] [--metadata-probe] [--gi-probe] [--report-key KEY] [--native-test-report-tick-ms MS]\n", program_name);
     printf("\n");
     printf("Options:\n");
     printf("  --fixture PATH   UnitLab IEC 61850 IED simulator fixture JSON.\n");
@@ -72,6 +73,7 @@ static void print_usage(const char* program_name)
     printf("  --native-smoke-start Exercise the native server-runtime boundary once, then exit.\n");
     printf("  --native-wire-start  Start a native wire server that can emit live reports over TCP.\n");
     printf("  --native-wire-client-start  Start a native wire client that connects and emits wire frames.\n");
+    printf("  --discover-probe Connect to the endpoint and print the LD/LN/DataSet/ReportControl browse tree, then exit.\n");
     printf("  --metadata-probe Connect to the endpoint and verify DataSet/BRCB metadata, then exit.\n");
     printf("  --gi-probe       Connect to the endpoint, enable report(s), request GI, verify fixture values, then exit.\n");
     printf("  --report-key KEY Limit --gi-probe validation to one fixture ReportControl key.\n");
@@ -105,6 +107,7 @@ static int parse_args(int argc, char** argv, SimulatorOptions* options)
     options->native_smoke_start = 0;
     options->native_wire_start = 0;
     options->native_wire_client_start = 0;
+    options->discover_probe = 0;
     options->metadata_probe = 0;
     options->gi_probe = 0;
     options->native_test_report_tick_ms = 0;
@@ -134,6 +137,10 @@ static int parse_args(int argc, char** argv, SimulatorOptions* options)
         }
         if (strcmp(arg, "--native-wire-client-start") == 0) {
             options->native_wire_client_start = 1;
+            continue;
+        }
+        if (strcmp(arg, "--discover-probe") == 0) {
+            options->discover_probe = 1;
             continue;
         }
         if (strcmp(arg, "--metadata-probe") == 0) {
@@ -198,8 +205,8 @@ static int parse_args(int argc, char** argv, SimulatorOptions* options)
         fprintf(stderr, "BIND_REQUIRED: --bind ADDRESS cannot be empty.\n");
         return -1;
     }
-    if ((options->dry_run ? 1 : 0) + (options->smoke_start ? 1 : 0) + (options->native_smoke_start ? 1 : 0) + (options->native_wire_start ? 1 : 0) + (options->native_wire_client_start ? 1 : 0) + (options->metadata_probe ? 1 : 0) + (options->gi_probe ? 1 : 0) > 1) {
-        fprintf(stderr, "INVALID_ARGUMENT: --dry-run, --smoke-start, --native-smoke-start, --native-wire-start, --native-wire-client-start, --metadata-probe, and --gi-probe are mutually exclusive.\n");
+    if ((options->dry_run ? 1 : 0) + (options->smoke_start ? 1 : 0) + (options->native_smoke_start ? 1 : 0) + (options->native_wire_start ? 1 : 0) + (options->native_wire_client_start ? 1 : 0) + (options->discover_probe ? 1 : 0) + (options->metadata_probe ? 1 : 0) + (options->gi_probe ? 1 : 0) > 1) {
+        fprintf(stderr, "INVALID_ARGUMENT: --dry-run, --smoke-start, --native-smoke-start, --native-wire-start, --native-wire-client-start, --discover-probe, --metadata-probe, and --gi-probe are mutually exclusive.\n");
         return -1;
     }
     if (options->report_key != NULL && options->report_key[0] == '\0') {
@@ -281,7 +288,7 @@ static int run_scl_native_wire_mode(const SimulatorOptions* options)
         return 64;
     }
     if (options->native_wire_client_start) {
-        fprintf(stderr, "INVALID_ARGUMENT: --scl currently supports --dry-run, --smoke-start, --native-smoke-start, --native-wire-start, --metadata-probe, --gi-probe, or linked server start.\n");
+        fprintf(stderr, "INVALID_ARGUMENT: --scl currently supports --dry-run, --smoke-start, --native-smoke-start, --native-wire-start, --discover-probe, --metadata-probe, --gi-probe, or linked server start.\n");
         return 64;
     }
 
@@ -331,7 +338,7 @@ static int run_scl_native_wire_mode(const SimulatorOptions* options)
     server_config.control_port = options->port < 65535 ? options->port + 1 : 0;
     server_config.native_test_report_tick_ms = options->native_test_report_tick_ms;
 
-    if (options->metadata_probe || options->gi_probe) {
+    if (options->discover_probe || options->metadata_probe || options->gi_probe) {
         UnitLabIedFixtureModel fixture_model;
         UnitLabIedModelLoadResult probe_result;
 
@@ -339,7 +346,16 @@ static int run_scl_native_wire_mode(const SimulatorOptions* options)
         snprintf(fixture_model.ied_name, sizeof(fixture_model.ied_name), "%s", options->ied_name);
         snprintf(fixture_model.access_point_name, sizeof(fixture_model.access_point_name), "%s", "AP1");
 
-        if (options->metadata_probe) {
+        if (options->discover_probe) {
+            if (!unitlab_probe_ied_server_discovery(&server_config, &probe_result)) {
+                fprintf(stderr, "%s: %s\n", probe_result.code, probe_result.message);
+                fprintf(stderr, "libiec61850=%s\n", libiec61850_status());
+                unitlab_scl_compile_result_free(compile_result);
+                return 69;
+            }
+            printf("unitlab-iec61850-ied-sim: SCL discover probe accepted\n");
+        }
+        else if (options->metadata_probe) {
             if (!unitlab_probe_ied_server_metadata(&fixture_model, model_plan, &server_config, &probe_result)) {
                 fprintf(stderr, "%s: %s\n", probe_result.code, probe_result.message);
                 fprintf(stderr, "libiec61850=%s\n", libiec61850_status());
@@ -625,6 +641,22 @@ int main(int argc, char** argv)
         .control_port = options.port < 65535 ? options.port + 1 : 0,
         .native_test_report_tick_ms = options.native_test_report_tick_ms,
     };
+    if (options.discover_probe) {
+        if (!unitlab_probe_ied_server_discovery(&server_config, &load_result)) {
+            fprintf(stderr, "%s: %s\n", load_result.code, load_result.message);
+            fprintf(stderr, "libiec61850=%s\n", libiec61850_status());
+            unitlab_free_ied_model_plan(&model_plan);
+            unitlab_free_ied_fixture_model(&fixture_model);
+            return 69;
+        }
+        printf("unitlab-iec61850-ied-sim: discover probe accepted\n");
+        printf("ied=%s\n", fixture_model.ied_name);
+        printf("endpoint=%s:%d\n", options.bind_address, options.port);
+        printf("libiec61850=%s\n", libiec61850_status());
+        unitlab_free_ied_model_plan(&model_plan);
+        unitlab_free_ied_fixture_model(&fixture_model);
+        return 0;
+    }
     if (options.metadata_probe) {
         if (!unitlab_probe_ied_server_metadata(&fixture_model, &model_plan, &server_config, &load_result)) {
             fprintf(stderr, "%s: %s\n", load_result.code, load_result.message);

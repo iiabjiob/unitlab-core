@@ -340,6 +340,218 @@ static void report_callback(void* parameter, ClientReport report)
     }
 }
 
+
+static int print_string_list_item(const char* prefix, const char* value)
+{
+    if (value == NULL) {
+        return 0;
+    }
+    printf("%s%s\n", prefix, value);
+    return 1;
+}
+
+static int discover_data_sets(IedConnection connection, const char* logical_node_ref, size_t* data_set_count, UnitLabIedModelLoadResult* result)
+{
+    IedClientError error = IED_ERROR_OK;
+    LinkedList data_sets = IedConnection_getLogicalNodeDirectory(connection, &error, logical_node_ref, ACSI_CLASS_DATA_SET);
+    if (error != IED_ERROR_OK || data_sets == NULL) {
+        set_probe_result(result, 0, "IEC61850_DISCOVERY_DATASET_DIRECTORY_FAILED", "IEC 61850 discovery probe failed to read a DataSet directory.");
+        return 0;
+    }
+
+    for (LinkedList data_set = LinkedList_getNext(data_sets); data_set != NULL; data_set = LinkedList_getNext(data_set)) {
+        const char* data_set_name = (const char*)LinkedList_getData(data_set);
+        char data_set_ref[384];
+        bool is_deletable = true;
+        int written = snprintf(data_set_ref, sizeof(data_set_ref), "%s.%s", logical_node_ref, data_set_name != NULL ? data_set_name : "");
+        if (written < 0 || (size_t)written >= sizeof(data_set_ref)) {
+            LinkedList_destroy(data_sets);
+            set_probe_result(result, 0, "IEC61850_DISCOVERY_DATASET_REF_OVERFLOW", "IEC 61850 discovery probe DataSet reference is too long.");
+            return 0;
+        }
+        error = IED_ERROR_OK;
+        LinkedList members = IedConnection_getDataSetDirectory(connection, &error, data_set_ref, &is_deletable);
+        if (error != IED_ERROR_OK || members == NULL) {
+            LinkedList_destroy(data_sets);
+            set_probe_result(result, 0, "IEC61850_DISCOVERY_DATASET_MEMBERS_FAILED", "IEC 61850 discovery probe failed to read DataSet members.");
+            return 0;
+        }
+        if (data_set_count != NULL) {
+            (*data_set_count)++;
+        }
+        printf("    DS: %s deletable=%s\n", data_set_name != NULL ? data_set_name : "<null>", is_deletable ? "true" : "false");
+        size_t member_index = 0U;
+        for (LinkedList member = LinkedList_getNext(members); member != NULL; member = LinkedList_getNext(member)) {
+            printf("      MEMBER[%zu]: %s\n", member_index, (const char*)LinkedList_getData(member));
+            member_index++;
+        }
+        LinkedList_destroy(members);
+    }
+
+    LinkedList_destroy(data_sets);
+    return 1;
+}
+
+static int print_report_control_details(IedConnection connection, const char* logical_node_ref, const char* branch, const char* report_name, UnitLabIedModelLoadResult* result)
+{
+    char rcb_ref[384];
+    int written = snprintf(rcb_ref, sizeof(rcb_ref), "%s.%s.%s", logical_node_ref, branch, report_name != NULL ? report_name : "");
+    if (written < 0 || (size_t)written >= sizeof(rcb_ref)) {
+        set_probe_result(result, 0, "IEC61850_DISCOVERY_RCB_REF_OVERFLOW", "IEC 61850 discovery probe ReportControl reference is too long.");
+        return 0;
+    }
+
+    IedClientError error = IED_ERROR_OK;
+    ClientReportControlBlock rcb = IedConnection_getRCBValues(connection, &error, rcb_ref, NULL);
+    if (error != IED_ERROR_OK || rcb == NULL) {
+        set_probe_result(result, 0, "IEC61850_DISCOVERY_RCB_READ_FAILED", "IEC 61850 discovery probe failed to read ReportControl values.");
+        return 0;
+    }
+
+    printf("      RptID: %s\n", ClientReportControlBlock_getRptId(rcb) != NULL ? ClientReportControlBlock_getRptId(rcb) : "");
+    printf("      DatSet: %s\n", ClientReportControlBlock_getDataSetReference(rcb) != NULL ? ClientReportControlBlock_getDataSetReference(rcb) : "");
+    printf("      ConfRev: %u\n", ClientReportControlBlock_getConfRev(rcb));
+    printf("      RptEna: %s\n", ClientReportControlBlock_getRptEna(rcb) ? "true" : "false");
+    printf("      BufTm: %u\n", ClientReportControlBlock_getBufTm(rcb));
+    printf("      IntgPd: %u\n", ClientReportControlBlock_getIntgPd(rcb));
+    ClientReportControlBlock_destroy(rcb);
+    return 1;
+}
+
+static int discover_reports(IedConnection connection, const char* logical_node_ref, ACSIClass report_class, const char* label, size_t* report_count, UnitLabIedModelLoadResult* result)
+{
+    IedClientError error = IED_ERROR_OK;
+    LinkedList reports = IedConnection_getLogicalNodeDirectory(connection, &error, logical_node_ref, report_class);
+    if (error != IED_ERROR_OK || reports == NULL) {
+        set_probe_result(result, 0, "IEC61850_DISCOVERY_RCB_DIRECTORY_FAILED", "IEC 61850 discovery probe failed to read a ReportControl directory.");
+        return 0;
+    }
+
+    const char* branch = report_class == ACSI_CLASS_BRCB ? "BR" : "RP";
+    for (LinkedList report = LinkedList_getNext(reports); report != NULL; report = LinkedList_getNext(report)) {
+        const char* report_name = (const char*)LinkedList_getData(report);
+        if (report_count != NULL) {
+            (*report_count)++;
+        }
+        printf("    %s: %s\n", label, report_name);
+        if (!print_report_control_details(connection, logical_node_ref, branch, report_name, result)) {
+            LinkedList_destroy(reports);
+            return 0;
+        }
+    }
+
+    LinkedList_destroy(reports);
+    return 1;
+}
+
+int unitlab_probe_ied_server_discovery(
+    const UnitLabIedServerConfig* config,
+    UnitLabIedModelLoadResult* result)
+{
+    if (config == NULL || result == NULL) {
+        set_probe_result(result, 0, "IEC61850_DISCOVERY_PROBE_INVALID_ARGUMENT", "Server config and result are required.");
+        return 0;
+    }
+
+    IedConnection connection = connect_to_server(config, result);
+    if (connection == NULL) {
+        return 0;
+    }
+
+    IedClientError error = IED_ERROR_OK;
+    LinkedList devices = IedConnection_getLogicalDeviceList(connection, &error);
+    if (error != IED_ERROR_OK || devices == NULL) {
+        IedConnection_close(connection);
+        IedConnection_destroy(connection);
+        set_probe_result(result, 0, "IEC61850_DISCOVERY_LD_DIRECTORY_FAILED", "IEC 61850 discovery probe failed to read logical devices.");
+        return 0;
+    }
+
+    size_t logical_device_count = 0U;
+    size_t logical_node_count = 0U;
+    size_t data_set_count = 0U;
+    size_t report_count = 0U;
+
+    printf("unitlab-iec61850-discover: connected\n");
+    printf("endpoint=%s:%d\n", connect_host(config), config->port);
+
+    for (LinkedList device = LinkedList_getNext(devices); device != NULL; device = LinkedList_getNext(device)) {
+        const char* logical_device = (const char*)LinkedList_getData(device);
+        logical_device_count++;
+        print_string_list_item("LD: ", logical_device);
+
+        error = IED_ERROR_OK;
+        LinkedList logical_nodes = IedConnection_getLogicalDeviceDirectory(connection, &error, logical_device);
+        if (error != IED_ERROR_OK || logical_nodes == NULL) {
+            LinkedList_destroy(devices);
+            IedConnection_close(connection);
+            IedConnection_destroy(connection);
+            set_probe_result(result, 0, "IEC61850_DISCOVERY_LN_DIRECTORY_FAILED", "IEC 61850 discovery probe failed to read logical nodes.");
+            return 0;
+        }
+
+        for (LinkedList logical_node = LinkedList_getNext(logical_nodes); logical_node != NULL; logical_node = LinkedList_getNext(logical_node)) {
+            const char* logical_node_name = (const char*)LinkedList_getData(logical_node);
+            char logical_node_ref[384];
+            int written = snprintf(logical_node_ref, sizeof(logical_node_ref), "%s/%s", logical_device, logical_node_name != NULL ? logical_node_name : "");
+            if (written < 0 || (size_t)written >= sizeof(logical_node_ref)) {
+                LinkedList_destroy(logical_nodes);
+                LinkedList_destroy(devices);
+                IedConnection_close(connection);
+                IedConnection_destroy(connection);
+                set_probe_result(result, 0, "IEC61850_DISCOVERY_LN_REF_OVERFLOW", "IEC 61850 discovery probe logical node reference is too long.");
+                return 0;
+            }
+            logical_node_count++;
+            printf("  LN: %s\n", logical_node_name != NULL ? logical_node_name : "<null>");
+
+            error = IED_ERROR_OK;
+            LinkedList data_objects = IedConnection_getLogicalNodeDirectory(connection, &error, logical_node_ref, ACSI_CLASS_DATA_OBJECT);
+            if (error != IED_ERROR_OK || data_objects == NULL) {
+                LinkedList_destroy(logical_nodes);
+                LinkedList_destroy(devices);
+                IedConnection_close(connection);
+                IedConnection_destroy(connection);
+                set_probe_result(result, 0, "IEC61850_DISCOVERY_DO_DIRECTORY_FAILED", "IEC 61850 discovery probe failed to read data objects.");
+                return 0;
+            }
+            for (LinkedList data_object = LinkedList_getNext(data_objects); data_object != NULL; data_object = LinkedList_getNext(data_object)) {
+                printf("    DO: %s\n", (const char*)LinkedList_getData(data_object));
+            }
+            LinkedList_destroy(data_objects);
+
+            if (!discover_data_sets(connection, logical_node_ref, &data_set_count, result)) {
+                LinkedList_destroy(logical_nodes);
+                LinkedList_destroy(devices);
+                IedConnection_close(connection);
+                IedConnection_destroy(connection);
+                return 0;
+            }
+
+            if (!discover_reports(connection, logical_node_ref, ACSI_CLASS_URCB, "URCB", &report_count, result)
+                || !discover_reports(connection, logical_node_ref, ACSI_CLASS_BRCB, "BRCB", &report_count, result)) {
+                LinkedList_destroy(logical_nodes);
+                LinkedList_destroy(devices);
+                IedConnection_close(connection);
+                IedConnection_destroy(connection);
+                return 0;
+            }
+        }
+        LinkedList_destroy(logical_nodes);
+    }
+
+    LinkedList_destroy(devices);
+    IedConnection_close(connection);
+    IedConnection_destroy(connection);
+
+    printf("summary.logicalDevices=%zu\n", logical_device_count);
+    printf("summary.logicalNodes=%zu\n", logical_node_count);
+    printf("summary.dataSets=%zu\n", data_set_count);
+    printf("summary.reportControls=%zu\n", report_count);
+    set_probe_result(result, 1, "IEC61850_DISCOVERY_PROBE_OK", "IEC 61850 discovery probe completed.");
+    return 1;
+}
+
 static int verify_logical_devices(
     IedConnection connection,
     const UnitLabIedFixtureModel* fixture,
@@ -919,6 +1131,19 @@ int unitlab_probe_ied_server_gi(
 }
 
 #else
+
+int unitlab_probe_ied_server_discovery(
+    const UnitLabIedServerConfig* config,
+    UnitLabIedModelLoadResult* result)
+{
+    (void)config;
+    set_probe_result(
+        result,
+        0,
+        "LIBIEC61850_NOT_LINKED",
+        "libIEC61850 is not linked; build with UNITLAB_IEC61850_SIM_WITH_LIBIEC61850=ON before probing MMS discovery.");
+    return 0;
+}
 
 int unitlab_probe_ied_server_metadata(
     const UnitLabIedFixtureModel* fixture,
