@@ -695,6 +695,199 @@ static void emit_get_name_list_identifiers(const UnitLabMmsPdu* pdu)
     fflush(stdout);
 }
 
+static int report_opt_bit_enabled(const uint8_t* bytes, size_t length, unsigned bit_index)
+{
+    size_t data_index = 1U + (bit_index / 8U);
+    uint8_t mask = (uint8_t)(0x80U >> (bit_index % 8U));
+    if (bytes == NULL || length <= data_index) {
+        return 0;
+    }
+    return (bytes[data_index] & mask) != 0U;
+}
+
+static void print_report_value_summary(const UnitLabMmsBerElement* value)
+{
+    print_data_value_summary(value);
+}
+
+static int read_next_report_value(
+    const uint8_t* bytes,
+    size_t length,
+    size_t* offset,
+    UnitLabMmsBerElement* element,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    size_t consumed = 0U;
+    if (bytes == NULL || offset == NULL || element == NULL || *offset >= length) {
+        return 0;
+    }
+    unitlab_mms_ber_element_init(element);
+    if (!unitlab_mms_ber_read(element, &bytes[*offset], length - *offset, &consumed, diagnostic) || consumed == 0U) {
+        return 0;
+    }
+    *offset += consumed;
+    return 1;
+}
+
+static void emit_information_report_summary(const UnitLabMmsPdu* pdu)
+{
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsBerElement list_name_wrapper;
+    UnitLabMmsBerElement list_name;
+    UnitLabMmsBerElement values_wrapper;
+    UnitLabMmsBerElement value;
+    size_t consumed = 0U;
+    size_t inner_consumed = 0U;
+    size_t offset = 0U;
+    size_t values_offset = 0U;
+    size_t data_ref_count = 0U;
+    size_t value_count = 0U;
+    size_t reason_count = 0U;
+    const uint8_t* opt_flds = NULL;
+    size_t opt_flds_length = 0U;
+    int has_data_reference = 0;
+    int has_reason = 0;
+
+    if (pdu == NULL || pdu->service_bytes == NULL || pdu->service_length == 0U) {
+        return;
+    }
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_ber_element_init(&list_name_wrapper);
+    if (!unitlab_mms_ber_read(&list_name_wrapper, pdu->service_bytes, pdu->service_length, &consumed, &diagnostic)
+        || list_name_wrapper.tag.tag_class != UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC
+        || !list_name_wrapper.tag.constructed
+        || list_name_wrapper.tag.tag_number != 1U) {
+        return;
+    }
+    unitlab_mms_ber_element_init(&list_name);
+    if (unitlab_mms_ber_read(&list_name, list_name_wrapper.value_bytes, list_name_wrapper.value_length, &inner_consumed, &diagnostic)
+        && list_name.value_bytes != NULL
+        && bytes_are_printable_ascii(list_name.value_bytes, list_name.value_length)) {
+        printf("mms-summary: report.variable-list=");
+        print_report_value_summary(&list_name);
+        printf("\n");
+    }
+    offset = consumed;
+    unitlab_mms_ber_element_init(&values_wrapper);
+    if (!unitlab_mms_ber_read(&values_wrapper, &pdu->service_bytes[offset], pdu->service_length - offset, &consumed, &diagnostic)
+        || values_wrapper.tag.tag_class != UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC
+        || !values_wrapper.tag.constructed
+        || values_wrapper.tag.tag_number != 0U) {
+        return;
+    }
+
+    if (!read_next_report_value(values_wrapper.value_bytes, values_wrapper.value_length, &values_offset, &value, &diagnostic)) {
+        return;
+    }
+    printf("mms-summary: report.RptID=");
+    print_report_value_summary(&value);
+    printf("\n");
+
+    if (!read_next_report_value(values_wrapper.value_bytes, values_wrapper.value_length, &values_offset, &value, &diagnostic)) {
+        return;
+    }
+    opt_flds = value.value_bytes;
+    opt_flds_length = value.value_length;
+    has_data_reference = report_opt_bit_enabled(opt_flds, opt_flds_length, 5U);
+    has_reason = report_opt_bit_enabled(opt_flds, opt_flds_length, 6U);
+    printf("mms-summary: report.OptFlds=");
+    print_report_value_summary(&value);
+    printf(" dataRef=%s reason=%s\n", has_data_reference ? "true" : "false", has_reason ? "true" : "false");
+
+    if (report_opt_bit_enabled(opt_flds, opt_flds_length, 1U) && read_next_report_value(values_wrapper.value_bytes, values_wrapper.value_length, &values_offset, &value, &diagnostic)) {
+        printf("mms-summary: report.SqNum=");
+        print_report_value_summary(&value);
+        printf("\n");
+    }
+    if (report_opt_bit_enabled(opt_flds, opt_flds_length, 2U) && read_next_report_value(values_wrapper.value_bytes, values_wrapper.value_length, &values_offset, &value, &diagnostic)) {
+        printf("mms-summary: report.TimeOfEntry=");
+        print_report_value_summary(&value);
+        printf("\n");
+    }
+    if (report_opt_bit_enabled(opt_flds, opt_flds_length, 4U) && read_next_report_value(values_wrapper.value_bytes, values_wrapper.value_length, &values_offset, &value, &diagnostic)) {
+        printf("mms-summary: report.DatSet=");
+        print_report_value_summary(&value);
+        printf("\n");
+    }
+    if (report_opt_bit_enabled(opt_flds, opt_flds_length, 3U) && read_next_report_value(values_wrapper.value_bytes, values_wrapper.value_length, &values_offset, &value, &diagnostic)) {
+        printf("mms-summary: report.BufOvfl=");
+        print_report_value_summary(&value);
+        printf("\n");
+    }
+    if (report_opt_bit_enabled(opt_flds, opt_flds_length, 7U) && read_next_report_value(values_wrapper.value_bytes, values_wrapper.value_length, &values_offset, &value, &diagnostic)) {
+        printf("mms-summary: report.EntryID=");
+        print_report_value_summary(&value);
+        printf("\n");
+    }
+    if (report_opt_bit_enabled(opt_flds, opt_flds_length, 8U) && read_next_report_value(values_wrapper.value_bytes, values_wrapper.value_length, &values_offset, &value, &diagnostic)) {
+        printf("mms-summary: report.ConfRev=");
+        print_report_value_summary(&value);
+        printf("\n");
+    }
+    if (!read_next_report_value(values_wrapper.value_bytes, values_wrapper.value_length, &values_offset, &value, &diagnostic)) {
+        return;
+    }
+    printf("mms-summary: report.inclusion=");
+    print_report_value_summary(&value);
+    printf("\n");
+
+    if (has_data_reference) {
+        while (values_offset < values_wrapper.value_length) {
+            UnitLabMmsBerElement next;
+            size_t checkpoint = values_offset;
+            if (!read_next_report_value(values_wrapper.value_bytes, values_wrapper.value_length, &values_offset, &next, &diagnostic)) {
+                return;
+            }
+            if (!(next.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC
+                && !next.tag.constructed
+                && next.tag.tag_number == 10U
+                && next.value_bytes != NULL
+                && bytes_are_printable_ascii(next.value_bytes, next.value_length))) {
+                values_offset = checkpoint;
+                break;
+            }
+            printf("mms-summary: report.dataRef[%zu]=", data_ref_count);
+            print_report_value_summary(&next);
+            printf("\n");
+            data_ref_count++;
+        }
+    }
+
+    while (values_offset < values_wrapper.value_length) {
+        UnitLabMmsBerElement next;
+        size_t checkpoint = values_offset;
+        if (!read_next_report_value(values_wrapper.value_bytes, values_wrapper.value_length, &values_offset, &next, &diagnostic)) {
+            return;
+        }
+        if (has_reason
+            && next.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC
+            && !next.tag.constructed
+            && next.tag.tag_number == 4U
+            && next.value_length == 2U) {
+            values_offset = checkpoint;
+            break;
+        }
+        printf("mms-summary: report.value[%zu]=", value_count);
+        print_report_value_summary(&next);
+        printf("\n");
+        value_count++;
+    }
+
+    if (has_reason) {
+        while (values_offset < values_wrapper.value_length) {
+            if (!read_next_report_value(values_wrapper.value_bytes, values_wrapper.value_length, &values_offset, &value, &diagnostic)) {
+                return;
+            }
+            printf("mms-summary: report.reason[%zu]=", reason_count);
+            print_report_value_summary(&value);
+            printf("\n");
+            reason_count++;
+        }
+    }
+    printf("mms-summary: report.dataRef-count=%zu value-count=%zu reason-count=%zu\n", data_ref_count, value_count, reason_count);
+    fflush(stdout);
+}
+
 static size_t extract_get_name_list_identifiers(
     const uint8_t* frame,
     size_t frame_length,
@@ -824,6 +1017,9 @@ static void emit_mms_frame_summary(const uint8_t* frame, size_t frame_length)
     }
     if (pdu.kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE && pdu.service_kind == UNITLAB_MMS_SERVICE_GET_NAMED_VARIABLE_LIST_ATTRIBUTES) {
         emit_get_named_variable_list_attributes_summary(&pdu);
+    }
+    if (pdu.kind == UNITLAB_MMS_PDU_UNCONFIRMED && pdu.service_kind == UNITLAB_MMS_SERVICE_INFORMATION_REPORT) {
+        emit_information_report_summary(&pdu);
     }
 }
 
