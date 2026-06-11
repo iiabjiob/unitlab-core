@@ -106,6 +106,17 @@ int unitlab_mms_build_get_variable_access_attributes_request_frame(
     size_t* encoded_length,
     UnitLabMmsDiagnostic* diagnostic);
 
+int unitlab_mms_build_get_named_variable_list_attributes_request_frame(
+    const char* domain_id,
+    const char* item_id,
+    uint32_t invoke_id,
+    uint8_t* scratch,
+    size_t scratch_length,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic);
+
 int unitlab_mms_build_get_name_list_request_frame(
     uint32_t object_class,
     uint32_t object_scope,

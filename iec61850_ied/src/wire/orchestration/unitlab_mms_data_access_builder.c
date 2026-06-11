@@ -588,7 +588,8 @@ int unitlab_mms_build_write_request_frame(
     return unitlab_mms_build_wire_frame_from_pdu(&request_pdu, scratch, scratch_length, buffer, buffer_length, encoded_length, diagnostic);
 }
 
-int unitlab_mms_build_get_variable_access_attributes_request_frame(
+static int unitlab_mms_build_object_name_request_frame(
+    uint32_t service_tag_number,
     const char* domain_id,
     const char* item_id,
     uint32_t invoke_id,
@@ -731,7 +732,7 @@ int unitlab_mms_build_get_variable_access_attributes_request_frame(
     unitlab_mms_ber_element_init(&service_element);
     service_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
     service_element.tag.constructed = 1;
-    service_element.tag.tag_number = 6U;
+    service_element.tag.tag_number = service_tag_number;
     service_element.value_bytes = service_bytes;
     service_element.value_length = service_length;
     if (!wire_builder_encode_ber_element(
@@ -784,6 +785,154 @@ int unitlab_mms_build_get_variable_access_attributes_request_frame(
     }
     memcpy(request_payload + invoke_id_length, service_wrapper_bytes, service_wrapper_length);
     request_length = invoke_id_length + service_wrapper_length;
+
+    unitlab_mms_pdu_init(&request_pdu);
+    request_pdu.kind = UNITLAB_MMS_PDU_CONFIRMED_REQUEST;
+    request_pdu.pdu_bytes = request_payload;
+    request_pdu.pdu_length = request_length;
+    return unitlab_mms_build_wire_frame_from_pdu(&request_pdu, scratch, scratch_length, buffer, buffer_length, encoded_length, diagnostic);
+}
+
+int unitlab_mms_build_get_variable_access_attributes_request_frame(
+    const char* domain_id,
+    const char* item_id,
+    uint32_t invoke_id,
+    uint8_t* scratch,
+    size_t scratch_length,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    return unitlab_mms_build_object_name_request_frame(6U, domain_id, item_id, invoke_id, scratch, scratch_length, buffer, buffer_length, encoded_length, diagnostic);
+}
+
+int unitlab_mms_build_get_named_variable_list_attributes_request_frame(
+    const char* domain_id,
+    const char* item_id,
+    uint32_t invoke_id,
+    uint8_t* scratch,
+    size_t scratch_length,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    UnitLabMmsBerElement domain_id_element;
+    UnitLabMmsBerElement item_id_element;
+    UnitLabMmsBerElement object_name_element;
+    UnitLabMmsBerElement service_element;
+    UnitLabMmsPdu request_pdu;
+    uint8_t domain_id_bytes[64U];
+    uint8_t item_id_bytes[128U];
+    uint8_t object_name_bytes[192U];
+    uint8_t object_name_encoded_bytes[256U];
+    uint8_t service_bytes[256U];
+    uint8_t request_payload[320U];
+    size_t domain_id_length = 0U;
+    size_t item_id_length = 0U;
+    size_t object_name_length = 0U;
+    size_t service_length = 0U;
+    size_t invoke_id_length = 0U;
+    size_t request_length = 0U;
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (item_id == NULL || item_id[0] == '\0' || scratch == NULL || buffer == NULL || encoded_length == NULL) {
+        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "GetNamedVariableListAttributes request build requires an item identifier, scratch buffer, buffer, and encoded_length.");
+        return 0;
+    }
+    if (scratch_length == 0U || buffer_length == 0U) {
+        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "GetNamedVariableListAttributes request build scratch and buffer must be non-zero.");
+        return 0;
+    }
+
+    if (domain_id != NULL && domain_id[0] != '\0') {
+        unitlab_mms_ber_element_init(&domain_id_element);
+        domain_id_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
+        domain_id_element.tag.constructed = 0;
+        domain_id_element.tag.tag_number = 26U;
+        domain_id_element.value_bytes = (const uint8_t*)domain_id;
+        domain_id_element.value_length = strlen(domain_id);
+        if (!wire_builder_encode_ber_element(domain_id_element.tag.tag_class, domain_id_element.tag.constructed, domain_id_element.tag.tag_number, domain_id_element.value_bytes, domain_id_element.value_length, domain_id_bytes, sizeof(domain_id_bytes), &domain_id_length, diagnostic)) {
+            return 0;
+        }
+
+        unitlab_mms_ber_element_init(&item_id_element);
+        item_id_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
+        item_id_element.tag.constructed = 0;
+        item_id_element.tag.tag_number = 26U;
+        item_id_element.value_bytes = (const uint8_t*)item_id;
+        item_id_element.value_length = strlen(item_id);
+        if (!wire_builder_encode_ber_element(item_id_element.tag.tag_class, item_id_element.tag.constructed, item_id_element.tag.tag_number, item_id_element.value_bytes, item_id_element.value_length, item_id_bytes, sizeof(item_id_bytes), &item_id_length, diagnostic)) {
+            return 0;
+        }
+        if (domain_id_length + item_id_length > sizeof(object_name_bytes)) {
+            wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "GetNamedVariableListAttributes ObjectName is too large.");
+            return 0;
+        }
+        memcpy(object_name_bytes, domain_id_bytes, domain_id_length);
+        memcpy(object_name_bytes + domain_id_length, item_id_bytes, item_id_length);
+        object_name_length = domain_id_length + item_id_length;
+
+        unitlab_mms_ber_element_init(&object_name_element);
+        object_name_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+        object_name_element.tag.constructed = 1;
+        object_name_element.tag.tag_number = 1U;
+        object_name_element.value_bytes = object_name_bytes;
+        object_name_element.value_length = object_name_length;
+    } else {
+        unitlab_mms_ber_element_init(&object_name_element);
+        object_name_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+        object_name_element.tag.constructed = 0;
+        object_name_element.tag.tag_number = 0U;
+        object_name_element.value_bytes = (const uint8_t*)item_id;
+        object_name_element.value_length = strlen(item_id);
+    }
+
+    if (!wire_builder_encode_ber_element(object_name_element.tag.tag_class, object_name_element.tag.constructed, object_name_element.tag.tag_number, object_name_element.value_bytes, object_name_element.value_length, object_name_encoded_bytes, sizeof(object_name_encoded_bytes), &object_name_length, diagnostic)) {
+        return 0;
+    }
+
+    unitlab_mms_ber_element_init(&service_element);
+    service_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+    service_element.tag.constructed = 1;
+    service_element.tag.tag_number = 12U;
+    service_element.value_bytes = object_name_encoded_bytes;
+    service_element.value_length = object_name_length;
+    if (!wire_builder_encode_ber_element(service_element.tag.tag_class, service_element.tag.constructed, service_element.tag.tag_number, service_element.value_bytes, service_element.value_length, service_bytes, sizeof(service_bytes), &service_length, diagnostic)) {
+        return 0;
+    }
+
+    {
+        uint8_t invoke_id_raw[5U];
+        size_t invoke_id_raw_length = 0U;
+        uint32_t value = invoke_id;
+
+        do {
+            invoke_id_raw[sizeof(invoke_id_raw) - 1U - invoke_id_raw_length] = (uint8_t)(value & 0xFFU);
+            invoke_id_raw_length++;
+            value >>= 8U;
+        } while (value != 0U && invoke_id_raw_length < sizeof(invoke_id_raw));
+        if (invoke_id_raw[sizeof(invoke_id_raw) - invoke_id_raw_length] & 0x80U) {
+            if (sizeof(invoke_id_raw) == invoke_id_raw_length) {
+                wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "GetNamedVariableListAttributes request invokeID encoding is too large.");
+                return 0;
+            }
+            invoke_id_raw[sizeof(invoke_id_raw) - invoke_id_raw_length - 1U] = 0x00U;
+            invoke_id_raw_length++;
+        }
+        if (!wire_builder_encode_ber_element(UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL, 0, 2U, &invoke_id_raw[sizeof(invoke_id_raw) - invoke_id_raw_length], invoke_id_raw_length, request_payload, sizeof(request_payload), &invoke_id_length, diagnostic)) {
+            return 0;
+        }
+    }
+    if (invoke_id_length + service_length > sizeof(request_payload)) {
+        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "GetNamedVariableListAttributes request payload is too large.");
+        return 0;
+    }
+    memcpy(request_payload + invoke_id_length, service_bytes, service_length);
+    request_length = invoke_id_length + service_length;
 
     unitlab_mms_pdu_init(&request_pdu);
     request_pdu.kind = UNITLAB_MMS_PDU_CONFIRMED_REQUEST;
