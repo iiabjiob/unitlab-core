@@ -1167,6 +1167,42 @@ int unitlab_collect_ied_model_logical_device_data_sets(
     return 1;
 }
 
+int unitlab_collect_ied_model_logical_node_names(
+    const UnitLabIedModelPlan* plan,
+    const char* logical_device_inst,
+    char*** names,
+    size_t* count,
+    char* error,
+    size_t error_size)
+{
+    if (names != NULL) {
+        *names = NULL;
+    }
+    if (count != NULL) {
+        *count = 0U;
+    }
+    if (plan == NULL || logical_device_inst == NULL || logical_device_inst[0] == '\0' || names == NULL || count == NULL) {
+        set_error(error, error_size, "INVALID_ARGUMENT: plan, logical device, names, and count are required.");
+        return 0;
+    }
+    for (size_t node_index = 0U; node_index < plan->logical_node_count; node_index++) {
+        const UnitLabIedModelLogicalNode* logical_node = &plan->logical_nodes[node_index];
+
+        if (strcmp(logical_node->logical_device_inst, logical_device_inst) != 0 || logical_node->name[0] == '\0') {
+            continue;
+        }
+        if (!append_unique_metadata_name(names, count, logical_node->name)) {
+            unitlab_free_ied_model_name_list(*names, *count);
+            *names = NULL;
+            *count = 0U;
+            set_error(error, error_size, "OUT_OF_MEMORY: cannot collect logical node names.");
+            return 0;
+        }
+    }
+    sort_metadata_names(*names, *count);
+    return 1;
+}
+
 int unitlab_collect_ied_model_vmd_named_variable_lists(
     const UnitLabIedModelPlan* plan,
     char*** names,

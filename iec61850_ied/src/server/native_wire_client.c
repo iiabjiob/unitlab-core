@@ -1510,49 +1510,82 @@ int unitlab_run_native_wire_client_with_options(
                     goto fail;
                 }
             }
-            if (invoke_id > UINT32_MAX - 12U) {
+            if (invoke_id > UINT32_MAX - 30U) {
                 set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_INVOKE_INVALID", "Native wire client discover invokeBase leaves too few invoke IDs for the sequence.");
                 goto fail;
             }
-            next_invoke_id = invoke_id + 13U;
+            next_invoke_id = invoke_id + 31U;
             state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_GET_NAME_LIST_REQUESTED;
             if (!emit_state_response(state)) {
                 set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its discover state.");
                 goto fail;
             }
             {
+                char logical_node_names[4U][128U];
                 char data_set_items[4U][128U];
                 char brcb_names[4U][128U];
+                char brcb_logical_nodes[4U][128U];
+                size_t logical_node_count = 0U;
                 size_t data_set_count = 0U;
                 size_t brcb_count = 0U;
-                uint32_t followup_invoke_id = invoke_id + 5U;
+                uint32_t followup_invoke_id = invoke_id + 3U;
 
                 if (!emit_discover_get_name_list_step(data_fd, "vmd-logical-devices", 9U, 0U, NULL, NULL, invoke_id, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)
-                    || !emit_discover_get_name_list_step(data_fd, "lln0-data-attributes", 1U, 1U, domain_id, "LLN0", invoke_id + 1U, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)
-                    || !emit_discover_get_name_list_step(data_fd, "domain-datasets", 2U, 1U, domain_id, NULL, invoke_id + 2U, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
+                    || !emit_discover_get_name_list_step(data_fd, "domain-logical-nodes", 1U, 1U, domain_id, NULL, invoke_id + 1U, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
+                    state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
+                    set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_FAILED", diagnostic.message);
+                    goto fail;
+                }
+                logical_node_count = extract_get_name_list_identifiers(report_frame, report_length, logical_node_names, 4U);
+                if (!emit_discover_get_name_list_step(data_fd, "domain-datasets", 2U, 1U, domain_id, NULL, invoke_id + 2U, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
                     state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
                     set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_FAILED", diagnostic.message);
                     goto fail;
                 }
                 data_set_count = extract_get_name_list_identifiers(report_frame, report_length, data_set_items, 4U);
-                if (!emit_discover_get_name_list_step(data_fd, "lln0-brcbs", 4U, 1U, domain_id, "LLN0", invoke_id + 3U, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
-                    state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
-                    set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_FAILED", diagnostic.message);
-                    goto fail;
+                if (logical_node_count == 0U) {
+                    snprintf(logical_node_names[0], sizeof(logical_node_names[0]), "%s", "LLN0");
+                    logical_node_count = 1U;
+                    printf("native-wire-client: discover-fallback=logical-nodes value=LLN0\n");
+                    fflush(stdout);
                 }
-                brcb_count = extract_get_name_list_identifiers(report_frame, report_length, brcb_names, 4U);
-                if (!emit_discover_get_name_list_step(data_fd, "lln0-urcbs", 5U, 1U, domain_id, "LLN0", invoke_id + 4U, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
-                    state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
-                    set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_FAILED", diagnostic.message);
-                    goto fail;
+                for (size_t ln_index = 0U; ln_index < logical_node_count; ln_index++) {
+                    char step_label[160U];
+                    char ln_brcb_names[4U][128U];
+                    size_t ln_brcb_count = 0U;
+
+                    snprintf(step_label, sizeof(step_label), "ln-data-attributes:%s", logical_node_names[ln_index]);
+                    if (!emit_discover_get_name_list_step(data_fd, step_label, 1U, 1U, domain_id, logical_node_names[ln_index], followup_invoke_id++, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
+                        state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
+                        set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_FAILED", diagnostic.message);
+                        goto fail;
+                    }
+                    snprintf(step_label, sizeof(step_label), "ln-brcbs:%s", logical_node_names[ln_index]);
+                    if (!emit_discover_get_name_list_step(data_fd, step_label, 4U, 1U, domain_id, logical_node_names[ln_index], followup_invoke_id++, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
+                        state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
+                        set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_FAILED", diagnostic.message);
+                        goto fail;
+                    }
+                    ln_brcb_count = extract_get_name_list_identifiers(report_frame, report_length, ln_brcb_names, 4U);
+                    for (size_t brcb_index = 0U; brcb_index < ln_brcb_count && brcb_count < 4U; brcb_index++) {
+                        snprintf(brcb_names[brcb_count], sizeof(brcb_names[brcb_count]), "%s", ln_brcb_names[brcb_index]);
+                        snprintf(brcb_logical_nodes[brcb_count], sizeof(brcb_logical_nodes[brcb_count]), "%s", logical_node_names[ln_index]);
+                        brcb_count++;
+                    }
+                    snprintf(step_label, sizeof(step_label), "ln-urcbs:%s", logical_node_names[ln_index]);
+                    if (!emit_discover_get_name_list_step(data_fd, step_label, 5U, 1U, domain_id, logical_node_names[ln_index], followup_invoke_id++, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
+                        state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
+                        set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_FAILED", diagnostic.message);
+                        goto fail;
+                    }
                 }
                 if (brcb_count == 0U) {
                     printf("native-wire-client: discover-skip=brcb-attrs reason=no-brcb\n");
                     fflush(stdout);
                 }
                 for (size_t index = 0U; index < brcb_count; index++) {
-                    char brcb_item[256U];
-                    snprintf(brcb_item, sizeof(brcb_item), "LLN0$BR$%s$RptEna", brcb_names[index]);
+                    char brcb_item[320U];
+                    snprintf(brcb_item, sizeof(brcb_item), "%s$BR$%s$RptEna", brcb_logical_nodes[index], brcb_names[index]);
                     if (!emit_discover_attributes_step(data_fd, "brcb-attrs", domain_id, brcb_item, followup_invoke_id++, 0, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
                         state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
                         set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_FAILED", diagnostic.message);

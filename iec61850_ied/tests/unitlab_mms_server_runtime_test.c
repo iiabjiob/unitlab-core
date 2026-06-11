@@ -5668,6 +5668,37 @@ static void test_server_runtime_apply_iedscout_logical_node_directory_request_cl
         assert(response_consumed_length == response_length);
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"Mod", strlen("Mod")) == 1);
     }
+
+    unitlab_mms_pending_request_init(&server_runtime.pending_request);
+    wire_length = 0U;
+    consumed_length = 0U;
+    response_length = 0U;
+    response_consumed_length = 0U;
+    assert(unitlab_mms_build_get_name_list_request_frame(1U, 1U, "LD0", NULL, 8U, scratch, sizeof(scratch), wire_bytes, sizeof(wire_bytes), &wire_length, &diagnostic));
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, wire_bytes, wire_length, &consumed_length, &operation_result));
+    assert(operation_result.ok == 1);
+    assert(consumed_length == wire_length);
+    assert(server_runtime.pending_request.kind == UNITLAB_MMS_REQUEST_GET_NAME_LIST);
+    assert(server_runtime.pending_request.browse_object_class == 1U);
+    assert(server_runtime.pending_request.browse_object_scope == 1U);
+    assert(strcmp(server_runtime.pending_request.browse_domain_id, "LD0") == 0);
+    assert(server_runtime.pending_request.browse_continue_after[0] == '\0');
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(response_length > 0U);
+    {
+        UnitLabMmsAssociationFrame fixture;
+
+        unitlab_mms_association_frame_init(&fixture);
+        assert(unitlab_mms_association_frame_decode(&fixture, response_bytes, response_length, &response_consumed_length, &diagnostic));
+        assert(response_consumed_length == response_length);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"LLN0", strlen("LLN0")) == 1);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"XCBR1", strlen("XCBR1")) == 1);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"Mod", strlen("Mod")) == 0);
+    }
 }
 
 static void test_server_runtime_unsupported_confirmed_service_builds_confirmed_error(void)
