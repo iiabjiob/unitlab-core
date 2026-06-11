@@ -562,7 +562,10 @@ static size_t extract_get_name_list_identifiers(
     const uint8_t* frame,
     size_t frame_length,
     char identifiers[][128U],
-    size_t max_identifiers)
+    size_t max_identifiers,
+    int* more_follows,
+    char* last_identifier,
+    size_t last_identifier_size)
 {
     UnitLabMmsAssociationFrame association_frame;
     UnitLabMmsPdu pdu;
@@ -572,6 +575,12 @@ static size_t extract_get_name_list_identifiers(
     size_t offset = 0U;
     size_t count = 0U;
 
+    if (more_follows != NULL) {
+        *more_follows = 0;
+    }
+    if (last_identifier != NULL && last_identifier_size > 0U) {
+        last_identifier[0] = '\0';
+    }
     if (identifiers != NULL) {
         for (size_t index = 0U; index < max_identifiers; index++) {
             identifiers[index][0] = '\0';
@@ -613,9 +622,25 @@ static size_t extract_get_name_list_identifiers(
             size_t copy_length = item_element.value_length < 127U ? item_element.value_length : 127U;
             memcpy(identifiers[count], item_element.value_bytes, copy_length);
             identifiers[count][copy_length] = '\0';
+            if (last_identifier != NULL && last_identifier_size > 0U) {
+                size_t last_copy_length = item_element.value_length < last_identifier_size - 1U ? item_element.value_length : last_identifier_size - 1U;
+                memcpy(last_identifier, item_element.value_bytes, last_copy_length);
+                last_identifier[last_copy_length] = '\0';
+            }
             count++;
         }
         offset += item_consumed;
+    }
+    if (consumed < pdu.service_length && more_follows != NULL) {
+        UnitLabMmsBerElement more_follows_element;
+        size_t more_follows_consumed = 0U;
+        unitlab_mms_ber_element_init(&more_follows_element);
+        if (unitlab_mms_ber_read(&more_follows_element, &pdu.service_bytes[consumed], pdu.service_length - consumed, &more_follows_consumed, &diagnostic)
+            && more_follows_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC
+            && more_follows_element.tag.tag_number == 1U
+            && more_follows_element.value_length > 0U) {
+            *more_follows = more_follows_element.value_bytes[0] != 0U;
+        }
     }
     return count;
 }
@@ -1529,6 +1554,8 @@ int unitlab_run_native_wire_client_with_options(
                 size_t data_set_count = 0U;
                 size_t brcb_count = 0U;
                 uint32_t followup_invoke_id = invoke_id + 3U;
+                int more_follows = 0;
+                char last_identifier[128U];
 
                 if (!emit_discover_get_name_list_step(data_fd, "vmd-logical-devices", 9U, 0U, NULL, NULL, invoke_id, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)
                     || !emit_discover_get_name_list_step(data_fd, "domain-logical-nodes", 1U, 1U, domain_id, NULL, invoke_id + 1U, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
@@ -1536,13 +1563,35 @@ int unitlab_run_native_wire_client_with_options(
                     set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_FAILED", diagnostic.message);
                     goto fail;
                 }
-                logical_node_count = extract_get_name_list_identifiers(report_frame, report_length, logical_node_names, 4U);
+                logical_node_count = extract_get_name_list_identifiers(report_frame, report_length, logical_node_names, 4U, &more_follows, last_identifier, sizeof(last_identifier));
+                if (more_follows) {
+                    printf("native-wire-client: discover-truncated=logical-nodes limit=4 continue-after=%s reason=ln-directory-continuation-ambiguous\n", last_identifier[0] != '\0' ? last_identifier : "<none>");
+                    fflush(stdout);
+                }
                 if (!emit_discover_get_name_list_step(data_fd, "domain-datasets", 2U, 1U, domain_id, NULL, invoke_id + 2U, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
                     state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
                     set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_FAILED", diagnostic.message);
                     goto fail;
                 }
-                data_set_count = extract_get_name_list_identifiers(report_frame, report_length, data_set_items, 4U);
+                data_set_count = extract_get_name_list_identifiers(report_frame, report_length, data_set_items, 4U, &more_follows, last_identifier, sizeof(last_identifier));
+                while (more_follows && data_set_count < 4U && last_identifier[0] != '\0') {
+                    char page_items[4U][128U];
+                    size_t page_count;
+                    if (!emit_discover_get_name_list_step(data_fd, "domain-datasets-page", 2U, 1U, domain_id, last_identifier, followup_invoke_id++, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
+                        state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
+                        set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_FAILED", diagnostic.message);
+                        goto fail;
+                    }
+                    page_count = extract_get_name_list_identifiers(report_frame, report_length, page_items, 4U, &more_follows, last_identifier, sizeof(last_identifier));
+                    for (size_t page_index = 0U; page_index < page_count && data_set_count < 4U; page_index++) {
+                        snprintf(data_set_items[data_set_count], sizeof(data_set_items[data_set_count]), "%s", page_items[page_index]);
+                        data_set_count++;
+                    }
+                }
+                if (more_follows) {
+                    printf("native-wire-client: discover-truncated=datasets limit=4 continue-after=%s\n", last_identifier[0] != '\0' ? last_identifier : "<none>");
+                    fflush(stdout);
+                }
                 if (logical_node_count == 0U) {
                     snprintf(logical_node_names[0], sizeof(logical_node_names[0]), "%s", "LLN0");
                     logical_node_count = 1U;
@@ -1566,7 +1615,11 @@ int unitlab_run_native_wire_client_with_options(
                         set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_FAILED", diagnostic.message);
                         goto fail;
                     }
-                    ln_brcb_count = extract_get_name_list_identifiers(report_frame, report_length, ln_brcb_names, 4U);
+                    ln_brcb_count = extract_get_name_list_identifiers(report_frame, report_length, ln_brcb_names, 4U, &more_follows, last_identifier, sizeof(last_identifier));
+                    if (more_follows) {
+                        printf("native-wire-client: discover-truncated=ln-brcbs:%s limit=4 continue-after=%s\n", logical_node_names[ln_index], last_identifier[0] != '\0' ? last_identifier : "<none>");
+                        fflush(stdout);
+                    }
                     for (size_t brcb_index = 0U; brcb_index < ln_brcb_count && brcb_count < 4U; brcb_index++) {
                         snprintf(brcb_names[brcb_count], sizeof(brcb_names[brcb_count]), "%s", ln_brcb_names[brcb_index]);
                         snprintf(brcb_logical_nodes[brcb_count], sizeof(brcb_logical_nodes[brcb_count]), "%s", logical_node_names[ln_index]);
