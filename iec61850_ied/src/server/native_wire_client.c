@@ -977,6 +977,48 @@ static int emit_discover_get_name_list_step(
         diagnostic);
 }
 
+
+static int emit_discover_read_step(
+    int data_fd,
+    const char* label,
+    const char* domain_id,
+    const char* item_id,
+    uint32_t invoke_id,
+    uint8_t* scratch,
+    size_t scratch_length,
+    uint8_t* request,
+    size_t request_length,
+    uint8_t* response,
+    size_t response_length,
+    size_t* encoded_response_length,
+    uint8_t* text_buffer,
+    size_t text_buffer_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    printf(
+        "native-wire-client: discover-step=%s invoke=%u domain=%s item=%s\n",
+        label != NULL ? label : "read",
+        (unsigned)invoke_id,
+        domain_id != NULL ? domain_id : "<none>",
+        item_id != NULL ? item_id : "<none>");
+    fflush(stdout);
+    return emit_read_response(
+        data_fd,
+        domain_id,
+        item_id,
+        invoke_id,
+        scratch,
+        scratch_length,
+        request,
+        request_length,
+        response,
+        response_length,
+        encoded_response_length,
+        text_buffer,
+        text_buffer_length,
+        diagnostic);
+}
+
 static int emit_discover_attributes_step(
     int data_fd,
     const char* label,
@@ -1535,11 +1577,11 @@ int unitlab_run_native_wire_client_with_options(
                     goto fail;
                 }
             }
-            if (invoke_id > UINT32_MAX - 30U) {
+            if (invoke_id > UINT32_MAX - 40U) {
                 set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_INVOKE_INVALID", "Native wire client discover invokeBase leaves too few invoke IDs for the sequence.");
                 goto fail;
             }
-            next_invoke_id = invoke_id + 31U;
+            next_invoke_id = invoke_id + 41U;
             state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_GET_NAME_LIST_REQUESTED;
             if (!emit_state_response(state)) {
                 set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its discover state.");
@@ -1652,8 +1694,15 @@ int unitlab_run_native_wire_client_with_options(
                 }
                 for (size_t index = 0U; index < brcb_count; index++) {
                     char brcb_item[320U];
+                    char brcb_read_item[320U];
                     snprintf(brcb_item, sizeof(brcb_item), "%s$BR$%s$RptEna", brcb_logical_nodes[index], brcb_names[index]);
                     if (!emit_discover_attributes_step(data_fd, "brcb-attrs", domain_id, brcb_item, followup_invoke_id++, 0, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
+                        state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
+                        set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_FAILED", diagnostic.message);
+                        goto fail;
+                    }
+                    snprintf(brcb_read_item, sizeof(brcb_read_item), "%s$BR$%s", brcb_logical_nodes[index], brcb_names[index]);
+                    if (!emit_discover_read_step(data_fd, "brcb-values", domain_id, brcb_read_item, followup_invoke_id++, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
                         state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
                         set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_FAILED", diagnostic.message);
                         goto fail;
