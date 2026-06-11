@@ -33,6 +33,16 @@ typedef enum {
     UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED,
 } UnitLabNativeWireClientState;
 
+enum {
+    UNITLAB_NATIVE_DISCOVERY_MAX_LOGICAL_DEVICES = 64U,
+    UNITLAB_NATIVE_DISCOVERY_MAX_LOGICAL_NODES = 256U,
+    UNITLAB_NATIVE_DISCOVERY_MAX_DATA_SETS = 256U,
+    UNITLAB_NATIVE_DISCOVERY_MAX_RCBS = 256U,
+    UNITLAB_NATIVE_DISCOVERY_MAX_DATA_SET_MEMBERS = 4096U,
+    UNITLAB_NATIVE_DISCOVERY_PAGE_SIZE = 32U,
+    UNITLAB_NATIVE_DISCOVERY_MAX_INVOKE_SPAN = 2048U,
+};
+
 typedef struct {
     char domain[128U];
     size_t logical_device_count;
@@ -62,7 +72,7 @@ typedef struct {
 
 static UnitLabNativeDiscoveredDeviceModel discovered_model;
 static UnitLabNativeSubscriptionModel subscription_model;
-static char discovered_data_set_members[32U][384U];
+static char discovered_data_set_members[UNITLAB_NATIVE_DISCOVERY_MAX_DATA_SET_MEMBERS][384U];
 static size_t discovered_data_set_member_count = 0U;
 
 static const char* state_name(UnitLabNativeWireClientState state)
@@ -2064,7 +2074,7 @@ int unitlab_run_native_wire_client_with_options(
     uint8_t report_frame[2048U];
     size_t report_length = 0U;
     char discovered_domain[128U];
-    char discovered_brcb_items[4U][320U];
+    char discovered_brcb_items[UNITLAB_NATIVE_DISCOVERY_MAX_RCBS][320U];
     size_t discovered_brcb_count = 0U;
     UnitLabMmsDiagnostic diagnostic;
     const char* initial_read_domain = "XCBR1";
@@ -2257,22 +2267,21 @@ int unitlab_run_native_wire_client_with_options(
                     goto fail;
                 }
             }
-            if (invoke_id > UINT32_MAX - 40U) {
+            if (invoke_id > UINT32_MAX - UNITLAB_NATIVE_DISCOVERY_MAX_INVOKE_SPAN) {
                 set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_INVOKE_INVALID", "Native wire client discover invokeBase leaves too few invoke IDs for the sequence.");
                 goto fail;
             }
-            next_invoke_id = invoke_id + 41U;
             state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_GET_NAME_LIST_REQUESTED;
             if (!emit_state_response(state)) {
                 set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its discover state.");
                 goto fail;
             }
             {
-                char logical_device_names[4U][128U];
-                char logical_node_names[4U][128U];
-                char data_set_items[4U][128U];
-                char brcb_names[4U][128U];
-                char brcb_logical_nodes[4U][128U];
+                char logical_device_names[UNITLAB_NATIVE_DISCOVERY_MAX_LOGICAL_DEVICES][128U];
+                char logical_node_names[UNITLAB_NATIVE_DISCOVERY_MAX_LOGICAL_NODES][128U];
+                char data_set_items[UNITLAB_NATIVE_DISCOVERY_MAX_DATA_SETS][128U];
+                char brcb_names[UNITLAB_NATIVE_DISCOVERY_MAX_RCBS][128U];
+                char brcb_logical_nodes[UNITLAB_NATIVE_DISCOVERY_MAX_RCBS][128U];
                 size_t logical_node_count = 0U;
                 size_t data_set_count = 0U;
                 size_t brcb_count = 0U;
@@ -2291,29 +2300,29 @@ int unitlab_run_native_wire_client_with_options(
                     set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_FAILED", diagnostic.message);
                     goto fail;
                 }
-                discovered_model.logical_device_count = extract_get_name_list_identifiers(report_frame, report_length, logical_device_names, 4U, &more_follows, last_identifier, sizeof(last_identifier));
+                discovered_model.logical_device_count = extract_get_name_list_identifiers(report_frame, report_length, logical_device_names, UNITLAB_NATIVE_DISCOVERY_MAX_LOGICAL_DEVICES, &more_follows, last_identifier, sizeof(last_identifier));
                 if (!emit_discover_get_name_list_step(data_fd, "domain-logical-nodes", 1U, 1U, domain_id, NULL, invoke_id + 1U, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
                     state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
                     set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_FAILED", diagnostic.message);
                     goto fail;
                 }
-                logical_node_count = extract_get_name_list_identifiers(report_frame, report_length, logical_node_names, 4U, &more_follows, last_identifier, sizeof(last_identifier));
-                while (more_follows && logical_node_count < 4U && last_identifier[0] != '\0') {
-                    char page_items[4U][128U];
+                logical_node_count = extract_get_name_list_identifiers(report_frame, report_length, logical_node_names, UNITLAB_NATIVE_DISCOVERY_MAX_LOGICAL_NODES, &more_follows, last_identifier, sizeof(last_identifier));
+                while (more_follows && logical_node_count < UNITLAB_NATIVE_DISCOVERY_MAX_LOGICAL_NODES && last_identifier[0] != '\0') {
+                    char page_items[UNITLAB_NATIVE_DISCOVERY_PAGE_SIZE][128U];
                     size_t page_count;
                     if (!emit_discover_get_name_list_step(data_fd, "domain-logical-nodes-page", 1U, 1U, domain_id, last_identifier, followup_invoke_id++, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
                         state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
                         set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_FAILED", diagnostic.message);
                         goto fail;
                     }
-                    page_count = extract_get_name_list_identifiers(report_frame, report_length, page_items, 4U, &more_follows, last_identifier, sizeof(last_identifier));
-                    for (size_t page_index = 0U; page_index < page_count && logical_node_count < 4U; page_index++) {
+                    page_count = extract_get_name_list_identifiers(report_frame, report_length, page_items, UNITLAB_NATIVE_DISCOVERY_PAGE_SIZE, &more_follows, last_identifier, sizeof(last_identifier));
+                    for (size_t page_index = 0U; page_index < page_count && logical_node_count < UNITLAB_NATIVE_DISCOVERY_MAX_LOGICAL_NODES; page_index++) {
                         snprintf(logical_node_names[logical_node_count], sizeof(logical_node_names[logical_node_count]), "%s", page_items[page_index]);
                         logical_node_count++;
                     }
                 }
                 if (more_follows) {
-                    printf("native-wire-client: discover-truncated=logical-nodes limit=4 continue-after=%s\n", last_identifier[0] != '\0' ? last_identifier : "<none>");
+                    printf("native-wire-client: discover-truncated=logical-nodes limit=%u continue-after=%s\n", (unsigned)UNITLAB_NATIVE_DISCOVERY_MAX_LOGICAL_NODES, last_identifier[0] != '\0' ? last_identifier : "<none>");
                     fflush(stdout);
                 }
                 if (!emit_discover_get_name_list_step(data_fd, "domain-datasets", 2U, 1U, domain_id, NULL, followup_invoke_id++, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
@@ -2321,23 +2330,23 @@ int unitlab_run_native_wire_client_with_options(
                     set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_FAILED", diagnostic.message);
                     goto fail;
                 }
-                data_set_count = extract_get_name_list_identifiers(report_frame, report_length, data_set_items, 4U, &more_follows, last_identifier, sizeof(last_identifier));
-                while (more_follows && data_set_count < 4U && last_identifier[0] != '\0') {
-                    char page_items[4U][128U];
+                data_set_count = extract_get_name_list_identifiers(report_frame, report_length, data_set_items, UNITLAB_NATIVE_DISCOVERY_MAX_DATA_SETS, &more_follows, last_identifier, sizeof(last_identifier));
+                while (more_follows && data_set_count < UNITLAB_NATIVE_DISCOVERY_MAX_DATA_SETS && last_identifier[0] != '\0') {
+                    char page_items[UNITLAB_NATIVE_DISCOVERY_PAGE_SIZE][128U];
                     size_t page_count;
                     if (!emit_discover_get_name_list_step(data_fd, "domain-datasets-page", 2U, 1U, domain_id, last_identifier, followup_invoke_id++, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
                         state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
                         set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_FAILED", diagnostic.message);
                         goto fail;
                     }
-                    page_count = extract_get_name_list_identifiers(report_frame, report_length, page_items, 4U, &more_follows, last_identifier, sizeof(last_identifier));
-                    for (size_t page_index = 0U; page_index < page_count && data_set_count < 4U; page_index++) {
+                    page_count = extract_get_name_list_identifiers(report_frame, report_length, page_items, UNITLAB_NATIVE_DISCOVERY_PAGE_SIZE, &more_follows, last_identifier, sizeof(last_identifier));
+                    for (size_t page_index = 0U; page_index < page_count && data_set_count < UNITLAB_NATIVE_DISCOVERY_MAX_DATA_SETS; page_index++) {
                         snprintf(data_set_items[data_set_count], sizeof(data_set_items[data_set_count]), "%s", page_items[page_index]);
                         data_set_count++;
                     }
                 }
                 if (more_follows) {
-                    printf("native-wire-client: discover-truncated=datasets limit=4 continue-after=%s\n", last_identifier[0] != '\0' ? last_identifier : "<none>");
+                    printf("native-wire-client: discover-truncated=datasets limit=%u continue-after=%s\n", (unsigned)UNITLAB_NATIVE_DISCOVERY_MAX_DATA_SETS, last_identifier[0] != '\0' ? last_identifier : "<none>");
                     fflush(stdout);
                 }
                 discovered_model.data_set_count = data_set_count;
@@ -2350,7 +2359,7 @@ int unitlab_run_native_wire_client_with_options(
                 discovered_model.logical_node_count = logical_node_count;
                 for (size_t ln_index = 0U; ln_index < logical_node_count; ln_index++) {
                     char step_label[160U];
-                    char ln_brcb_names[4U][128U];
+                    char ln_brcb_names[UNITLAB_NATIVE_DISCOVERY_PAGE_SIZE][128U];
                     size_t ln_brcb_count = 0U;
 
                     snprintf(step_label, sizeof(step_label), "ln-data-attributes:%s", logical_node_names[ln_index]);
@@ -2365,15 +2374,30 @@ int unitlab_run_native_wire_client_with_options(
                         set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_FAILED", diagnostic.message);
                         goto fail;
                     }
-                    ln_brcb_count = extract_get_name_list_identifiers(report_frame, report_length, ln_brcb_names, 4U, &more_follows, last_identifier, sizeof(last_identifier));
-                    if (more_follows) {
-                        printf("native-wire-client: discover-truncated=ln-brcbs:%s limit=4 continue-after=%s\n", logical_node_names[ln_index], last_identifier[0] != '\0' ? last_identifier : "<none>");
-                        fflush(stdout);
-                    }
-                    for (size_t brcb_index = 0U; brcb_index < ln_brcb_count && brcb_count < 4U; brcb_index++) {
+                    ln_brcb_count = extract_get_name_list_identifiers(report_frame, report_length, ln_brcb_names, UNITLAB_NATIVE_DISCOVERY_PAGE_SIZE, &more_follows, last_identifier, sizeof(last_identifier));
+                    for (size_t brcb_index = 0U; brcb_index < ln_brcb_count && brcb_count < UNITLAB_NATIVE_DISCOVERY_MAX_RCBS; brcb_index++) {
                         snprintf(brcb_names[brcb_count], sizeof(brcb_names[brcb_count]), "%s", ln_brcb_names[brcb_index]);
                         snprintf(brcb_logical_nodes[brcb_count], sizeof(brcb_logical_nodes[brcb_count]), "%s", logical_node_names[ln_index]);
                         brcb_count++;
+                    }
+                    while (more_follows && brcb_count < UNITLAB_NATIVE_DISCOVERY_MAX_RCBS && last_identifier[0] != '\0') {
+                        size_t page_count;
+                        snprintf(step_label, sizeof(step_label), "ln-brcbs-page:%s", logical_node_names[ln_index]);
+                        if (!emit_discover_get_name_list_step(data_fd, step_label, 4U, 1U, domain_id, logical_node_names[ln_index], followup_invoke_id++, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
+                            state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
+                            set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_FAILED", diagnostic.message);
+                            goto fail;
+                        }
+                        page_count = extract_get_name_list_identifiers(report_frame, report_length, ln_brcb_names, UNITLAB_NATIVE_DISCOVERY_PAGE_SIZE, &more_follows, last_identifier, sizeof(last_identifier));
+                        for (size_t brcb_index = 0U; brcb_index < page_count && brcb_count < UNITLAB_NATIVE_DISCOVERY_MAX_RCBS; brcb_index++) {
+                            snprintf(brcb_names[brcb_count], sizeof(brcb_names[brcb_count]), "%s", ln_brcb_names[brcb_index]);
+                            snprintf(brcb_logical_nodes[brcb_count], sizeof(brcb_logical_nodes[brcb_count]), "%s", logical_node_names[ln_index]);
+                            brcb_count++;
+                        }
+                    }
+                    if (more_follows) {
+                        printf("native-wire-client: discover-truncated=ln-brcbs:%s limit=%u continue-after=%s\n", logical_node_names[ln_index], (unsigned)UNITLAB_NATIVE_DISCOVERY_MAX_RCBS, last_identifier[0] != '\0' ? last_identifier : "<none>");
+                        fflush(stdout);
                     }
                     snprintf(step_label, sizeof(step_label), "ln-urcbs:%s", logical_node_names[ln_index]);
                     if (!emit_discover_get_name_list_step(data_fd, step_label, 5U, 1U, domain_id, logical_node_names[ln_index], followup_invoke_id++, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
@@ -2397,7 +2421,7 @@ int unitlab_run_native_wire_client_with_options(
                         goto fail;
                     }
                     snprintf(brcb_read_item, sizeof(brcb_read_item), "%s$BR$%s", brcb_logical_nodes[index], brcb_names[index]);
-                    if (discovered_brcb_count < 4U) {
+                    if (discovered_brcb_count < UNITLAB_NATIVE_DISCOVERY_MAX_RCBS) {
                         snprintf(discovered_domain, sizeof(discovered_domain), "%s", domain_id);
                         snprintf(discovered_brcb_items[discovered_brcb_count], sizeof(discovered_brcb_items[discovered_brcb_count]), "%s", brcb_read_item);
                         printf("native-wire-client: discovered-brcb[%zu] domain=%s item=%s\n", discovered_brcb_count, discovered_domain, discovered_brcb_items[discovered_brcb_count]);
@@ -2422,6 +2446,7 @@ int unitlab_run_native_wire_client_with_options(
                     }
                     (void)collect_get_named_variable_list_members_from_frame(report_frame, report_length);
                 }
+                next_invoke_id = followup_invoke_id;
                 emit_discovered_model_summary("discover");
             }
             state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_READY;
