@@ -2526,6 +2526,20 @@ int unitlab_run_native_wire_client_with_options(
             }
             continue;
         }
+        if (strcmp(command, "connect-ied") == 0) {
+            if (discovered_model.domain[0] == '\0' || discovered_model.logical_node_count == 0U) {
+                set_result(result, "NATIVE_WIRE_CLIENT_CONNECT_IED_NO_DEVICE", "Run discover first before connect-ied.");
+                goto fail;
+            }
+            printf("native-wire-client: connect-ied domain=%s\n", discovered_model.domain);
+            emit_discovered_model_summary("connect-ied");
+            state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_READY;
+            if (!emit_state_response(state)) {
+                set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its ready state after connect-ied.");
+                goto fail;
+            }
+            continue;
+        }
         if (strncmp(command, "rptena", 6U) == 0 && (command[6] == '\0' || command[6] == ' ' || command[6] == '\t')) {
             char* saveptr = NULL;
             char* index_text = strtok_r(command + 6U, " \t", &saveptr);
