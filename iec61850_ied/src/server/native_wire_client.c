@@ -12,6 +12,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "wire/orchestration/unitlab_mms_association_frame.h"
 #include "wire/orchestration/unitlab_mms_live_wire_probe.h"
 #include "wire/orchestration/unitlab_mms_wire_builder.h"
 
@@ -156,6 +157,157 @@ static int connect_socket(const char* host, int port)
     return fd;
 }
 
+static const char* pdu_kind_label(UnitLabMmsPduKind kind)
+{
+    switch (kind) {
+    case UNITLAB_MMS_PDU_CONFIRMED_REQUEST:
+        return "confirmed-request";
+    case UNITLAB_MMS_PDU_CONFIRMED_RESPONSE:
+        return "confirmed-response";
+    case UNITLAB_MMS_PDU_CONFIRMED_ERROR:
+        return "confirmed-error";
+    case UNITLAB_MMS_PDU_UNCONFIRMED:
+        return "unconfirmed";
+    case UNITLAB_MMS_PDU_INITIATE_RESPONSE:
+        return "initiate-response";
+    default:
+        return "other";
+    }
+}
+
+static const char* service_kind_label(UnitLabMmsServiceKind kind)
+{
+    switch (kind) {
+    case UNITLAB_MMS_SERVICE_READ:
+        return "read";
+    case UNITLAB_MMS_SERVICE_WRITE:
+        return "write";
+    case UNITLAB_MMS_SERVICE_GET_NAME_LIST:
+        return "get-name-list";
+    case UNITLAB_MMS_SERVICE_GET_VARIABLE_ACCESS_ATTRIBUTES:
+        return "get-variable-access-attributes";
+    case UNITLAB_MMS_SERVICE_GET_NAMED_VARIABLE_LIST_ATTRIBUTES:
+        return "get-named-variable-list-attributes";
+    case UNITLAB_MMS_SERVICE_INFORMATION_REPORT:
+        return "information-report";
+    default:
+        return "raw";
+    }
+}
+
+static const char* access_result_label(const UnitLabMmsBerElement* element)
+{
+    if (element == NULL) {
+        return "unknown";
+    }
+    if (element->tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && element->tag.tag_number == 0U) {
+        return "failure";
+    }
+    return "success";
+}
+
+static uint32_t decode_unsigned_bytes(const uint8_t* bytes, size_t length)
+{
+    uint32_t value = 0U;
+    for (size_t index = 0U; index < length && index < 4U; index++) {
+        value = (uint32_t)((value << 8U) | bytes[index]);
+    }
+    return value;
+}
+
+static void emit_service_access_results(const UnitLabMmsPdu* pdu)
+{
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsBerElement outer;
+    const uint8_t* list_bytes;
+    size_t list_length;
+    size_t consumed = 0U;
+    size_t offset = 0U;
+    size_t index = 0U;
+
+    if (pdu == NULL || pdu->service_bytes == NULL || pdu->service_length == 0U) {
+        return;
+    }
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    list_bytes = pdu->service_bytes;
+    list_length = pdu->service_length;
+
+    unitlab_mms_ber_element_init(&outer);
+    if (unitlab_mms_ber_read(&outer, pdu->service_bytes, pdu->service_length, &consumed, &diagnostic)
+        && consumed == pdu->service_length
+        && outer.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC
+        && outer.tag.constructed
+        && outer.tag.tag_number == 1U) {
+        list_bytes = outer.value_bytes;
+        list_length = outer.value_length;
+    }
+
+    while (offset < list_length) {
+        UnitLabMmsBerElement result;
+        size_t result_consumed = 0U;
+        unitlab_mms_ber_element_init(&result);
+        if (!unitlab_mms_ber_read(&result, &list_bytes[offset], list_length - offset, &result_consumed, &diagnostic) || result_consumed == 0U) {
+            printf("mms-summary: accessResult[%zu]=decode-failed\n", index);
+            fflush(stdout);
+            return;
+        }
+        if (result.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && result.tag.tag_number == 0U) {
+            printf(
+                "mms-summary: accessResult[%zu]=failure code=%u\n",
+                index,
+                (unsigned)decode_unsigned_bytes(result.value_bytes, result.value_length));
+        } else {
+            printf(
+                "mms-summary: accessResult[%zu]=%s tag=%u length=%zu\n",
+                index,
+                access_result_label(&result),
+                (unsigned)result.tag.tag_number,
+                result.value_length);
+        }
+        fflush(stdout);
+        offset += result_consumed;
+        index++;
+    }
+    printf("mms-summary: accessResult-count=%zu\n", index);
+    fflush(stdout);
+}
+
+static void emit_mms_frame_summary(const uint8_t* frame, size_t frame_length)
+{
+    UnitLabMmsAssociationFrame association_frame;
+    UnitLabMmsPdu pdu;
+    UnitLabMmsDiagnostic diagnostic;
+    size_t consumed = 0U;
+
+    if (frame == NULL || frame_length == 0U) {
+        return;
+    }
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_association_frame_init(&association_frame);
+    if (!unitlab_mms_association_frame_decode(&association_frame, frame, frame_length, &consumed, &diagnostic)) {
+        return;
+    }
+    if (association_frame.presentation.payload_bytes == NULL || association_frame.presentation.payload_length == 0U) {
+        return;
+    }
+    unitlab_mms_pdu_init(&pdu);
+    if (!unitlab_mms_pdu_decode(&pdu, association_frame.presentation.payload_bytes, association_frame.presentation.payload_length, &consumed, &diagnostic)) {
+        return;
+    }
+    printf(
+        "mms-summary: pdu=%s invoke=%u service=%s serviceTag=%u serviceLength=%zu\n",
+        pdu_kind_label(pdu.kind),
+        (unsigned)(pdu.has_invoke_id ? pdu.invoke_id : 0U),
+        pdu.has_service ? service_kind_label(pdu.service_kind) : "none",
+        (unsigned)(pdu.has_service ? pdu.service_tag.tag_number : 0U),
+        pdu.service_length);
+    fflush(stdout);
+    if (pdu.kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE
+        && (pdu.service_kind == UNITLAB_MMS_SERVICE_READ || pdu.service_kind == UNITLAB_MMS_SERVICE_WRITE)) {
+        emit_service_access_results(&pdu);
+    }
+}
+
 static int format_hex_response(const uint8_t* frame, size_t frame_length, char* response, size_t response_length)
 {
     static const char hex_digits[] = "0123456789abcdef";
@@ -183,6 +335,15 @@ static int emit_text_response(const char* text)
 {
     printf("%s\n", text);
     fflush(stdout);
+    return 1;
+}
+
+static int emit_wire_frame_response(const uint8_t* frame, size_t frame_length, uint8_t* text_buffer, size_t text_buffer_length)
+{
+    if (!format_hex_response(frame, frame_length, (char*)text_buffer, text_buffer_length) || !emit_text_response((const char*)text_buffer)) {
+        return 0;
+    }
+    emit_mms_frame_summary(frame, frame_length);
     return 1;
 }
 
@@ -272,14 +433,14 @@ static int emit_confirmed_response(
         }
         return 0;
     }
-    if (encoded_response_length == NULL || !format_hex_response(response, *encoded_response_length, (char*)text_buffer, text_buffer_length)) {
+    if (encoded_response_length == NULL || !emit_wire_frame_response(response, *encoded_response_length, text_buffer, text_buffer_length)) {
         if (diagnostic != NULL) {
             diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL;
             snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Native wire client could not format the confirmed response.");
         }
         return 0;
     }
-    return emit_text_response((const char*)text_buffer);
+    return 1;
 }
 
 static int emit_read_response(
@@ -442,14 +603,11 @@ static int emit_write_bool_response(
             return 0;
         }
         if (extra_frame > 0) {
-            if (encoded_response_length == NULL || !format_hex_response(response, *encoded_response_length, (char*)text_buffer, text_buffer_length)) {
+            if (encoded_response_length == NULL || !emit_wire_frame_response(response, *encoded_response_length, text_buffer, text_buffer_length)) {
                 if (diagnostic != NULL) {
                     diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL;
                     snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Native wire client could not format the immediate post-write frame.");
                 }
-                return 0;
-            }
-            if (!emit_text_response((const char*)text_buffer)) {
                 return 0;
             }
         }
@@ -531,14 +689,11 @@ static int emit_write_element_response(
             return 0;
         }
         if (extra_frame > 0) {
-            if (encoded_response_length == NULL || !format_hex_response(response, *encoded_response_length, (char*)text_buffer, text_buffer_length)) {
+            if (encoded_response_length == NULL || !emit_wire_frame_response(response, *encoded_response_length, text_buffer, text_buffer_length)) {
                 if (diagnostic != NULL) {
                     diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL;
                     snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Native wire client could not format the immediate post-write frame.");
                 }
-                return 0;
-            }
-            if (!emit_text_response((const char*)text_buffer)) {
                 return 0;
             }
         }
@@ -1142,7 +1297,7 @@ int unitlab_run_native_wire_client_with_options(
                 set_result(result, "NATIVE_WIRE_CLIENT_REPORT_FRAME_FAILED", "Native wire client could not receive the report frame.");
                 goto fail;
             }
-            if (!format_hex_response(report_frame, report_length, (char*)frame, sizeof(frame)) || !emit_text_response((const char*)frame)) {
+            if (!emit_wire_frame_response(report_frame, report_length, frame, sizeof(frame))) {
                 state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
                 set_result(result, "NATIVE_WIRE_CLIENT_RESPONSE_FAILED", "Native wire client could not emit the report frame.");
                 goto fail;
