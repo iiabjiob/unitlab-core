@@ -14,6 +14,7 @@ const errorMessage = ref<string | null>(null)
 const transcript = computed(() => state.value?.transcript ?? [])
 const lastDiagnostic = computed(() => state.value?.last_diagnostic ?? null)
 const sessionStatus = computed(() => state.value?.session_open ? "Connected" : "Disconnected")
+const discoveryStatus = computed(() => state.value?.last_discovery ? "Structure loaded" : "Not discovered")
 const liveWireStatus = computed(() => state.value?.live_wire_open ? "Wire connected" : "Wire closed")
 const reportStatus = computed(() => state.value?.last_report ? "Report received" : "Waiting for report")
 const wireFrameStatus = computed(() => state.value?.live_wire_last_frame_length ? `${state.value.live_wire_last_frame_length} bytes` : "No frame yet")
@@ -74,36 +75,25 @@ function formatJson(value: unknown): string {
           <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="loading" @click="refreshState">
             Refresh state
           </UiButton>
-          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('open', Iec61850ClientAPI.openSession)">
-            {{ busyAction === 'open' ? 'Opening...' : 'Open session' }}
+          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('discover', Iec61850ClientAPI.discoverIed)">
+            {{ busyAction === 'discover' ? 'Discovering...' : 'Discover' }}
           </UiButton>
-          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('close', Iec61850ClientAPI.closeSession)">
-            {{ busyAction === 'close' ? 'Closing...' : 'Close session' }}
+          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('connect', Iec61850ClientAPI.connectIed)">
+            {{ busyAction === 'connect' ? 'Connecting...' : 'Connect' }}
           </UiButton>
-        </div>
-        <div class="iec61850-client-page__action-group">
-          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('read', Iec61850ClientAPI.readReportControl)">
-            {{ busyAction === 'read' ? 'Reading...' : 'Read RCB' }}
+          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('disconnect', Iec61850ClientAPI.disconnectIed)">
+            {{ busyAction === 'disconnect' ? 'Disconnecting...' : 'Disconnect' }}
           </UiButton>
-          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('reserve', Iec61850ClientAPI.reserveReportControl)">
-            {{ busyAction === 'reserve' ? 'Reserving...' : 'Reserve' }}
-          </UiButton>
-          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('enable', Iec61850ClientAPI.enableReportControl)">
-            {{ busyAction === 'enable' ? 'Enabling...' : 'Enable' }}
-          </UiButton>
-          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('disable', Iec61850ClientAPI.disableReportControl)">
-            {{ busyAction === 'disable' ? 'Disabling...' : 'Disable' }}
-          </UiButton>
-          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('release', Iec61850ClientAPI.releaseReportControl)">
-            {{ busyAction === 'release' ? 'Releasing...' : 'Release' }}
+          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('close-ied', Iec61850ClientAPI.closeIed)">
+            {{ busyAction === 'close-ied' ? 'Closing IED...' : 'Close IED' }}
           </UiButton>
         </div>
         <div class="iec61850-client-page__action-group">
+          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('rptena', Iec61850ClientAPI.enableReporting)">
+            {{ busyAction === 'rptena' ? 'Subscribing...' : 'RptEna' }}
+          </UiButton>
           <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('gi', Iec61850ClientAPI.sendGeneralInterrogation)">
-            {{ busyAction === 'gi' ? 'Requesting GI...' : 'Request GI' }}
-          </UiButton>
-          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('subscription', Iec61850ClientAPI.runSubscriptionPlan)">
-            {{ busyAction === 'subscription' ? 'Running...' : 'Run subscription' }}
+            {{ busyAction === 'gi' ? 'Requesting GI...' : 'GI' }}
           </UiButton>
         </div>
         <div class="iec61850-client-page__action-group">
@@ -133,6 +123,10 @@ function formatJson(value: unknown): string {
       <div class="iec61850-client-page__metric">
         <span class="iec61850-client-page__metric-label">Session</span>
         <span class="iec61850-client-page__metric-value">{{ sessionStatus }}</span>
+      </div>
+      <div class="iec61850-client-page__metric">
+        <span class="iec61850-client-page__metric-label">Discovery</span>
+        <span class="iec61850-client-page__metric-value">{{ discoveryStatus }}</span>
       </div>
       <div class="iec61850-client-page__metric">
         <span class="iec61850-client-page__metric-label">Transcript</span>

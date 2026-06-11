@@ -64,6 +64,26 @@ async def open_client_session() -> dict:
     return _run_action("open-session", get_iec61850_client_control_service().open_session)
 
 
+@router.post("/ied/discover")
+async def discover_ied() -> dict:
+    return _run_action("discover-ied", get_iec61850_client_control_service().discover_ied)
+
+
+@router.post("/ied/connect")
+async def connect_ied() -> dict:
+    return _run_action("connect-ied", get_iec61850_client_control_service().connect_ied)
+
+
+@router.post("/ied/disconnect")
+async def disconnect_ied() -> dict:
+    return _run_action("disconnect-ied", get_iec61850_client_control_service().disconnect_ied)
+
+
+@router.post("/ied/close")
+async def close_ied() -> dict:
+    return _run_action("close-ied", get_iec61850_client_control_service().close_ied)
+
+
 @router.post("/session/close")
 async def close_client_session() -> dict:
     return _run_action("close-session", get_iec61850_client_control_service().close_session)
@@ -82,6 +102,11 @@ async def reserve_report_control() -> dict:
 @router.post("/report-control/enable")
 async def enable_report_control() -> dict:
     return _run_action("enable-report-control", get_iec61850_client_control_service().enable_report_control)
+
+
+@router.post("/report-control/rptena")
+async def enable_reporting() -> dict:
+    return _run_action("rptena", get_iec61850_client_control_service().enable_reporting)
 
 
 @router.post("/report-control/gi")

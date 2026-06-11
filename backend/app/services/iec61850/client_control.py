@@ -58,6 +58,7 @@ class Iec61850ClientControlSnapshot:
     endpoint: Iec61850DeviceEndpoint
     candidate: Iec61850ReportControlCandidate
     last_read: Iec61850ReportControlReadResult | None
+    last_discovery: dict | None
     last_state: Iec61850ReportControlState | None
     last_report: Iec61850ReportEvent | None
     last_plan: Iec61850ReportSubscriptionPlan | None
@@ -92,6 +93,7 @@ class Iec61850ClientControlService:
         self._endpoint = endpoint or _default_endpoint()
         self._candidate = candidate or _default_candidate()
         self._last_read: Iec61850ReportControlReadResult | None = None
+        self._last_discovery: dict | None = None
         self._last_state: Iec61850ReportControlState | None = None
         self._last_report: Iec61850ReportEvent | None = None
         self._last_plan: Iec61850ReportSubscriptionPlan | None = None
@@ -128,6 +130,7 @@ class Iec61850ClientControlService:
                 endpoint=self._endpoint,
                 candidate=self._candidate,
                 last_read=self._last_read,
+                last_discovery=self._last_discovery,
                 last_state=self._last_state,
                 last_report=self._last_report,
                 last_plan=self._last_plan,
@@ -149,9 +152,67 @@ class Iec61850ClientControlService:
                 post=lambda _result: setattr(self, "_session_open", True),
             )
 
+    def discover_ied(self) -> Iec61850ClientControlSnapshot:
+        with self._lock:
+            return self._run("discover-ied", self._discover_ied)
+
+    def connect_ied(self) -> Iec61850ClientControlSnapshot:
+        with self._lock:
+            if self._session_open:
+                self._runtime._append_event(
+                    kind="ied-connect",
+                    session_id=self._session_id,
+                    endpoint_id=self._endpoint.id,
+                    client_id=self._client_id,
+                    outcome="already-connected",
+                )
+                return self.snapshot()
+            return self._run(
+                "connect-ied",
+                lambda: self._runtime.open_session(session_id=self._session_id, endpoint=self._endpoint, candidates=[self._candidate]),
+                post=lambda _result: setattr(self, "_session_open", True),
+            )
+
     def close_session(self) -> Iec61850ClientControlSnapshot:
         with self._lock:
             return self._run("close-session", lambda: self._runtime.close_session(self._session_id), post=lambda _result: setattr(self, "_session_open", False))
+
+    def disconnect_ied(self) -> Iec61850ClientControlSnapshot:
+        with self._lock:
+            if not self._session_open:
+                self._runtime._append_event(
+                    kind="ied-disconnect",
+                    session_id=self._session_id,
+                    endpoint_id=self._endpoint.id,
+                    client_id=self._client_id,
+                    outcome="already-disconnected",
+                )
+                return self.snapshot()
+            return self._run("disconnect-ied", lambda: self._runtime.close_session(self._session_id), post=lambda _result: setattr(self, "_session_open", False))
+
+    def close_ied(self) -> Iec61850ClientControlSnapshot:
+        with self._lock:
+            if self._live_wire_process is not None:
+                self._stop_live_wire_transport()
+            if self._session_open:
+                self._runtime.close_session(self._session_id)
+            self._session_open = False
+            self._last_read = None
+            self._last_discovery = None
+            self._last_state = None
+            self._last_report = None
+            self._last_plan = None
+            self._last_diagnostic = None
+            self._live_wire_last_frame = None
+            self._live_wire_last_diagnostic = None
+            self._runtime._append_event(
+                kind="ied-close",
+                session_id=self._session_id,
+                endpoint_id=self._endpoint.id,
+                client_id=self._client_id,
+                outcome="removed-from-memory",
+            )
+            return self.snapshot()
 
     def read_report_control(self) -> Iec61850ClientControlSnapshot:
         with self._lock:
@@ -176,6 +237,10 @@ class Iec61850ClientControlService:
                 lambda: self._runtime.enable_report_control(session_id=self._session_id, candidate=self._candidate, client_id=self._client_id),
                 post=lambda result: setattr(self, "_last_state", result),
             )
+
+    def enable_reporting(self) -> Iec61850ClientControlSnapshot:
+        with self._lock:
+            return self._run("rptena", self._enable_reporting)
 
     def send_general_interrogation(self) -> Iec61850ClientControlSnapshot:
         with self._lock:
@@ -238,6 +303,30 @@ class Iec61850ClientControlService:
         self._live_wire_last_frame = None
         self._live_wire_last_diagnostic = None
         self._start_live_wire_process_transport()
+
+    def _discover_ied(self) -> None:
+        if not self._session_open:
+            self._runtime.open_session(session_id=self._session_id, endpoint=self._endpoint, candidates=[self._candidate])
+            self._session_open = True
+        read_result = self._runtime.read_report_control(session_id=self._session_id, endpoint=self._endpoint, candidate=self._candidate)
+        self._last_read = read_result
+        self._last_state = read_result.state
+        self._last_discovery = _build_discovery_structure(self._endpoint, self._candidate, read_result)
+        self._runtime._append_event(
+            kind="ied-discover",
+            session_id=self._session_id,
+            endpoint_id=self._endpoint.id,
+            candidate_id=self._candidate.id,
+            report_control_name=self._candidate.report_control_name,
+            client_id=self._client_id,
+            outcome="structure-ready",
+            message="Discovered LD/LN/DataSet/ReportControl structure from the active in-memory IED.",
+        )
+
+    def _enable_reporting(self) -> None:
+        reserved = self._runtime.reserve_report_control(session_id=self._session_id, candidate=self._candidate, client_id=self._client_id)
+        enabled = self._runtime.enable_report_control(session_id=self._session_id, candidate=self._candidate, client_id=self._client_id)
+        self._last_state = enabled if enabled is not None else reserved
 
     def _start_live_wire_process_transport(self) -> None:
         subscription_plan = _build_subscription_plan(self._candidate)
@@ -492,6 +581,68 @@ def _read_process_stdout_line(process, *, timeout_deadline: float, line_buffer: 
         line_buffer.extend(chunk)
 
 
+
+
+def _build_discovery_structure(
+    endpoint: Iec61850DeviceEndpoint,
+    candidate: Iec61850ReportControlCandidate,
+    read_result: Iec61850ReportControlReadResult,
+) -> dict:
+    signal_items = [
+        {
+            "reference": signal.reference,
+            "fc": signal.fc,
+        }
+        for signal in candidate.signals
+    ]
+    data_set_ref = candidate.data_set_ref or f"{candidate.ied_name}{candidate.logical_device_inst}/{candidate.logical_node_name}.dsEvents"
+    return {
+        "schema": "unitlab.iec61850.client.discovery.v1",
+        "endpoint": {
+            "id": endpoint.id,
+            "mode": endpoint.mode.value,
+            "iedName": endpoint.ied_name,
+            "accessPointName": endpoint.access_point_name,
+            "host": endpoint.host,
+            "port": endpoint.port,
+        },
+        "logicalDevices": [
+            {
+                "iedName": candidate.ied_name,
+                "inst": candidate.logical_device_inst,
+                "reference": f"{candidate.ied_name}{candidate.logical_device_inst}",
+            }
+        ],
+        "logicalNodes": [
+            {
+                "logicalDeviceInst": candidate.logical_device_inst,
+                "name": candidate.logical_node_name,
+                "reference": f"{candidate.ied_name}{candidate.logical_device_inst}/{candidate.logical_node_name}",
+            }
+        ],
+        "dataSets": [
+            {
+                "reference": data_set_ref,
+                "members": signal_items,
+                "memberCount": len(signal_items),
+            }
+        ],
+        "reportControls": [
+            {
+                "id": candidate.id,
+                "name": candidate.report_control_name,
+                "kind": candidate.report_kind.value,
+                "rptId": candidate.rpt_id,
+                "dataSetRef": data_set_ref,
+                "confRev": candidate.conf_rev,
+                "indexed": candidate.indexed,
+                "bufferTimeMs": candidate.buffer_time_ms,
+                "integrityPeriodMs": candidate.integrity_period_ms,
+                "runtimeStatus": read_result.state.runtime_status.value,
+            }
+        ],
+        "signals": signal_items,
+    }
 
 
 def _utc_now() -> datetime:

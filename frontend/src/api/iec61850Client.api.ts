@@ -193,6 +193,7 @@ export type Iec61850ClientState = {
     integrity_period_ms: number | null
   }
   last_read: Record<string, unknown> | null
+  last_discovery: Record<string, unknown> | null
   last_state: Record<string, unknown> | null
   last_report: Record<string, unknown> | null
   last_plan: Record<string, unknown> | null
@@ -310,6 +311,22 @@ export const Iec61850ClientAPI = {
     return httpData.post<Iec61850ClientState>(`${API_V1}/iec61850/client/session/open`)
   },
 
+  discoverIed() {
+    return httpData.post<Iec61850ClientState>(`${API_V1}/iec61850/client/ied/discover`)
+  },
+
+  connectIed() {
+    return httpData.post<Iec61850ClientState>(`${API_V1}/iec61850/client/ied/connect`)
+  },
+
+  disconnectIed() {
+    return httpData.post<Iec61850ClientState>(`${API_V1}/iec61850/client/ied/disconnect`)
+  },
+
+  closeIed() {
+    return httpData.post<Iec61850ClientState>(`${API_V1}/iec61850/client/ied/close`)
+  },
+
   closeSession() {
     return httpData.post<Iec61850ClientState>(`${API_V1}/iec61850/client/session/close`)
   },
@@ -324,6 +341,10 @@ export const Iec61850ClientAPI = {
 
   enableReportControl() {
     return httpData.post<Iec61850ClientState>(`${API_V1}/iec61850/client/report-control/enable`)
+  },
+
+  enableReporting() {
+    return httpData.post<Iec61850ClientState>(`${API_V1}/iec61850/client/report-control/rptena`)
   },
 
   sendGeneralInterrogation() {

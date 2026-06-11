@@ -244,3 +244,58 @@ def test_client_control_service_can_drive_a_live_wire_transport_smoke(monkeypatc
     state = service.stop_live_wire_transport()
     assert state.live_wire_open is False
     assert [event.kind for event in state.transcript][-1] == "wire-session-close"
+
+
+def test_debug_discover_opens_session_and_projects_structure():
+    service = Iec61850ClientControlService()
+
+    snapshot = service.discover_ied()
+
+    assert snapshot.session_open is True
+    assert snapshot.last_discovery is not None
+    assert snapshot.last_discovery["schema"] == "unitlab.iec61850.client.discovery.v1"
+    assert snapshot.last_discovery["logicalDevices"][0]["inst"] == "LD0"
+    assert snapshot.last_discovery["logicalNodes"][0]["name"] == "LLN0"
+    assert snapshot.last_discovery["dataSets"][0]["memberCount"] == 1
+    assert snapshot.last_discovery["reportControls"][0]["name"] == "brcbEvents"
+    assert snapshot.transcript[-1].kind == "ied-discover"
+
+
+def test_debug_close_ied_removes_in_memory_state():
+    service = Iec61850ClientControlService()
+    service.discover_ied()
+    snapshot = service.close_ied()
+
+    assert snapshot.session_open is False
+    assert snapshot.last_discovery is None
+    assert snapshot.last_read is None
+    assert snapshot.last_state is None
+    assert snapshot.last_report is None
+    assert snapshot.transcript[-1].kind == "ied-close"
+
+
+def test_debug_rptena_reserves_and_enables_report_control():
+    service = Iec61850ClientControlService()
+    service.connect_ied()
+
+    snapshot = service.enable_reporting()
+
+    assert snapshot.last_state is not None
+    assert snapshot.last_state.enabled is True
+    assert [event.kind for event in snapshot.transcript[-2:]] == ["report-control-reserve", "report-control-enable"]
+
+
+def test_debug_connect_disconnect_are_idempotent_for_debug_view():
+    service = Iec61850ClientControlService()
+
+    connected = service.connect_ied()
+    connected_again = service.connect_ied()
+    disconnected = service.disconnect_ied()
+    disconnected_again = service.disconnect_ied()
+
+    assert connected.session_open is True
+    assert connected_again.session_open is True
+    assert connected_again.transcript[-1].outcome == "already-connected"
+    assert disconnected.session_open is False
+    assert disconnected_again.session_open is False
+    assert disconnected_again.transcript[-1].outcome == "already-disconnected"
