@@ -260,23 +260,27 @@ int unitlab_mms_pending_request_collect_get_name_list_names(const UnitLabMmsPend
     } else if (request->browse_object_class == 2U && request->browse_object_scope == 2U) {
         *names = NULL;
         *count = 0U;
-    } else if ((request->browse_object_class == 1U || request->browse_object_class == 3U) && request->browse_object_scope == 1U) {
+    } else if (request->browse_object_class == 1U && request->browse_object_scope == 1U) {
         if (request->browse_domain_id[0] == '\0') {
-            set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "GetNameList logical-node browse requires a domain identifier.");
+            set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "GetNameList logical-node directory browse requires a domain identifier.");
             return 0;
         }
-        if (request->browse_continue_after[0] == '\0') {
-            if (!unitlab_collect_ied_model_logical_node_names(
-                    plan,
-                    request->browse_domain_id,
-                    names,
-                    count,
-                    model_error,
-                    sizeof(model_error))) {
-                set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, model_error[0] != '\0' ? model_error : "GetNameList logical-node directory browse failed.");
-                return 0;
-            }
-        } else if (!unitlab_collect_ied_model_logical_node_variables(
+        if (!unitlab_collect_ied_model_logical_node_names(
+                plan,
+                request->browse_domain_id,
+                names,
+                count,
+                model_error,
+                sizeof(model_error))) {
+            set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, model_error[0] != '\0' ? model_error : "GetNameList logical-node directory browse failed.");
+            return 0;
+        }
+    } else if (request->browse_object_class == 3U && request->browse_object_scope == 1U) {
+        if (request->browse_domain_id[0] == '\0' || request->browse_continue_after[0] == '\0') {
+            set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "GetNameList logical-node contents browse requires a domain and logical node identifier.");
+            return 0;
+        }
+        if (!unitlab_collect_ied_model_logical_node_variables(
                 plan,
                 request->browse_domain_id,
                 request->browse_continue_after,
