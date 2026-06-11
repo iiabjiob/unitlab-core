@@ -2513,6 +2513,19 @@ int unitlab_run_native_wire_client_with_options(
             }
             continue;
         }
+        if (strcmp(command, "close-ied") == 0) {
+            discovered_domain[0] = '\0';
+            memset(discovered_brcb_items, 0, sizeof(discovered_brcb_items));
+            discovered_brcb_count = 0U;
+            reset_discovered_model();
+            emit_discovered_model_summary("close-ied");
+            state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_READY;
+            if (!emit_state_response(state)) {
+                set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its ready state after close-ied.");
+                goto fail;
+            }
+            continue;
+        }
         if (strncmp(command, "rptena", 6U) == 0 && (command[6] == '\0' || command[6] == ' ' || command[6] == '\t')) {
             char* saveptr = NULL;
             char* index_text = strtok_r(command + 6U, " \t", &saveptr);
