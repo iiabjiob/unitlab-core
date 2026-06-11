@@ -245,6 +245,142 @@ static uint32_t decode_unsigned_bytes(const uint8_t* bytes, size_t length)
     return value;
 }
 
+static const char* brcb_field_name(size_t index)
+{
+    static const char* fields[] = {
+        "RptID",
+        "RptEna",
+        "DatSet",
+        "ConfRev",
+        "OptFlds",
+        "BufTm",
+        "SqNum",
+        "TrgOps",
+        "IntgPd",
+        "GI",
+        "PurgeBuf",
+        "EntryID",
+        "TimeofEntry",
+        "ResvTms",
+    };
+    return index < sizeof(fields) / sizeof(fields[0]) ? fields[index] : NULL;
+}
+
+static const char* urcb_field_name(size_t index)
+{
+    static const char* fields[] = {
+        "RptID",
+        "RptEna",
+        "Resv",
+        "DatSet",
+        "ConfRev",
+        "OptFlds",
+        "BufTm",
+        "SqNum",
+        "TrgOps",
+        "IntgPd",
+        "GI",
+    };
+    return index < sizeof(fields) / sizeof(fields[0]) ? fields[index] : NULL;
+}
+
+static size_t count_constructed_children(const UnitLabMmsBerElement* element)
+{
+    UnitLabMmsDiagnostic diagnostic;
+    size_t offset = 0U;
+    size_t count = 0U;
+
+    if (element == NULL || !element->tag.constructed || element->value_bytes == NULL) {
+        return 0U;
+    }
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    while (offset < element->value_length) {
+        UnitLabMmsBerElement child;
+        size_t consumed = 0U;
+        unitlab_mms_ber_element_init(&child);
+        if (!unitlab_mms_ber_read(&child, &element->value_bytes[offset], element->value_length - offset, &consumed, &diagnostic) || consumed == 0U) {
+            return count;
+        }
+        count++;
+        offset += consumed;
+    }
+    return count;
+}
+
+static void print_data_value_summary(const UnitLabMmsBerElement* value)
+{
+    if (value == NULL || value->value_bytes == NULL || value->value_length == 0U) {
+        printf("<empty>");
+        return;
+    }
+    if (value->tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && value->tag.tag_number == 3U && value->value_length == 1U) {
+        printf("%s", value->value_bytes[0] != 0U ? "true" : "false");
+    } else if (bytes_are_printable_ascii(value->value_bytes, value->value_length)) {
+        size_t printable_length = value->value_length < 96U ? value->value_length : 96U;
+        printf("\"");
+        fwrite(value->value_bytes, 1U, printable_length, stdout);
+        if (value->value_length > printable_length) {
+            fputs("...", stdout);
+        }
+        printf("\"");
+    } else if (value->value_length <= 4U && (value->tag.tag_number == 5U || value->tag.tag_number == 6U)) {
+        printf("%u", (unsigned)decode_unsigned_bytes(value->value_bytes, value->value_length));
+    } else {
+        printf("0x");
+        print_hex_value(value->value_bytes, value->value_length);
+    }
+}
+
+static void emit_structured_access_result_summary(size_t access_result_index, const UnitLabMmsBerElement* result)
+{
+    UnitLabMmsDiagnostic diagnostic;
+    size_t offset = 0U;
+    size_t field_index = 0U;
+    size_t field_count;
+    const char* rcb_kind;
+
+    if (result == NULL
+        || result->tag.tag_class != UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC
+        || !result->tag.constructed
+        || result->tag.tag_number != 2U
+        || result->value_bytes == NULL) {
+        return;
+    }
+    field_count = count_constructed_children(result);
+    if (field_count == 14U) {
+        rcb_kind = "brcb";
+    } else if (field_count == 11U) {
+        rcb_kind = "urcb";
+    } else {
+        return;
+    }
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    printf("mms-summary: accessResult[%zu].rcb-kind=%s fields=%zu\n", access_result_index, rcb_kind, field_count);
+    while (offset < result->value_length) {
+        UnitLabMmsBerElement field;
+        const char* field_name = field_count == 14U ? brcb_field_name(field_index) : urcb_field_name(field_index);
+        size_t consumed = 0U;
+
+        unitlab_mms_ber_element_init(&field);
+        if (!unitlab_mms_ber_read(&field, &result->value_bytes[offset], result->value_length - offset, &consumed, &diagnostic) || consumed == 0U) {
+            printf("mms-summary: accessResult[%zu].rcb-field[%zu]=decode-failed\n", access_result_index, field_index);
+            fflush(stdout);
+            return;
+        }
+        printf(
+            "mms-summary: accessResult[%zu].rcb-field[%zu].%s=",
+            access_result_index,
+            field_index,
+            field_name != NULL ? field_name : "unknown");
+        print_data_value_summary(&field);
+        printf("\n");
+        offset += consumed;
+        field_index++;
+    }
+    fflush(stdout);
+}
+
 static void emit_service_access_results(const UnitLabMmsPdu* pdu)
 {
     UnitLabMmsDiagnostic diagnostic;
@@ -310,6 +446,7 @@ static void emit_service_access_results(const UnitLabMmsPdu* pdu)
                 }
             }
             printf("\n");
+            emit_structured_access_result_summary(index, &result);
         }
         fflush(stdout);
         offset += result_consumed;
