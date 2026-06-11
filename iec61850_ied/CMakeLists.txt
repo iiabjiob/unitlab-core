@@ -78,6 +78,7 @@ add_executable(unitlab-iec61850-ied-sim
   src/model/libiec61850_model_builder.c
   src/app/main.c
   src/server/native_wire_client.c
+  src/server/native_wire_client_session.c
   src/server/native_wire_server.c
   src/model/model_loader.c
 )
@@ -164,6 +165,15 @@ add_test(
   NAME unitlab-iec61850-ied-model-loader
   COMMAND unitlab-iec61850-ied-model-loader-test
 )
+
+
+add_executable(unitlab-iec61850-native-wire-client-session-test
+  src/server/native_wire_client_session.c
+  tests/native_wire_client_session_test.c
+)
+target_include_directories(unitlab-iec61850-native-wire-client-session-test PRIVATE src)
+unitlab_iec61850_sim_warnings(unitlab-iec61850-native-wire-client-session-test)
+add_test(NAME unitlab-iec61850-native-wire-client-session COMMAND unitlab-iec61850-native-wire-client-session-test)
 
 add_executable(unitlab-iec61850-mms-core-test
   tests/unitlab_mms_core_test.c
