@@ -74,7 +74,11 @@ int main(void)
         if (!expect_true(unitlab_native_client_session_append_logical_node(&session, logical_device, logical_node) != NULL, "expected logical node append to grow beyond initial capacity")) {
             return 1;
         }
-        if (!expect_true(unitlab_native_client_session_append_data_name(&session, logical_device, logical_node, data_name) != NULL, "expected data name append to grow beyond initial capacity")) {
+        UnitLabNativeDiscoveredDataName* discovered_data_name = unitlab_native_client_session_append_data_name(&session, logical_device, logical_node, data_name);
+        if (!expect_true(discovered_data_name != NULL, "expected data name append to grow beyond initial capacity")) {
+            return 1;
+        }
+        if (!expect_true(unitlab_native_client_session_append_data_component(&session, discovered_data_name, "stVal"), "expected data component append to grow beyond initial capacity")) {
             return 1;
         }
     }
@@ -87,6 +91,9 @@ int main(void)
     if (!expect_true(session.discovered_data_name_count == 150U && session.discovered_model.data_name_count == 150U, "expected all data names to be retained")) {
         return 1;
     }
+    if (!expect_true(session.discovered_data_component_count == 150U && session.discovered_model.data_component_count == 150U, "expected all data components to be retained")) {
+        return 1;
+    }
     if (!expect_true(strcmp(session.discovered_logical_devices[149U].name, "LD149") == 0, "expected logical device lookup after growth to succeed")) {
         return 1;
     }
@@ -96,9 +103,12 @@ int main(void)
     if (!expect_true(strcmp(session.discovered_data_names[149U].logical_node, "LLN149") == 0 && strcmp(session.discovered_data_names[149U].name, "Data149") == 0, "expected data name lookup after growth to succeed")) {
         return 1;
     }
+    if (!expect_true(session.discovered_data_names[149U].component_count == 1U && strcmp(session.discovered_data_components[149U].name, "stVal") == 0, "expected data component lookup after growth to succeed")) {
+        return 1;
+    }
 
     unitlab_native_client_session_reset(&session);
-    if (!expect_true(session.discovered_logical_device_count == 0U && session.discovered_logical_node_count == 0U && session.discovered_data_name_count == 0U, "expected reset to clear logical model state")) {
+    if (!expect_true(session.discovered_logical_device_count == 0U && session.discovered_logical_node_count == 0U && session.discovered_data_name_count == 0U && session.discovered_data_component_count == 0U, "expected reset to clear logical model state")) {
         return 1;
     }
 

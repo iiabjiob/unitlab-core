@@ -21,7 +21,7 @@ Implemented and validated against the local native/libIEC61850-oriented test pat
 - GetNameList request building/decoding separates LN selector (`node_id`) from MMS `continueAfter`, while preserving the legacy builder path.
 - Discovery runner is isolated from the CLI in `src/server/native_wire_client_discovery.c`.
 - Session/discovered/subscription state has started moving into `src/server/native_wire_client_session.*`.
-- Session model now stores discovered logical devices, logical nodes, and LN data names, not only summary counts.
+- Session model now stores discovered logical devices, logical nodes, shallow LN data names, and GVA component names, not only summary counts.
 - Discovery paginates VMD logical devices, domain logical nodes, datasets, BRCBs, and URCB browse calls with stalled-page detection.
 - BRCB discovery uses `GetNameList` class 4 and builds `LN$BR$brcbName` references.
 - RptEna and GI write paths exist for the selected BRCB.
@@ -35,7 +35,7 @@ These are not yet production-client guarantees:
 
 - Discovery still needs a configurable safety cap for extremely large/malformed IED models.
 - Pagination is implemented for the current discovery branches but still needs golden-frame coverage from saved large-model captures.
-- Logical model discovery stores logical devices, logical nodes, and shallow LN data names; full data object/data attribute type trees are not yet modeled.
+- Logical model discovery stores logical devices, logical nodes, shallow LN data names, and first-level GVA component names; full typed data object/data attribute trees are not yet modeled.
 - BRCB support is ahead of URCB support.
 - RCB lifecycle is incomplete for real devices that require reservation, release, purge, or replay handling.
 - Report decoding does not yet cover all valid MMS data shapes from real devices.
@@ -128,14 +128,15 @@ Closed in current slice:
 - Dynamic session-owned storage exists for discovered logical devices.
 - Dynamic session-owned storage exists for discovered logical nodes.
 - Dynamic session-owned storage exists for shallow LN data names returned by `GetNameList` class 3.
+- Dynamic session-owned storage exists for GVA component names read from each discovered LN data item.
 - Discovery populates those collections during `discover`.
-- Debug model summary reports `data-names` count.
+- Debug model summary reports `data-names` and `data-components` counts.
 - Session tests cover dynamic growth and reset for logical devices, logical nodes, and data names.
 
 Remaining:
 
-- Expand shallow LN data names into full data object/data attribute trees.
-- Store FC/type/structure metadata from `GetVariableAccessAttributes`.
+- Expand shallow LN data names and GVA components into full data object/data attribute trees.
+- Store FC/type/structure metadata from `GetVariableAccessAttributes`, not only component names.
 - Normalize and expose stable MMS/display references for every discovered leaf.
 - Add deterministic model snapshot tests from fixture/golden responses.
 

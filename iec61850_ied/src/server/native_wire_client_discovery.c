@@ -144,6 +144,99 @@ static int collect_get_named_variable_list_members_from_frame(UnitLabNativeClien
     return 1;
 }
 
+
+static int collect_gva_components_from_bytes(UnitLabNativeClientSessionState* session, const UnitLabNativeDiscoveryIo* io, UnitLabNativeDiscoveredDataName* data_name, const uint8_t* bytes, size_t length, size_t depth, size_t* component_count)
+{
+    UnitLabMmsDiagnostic diagnostic;
+    size_t offset = 0U;
+
+    if (session == NULL || data_name == NULL || bytes == NULL || component_count == NULL || depth > 16U) {
+        return 1;
+    }
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    while (offset < length) {
+        UnitLabMmsBerElement element;
+        size_t consumed = 0U;
+        unitlab_mms_ber_element_init(&element);
+        if (!unitlab_mms_ber_read(&element, &bytes[offset], length - offset, &consumed, &diagnostic) || consumed == 0U) {
+            break;
+        }
+        if (element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL && element.tag.constructed && element.tag.tag_number == 16U) {
+            UnitLabMmsBerElement first_child;
+            size_t child_consumed = 0U;
+            unitlab_mms_ber_element_init(&first_child);
+            if (unitlab_mms_ber_read(&first_child, element.value_bytes, element.value_length, &child_consumed, &diagnostic)
+                && first_child.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC
+                && !first_child.tag.constructed
+                && first_child.tag.tag_number == 0U
+                && first_child.value_length > 0U
+                && unitlab_native_client_bytes_are_printable_ascii(first_child.value_bytes, first_child.value_length)) {
+                char component_name[128U];
+                size_t copy_length = first_child.value_length < sizeof(component_name) - 1U ? first_child.value_length : sizeof(component_name) - 1U;
+                memcpy(component_name, first_child.value_bytes, copy_length);
+                component_name[copy_length] = '\0';
+                if (!unitlab_native_client_session_append_data_component(session, data_name, component_name)) {
+                    set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered data component state.");
+                    return 0;
+                }
+                (*component_count)++;
+            } else if (!collect_gva_components_from_bytes(session, io, data_name, element.value_bytes, element.value_length, depth + 1U, component_count)) {
+                return 0;
+            }
+        } else if (element.tag.constructed) {
+            if (!collect_gva_components_from_bytes(session, io, data_name, element.value_bytes, element.value_length, depth + 1U, component_count)) {
+                return 0;
+            }
+        }
+        offset += consumed;
+    }
+    return 1;
+}
+
+static int collect_get_variable_access_attributes_components_from_frame(UnitLabNativeClientSessionState* session, const UnitLabNativeDiscoveryIo* io, UnitLabNativeDiscoveredDataName* data_name, const uint8_t* frame, size_t frame_length)
+{
+    UnitLabMmsAssociationFrame association_frame;
+    UnitLabMmsPdu pdu;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsBerElement mms_deletable;
+    size_t consumed = 0U;
+    size_t component_count = 0U;
+
+    if (session == NULL || data_name == NULL || frame == NULL || frame_length == 0U) {
+        return 0;
+    }
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_association_frame_init(&association_frame);
+    if (!unitlab_mms_association_frame_decode(&association_frame, frame, frame_length, &consumed, &diagnostic)) {
+        return 0;
+    }
+    unitlab_mms_pdu_init(&pdu);
+    if (association_frame.presentation.payload_bytes == NULL
+        || association_frame.presentation.payload_length == 0U
+        || !unitlab_mms_pdu_decode(&pdu, association_frame.presentation.payload_bytes, association_frame.presentation.payload_length, &consumed, &diagnostic)
+        || pdu.kind != UNITLAB_MMS_PDU_CONFIRMED_RESPONSE
+        || pdu.service_kind != UNITLAB_MMS_SERVICE_GET_VARIABLE_ACCESS_ATTRIBUTES) {
+        return 0;
+    }
+    unitlab_mms_ber_element_init(&mms_deletable);
+    if (!unitlab_mms_ber_read(&mms_deletable, pdu.service_bytes, pdu.service_length, &consumed, &diagnostic) || consumed >= pdu.service_length) {
+        return 1;
+    }
+    if (!collect_gva_components_from_bytes(session, io, data_name, &pdu.service_bytes[consumed], pdu.service_length - consumed, 0U, &component_count)) {
+        return 0;
+    }
+    if (component_count > 0U) {
+        printf(
+            "native-wire-client: discovered-data-components data=%s/%s$%s count=%zu\n",
+            data_name->logical_device,
+            data_name->logical_node,
+            data_name->name,
+            component_count);
+        fflush(stdout);
+    }
+    return 1;
+}
+
 static int extract_get_name_list_identifiers(
     const uint8_t* frame,
     size_t frame_length,
@@ -379,10 +472,24 @@ int unitlab_native_client_run_discover_sequence(
             }
         }
         for (size_t data_index = 0U; data_index < ln_data_names.count; data_index++) {
-            if (unitlab_native_client_session_append_data_name(session, domain_id, logical_node_names.items[ln_index], ln_data_names.items[data_index]) == NULL) {
+            char data_item[320U];
+            UnitLabNativeDiscoveredDataName* data_name = unitlab_native_client_session_append_data_name(session, domain_id, logical_node_names.items[ln_index], ln_data_names.items[data_index]);
+            if (data_name == NULL) {
                 identifier_list_reset(&ln_data_names);
                 identifier_list_reset(&ln_brcb_names);
                 set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered LN data state.");
+                goto cleanup;
+            }
+            snprintf(data_item, sizeof(data_item), "%s$%s", logical_node_names.items[ln_index], ln_data_names.items[data_index]);
+            if (!io->attributes_step(session, io, "ln-data-components", domain_id, data_item, followup_invoke_id++, 0)) {
+                identifier_list_reset(&ln_data_names);
+                identifier_list_reset(&ln_brcb_names);
+                goto cleanup;
+            }
+            if (!collect_get_variable_access_attributes_components_from_frame(session, io, data_name, io->response, *io->encoded_response_length)) {
+                identifier_list_reset(&ln_data_names);
+                identifier_list_reset(&ln_brcb_names);
+                set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not decode LN data component attributes.");
                 goto cleanup;
             }
         }
