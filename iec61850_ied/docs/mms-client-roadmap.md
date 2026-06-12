@@ -184,6 +184,7 @@ Closed in current slice:
 - Native client now reserves and releases unbuffered report controls through `Resv` around `RptEna` cleanup.
 - `GI` now requires an active subscription state and rejects writes that do not match the selected subscription index.
 - Server runtime now treats `Resv` as a real reserve/release field for report controls and release accepts reserved state transitions.
+- Report-control metadata round-trips now cover `RptEna`, `GI`, `PurgeBuf`, `EntryID`, `TimeOfEntry`, `DatSet`, `ConfRev`, `OptFlds`, `TrgOps`, and `IntgPd` through the server runtime and linked smoke path.
 
 Change boundary:
 
@@ -192,7 +193,6 @@ Change boundary:
 - Support reservation behavior:
   - BRCB: `ResvTms` where applicable;
   - URCB: `Resv` where applicable.
-- Support `RptEna`, `GI`, `PurgeBuf`, `EntryID`, `TimeOfEntry`, `DatSet`, `ConfRev`, `OptFlds`, `TrgOps`, and `IntgPd` handling.
 - Make release/disable explicit on disconnect/close IED where safe.
 
 Acceptance criteria:

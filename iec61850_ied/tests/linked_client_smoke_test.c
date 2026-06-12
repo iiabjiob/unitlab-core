@@ -433,6 +433,8 @@ static int verify_server_metadata(IedConnection connection)
         passed &= expect_true(ClientReportControlBlock_getConfRev(rcb) == 1U, "ConfRev should come from fixture");
         passed &= expect_true(ClientReportControlBlock_getBufTm(rcb) == 25U, "BufTm should come from fixture");
         passed &= expect_true(ClientReportControlBlock_getIntgPd(rcb) == 1000U, "IntgPd should come from fixture");
+        passed &= expect_true(ClientReportControlBlock_getOptFlds(rcb) != 0U, "OptFlds should come from fixture");
+        passed &= expect_true(ClientReportControlBlock_getTrgOps(rcb) != 0U, "TrgOps should come from fixture");
         passed &= expect_string_contains(ClientReportControlBlock_getDataSetReference(rcb), "dsEvents", "DatSet should point to fixture DataSet");
         ClientReportControlBlock_destroy(rcb);
     }
