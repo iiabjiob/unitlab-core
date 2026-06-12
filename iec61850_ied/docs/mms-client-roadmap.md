@@ -129,7 +129,7 @@ Closed in current slice:
 - Dynamic session-owned storage exists for discovered logical nodes.
 - Dynamic session-owned storage exists for shallow LN data names returned by `GetNameList` class 3.
 - Dynamic session-owned storage exists for GVA component names and coarse type-kind metadata read from each discovered LN data item.
-- Dynamic session-owned storage exists for recursive typed GVA tree nodes with normalized refs when FC context is available from the request path.
+- Dynamic session-owned storage exists for recursive typed GVA tree nodes with normalized refs and preserved FC/request context when that context is available.
 - Dynamic session-owned storage exists for normalized dataset member leaf references with MMS and display forms.
 - Discovery populates those collections during `discover`.
 - Debug model summary reports `data-names`, `typed-data-names`, `data-components`, `typed-data-components`, `typed-data-nodes`, and `leaf-refs` counts.

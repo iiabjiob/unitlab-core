@@ -523,6 +523,8 @@ UnitLabNativeDiscoveredTypedDataNode* unitlab_native_client_session_append_typed
     if (display_reference != NULL && display_reference[0] != '\0') {
         snprintf(node->display_reference, sizeof(node->display_reference), "%s", display_reference);
     }
+    snprintf(node->request_item, sizeof(node->request_item), "%s", path);
+    snprintf(node->reference_kind, sizeof(node->reference_kind), "%s", fc != NULL && fc[0] != '\0' ? "fc-context" : "ln-context");
     snprintf(node->type_kind, sizeof(node->type_kind), "%s", type_kind != NULL && type_kind[0] != '\0' ? type_kind : "unknown");
     snprintf(node->node_kind, sizeof(node->node_kind), "%s", node_kind != NULL && node_kind[0] != '\0' ? node_kind : "branch");
     node->depth = depth;

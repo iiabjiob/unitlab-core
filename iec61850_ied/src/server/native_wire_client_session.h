@@ -84,6 +84,8 @@ typedef struct {
     char logical_node[128U];
     char fc[32U];
     char path[192U];
+    char request_item[256U];
+    char reference_kind[32U];
     char mms_reference[384U];
     char display_reference[384U];
     char type_kind[32U];

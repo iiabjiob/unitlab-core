@@ -217,6 +217,12 @@ int main(void)
         if (!expect_true(strcmp(root_node->display_reference, "IED1LD0/LLN0.ST.Pos") == 0 && strcmp(child_node->mms_reference, "IED1LD0/LLN0$ST$Pos$stVal") == 0, "expected typed tree normalized refs")) {
             return 1;
         }
+        if (!expect_true(strcmp(root_node->request_item, "Pos") == 0 && strcmp(root_node->reference_kind, "fc-context") == 0, "expected typed root to retain FC request context")) {
+            return 1;
+        }
+        if (!expect_true(strcmp(child_node->request_item, "Pos.stVal") == 0 && strcmp(child_node->reference_kind, "fc-context") == 0, "expected typed leaf to retain FC request context")) {
+            return 1;
+        }
     }
 
     {
