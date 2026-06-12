@@ -134,7 +134,7 @@ Closed in current slice:
 - Debug model summary reports `data-names`, `typed-data-names`, `data-components`, `typed-data-components`, and `leaf-refs` counts.
 - Report decoder stores session-owned mapped entries for reports that include `dataRef`, including normalized display reference, match flags, value summary, and reason summary.
 - Reports without `dataRef` are mapped through discovered Dataset order using the inclusion bitstring.
-- Latest report entries now retain primitive typed value metadata alongside text summaries: raw BER tag, raw length, bool, signed/unsigned integer, MMS float32, string/octet/bit-string/structure classification, and raw report reason code metadata.
+- Latest report entries now retain primitive typed value metadata alongside text summaries: raw BER tag, raw length, bool, signed/unsigned integer, MMS float32, string/octet/bit-string/structure classification, and raw report reason code metadata plus semantic reason flags/labels.
 - Session tests cover dynamic growth and reset for logical devices, logical nodes, data names, leaf references, and mapped report entries.
 
 Remaining:
@@ -227,7 +227,7 @@ Acceptance criteria:
 
 Validation:
 
-- Session mapping tests for latest-report entries, primitive typed value metadata, report reason metadata, and Dataset member order lookup.
+- Session mapping tests for latest-report entries, primitive typed value metadata, report reason code/semantic metadata, and Dataset member order lookup.
 - Golden report decoder tests from saved frames.
 - Real TCP GI report smoke.
 - Regression check that current `dataset-match=true` path still passes.

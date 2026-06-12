@@ -95,6 +95,15 @@ typedef enum {
     UNITLAB_NATIVE_REPORT_VALUE_UNSUPPORTED
 } UnitLabNativeReportValueKind;
 
+typedef enum {
+    UNITLAB_NATIVE_REPORT_REASON_DATA_CHANGE = 1U << 0,
+    UNITLAB_NATIVE_REPORT_REASON_QUALITY_CHANGE = 1U << 1,
+    UNITLAB_NATIVE_REPORT_REASON_DATA_UPDATE = 1U << 2,
+    UNITLAB_NATIVE_REPORT_REASON_INTEGRITY = 1U << 3,
+    UNITLAB_NATIVE_REPORT_REASON_GENERAL_INTERROGATION = 1U << 4,
+    UNITLAB_NATIVE_REPORT_REASON_APPLICATION_TRIGGER = 1U << 5
+} UnitLabNativeReportReasonFlag;
+
 typedef struct {
     char data_reference[384U];
     char display_reference[384U];
@@ -108,6 +117,8 @@ typedef struct {
     uint8_t raw_reason_tag_number;
     size_t raw_reason_length;
     uint32_t reason_code;
+    uint32_t reason_flags;
+    char reason_labels[128U];
     UnitLabNativeReportValueKind value_kind;
     uint64_t unsigned_value;
     int64_t integer_value;

@@ -492,8 +492,21 @@ static int decode_mms_float32_value(const uint8_t* bytes, size_t length, double*
     return 1;
 }
 
+static void append_reason_label(char* labels, size_t labels_size, const char* label)
+{
+    if (labels == NULL || labels_size == 0U || label == NULL || label[0] == '\0') {
+        return;
+    }
+    if (labels[0] != '\0') {
+        strncat(labels, ",", labels_size - strlen(labels) - 1U);
+    }
+    strncat(labels, label, labels_size - strlen(labels) - 1U);
+}
+
 static void copy_report_reason_metadata(const UnitLabMmsBerElement* reason, UnitLabNativeLastReportEntry* entry)
 {
+    uint8_t reason_bits;
+
     if (entry == NULL) {
         return;
     }
@@ -501,14 +514,42 @@ static void copy_report_reason_metadata(const UnitLabMmsBerElement* reason, Unit
     entry->raw_reason_tag_number = 0U;
     entry->raw_reason_length = 0U;
     entry->reason_code = 0U;
+    entry->reason_flags = 0U;
+    entry->reason_labels[0] = '\0';
     if (reason == NULL) {
         return;
     }
     entry->raw_reason_tag_class = (uint8_t)reason->tag.tag_class;
     entry->raw_reason_tag_number = (uint8_t)reason->tag.tag_number;
     entry->raw_reason_length = reason->value_length;
-    if (reason->value_bytes != NULL && reason->value_length > 0U) {
-        entry->reason_code = decode_unsigned_bytes(reason->value_bytes, reason->value_length);
+    if (reason->value_bytes == NULL || reason->value_length == 0U) {
+        return;
+    }
+    entry->reason_code = decode_unsigned_bytes(reason->value_bytes, reason->value_length);
+    reason_bits = reason->value_bytes[reason->value_length - 1U];
+    if ((reason_bits & 0x80U) != 0U) {
+        entry->reason_flags |= UNITLAB_NATIVE_REPORT_REASON_DATA_CHANGE;
+        append_reason_label(entry->reason_labels, sizeof(entry->reason_labels), "data-change");
+    }
+    if ((reason_bits & 0x40U) != 0U) {
+        entry->reason_flags |= UNITLAB_NATIVE_REPORT_REASON_QUALITY_CHANGE;
+        append_reason_label(entry->reason_labels, sizeof(entry->reason_labels), "quality-change");
+    }
+    if ((reason_bits & 0x20U) != 0U) {
+        entry->reason_flags |= UNITLAB_NATIVE_REPORT_REASON_DATA_UPDATE;
+        append_reason_label(entry->reason_labels, sizeof(entry->reason_labels), "data-update");
+    }
+    if ((reason_bits & 0x10U) != 0U) {
+        entry->reason_flags |= UNITLAB_NATIVE_REPORT_REASON_INTEGRITY;
+        append_reason_label(entry->reason_labels, sizeof(entry->reason_labels), "integrity");
+    }
+    if ((reason_bits & 0x08U) != 0U) {
+        entry->reason_flags |= UNITLAB_NATIVE_REPORT_REASON_APPLICATION_TRIGGER;
+        append_reason_label(entry->reason_labels, sizeof(entry->reason_labels), "application-trigger");
+    }
+    if ((reason_bits & 0x04U) != 0U) {
+        entry->reason_flags |= UNITLAB_NATIVE_REPORT_REASON_GENERAL_INTERROGATION;
+        append_reason_label(entry->reason_labels, sizeof(entry->reason_labels), "general-interrogation");
     }
 }
 
@@ -1136,7 +1177,7 @@ static void emit_information_report_summary(UnitLabNativeClientSessionState* ses
             printf("mms-summary: report.reason[%zu]=", reason_count);
             print_report_value_summary(&value);
             if (reason_count < session->last_report_entry_count) {
-                printf(" ref=%s reason-code=0x%04x", session->last_report_entries[reason_count].display_reference, (unsigned)session->last_report_entries[reason_count].reason_code);
+                printf(" ref=%s reason-code=0x%04x reason=%s", session->last_report_entries[reason_count].display_reference, (unsigned)session->last_report_entries[reason_count].reason_code, session->last_report_entries[reason_count].reason_labels[0] != '\0' ? session->last_report_entries[reason_count].reason_labels : "unknown");
             }
             printf("\n");
             reason_count++;

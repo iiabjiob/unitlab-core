@@ -174,6 +174,8 @@ int main(void)
         report_entry->raw_reason_tag_number = 4U;
         report_entry->raw_reason_length = 2U;
         report_entry->reason_code = 0x0204U;
+        report_entry->reason_flags = UNITLAB_NATIVE_REPORT_REASON_GENERAL_INTERROGATION;
+        snprintf(report_entry->reason_labels, sizeof(report_entry->reason_labels), "%s", "general-interrogation");
         if (!expect_true(session.last_report_entry_count == 1U, "expected last report entry count")) {
             return 1;
         }
@@ -196,6 +198,9 @@ int main(void)
             return 1;
         }
         if (!expect_true(report_entry->raw_reason_tag_class == 2U && report_entry->raw_reason_tag_number == 4U && report_entry->raw_reason_length == 2U && report_entry->reason_code == 0x0204U, "expected report entry raw reason metadata")) {
+            return 1;
+        }
+        if (!expect_true((report_entry->reason_flags & UNITLAB_NATIVE_REPORT_REASON_GENERAL_INTERROGATION) != 0U && strcmp(report_entry->reason_labels, "general-interrogation") == 0, "expected report entry semantic reason metadata")) {
             return 1;
         }
         report_entry->value_kind = UNITLAB_NATIVE_REPORT_VALUE_FLOAT;
