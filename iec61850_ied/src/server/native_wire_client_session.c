@@ -1,19 +1,77 @@
 #include "native_wire_client_session.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+
+static int ensure_data_set_capacity(UnitLabNativeClientSessionState* session, size_t required)
+{
+    UnitLabNativeDiscoveredDataSet* resized;
+    size_t new_capacity;
+
+    if (session == NULL) {
+        return 0;
+    }
+    if (required <= session->discovered_data_set_capacity) {
+        return 1;
+    }
+    new_capacity = session->discovered_data_set_capacity != 0U ? session->discovered_data_set_capacity : UNITLAB_NATIVE_DISCOVERY_INITIAL_DATA_SET_CAPACITY;
+    while (new_capacity < required) {
+        if (new_capacity > ((size_t)-1) / 2U) {
+            return 0;
+        }
+        new_capacity *= 2U;
+    }
+    resized = (UnitLabNativeDiscoveredDataSet*)realloc(session->discovered_data_sets, new_capacity * sizeof(session->discovered_data_sets[0]));
+    if (resized == NULL) {
+        return 0;
+    }
+    if (new_capacity > session->discovered_data_set_capacity) {
+        memset(&resized[session->discovered_data_set_capacity], 0, (new_capacity - session->discovered_data_set_capacity) * sizeof(resized[0]));
+    }
+    session->discovered_data_sets = resized;
+    session->discovered_data_set_capacity = new_capacity;
+    return 1;
+}
+
+static int ensure_data_set_member_capacity(UnitLabNativeClientSessionState* session, size_t required)
+{
+    char (*resized)[384U];
+    size_t new_capacity;
+
+    if (session == NULL) {
+        return 0;
+    }
+    if (required <= session->discovered_data_set_member_capacity) {
+        return 1;
+    }
+    new_capacity = session->discovered_data_set_member_capacity != 0U ? session->discovered_data_set_member_capacity : UNITLAB_NATIVE_DISCOVERY_INITIAL_DATA_SET_MEMBER_CAPACITY;
+    while (new_capacity < required) {
+        if (new_capacity > ((size_t)-1) / 2U) {
+            return 0;
+        }
+        new_capacity *= 2U;
+    }
+    resized = (char (*)[384U])realloc(session->discovered_data_set_members, new_capacity * sizeof(session->discovered_data_set_members[0]));
+    if (resized == NULL) {
+        return 0;
+    }
+    if (new_capacity > session->discovered_data_set_member_capacity) {
+        memset(&resized[session->discovered_data_set_member_capacity], 0, (new_capacity - session->discovered_data_set_member_capacity) * sizeof(resized[0]));
+    }
+    session->discovered_data_set_members = resized;
+    session->discovered_data_set_member_capacity = new_capacity;
+    return 1;
+}
 
 void unitlab_native_client_session_reset(UnitLabNativeClientSessionState* session)
 {
     if (session == NULL) {
         return;
     }
-    memset(&session->discovered_model, 0, sizeof(session->discovered_model));
-    memset(&session->subscription_model, 0, sizeof(session->subscription_model));
-    memset(session->discovered_data_sets, 0, sizeof(session->discovered_data_sets));
-    session->discovered_data_set_count = 0U;
-    memset(session->discovered_data_set_members, 0, sizeof(session->discovered_data_set_members));
-    session->discovered_data_set_member_count = 0U;
+    free(session->discovered_data_sets);
+    free(session->discovered_data_set_members);
+    memset(session, 0, sizeof(*session));
 }
 
 int unitlab_native_client_session_data_set_member_exists(const UnitLabNativeClientSessionState* session, const char* reference)
@@ -67,7 +125,10 @@ UnitLabNativeDiscoveredDataSet* unitlab_native_client_session_append_data_set(Un
 {
     UnitLabNativeDiscoveredDataSet* data_set;
 
-    if (session == NULL || data_set_reference == NULL || data_set_reference[0] == '\0' || session->discovered_data_set_count >= UNITLAB_NATIVE_DISCOVERY_MAX_DATA_SETS) {
+    if (session == NULL || data_set_reference == NULL || data_set_reference[0] == '\0') {
+        return NULL;
+    }
+    if (!ensure_data_set_capacity(session, session->discovered_data_set_count + 1U)) {
         return NULL;
     }
     data_set = &session->discovered_data_sets[session->discovered_data_set_count];
@@ -76,4 +137,19 @@ UnitLabNativeDiscoveredDataSet* unitlab_native_client_session_append_data_set(Un
     data_set->member_start = session->discovered_data_set_member_count;
     session->discovered_data_set_count++;
     return data_set;
+}
+
+int unitlab_native_client_session_append_data_set_member(UnitLabNativeClientSessionState* session, UnitLabNativeDiscoveredDataSet* data_set, const char* member_reference)
+{
+    if (session == NULL || data_set == NULL || member_reference == NULL || member_reference[0] == '\0') {
+        return 0;
+    }
+    if (!ensure_data_set_member_capacity(session, session->discovered_data_set_member_count + 1U)) {
+        return 0;
+    }
+    snprintf(session->discovered_data_set_members[session->discovered_data_set_member_count], sizeof(session->discovered_data_set_members[session->discovered_data_set_member_count]), "%s", member_reference);
+    session->discovered_data_set_member_count++;
+    data_set->member_count++;
+    session->discovered_model.data_set_member_count = session->discovered_data_set_member_count;
+    return 1;
 }

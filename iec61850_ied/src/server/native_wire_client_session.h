@@ -5,13 +5,11 @@
 #include <stdint.h>
 
 enum {
-    UNITLAB_NATIVE_DISCOVERY_MAX_LOGICAL_DEVICES = 64U,
-    UNITLAB_NATIVE_DISCOVERY_MAX_LOGICAL_NODES = 256U,
-    UNITLAB_NATIVE_DISCOVERY_MAX_DATA_SETS = 256U,
     UNITLAB_NATIVE_DISCOVERY_MAX_RCBS = 256U,
-    UNITLAB_NATIVE_DISCOVERY_MAX_DATA_SET_MEMBERS = 4096U,
     UNITLAB_NATIVE_DISCOVERY_PAGE_SIZE = 32U,
     UNITLAB_NATIVE_DISCOVERY_MAX_INVOKE_SPAN = 2048U,
+    UNITLAB_NATIVE_DISCOVERY_INITIAL_DATA_SET_CAPACITY = 16U,
+    UNITLAB_NATIVE_DISCOVERY_INITIAL_DATA_SET_MEMBER_CAPACITY = 64U,
 };
 
 typedef struct {
@@ -50,10 +48,12 @@ typedef struct {
 typedef struct {
     UnitLabNativeDiscoveredDeviceModel discovered_model;
     UnitLabNativeSubscriptionModel subscription_model;
-    UnitLabNativeDiscoveredDataSet discovered_data_sets[UNITLAB_NATIVE_DISCOVERY_MAX_DATA_SETS];
+    UnitLabNativeDiscoveredDataSet* discovered_data_sets;
     size_t discovered_data_set_count;
-    char discovered_data_set_members[UNITLAB_NATIVE_DISCOVERY_MAX_DATA_SET_MEMBERS][384U];
+    size_t discovered_data_set_capacity;
+    char (*discovered_data_set_members)[384U];
     size_t discovered_data_set_member_count;
+    size_t discovered_data_set_member_capacity;
 } UnitLabNativeClientSessionState;
 
 void unitlab_native_client_session_reset(UnitLabNativeClientSessionState* session);
@@ -61,5 +61,6 @@ int unitlab_native_client_session_data_set_member_exists(const UnitLabNativeClie
 int unitlab_native_client_session_data_set_index_by_reference(const UnitLabNativeClientSessionState* session, const char* reference, size_t* data_set_index);
 int unitlab_native_client_session_data_set_contains_member(const UnitLabNativeClientSessionState* session, const char* data_set_reference, const char* member_reference);
 UnitLabNativeDiscoveredDataSet* unitlab_native_client_session_append_data_set(UnitLabNativeClientSessionState* session, const char* data_set_reference);
+int unitlab_native_client_session_append_data_set_member(UnitLabNativeClientSessionState* session, UnitLabNativeDiscoveredDataSet* data_set, const char* member_reference);
 
 #endif

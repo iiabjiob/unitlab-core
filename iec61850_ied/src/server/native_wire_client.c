@@ -2717,6 +2717,7 @@ int unitlab_run_native_wire_client_with_options(
                 goto fail;
             }
             set_result(result, "NATIVE_WIRE_CLIENT_DISCONNECTED", "Native wire client disconnected.");
+            unitlab_native_client_session_reset(&session);
             return 1;
         }
         if (strcmp(command, "exit") == 0 || strcmp(command, "quit") == 0 || strcmp(command, "stop") == 0) {
@@ -2729,6 +2730,7 @@ int unitlab_run_native_wire_client_with_options(
     state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_STOPPED;
     emit_state_response(state);
     set_result(result, "NATIVE_WIRE_CLIENT_STOPPED", "Native wire client stopped.");
+    unitlab_native_client_session_reset(&session);
     return 1;
 
 fail:
@@ -2742,6 +2744,7 @@ fail:
         state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
     }
     emit_state_response(state);
+    unitlab_native_client_session_reset(&session);
     return 0;
 }
 
