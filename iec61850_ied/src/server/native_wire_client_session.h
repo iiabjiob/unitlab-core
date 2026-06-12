@@ -104,6 +104,10 @@ typedef struct {
     uint8_t raw_tag_class;
     uint8_t raw_tag_number;
     size_t raw_value_length;
+    uint8_t raw_reason_tag_class;
+    uint8_t raw_reason_tag_number;
+    size_t raw_reason_length;
+    uint32_t reason_code;
     UnitLabNativeReportValueKind value_kind;
     uint64_t unsigned_value;
     int64_t integer_value;

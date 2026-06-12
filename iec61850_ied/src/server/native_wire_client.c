@@ -492,6 +492,26 @@ static int decode_mms_float32_value(const uint8_t* bytes, size_t length, double*
     return 1;
 }
 
+static void copy_report_reason_metadata(const UnitLabMmsBerElement* reason, UnitLabNativeLastReportEntry* entry)
+{
+    if (entry == NULL) {
+        return;
+    }
+    entry->raw_reason_tag_class = 0U;
+    entry->raw_reason_tag_number = 0U;
+    entry->raw_reason_length = 0U;
+    entry->reason_code = 0U;
+    if (reason == NULL) {
+        return;
+    }
+    entry->raw_reason_tag_class = (uint8_t)reason->tag.tag_class;
+    entry->raw_reason_tag_number = (uint8_t)reason->tag.tag_number;
+    entry->raw_reason_length = reason->value_length;
+    if (reason->value_bytes != NULL && reason->value_length > 0U) {
+        entry->reason_code = decode_unsigned_bytes(reason->value_bytes, reason->value_length);
+    }
+}
+
 static void copy_report_typed_value(const UnitLabMmsBerElement* value, UnitLabNativeLastReportEntry* entry)
 {
     if (entry == NULL) {
@@ -1111,11 +1131,12 @@ static void emit_information_report_summary(UnitLabNativeClientSessionState* ses
             }
             if (reason_count < session->last_report_entry_count) {
                 copy_data_value_summary(&value, session->last_report_entries[reason_count].reason_summary, sizeof(session->last_report_entries[reason_count].reason_summary));
+                copy_report_reason_metadata(&value, &session->last_report_entries[reason_count]);
             }
             printf("mms-summary: report.reason[%zu]=", reason_count);
             print_report_value_summary(&value);
             if (reason_count < session->last_report_entry_count) {
-                printf(" ref=%s", session->last_report_entries[reason_count].display_reference);
+                printf(" ref=%s reason-code=0x%04x", session->last_report_entries[reason_count].display_reference, (unsigned)session->last_report_entries[reason_count].reason_code);
             }
             printf("\n");
             reason_count++;
