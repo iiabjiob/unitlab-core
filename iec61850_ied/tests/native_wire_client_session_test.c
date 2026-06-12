@@ -176,6 +176,8 @@ int main(void)
         report_entry->reason_code = 0x0204U;
         report_entry->reason_flags = UNITLAB_NATIVE_REPORT_REASON_GENERAL_INTERROGATION;
         snprintf(report_entry->reason_labels, sizeof(report_entry->reason_labels), "%s", "general-interrogation");
+        report_entry->quality_code = 0x0000U;
+        snprintf(report_entry->quality_validity, sizeof(report_entry->quality_validity), "%s", "good");
         if (!expect_true(session.last_report_entry_count == 1U, "expected last report entry count")) {
             return 1;
         }
@@ -201,6 +203,9 @@ int main(void)
             return 1;
         }
         if (!expect_true((report_entry->reason_flags & UNITLAB_NATIVE_REPORT_REASON_GENERAL_INTERROGATION) != 0U && strcmp(report_entry->reason_labels, "general-interrogation") == 0, "expected report entry semantic reason metadata")) {
+            return 1;
+        }
+        if (!expect_true(report_entry->quality_code == 0x0000U && strcmp(report_entry->quality_validity, "good") == 0, "expected report entry quality metadata")) {
             return 1;
         }
         report_entry->value_kind = UNITLAB_NATIVE_REPORT_VALUE_FLOAT;

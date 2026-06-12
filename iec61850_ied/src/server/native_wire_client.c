@@ -553,6 +553,53 @@ static void copy_report_reason_metadata(const UnitLabMmsBerElement* reason, Unit
     }
 }
 
+static int report_entry_is_quality_leaf(const UnitLabNativeLastReportEntry* entry)
+{
+    size_t length;
+
+    if (entry == NULL) {
+        return 0;
+    }
+    length = strlen(entry->data_reference);
+    return length >= 2U && strcmp(&entry->data_reference[length - 2U], "$q") == 0;
+}
+
+static const char* quality_validity_label(uint8_t validity_bits)
+{
+    switch (validity_bits & 0xC0U) {
+        case 0x00U:
+            return "good";
+        case 0x40U:
+            return "invalid";
+        case 0x80U:
+            return "reserved";
+        case 0xC0U:
+            return "questionable";
+        default:
+            return "unknown";
+    }
+}
+
+static void copy_report_quality_metadata(const UnitLabMmsBerElement* value, UnitLabNativeLastReportEntry* entry)
+{
+    if (entry == NULL) {
+        return;
+    }
+    entry->quality_code = 0U;
+    entry->quality_validity[0] = '\0';
+    if (value == NULL
+        || value->value_bytes == NULL
+        || value->value_length < 2U
+        || value->tag.tag_class != UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC
+        || value->tag.constructed
+        || value->tag.tag_number != 4U
+        || !report_entry_is_quality_leaf(entry)) {
+        return;
+    }
+    entry->quality_code = decode_unsigned_bytes(value->value_bytes, value->value_length);
+    snprintf(entry->quality_validity, sizeof(entry->quality_validity), "%s", quality_validity_label(value->value_bytes[1]));
+}
+
 static void copy_report_typed_value(const UnitLabMmsBerElement* value, UnitLabNativeLastReportEntry* entry)
 {
     if (entry == NULL) {
@@ -566,6 +613,8 @@ static void copy_report_typed_value(const UnitLabMmsBerElement* value, UnitLabNa
     entry->integer_value = 0;
     entry->floating_value = 0.0;
     entry->bool_value = 0;
+    entry->quality_code = 0U;
+    entry->quality_validity[0] = '\0';
     if (value == NULL) {
         return;
     }
@@ -589,6 +638,7 @@ static void copy_report_typed_value(const UnitLabMmsBerElement* value, UnitLabNa
         entry->value_kind = UNITLAB_NATIVE_REPORT_VALUE_FLOAT;
     } else if (value->tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && value->tag.tag_number == 4U) {
         entry->value_kind = UNITLAB_NATIVE_REPORT_VALUE_BIT_STRING;
+        copy_report_quality_metadata(value, entry);
     } else if (value->tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && value->tag.tag_number == 9U) {
         entry->value_kind = UNITLAB_NATIVE_REPORT_VALUE_OCTETS;
     } else if (unitlab_native_client_bytes_are_printable_ascii(value->value_bytes, value->value_length)) {
@@ -1160,6 +1210,9 @@ static void emit_information_report_summary(UnitLabNativeClientSessionState* ses
         print_report_value_summary(&next);
         if (value_count < session->last_report_entry_count) {
             printf(" ref=%s kind=%s", session->last_report_entries[value_count].display_reference, report_value_kind_label(session->last_report_entries[value_count].value_kind));
+            if (session->last_report_entries[value_count].quality_validity[0] != '\0') {
+                printf(" quality=0x%04x validity=%s", (unsigned)session->last_report_entries[value_count].quality_code, session->last_report_entries[value_count].quality_validity);
+            }
         }
         printf("\n");
         value_count++;

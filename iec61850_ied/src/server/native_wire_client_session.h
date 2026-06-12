@@ -119,6 +119,8 @@ typedef struct {
     uint32_t reason_code;
     uint32_t reason_flags;
     char reason_labels[128U];
+    uint32_t quality_code;
+    char quality_validity[32U];
     UnitLabNativeReportValueKind value_kind;
     uint64_t unsigned_value;
     int64_t integer_value;
