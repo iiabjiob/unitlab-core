@@ -310,6 +310,16 @@ static int verify_report_gi(IedConnection connection)
     ClientReportControlBlock_setResvTms(rcb, 0);
     IedConnection_setRCBValues(connection, &error, rcb, RCB_ELEMENT_RESV_TMS, true);
     passed &= expect_true(error == IED_ERROR_OK, "BRCB release should succeed");
+
+    ClientReportControlBlock cleanup_rcb = IedConnection_getRCBValues(connection, &error, rcb_ref, NULL);
+    passed &= expect_true(error == IED_ERROR_OK, "BRCB cleanup read should succeed");
+    passed &= expect_true(cleanup_rcb != NULL, "BRCB cleanup read should return a block");
+    if (cleanup_rcb != NULL) {
+        passed &= expect_true(ClientReportControlBlock_getRptEna(cleanup_rcb) == false, "BRCB cleanup should leave RptEna disabled");
+        passed &= expect_true(!ClientReportControlBlock_hasResvTms(cleanup_rcb) || ClientReportControlBlock_getResvTms(cleanup_rcb) == 0, "BRCB cleanup should leave ResvTms cleared");
+        ClientReportControlBlock_destroy(cleanup_rcb);
+    }
+
     IedConnection_uninstallReportHandler(connection, rcb_ref);
     ClientReportControlBlock_destroy(rcb);
     return passed;

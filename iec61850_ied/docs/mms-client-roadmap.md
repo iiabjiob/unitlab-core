@@ -178,6 +178,7 @@ Closed in current slice:
 
 - Native client now tracks the selected discovered BRCB in subscription state.
 - `close-ied` and `disconnect` perform explicit cleanup for the selected RCB: disable `RptEna` when enabled and release buffered `ResvTms` ownership when applicable.
+- Linked client smoke verifies that cleanup leaves the buffered BRCB disabled and `ResvTms` cleared.
 
 Change boundary:
 
