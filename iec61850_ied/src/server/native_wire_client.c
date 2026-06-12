@@ -436,6 +436,86 @@ static void copy_data_value_summary(const UnitLabMmsBerElement* value, char* buf
     }
 }
 
+static const char* report_value_kind_label(UnitLabNativeReportValueKind kind)
+{
+    switch (kind) {
+        case UNITLAB_NATIVE_REPORT_VALUE_EMPTY:
+            return "empty";
+        case UNITLAB_NATIVE_REPORT_VALUE_BOOL:
+            return "bool";
+        case UNITLAB_NATIVE_REPORT_VALUE_UNSIGNED:
+            return "unsigned";
+        case UNITLAB_NATIVE_REPORT_VALUE_INTEGER:
+            return "integer";
+        case UNITLAB_NATIVE_REPORT_VALUE_STRING:
+            return "string";
+        case UNITLAB_NATIVE_REPORT_VALUE_OCTETS:
+            return "octets";
+        case UNITLAB_NATIVE_REPORT_VALUE_BIT_STRING:
+            return "bit-string";
+        case UNITLAB_NATIVE_REPORT_VALUE_STRUCTURE:
+            return "structure";
+        case UNITLAB_NATIVE_REPORT_VALUE_UNSUPPORTED:
+        default:
+            return "unsupported";
+    }
+}
+
+static int64_t decode_signed_bytes(const uint8_t* bytes, size_t length)
+{
+    uint64_t unsigned_value = decode_unsigned_bytes(bytes, length);
+    uint64_t sign_bit;
+
+    if (bytes == NULL || length == 0U || length >= sizeof(uint64_t)) {
+        return (int64_t)unsigned_value;
+    }
+    sign_bit = 1ULL << ((length * 8U) - 1U);
+    if ((unsigned_value & sign_bit) == 0U) {
+        return (int64_t)unsigned_value;
+    }
+    return (int64_t)(unsigned_value | (~0ULL << (length * 8U)));
+}
+
+static void copy_report_typed_value(const UnitLabMmsBerElement* value, UnitLabNativeLastReportEntry* entry)
+{
+    if (entry == NULL) {
+        return;
+    }
+    entry->value_kind = UNITLAB_NATIVE_REPORT_VALUE_UNSUPPORTED;
+    entry->raw_tag_class = 0U;
+    entry->raw_tag_number = 0U;
+    entry->raw_value_length = 0U;
+    entry->unsigned_value = 0U;
+    entry->integer_value = 0;
+    entry->bool_value = 0;
+    if (value == NULL) {
+        return;
+    }
+    entry->raw_tag_class = (uint8_t)value->tag.tag_class;
+    entry->raw_tag_number = (uint8_t)value->tag.tag_number;
+    entry->raw_value_length = value->value_length;
+    if (value->value_bytes == NULL || value->value_length == 0U) {
+        entry->value_kind = UNITLAB_NATIVE_REPORT_VALUE_EMPTY;
+    } else if (value->tag.constructed) {
+        entry->value_kind = UNITLAB_NATIVE_REPORT_VALUE_STRUCTURE;
+    } else if (value->tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && value->tag.tag_number == 3U && value->value_length == 1U) {
+        entry->value_kind = UNITLAB_NATIVE_REPORT_VALUE_BOOL;
+        entry->bool_value = value->value_bytes[0] != 0U ? 1 : 0;
+    } else if (value->tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && value->tag.tag_number == 5U && value->value_length <= sizeof(uint64_t)) {
+        entry->value_kind = UNITLAB_NATIVE_REPORT_VALUE_INTEGER;
+        entry->integer_value = decode_signed_bytes(value->value_bytes, value->value_length);
+    } else if (value->tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && value->tag.tag_number == 6U && value->value_length <= sizeof(uint64_t)) {
+        entry->value_kind = UNITLAB_NATIVE_REPORT_VALUE_UNSIGNED;
+        entry->unsigned_value = decode_unsigned_bytes(value->value_bytes, value->value_length);
+    } else if (value->tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && value->tag.tag_number == 4U) {
+        entry->value_kind = UNITLAB_NATIVE_REPORT_VALUE_BIT_STRING;
+    } else if (value->tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && value->tag.tag_number == 9U) {
+        entry->value_kind = UNITLAB_NATIVE_REPORT_VALUE_OCTETS;
+    } else if (unitlab_native_client_bytes_are_printable_ascii(value->value_bytes, value->value_length)) {
+        entry->value_kind = UNITLAB_NATIVE_REPORT_VALUE_STRING;
+    }
+}
+
 static void emit_structured_access_result_summary(size_t access_result_index, const UnitLabMmsBerElement* result)
 {
     UnitLabMmsDiagnostic diagnostic;
@@ -994,11 +1074,12 @@ static void emit_information_report_summary(UnitLabNativeClientSessionState* ses
         }
         if (value_count < session->last_report_entry_count) {
             copy_data_value_summary(&next, session->last_report_entries[value_count].value_summary, sizeof(session->last_report_entries[value_count].value_summary));
+            copy_report_typed_value(&next, &session->last_report_entries[value_count]);
         }
         printf("mms-summary: report.value[%zu]=", value_count);
         print_report_value_summary(&next);
         if (value_count < session->last_report_entry_count) {
-            printf(" ref=%s", session->last_report_entries[value_count].display_reference);
+            printf(" ref=%s kind=%s", session->last_report_entries[value_count].display_reference, report_value_kind_label(session->last_report_entries[value_count].value_kind));
         }
         printf("\n");
         value_count++;

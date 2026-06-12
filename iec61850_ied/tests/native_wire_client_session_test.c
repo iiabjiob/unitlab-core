@@ -165,6 +165,11 @@ int main(void)
         }
         snprintf(report_entry->value_summary, sizeof(report_entry->value_summary), "%s", "true");
         snprintf(report_entry->reason_summary, sizeof(report_entry->reason_summary), "%s", "0x0204");
+        report_entry->value_kind = UNITLAB_NATIVE_REPORT_VALUE_BOOL;
+        report_entry->bool_value = 1;
+        report_entry->raw_tag_class = 2U;
+        report_entry->raw_tag_number = 3U;
+        report_entry->raw_value_length = 1U;
         if (!expect_true(session.last_report_entry_count == 1U, "expected last report entry count")) {
             return 1;
         }
@@ -178,6 +183,12 @@ int main(void)
             return 1;
         }
         if (!expect_true(strcmp(report_entry->value_summary, "true") == 0 && strcmp(report_entry->reason_summary, "0x0204") == 0, "expected report entry value and reason summaries")) {
+            return 1;
+        }
+        if (!expect_true(report_entry->value_kind == UNITLAB_NATIVE_REPORT_VALUE_BOOL && report_entry->bool_value == 1, "expected report entry typed bool value")) {
+            return 1;
+        }
+        if (!expect_true(report_entry->raw_tag_class == 2U && report_entry->raw_tag_number == 3U && report_entry->raw_value_length == 1U, "expected report entry raw BER metadata")) {
             return 1;
         }
         unitlab_native_client_session_reset_last_report(&session);

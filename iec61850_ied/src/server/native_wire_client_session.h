@@ -82,12 +82,31 @@ typedef struct {
     int matched_discovery;
 } UnitLabNativeDiscoveredLeafRef;
 
+typedef enum {
+    UNITLAB_NATIVE_REPORT_VALUE_EMPTY = 0,
+    UNITLAB_NATIVE_REPORT_VALUE_BOOL,
+    UNITLAB_NATIVE_REPORT_VALUE_UNSIGNED,
+    UNITLAB_NATIVE_REPORT_VALUE_INTEGER,
+    UNITLAB_NATIVE_REPORT_VALUE_STRING,
+    UNITLAB_NATIVE_REPORT_VALUE_OCTETS,
+    UNITLAB_NATIVE_REPORT_VALUE_BIT_STRING,
+    UNITLAB_NATIVE_REPORT_VALUE_STRUCTURE,
+    UNITLAB_NATIVE_REPORT_VALUE_UNSUPPORTED
+} UnitLabNativeReportValueKind;
+
 typedef struct {
     char data_reference[384U];
     char display_reference[384U];
     char value_summary[160U];
     char reason_summary[64U];
     char type_kind[32U];
+    uint8_t raw_tag_class;
+    uint8_t raw_tag_number;
+    size_t raw_value_length;
+    UnitLabNativeReportValueKind value_kind;
+    uint64_t unsigned_value;
+    int64_t integer_value;
+    int bool_value;
     size_t inclusion_index;
     int discovered_match;
     int dataset_match;
