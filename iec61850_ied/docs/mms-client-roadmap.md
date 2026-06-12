@@ -142,7 +142,7 @@ Closed in current slice:
 
 Remaining:
 
-- Generic LN data-name browse results without explicit FC context still fall back to partial root metadata; vendor-specific FC normalization beyond the request context still needs fixture coverage.
+- Vendor-specific FC normalization beyond the request context still needs fixture coverage.
 
 Goal: build a useful IEC 61850 model, not just enough state to subscribe to one report.
 
