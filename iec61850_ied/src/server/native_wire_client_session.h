@@ -150,6 +150,7 @@ UnitLabNativeLastReportEntry* unitlab_native_client_session_append_last_report_e
 int unitlab_native_client_session_data_set_member_exists(const UnitLabNativeClientSessionState* session, const char* reference);
 int unitlab_native_client_session_data_set_index_by_reference(const UnitLabNativeClientSessionState* session, const char* reference, size_t* data_set_index);
 int unitlab_native_client_session_data_set_contains_member(const UnitLabNativeClientSessionState* session, const char* data_set_reference, const char* member_reference);
+const char* unitlab_native_client_session_data_set_member_at(const UnitLabNativeClientSessionState* session, const char* data_set_reference, size_t member_index);
 UnitLabNativeDiscoveredDataSet* unitlab_native_client_session_append_data_set(UnitLabNativeClientSessionState* session, const char* data_set_reference);
 int unitlab_native_client_session_append_data_set_member(UnitLabNativeClientSessionState* session, UnitLabNativeDiscoveredDataSet* data_set, const char* member_reference);
 UnitLabNativeDiscoveredRcb* unitlab_native_client_session_append_discovered_rcb(UnitLabNativeClientSessionState* session, const char* domain, const char* item);

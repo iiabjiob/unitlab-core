@@ -774,6 +774,17 @@ static int report_opt_bit_enabled(const uint8_t* bytes, size_t length, unsigned 
     return (bytes[data_index] & mask) != 0U;
 }
 
+static int report_bit_string_bit_enabled(const uint8_t* bytes, size_t length, size_t bit_index)
+{
+    size_t data_index = 1U + (bit_index / 8U);
+    uint8_t mask = (uint8_t)(0x80U >> (bit_index % 8U));
+
+    if (bytes == NULL || length <= data_index) {
+        return 0;
+    }
+    return (bytes[data_index] & mask) != 0U;
+}
+
 static void print_report_value_summary(const UnitLabMmsBerElement* value)
 {
     print_data_value_summary(value);
@@ -818,6 +829,8 @@ static void emit_information_report_summary(UnitLabNativeClientSessionState* ses
     int has_data_reference = 0;
     int has_reason = 0;
     int report_data_set_discovered = 0;
+    const uint8_t* inclusion_bytes = NULL;
+    size_t inclusion_length = 0U;
 
     if (pdu == NULL || pdu->service_bytes == NULL || pdu->service_length == 0U) {
         return;
@@ -902,9 +915,29 @@ static void emit_information_report_summary(UnitLabNativeClientSessionState* ses
     if (!read_next_report_value(values_wrapper.value_bytes, values_wrapper.value_length, &values_offset, &value, &diagnostic)) {
         return;
     }
+    inclusion_bytes = value.value_bytes;
+    inclusion_length = value.value_length;
     printf("mms-summary: report.inclusion=");
     print_report_value_summary(&value);
     printf("\n");
+
+    if (!has_data_reference && report_data_set_discovered) {
+        size_t member_index = 0U;
+        size_t mapped_index = 0U;
+        const char* member_reference = unitlab_native_client_session_data_set_member_at(session, session->discovered_model.last_report_data_set, member_index);
+        while (member_reference != NULL) {
+            if (report_bit_string_bit_enabled(inclusion_bytes, inclusion_length, member_index)) {
+                UnitLabNativeLastReportEntry* entry = unitlab_native_client_session_append_last_report_entry(session, member_reference, 1, member_index);
+                if (entry != NULL) {
+                    matched_data_ref_count++;
+                    printf("mms-summary: report.datasetRef[%zu]=%s dataset-index=%zu display-ref=%s\n", mapped_index, member_reference, member_index, entry->display_reference);
+                }
+                mapped_index++;
+            }
+            member_index++;
+            member_reference = unitlab_native_client_session_data_set_member_at(session, session->discovered_model.last_report_data_set, member_index);
+        }
+    }
 
     if (has_data_reference) {
         while (values_offset < values_wrapper.value_length) {

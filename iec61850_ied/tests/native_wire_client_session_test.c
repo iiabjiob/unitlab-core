@@ -54,6 +54,15 @@ int main(void)
     if (!expect_true(!unitlab_native_client_session_data_set_contains_member(&session, "IED1LD0/GGIO1$dsWire", "IED1LD0/XCBR1$ST$Pos$stVal"), "expected scoped member lookup to reject a member from another DataSet")) {
         return 1;
     }
+    if (!expect_true(strcmp(unitlab_native_client_session_data_set_member_at(&session, "IED1LD0/LLN0$dsEvents", 0U), "IED1LD0/XCBR1$ST$Pos$stVal") == 0, "expected indexed DataSet first member lookup to succeed")) {
+        return 1;
+    }
+    if (!expect_true(strcmp(unitlab_native_client_session_data_set_member_at(&session, "IED1LD0/LLN0$dsEvents", 1U), "IED1LD0/PGGIO1$ST$Ind1$stVal") == 0, "expected indexed DataSet second member lookup to succeed")) {
+        return 1;
+    }
+    if (!expect_true(unitlab_native_client_session_data_set_member_at(&session, "IED1LD0/LLN0$dsEvents", 2U) == NULL, "expected indexed DataSet lookup to reject out-of-range member")) {
+        return 1;
+    }
 
     unitlab_native_client_session_reset(&session);
     if (!expect_true(session.discovered_data_set_count == 0U && session.discovered_data_set_member_count == 0U, "expected reset to clear DataSets and members")) {
@@ -150,7 +159,7 @@ int main(void)
     }
 
     {
-        UnitLabNativeLastReportEntry* report_entry = unitlab_native_client_session_append_last_report_entry(&session, "IED1LD0/LLN0$ST$Member299$stVal", 1, 0U);
+        UnitLabNativeLastReportEntry* report_entry = unitlab_native_client_session_append_last_report_entry(&session, "IED1LD0/LLN0$ST$Member299$stVal", 1, 299U);
         if (!expect_true(report_entry != NULL, "expected last report entry append to succeed")) {
             return 1;
         }
@@ -163,6 +172,9 @@ int main(void)
             return 1;
         }
         if (!expect_true(strcmp(report_entry->display_reference, "IED1LD0/LLN0.ST.Member299.stVal") == 0, "expected report entry normalized display reference")) {
+            return 1;
+        }
+        if (!expect_true(report_entry->inclusion_index == 299U, "expected report entry to retain Dataset inclusion index")) {
             return 1;
         }
         if (!expect_true(strcmp(report_entry->value_summary, "true") == 0 && strcmp(report_entry->reason_summary, "0x0204") == 0, "expected report entry value and reason summaries")) {

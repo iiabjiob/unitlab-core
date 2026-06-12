@@ -609,6 +609,26 @@ int unitlab_native_client_session_data_set_contains_member(const UnitLabNativeCl
     return 0;
 }
 
+const char* unitlab_native_client_session_data_set_member_at(const UnitLabNativeClientSessionState* session, const char* data_set_reference, size_t member_index)
+{
+    size_t data_set_index = 0U;
+    const UnitLabNativeDiscoveredDataSet* data_set;
+    size_t absolute_member_index;
+
+    if (!unitlab_native_client_session_data_set_index_by_reference(session, data_set_reference, &data_set_index)) {
+        return NULL;
+    }
+    data_set = &session->discovered_data_sets[data_set_index];
+    if (member_index >= data_set->member_count) {
+        return NULL;
+    }
+    absolute_member_index = data_set->member_start + member_index;
+    if (absolute_member_index >= session->discovered_data_set_member_count) {
+        return NULL;
+    }
+    return session->discovered_data_set_members[absolute_member_index];
+}
+
 UnitLabNativeDiscoveredDataSet* unitlab_native_client_session_append_data_set(UnitLabNativeClientSessionState* session, const char* data_set_reference)
 {
     UnitLabNativeDiscoveredDataSet* data_set;
