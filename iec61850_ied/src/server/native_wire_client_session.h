@@ -87,6 +87,7 @@ typedef enum {
     UNITLAB_NATIVE_REPORT_VALUE_BOOL,
     UNITLAB_NATIVE_REPORT_VALUE_UNSIGNED,
     UNITLAB_NATIVE_REPORT_VALUE_INTEGER,
+    UNITLAB_NATIVE_REPORT_VALUE_FLOAT,
     UNITLAB_NATIVE_REPORT_VALUE_STRING,
     UNITLAB_NATIVE_REPORT_VALUE_OCTETS,
     UNITLAB_NATIVE_REPORT_VALUE_BIT_STRING,
@@ -106,6 +107,7 @@ typedef struct {
     UnitLabNativeReportValueKind value_kind;
     uint64_t unsigned_value;
     int64_t integer_value;
+    double floating_value;
     int bool_value;
     size_t inclusion_index;
     int discovered_match;

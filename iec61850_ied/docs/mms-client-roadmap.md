@@ -134,7 +134,7 @@ Closed in current slice:
 - Debug model summary reports `data-names`, `typed-data-names`, `data-components`, `typed-data-components`, and `leaf-refs` counts.
 - Report decoder stores session-owned mapped entries for reports that include `dataRef`, including normalized display reference, match flags, value summary, and reason summary.
 - Reports without `dataRef` are mapped through discovered Dataset order using the inclusion bitstring.
-- Latest report entries now retain primitive typed value metadata alongside text summaries: raw BER tag, raw length, bool, signed/unsigned integer, string/octet/bit-string/structure classification.
+- Latest report entries now retain primitive typed value metadata alongside text summaries: raw BER tag, raw length, bool, signed/unsigned integer, MMS float32, string/octet/bit-string/structure classification.
 - Session tests cover dynamic growth and reset for logical devices, logical nodes, data names, leaf references, and mapped report entries.
 
 Remaining:
@@ -208,7 +208,7 @@ Change boundary:
 - Decode nested MMS values:
   - boolean;
   - integer/unsigned;
-  - float;
+  - float32 for MMS floating-point payloads encoded as exponent-width `0x08` plus IEEE754 bytes;
   - bit-string;
   - octet-string;
   - visible-string;

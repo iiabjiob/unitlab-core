@@ -191,6 +191,16 @@ int main(void)
         if (!expect_true(report_entry->raw_tag_class == 2U && report_entry->raw_tag_number == 3U && report_entry->raw_value_length == 1U, "expected report entry raw BER metadata")) {
             return 1;
         }
+        report_entry->value_kind = UNITLAB_NATIVE_REPORT_VALUE_FLOAT;
+        report_entry->floating_value = 12.5;
+        report_entry->raw_tag_number = 7U;
+        report_entry->raw_value_length = 5U;
+        if (!expect_true(report_entry->value_kind == UNITLAB_NATIVE_REPORT_VALUE_FLOAT && report_entry->floating_value > 12.4 && report_entry->floating_value < 12.6, "expected report entry typed float value")) {
+            return 1;
+        }
+        if (!expect_true(report_entry->raw_tag_number == 7U && report_entry->raw_value_length == 5U, "expected report entry float raw BER metadata")) {
+            return 1;
+        }
         unitlab_native_client_session_reset_last_report(&session);
         if (!expect_true(session.last_report_entry_count == 0U && session.discovered_model.last_report_value_count == 0U, "expected last report reset to clear mapped entries")) {
             return 1;

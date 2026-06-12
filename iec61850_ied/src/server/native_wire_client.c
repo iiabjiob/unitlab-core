@@ -447,6 +447,8 @@ static const char* report_value_kind_label(UnitLabNativeReportValueKind kind)
             return "unsigned";
         case UNITLAB_NATIVE_REPORT_VALUE_INTEGER:
             return "integer";
+        case UNITLAB_NATIVE_REPORT_VALUE_FLOAT:
+            return "float";
         case UNITLAB_NATIVE_REPORT_VALUE_STRING:
             return "string";
         case UNITLAB_NATIVE_REPORT_VALUE_OCTETS:
@@ -476,6 +478,20 @@ static int64_t decode_signed_bytes(const uint8_t* bytes, size_t length)
     return (int64_t)(unsigned_value | (~0ULL << (length * 8U)));
 }
 
+static int decode_mms_float32_value(const uint8_t* bytes, size_t length, double* value)
+{
+    uint32_t real_bits;
+    float real_value;
+
+    if (bytes == NULL || value == NULL || length != 5U || bytes[0] != 0x08U) {
+        return 0;
+    }
+    real_bits = ((uint32_t)bytes[1] << 24U) | ((uint32_t)bytes[2] << 16U) | ((uint32_t)bytes[3] << 8U) | (uint32_t)bytes[4];
+    memcpy(&real_value, &real_bits, sizeof(real_value));
+    *value = (double)real_value;
+    return 1;
+}
+
 static void copy_report_typed_value(const UnitLabMmsBerElement* value, UnitLabNativeLastReportEntry* entry)
 {
     if (entry == NULL) {
@@ -487,6 +503,7 @@ static void copy_report_typed_value(const UnitLabMmsBerElement* value, UnitLabNa
     entry->raw_value_length = 0U;
     entry->unsigned_value = 0U;
     entry->integer_value = 0;
+    entry->floating_value = 0.0;
     entry->bool_value = 0;
     if (value == NULL) {
         return;
@@ -507,6 +524,8 @@ static void copy_report_typed_value(const UnitLabMmsBerElement* value, UnitLabNa
     } else if (value->tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && value->tag.tag_number == 6U && value->value_length <= sizeof(uint64_t)) {
         entry->value_kind = UNITLAB_NATIVE_REPORT_VALUE_UNSIGNED;
         entry->unsigned_value = decode_unsigned_bytes(value->value_bytes, value->value_length);
+    } else if (value->tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && value->tag.tag_number == 7U && decode_mms_float32_value(value->value_bytes, value->value_length, &entry->floating_value)) {
+        entry->value_kind = UNITLAB_NATIVE_REPORT_VALUE_FLOAT;
     } else if (value->tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && value->tag.tag_number == 4U) {
         entry->value_kind = UNITLAB_NATIVE_REPORT_VALUE_BIT_STRING;
     } else if (value->tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && value->tag.tag_number == 9U) {
