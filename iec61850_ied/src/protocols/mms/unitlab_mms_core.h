@@ -60,6 +60,7 @@ typedef struct UnitLabMmsPendingRequest {
     uint32_t browse_object_class;
     uint32_t browse_object_scope;
     char browse_domain_id[128];
+    char browse_node_id[128];
     char browse_continue_after[128];
     uint8_t write_value[32];
     size_t write_value_length;

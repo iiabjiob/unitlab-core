@@ -18,8 +18,10 @@ Implemented and validated against the local native/libIEC61850-oriented test pat
 
 - COTP/ACSE/MMS association path exists.
 - Basic `Read`, `GetNameList`, `GetVariableAccessAttributes`, `GetNamedVariableListAttributes`, and `Write` requests exist.
+- GetNameList request building/decoding separates LN selector (`node_id`) from MMS `continueAfter`, while preserving the legacy builder path.
 - Discovery runner is isolated from the CLI in `src/server/native_wire_client_discovery.c`.
 - Session/discovered/subscription state has started moving into `src/server/native_wire_client_session.*`.
+- Discovery paginates VMD logical devices, domain logical nodes, datasets, BRCBs, and URCB browse calls with stalled-page detection.
 - BRCB discovery uses `GetNameList` class 4 and builds `LN$BR$brcbName` references.
 - RptEna and GI write paths exist for the selected BRCB.
 - Report decoder extracts `RptID`, `DatSet`, `OptFlds`, inclusion bitstring, `dataRef`, values, and reason fields.
@@ -30,8 +32,8 @@ Implemented and validated against the local native/libIEC61850-oriented test pat
 
 These are not yet production-client guarantees:
 
-- Discovery still has fixed-size storage limits and can truncate large IED models.
-- `moreFollows`/pagination handling is not yet proven across all discovery branches and real IED list sizes.
+- Discovery still needs a configurable safety cap for extremely large/malformed IED models.
+- Pagination is implemented for the current discovery branches but still needs golden-frame coverage from saved large-model captures.
 - Logical model discovery is still shallow; data object/data attribute type trees are not fully modeled.
 - BRCB support is ahead of URCB support.
 - RCB lifecycle is incomplete for real devices that require reservation, release, purge, or replay handling.
@@ -78,6 +80,23 @@ Validation:
 
 ## Slice 2: Complete Discovery Pagination
 
+Status: complete for current discovery branches.
+
+Closed:
+
+- `GetNameList` builder/decoder now keeps LN selector (`node_id`) separate from MMS `continueAfter`.
+- Legacy `GetNameList` builder behavior remains compatible for existing tests and callers.
+- VMD logical device, domain logical node, dataset, BRCB, and URCB browse paths walk `moreFollows` pages.
+- Pagination uses the last returned identifier as `continueAfter`.
+- Stalled pagination fails discovery with a protocol diagnostic instead of looping.
+- Focused protocol/runtime tests and local TCP smoke cover the implemented path.
+
+Known follow-up:
+
+- LN data-name pagination is currently issued only as a browse/drain path and is not yet stored as a full logical model; that belongs to Slice 3.
+- URCB browse pagination is implemented, but URCB control/subscription lifecycle belongs to Slice 4.
+- Page-count diagnostics are not yet surfaced in the debug summary.
+
 Goal: match IEDScout-style discovery behavior for devices that return partial lists.
 
 Change boundary:
@@ -90,7 +109,7 @@ Change boundary:
 Acceptance criteria:
 
 - VMD logical devices, domain logical nodes, datasets, LN data names, BRCBs, and URCBs can all walk multiple pages.
-- Discovery diagnostics report page count and final object count.
+- Discovery diagnostics report final object count; page-count diagnostics are a follow-up.
 - Stalled or malformed pagination produces a clear error state.
 
 Validation:

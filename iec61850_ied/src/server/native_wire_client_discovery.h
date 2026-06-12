@@ -16,6 +16,7 @@ typedef int (*UnitLabNativeDiscoveryGetNameListStep)(
     uint32_t object_class,
     uint32_t object_scope,
     const char* domain_id,
+    const char* node_id,
     const char* continue_after,
     uint32_t invoke_id);
 

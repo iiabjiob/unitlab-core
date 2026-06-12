@@ -478,7 +478,8 @@ static void test_wire_pdu_bridge_get_name_list_logical_node_directory_request(vo
     assert(result.pdu.object_class == 3U);
     assert(result.pdu.object_scope == 1U);
     assert(strcmp(result.pdu.domain_id, "LD0") == 0);
-    assert(strcmp(result.pdu.continue_after, "LLN0") == 0);
+    assert(strcmp(result.pdu.node_id, "LLN0") == 0);
+    assert(result.pdu.continue_after[0] == '\0');
     assert(result.diagnostic.classification == UNITLAB_MMS_DECODE_CLASSIFICATION_NONE);
 }
 

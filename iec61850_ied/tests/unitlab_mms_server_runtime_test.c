@@ -5715,6 +5715,7 @@ static void test_server_runtime_apply_iedscout_logical_node_directory_request_cl
     assert(server_runtime.pending_request.browse_object_class == 1U);
     assert(server_runtime.pending_request.browse_object_scope == 1U);
     assert(strcmp(server_runtime.pending_request.browse_domain_id, "LD0") == 0);
+    assert(server_runtime.pending_request.browse_node_id[0] == '\0');
     assert(strcmp(server_runtime.pending_request.browse_continue_after, "LLN0") == 0);
 
     unitlab_mms_diagnostic_clear(&diagnostic);
@@ -6270,7 +6271,8 @@ static void test_server_runtime_apply_iedscout_logical_node_directory_request_bu
     assert(server_runtime.pending_request.browse_object_class == 3U);
     assert(server_runtime.pending_request.browse_object_scope == 1U);
     assert(strcmp(server_runtime.pending_request.browse_domain_id, "LD0") == 0);
-    assert(strcmp(server_runtime.pending_request.browse_continue_after, "LLN0") == 0);
+    assert(strcmp(server_runtime.pending_request.browse_node_id, "LLN0") == 0);
+    assert(server_runtime.pending_request.browse_continue_after[0] == '\0');
 
     unitlab_mms_diagnostic_clear(&diagnostic);
     {

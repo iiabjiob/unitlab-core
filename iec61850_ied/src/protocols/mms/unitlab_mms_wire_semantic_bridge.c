@@ -259,6 +259,7 @@ static int bridge_parse_read_request(const uint8_t* service_bytes, size_t servic
     decoded_pdu->object_class = 0U;
     decoded_pdu->object_scope = 0U;
     decoded_pdu->domain_id[0] = '\0';
+    decoded_pdu->node_id[0] = '\0';
     decoded_pdu->continue_after[0] = '\0';
     decoded_pdu->item_id[0] = '\0';
     decoded_pdu->value_bytes = NULL;
@@ -710,7 +711,7 @@ static int bridge_collect_get_name_list_object_class(const UnitLabMmsBerElement*
     return 1;
 }
 
-static int bridge_collect_get_name_list_object_scope(const UnitLabMmsBerElement* element, uint32_t* object_scope, int* has_object_scope, char* domain_id, size_t domain_id_size, char* continue_after, size_t continue_after_size, UnitLabMmsDecodeDiagnostic* diagnostic)
+static int bridge_collect_get_name_list_object_scope(const UnitLabMmsBerElement* element, uint32_t* object_scope, int* has_object_scope, char* domain_id, size_t domain_id_size, char* node_id, size_t node_id_size, UnitLabMmsDecodeDiagnostic* diagnostic)
 {
     UnitLabMmsBerElement child;
     size_t offset = 0U;
@@ -747,9 +748,9 @@ static int bridge_collect_get_name_list_object_scope(const UnitLabMmsBerElement*
                     bridge_set_diagnostic(diagnostic, UNITLAB_MMS_DECODE_CLASSIFICATION_SEMANTIC_INVALID, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "getNameList domain identifier is too long.", "getNameList domain identifier is too long.");
                     return 0;
                 }
-            } else if (continue_after != NULL && continue_after[0] == '\0') {
-                if (!bridge_copy_bytes_as_string(element->value_bytes, element->value_length, continue_after, continue_after_size)) {
-                    bridge_set_diagnostic(diagnostic, UNITLAB_MMS_DECODE_CLASSIFICATION_SEMANTIC_INVALID, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "getNameList continueAfter is too long.", "getNameList continueAfter is too long.");
+            } else if (node_id != NULL && node_id[0] == '\0') {
+                if (!bridge_copy_bytes_as_string(element->value_bytes, element->value_length, node_id, node_id_size)) {
+                    bridge_set_diagnostic(diagnostic, UNITLAB_MMS_DECODE_CLASSIFICATION_SEMANTIC_INVALID, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "getNameList node identifier is too long.", "getNameList node identifier is too long.");
                     return 0;
                 }
             }
@@ -770,7 +771,7 @@ static int bridge_collect_get_name_list_object_scope(const UnitLabMmsBerElement*
             bridge_set_diagnostic(diagnostic, UNITLAB_MMS_DECODE_CLASSIFICATION_SEMANTIC_INVALID, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "getNameList request contains a truncated field.", "getNameList request contains a truncated field.");
             return 0;
         }
-        if (!bridge_collect_get_name_list_object_scope(&child, object_scope, has_object_scope, domain_id, domain_id_size, continue_after, continue_after_size, diagnostic)) {
+        if (!bridge_collect_get_name_list_object_scope(&child, object_scope, has_object_scope, domain_id, domain_id_size, node_id, node_id_size, diagnostic)) {
             return 0;
         }
         offset += child_consumed_length;
@@ -832,6 +833,7 @@ static int bridge_parse_get_name_list_request(const uint8_t* service_bytes, size
     decoded_pdu->object_class = 0U;
     decoded_pdu->object_scope = 0U;
     decoded_pdu->domain_id[0] = '\0';
+    decoded_pdu->node_id[0] = '\0';
     decoded_pdu->continue_after[0] = '\0';
 
     unitlab_mms_ber_element_init(&outer_element);
@@ -857,7 +859,7 @@ static int bridge_parse_get_name_list_request(const uint8_t* service_bytes, size
         if (!bridge_collect_get_name_list_object_class(&child, &decoded_pdu->object_class, &has_object_class, diagnostic)) {
             return 0;
         }
-        if (!bridge_collect_get_name_list_object_scope(&child, &decoded_pdu->object_scope, &has_object_scope, decoded_pdu->domain_id, sizeof(decoded_pdu->domain_id), decoded_pdu->continue_after, sizeof(decoded_pdu->continue_after), diagnostic)) {
+        if (!bridge_collect_get_name_list_object_scope(&child, &decoded_pdu->object_scope, &has_object_scope, decoded_pdu->domain_id, sizeof(decoded_pdu->domain_id), decoded_pdu->node_id, sizeof(decoded_pdu->node_id), diagnostic)) {
             return 0;
         }
         if (!bridge_collect_get_name_list_continue_after(&child, decoded_pdu->continue_after, sizeof(decoded_pdu->continue_after), diagnostic)) {
@@ -903,6 +905,8 @@ static int bridge_map_pdu_kind(const UnitLabMmsPdu* wire_pdu, UnitLabMmsDecodedP
                 if (!bridge_parse_read_request(wire_pdu->service_bytes, wire_pdu->service_length, decoded_pdu, diagnostic)) {
                     return 0;
                 }
+                decoded_pdu->value_bytes = wire_pdu->service_bytes;
+                decoded_pdu->value_length = wire_pdu->service_length;
                 *outcome = UNITLAB_MMS_SERVICE_OUTCOME_SUCCESS;
                 return 1;
             }

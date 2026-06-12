@@ -63,6 +63,7 @@ typedef struct UnitLabMmsDecodedPdu {
     uint32_t object_class;
     uint32_t object_scope;
     char domain_id[128];
+    char node_id[128];
     char continue_after[128];
     char item_id[128];
     const uint8_t* value_bytes; /* Caller-owned decode buffer; valid only while the buffer lives. */

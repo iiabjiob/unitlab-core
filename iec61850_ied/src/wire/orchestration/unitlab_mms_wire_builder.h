@@ -130,6 +130,20 @@ int unitlab_mms_build_get_name_list_request_frame(
     size_t* encoded_length,
     UnitLabMmsDiagnostic* diagnostic);
 
+int unitlab_mms_build_get_name_list_request_frame_ex(
+    uint32_t object_class,
+    uint32_t object_scope,
+    const char* domain_id,
+    const char* node_id,
+    const char* continue_after,
+    uint32_t invoke_id,
+    uint8_t* scratch,
+    size_t scratch_length,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic);
+
 int unitlab_mms_build_information_report_frame(
     const char* item_id,
     uint8_t boolean_value,

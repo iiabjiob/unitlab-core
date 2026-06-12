@@ -276,14 +276,15 @@ int unitlab_mms_pending_request_collect_get_name_list_names(const UnitLabMmsPend
             return 0;
         }
     } else if (request->browse_object_class == 3U && request->browse_object_scope == 1U) {
-        if (request->browse_domain_id[0] == '\0' || request->browse_continue_after[0] == '\0') {
+        const char* node_id = request->browse_node_id[0] != '\0' ? request->browse_node_id : request->browse_continue_after;
+        if (request->browse_domain_id[0] == '\0' || node_id[0] == '\0') {
             set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "GetNameList logical-node contents browse requires a domain and logical node identifier.");
             return 0;
         }
         if (!unitlab_collect_ied_model_logical_node_variables(
                 plan,
                 request->browse_domain_id,
-                request->browse_continue_after,
+                node_id,
                 names,
                 count,
                 model_error,
@@ -291,16 +292,17 @@ int unitlab_mms_pending_request_collect_get_name_list_names(const UnitLabMmsPend
             set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, model_error[0] != '\0' ? model_error : "GetNameList logical-node browse failed.");
             return 0;
         }
-        apply_continue_after_filter = 0;
+        apply_continue_after_filter = request->browse_node_id[0] != '\0' && request->browse_continue_after[0] != '\0';
     } else if (request->browse_object_class == 4U && request->browse_object_scope == 1U) {
-        if (request->browse_domain_id[0] == '\0' || request->browse_continue_after[0] == '\0') {
+        const char* node_id = request->browse_node_id[0] != '\0' ? request->browse_node_id : request->browse_continue_after;
+        if (request->browse_domain_id[0] == '\0' || node_id[0] == '\0') {
             set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "GetNameList buffered report browse requires a domain and logical node identifier.");
             return 0;
         }
         if (!unitlab_collect_ied_model_logical_node_reports(
                 plan,
                 request->browse_domain_id,
-                request->browse_continue_after,
+                node_id,
                 UNITLAB_IED_MODEL_REPORT_CONTROL_KIND_BUFFERED,
                 names,
                 count,
@@ -309,16 +311,17 @@ int unitlab_mms_pending_request_collect_get_name_list_names(const UnitLabMmsPend
             set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, model_error[0] != '\0' ? model_error : "GetNameList buffered report browse failed.");
             return 0;
         }
-        apply_continue_after_filter = 0;
+        apply_continue_after_filter = request->browse_node_id[0] != '\0' && request->browse_continue_after[0] != '\0';
     } else if (request->browse_object_class == 5U && request->browse_object_scope == 1U) {
-        if (request->browse_domain_id[0] == '\0' || request->browse_continue_after[0] == '\0') {
+        const char* node_id = request->browse_node_id[0] != '\0' ? request->browse_node_id : request->browse_continue_after;
+        if (request->browse_domain_id[0] == '\0' || node_id[0] == '\0') {
             set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "GetNameList unbuffered report browse requires a domain and logical node identifier.");
             return 0;
         }
         if (!unitlab_collect_ied_model_logical_node_reports(
                 plan,
                 request->browse_domain_id,
-                request->browse_continue_after,
+                node_id,
                 UNITLAB_IED_MODEL_REPORT_CONTROL_KIND_UNBUFFERED,
                 names,
                 count,
@@ -327,7 +330,7 @@ int unitlab_mms_pending_request_collect_get_name_list_names(const UnitLabMmsPend
             set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, model_error[0] != '\0' ? model_error : "GetNameList unbuffered report browse failed.");
             return 0;
         }
-        apply_continue_after_filter = 0;
+        apply_continue_after_filter = request->browse_node_id[0] != '\0' && request->browse_continue_after[0] != '\0';
     } else {
         set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "GetNameList browse class or scope is unsupported.");
         return 0;
@@ -414,6 +417,7 @@ int unitlab_mms_pending_request_start(UnitLabMmsPendingRequest* request, UnitLab
     request->browse_object_class = 0U;
     request->browse_object_scope = 0U;
     request->browse_domain_id[0] = '\0';
+    request->browse_node_id[0] = '\0';
     request->browse_continue_after[0] = '\0';
     runtime_event_set(&request->last_event, UNITLAB_MMS_RUNTIME_EVENT_REQUEST_STARTED, 0U, 0U, invoke_id, 0U, 0U, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     request->last_event.request_kind = (uint32_t)kind;
@@ -738,6 +742,7 @@ int unitlab_mms_runtime_apply_semantic_result(UnitLabMmsSession* session, UnitLa
                 pending_request->browse_object_class = semantic_result->pdu.object_class;
                 pending_request->browse_object_scope = semantic_result->pdu.object_scope;
                 snprintf(pending_request->browse_domain_id, sizeof(pending_request->browse_domain_id), "%s", semantic_result->pdu.domain_id);
+                snprintf(pending_request->browse_node_id, sizeof(pending_request->browse_node_id), "%s", semantic_result->pdu.node_id);
                 snprintf(pending_request->browse_continue_after, sizeof(pending_request->browse_continue_after), "%s", semantic_result->pdu.continue_after);
                 pending_request->write_value_length = 0U;
                 pending_request->write_object_reference_count = 0U;

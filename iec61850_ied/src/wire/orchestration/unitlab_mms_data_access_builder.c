@@ -954,6 +954,35 @@ int unitlab_mms_build_get_name_list_request_frame(
     size_t* encoded_length,
     UnitLabMmsDiagnostic* diagnostic)
 {
+    return unitlab_mms_build_get_name_list_request_frame_ex(
+        object_class,
+        object_scope,
+        domain_id,
+        NULL,
+        continue_after,
+        invoke_id,
+        scratch,
+        scratch_length,
+        buffer,
+        buffer_length,
+        encoded_length,
+        diagnostic);
+}
+
+int unitlab_mms_build_get_name_list_request_frame_ex(
+    uint32_t object_class,
+    uint32_t object_scope,
+    const char* domain_id,
+    const char* node_id,
+    const char* continue_after,
+    uint32_t invoke_id,
+    uint8_t* scratch,
+    size_t scratch_length,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
     UnitLabMmsBerElement object_class_element;
     UnitLabMmsBerElement object_scope_element;
     UnitLabMmsBerElement object_scope_outer_element;
@@ -964,8 +993,8 @@ int unitlab_mms_build_get_name_list_request_frame(
     uint8_t object_class_value[5U];
     uint8_t object_class_bytes[16U];
     uint8_t object_class_value_bytes[32U];
-    uint8_t object_scope_value_bytes[64U];
-    uint8_t object_scope_bytes[64U];
+    uint8_t object_scope_value_bytes[128U];
+    uint8_t object_scope_bytes[128U];
     uint8_t continue_after_bytes[64U];
     uint8_t sequence_value_bytes[192U];
     uint8_t sequence_encoded_bytes[256U];
@@ -1042,6 +1071,22 @@ int unitlab_mms_build_get_name_list_request_frame(
             &object_scope_value_length,
             diagnostic)) {
         return 0;
+    }
+    if (node_id != NULL && node_id[0] != '\0') {
+        size_t node_id_length = 0U;
+        if (!wire_builder_encode_ber_element(
+                UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL,
+                0,
+                26U,
+                (const uint8_t*)node_id,
+                strlen(node_id),
+                &object_scope_bytes[object_scope_value_length],
+                sizeof(object_scope_bytes) - object_scope_value_length,
+                &node_id_length,
+                diagnostic)) {
+            return 0;
+        }
+        object_scope_value_length += node_id_length;
     }
 
     unitlab_mms_ber_element_init(&object_scope_outer_element);

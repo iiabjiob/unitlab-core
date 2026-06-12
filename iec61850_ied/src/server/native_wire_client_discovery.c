@@ -252,16 +252,30 @@ int unitlab_native_client_run_discover_sequence(
     unitlab_native_client_session_reset(session);
     snprintf(session->discovered_model.domain, sizeof(session->discovered_model.domain), "%s", domain_id);
 
-    if (!io->get_name_list_step(session, io, "vmd-logical-devices", 9U, 0U, NULL, NULL, invoke_id)) {
+    if (!io->get_name_list_step(session, io, "vmd-logical-devices", 9U, 0U, NULL, NULL, NULL, invoke_id)) {
         goto cleanup;
     }
     if (!extract_get_name_list_identifiers(io->response, *io->encoded_response_length, &logical_device_names, &more_follows, last_identifier, sizeof(last_identifier))) {
         set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not decode logical device GetNameList response.");
         goto cleanup;
     }
+    while (more_follows && last_identifier[0] != '\0') {
+        size_t before_count = logical_device_names.count;
+        if (!io->get_name_list_step(session, io, "vmd-logical-devices-page", 9U, 0U, NULL, NULL, last_identifier, followup_invoke_id++)) {
+            goto cleanup;
+        }
+        if (!extract_get_name_list_identifiers(io->response, *io->encoded_response_length, &logical_device_names, &more_follows, last_identifier, sizeof(last_identifier))) {
+            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not decode logical device GetNameList page.");
+            goto cleanup;
+        }
+        if (logical_device_names.count == before_count) {
+            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client logical device pagination did not advance.");
+            goto cleanup;
+        }
+    }
     session->discovered_model.logical_device_count = logical_device_names.count;
 
-    if (!io->get_name_list_step(session, io, "domain-logical-nodes", 1U, 1U, domain_id, NULL, invoke_id + 1U)) {
+    if (!io->get_name_list_step(session, io, "domain-logical-nodes", 1U, 1U, domain_id, NULL, NULL, invoke_id + 1U)) {
         goto cleanup;
     }
     if (!extract_get_name_list_identifiers(io->response, *io->encoded_response_length, &logical_node_names, &more_follows, last_identifier, sizeof(last_identifier))) {
@@ -270,7 +284,7 @@ int unitlab_native_client_run_discover_sequence(
     }
     while (more_follows && last_identifier[0] != '\0') {
         size_t before_count = logical_node_names.count;
-        if (!io->get_name_list_step(session, io, "domain-logical-nodes-page", 1U, 1U, domain_id, last_identifier, followup_invoke_id++)) {
+        if (!io->get_name_list_step(session, io, "domain-logical-nodes-page", 1U, 1U, domain_id, NULL, last_identifier, followup_invoke_id++)) {
             goto cleanup;
         }
         if (!extract_get_name_list_identifiers(io->response, *io->encoded_response_length, &logical_node_names, &more_follows, last_identifier, sizeof(last_identifier))) {
@@ -283,7 +297,7 @@ int unitlab_native_client_run_discover_sequence(
         }
     }
 
-    if (!io->get_name_list_step(session, io, "domain-datasets", 2U, 1U, domain_id, NULL, followup_invoke_id++)) {
+    if (!io->get_name_list_step(session, io, "domain-datasets", 2U, 1U, domain_id, NULL, NULL, followup_invoke_id++)) {
         goto cleanup;
     }
     if (!extract_get_name_list_identifiers(io->response, *io->encoded_response_length, &data_set_items, &more_follows, last_identifier, sizeof(last_identifier))) {
@@ -292,7 +306,7 @@ int unitlab_native_client_run_discover_sequence(
     }
     while (more_follows && last_identifier[0] != '\0') {
         size_t before_count = data_set_items.count;
-        if (!io->get_name_list_step(session, io, "domain-datasets-page", 2U, 1U, domain_id, last_identifier, followup_invoke_id++)) {
+        if (!io->get_name_list_step(session, io, "domain-datasets-page", 2U, 1U, domain_id, NULL, last_identifier, followup_invoke_id++)) {
             goto cleanup;
         }
         if (!extract_get_name_list_identifiers(io->response, *io->encoded_response_length, &data_set_items, &more_follows, last_identifier, sizeof(last_identifier))) {
@@ -321,12 +335,12 @@ int unitlab_native_client_run_discover_sequence(
         UnitLabNativeIdentifierList ln_brcb_names = {0};
 
         snprintf(step_label, sizeof(step_label), "ln-data-attributes:%s", logical_node_names.items[ln_index]);
-        if (!io->get_name_list_step(session, io, step_label, 3U, 1U, domain_id, logical_node_names.items[ln_index], followup_invoke_id++)) {
+        if (!io->get_name_list_step(session, io, step_label, 3U, 1U, domain_id, logical_node_names.items[ln_index], NULL, followup_invoke_id++)) {
             identifier_list_reset(&ln_brcb_names);
             goto cleanup;
         }
         snprintf(step_label, sizeof(step_label), "ln-brcbs:%s", logical_node_names.items[ln_index]);
-        if (!io->get_name_list_step(session, io, step_label, 4U, 1U, domain_id, logical_node_names.items[ln_index], followup_invoke_id++)) {
+        if (!io->get_name_list_step(session, io, step_label, 4U, 1U, domain_id, logical_node_names.items[ln_index], NULL, followup_invoke_id++)) {
             identifier_list_reset(&ln_brcb_names);
             goto cleanup;
         }
@@ -335,9 +349,23 @@ int unitlab_native_client_run_discover_sequence(
             set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not decode BRCB GetNameList response.");
             goto cleanup;
         }
-        if (more_follows) {
-            printf("native-wire-client: discover-pagination-pending=ln-brcbs:%s continue-after=%s reason=ln-selector-and-continue-after-share-current-builder-field\n", logical_node_names.items[ln_index], last_identifier[0] != '\0' ? last_identifier : "<none>");
-            fflush(stdout);
+        while (more_follows && last_identifier[0] != '\0') {
+            size_t before_count = ln_brcb_names.count;
+            snprintf(step_label, sizeof(step_label), "ln-brcbs-page:%s", logical_node_names.items[ln_index]);
+            if (!io->get_name_list_step(session, io, step_label, 4U, 1U, domain_id, logical_node_names.items[ln_index], last_identifier, followup_invoke_id++)) {
+                identifier_list_reset(&ln_brcb_names);
+                goto cleanup;
+            }
+            if (!extract_get_name_list_identifiers(io->response, *io->encoded_response_length, &ln_brcb_names, &more_follows, last_identifier, sizeof(last_identifier))) {
+                identifier_list_reset(&ln_brcb_names);
+                set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not decode BRCB GetNameList page.");
+                goto cleanup;
+            }
+            if (ln_brcb_names.count == before_count) {
+                identifier_list_reset(&ln_brcb_names);
+                set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client BRCB pagination did not advance.");
+                goto cleanup;
+            }
         }
         for (size_t brcb_index = 0U; brcb_index < ln_brcb_names.count; brcb_index++) {
             if (!identifier_list_append(&brcb_names, ln_brcb_names.items[brcb_index]) || !identifier_list_append(&brcb_logical_nodes, logical_node_names.items[ln_index])) {
@@ -349,9 +377,34 @@ int unitlab_native_client_run_discover_sequence(
         identifier_list_reset(&ln_brcb_names);
 
         snprintf(step_label, sizeof(step_label), "ln-urcbs:%s", logical_node_names.items[ln_index]);
-        if (!io->get_name_list_step(session, io, step_label, 5U, 1U, domain_id, logical_node_names.items[ln_index], followup_invoke_id++)) {
+        if (!io->get_name_list_step(session, io, step_label, 5U, 1U, domain_id, logical_node_names.items[ln_index], NULL, followup_invoke_id++)) {
+            identifier_list_reset(&ln_brcb_names);
             goto cleanup;
         }
+        if (!extract_get_name_list_identifiers(io->response, *io->encoded_response_length, &ln_brcb_names, &more_follows, last_identifier, sizeof(last_identifier))) {
+            identifier_list_reset(&ln_brcb_names);
+            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not decode URCB GetNameList response.");
+            goto cleanup;
+        }
+        while (more_follows && last_identifier[0] != '\0') {
+            size_t before_count = ln_brcb_names.count;
+            snprintf(step_label, sizeof(step_label), "ln-urcbs-page:%s", logical_node_names.items[ln_index]);
+            if (!io->get_name_list_step(session, io, step_label, 5U, 1U, domain_id, logical_node_names.items[ln_index], last_identifier, followup_invoke_id++)) {
+                identifier_list_reset(&ln_brcb_names);
+                goto cleanup;
+            }
+            if (!extract_get_name_list_identifiers(io->response, *io->encoded_response_length, &ln_brcb_names, &more_follows, last_identifier, sizeof(last_identifier))) {
+                identifier_list_reset(&ln_brcb_names);
+                set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not decode URCB GetNameList page.");
+                goto cleanup;
+            }
+            if (ln_brcb_names.count == before_count) {
+                identifier_list_reset(&ln_brcb_names);
+                set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client URCB pagination did not advance.");
+                goto cleanup;
+            }
+        }
+        identifier_list_reset(&ln_brcb_names);
     }
     session->discovered_model.brcb_count = brcb_names.count;
     if (brcb_names.count == 0U) {

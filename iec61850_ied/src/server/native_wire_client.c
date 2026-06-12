@@ -1213,6 +1213,7 @@ static int emit_get_name_list_response(
     uint32_t object_class,
     uint32_t object_scope,
     const char* domain_id,
+    const char* node_id,
     const char* continue_after,
     uint32_t invoke_id,
     uint8_t* scratch,
@@ -1228,10 +1229,11 @@ static int emit_get_name_list_response(
 {
     size_t encoded_request_length = 0U;
 
-    if (!unitlab_mms_build_get_name_list_request_frame(
+    if (!unitlab_mms_build_get_name_list_request_frame_ex(
             object_class,
             object_scope,
             domain_id,
+            node_id,
             continue_after,
             invoke_id,
             scratch,
@@ -1263,6 +1265,7 @@ static int emit_discover_get_name_list_step(
     uint32_t object_class,
     uint32_t object_scope,
     const char* domain_id,
+    const char* node_id,
     const char* continue_after,
     uint32_t invoke_id,
     uint8_t* scratch,
@@ -1277,12 +1280,13 @@ static int emit_discover_get_name_list_step(
     UnitLabMmsDiagnostic* diagnostic)
 {
     printf(
-        "native-wire-client: discover-step=%s invoke=%u class=%u scope=%u domain=%s continue-after=%s\n",
+        "native-wire-client: discover-step=%s invoke=%u class=%u scope=%u domain=%s node=%s continue-after=%s\n",
         label != NULL ? label : "get-name-list",
         (unsigned)invoke_id,
         (unsigned)object_class,
         (unsigned)object_scope,
         domain_id != NULL ? domain_id : "<none>",
+        node_id != NULL ? node_id : "<none>",
         continue_after != NULL ? continue_after : "<none>");
     fflush(stdout);
     return emit_get_name_list_response(
@@ -1291,6 +1295,7 @@ static int emit_discover_get_name_list_step(
         object_class,
         object_scope,
         domain_id,
+        node_id,
         continue_after,
         invoke_id,
         scratch,
@@ -1466,6 +1471,7 @@ static int discovery_get_name_list_step_adapter(
     uint32_t object_class,
     uint32_t object_scope,
     const char* domain_id,
+    const char* node_id,
     const char* continue_after,
     uint32_t invoke_id)
 {
@@ -1476,6 +1482,7 @@ static int discovery_get_name_list_step_adapter(
         object_class,
         object_scope,
         domain_id,
+        node_id,
         continue_after,
         invoke_id,
         io->scratch,
@@ -2248,6 +2255,7 @@ int unitlab_run_native_wire_client_with_options(
                     object_class,
                     object_scope,
                     domain_id,
+                    NULL,
                     continue_after,
                     invoke_id,
                     scratch,
