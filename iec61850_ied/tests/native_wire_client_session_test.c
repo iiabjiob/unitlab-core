@@ -1,4 +1,7 @@
 #include "server/native_wire_client_session.h"
+#include "server/native_wire_client_discovery.h"
+#include "server/unitlab_mms_server_runtime_internal.h"
+#include "model/model_loader.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -10,6 +13,239 @@ static int expect_true(int condition, const char* message)
         return 0;
     }
     return 1;
+}
+
+typedef struct DiscoveryFixtureHarness {
+    UnitLabMmsServerRuntime runtime;
+    UnitLabIedFixtureDataSet data_sets[1U];
+    UnitLabIedFixtureReport reports[1U];
+    UnitLabIedFixtureSignal signals[1U];
+    UnitLabIedFixtureModel fixture;
+    UnitLabIedModelPlan plan;
+    UnitLabIedServerConfig config;
+    uint8_t response[8192U];
+    size_t response_length;
+    uint8_t scratch[512U];
+    UnitLabMmsDiagnostic diagnostic;
+} DiscoveryFixtureHarness;
+
+static DiscoveryFixtureHarness* g_discovery_harness = NULL;
+
+static int discovery_harness_build_response(uint32_t invoke_id, UnitLabMmsRequestKind kind, const char* object_reference, uint32_t browse_class, uint32_t browse_scope, const char* browse_domain_id, const char* browse_node_id, const char* browse_continue_after)
+{
+    DiscoveryFixtureHarness* harness = g_discovery_harness;
+
+    if (harness == NULL) {
+        return 0;
+    }
+    unitlab_mms_pending_request_init(&harness->runtime.pending_request);
+    if (!unitlab_mms_pending_request_start(&harness->runtime.pending_request, kind, invoke_id, 0U, 1000U, 0U, &harness->diagnostic)) {
+        return 0;
+    }
+    if (object_reference != NULL) {
+        snprintf(harness->runtime.pending_request.object_reference, sizeof(harness->runtime.pending_request.object_reference), "%s", object_reference);
+    }
+    harness->runtime.pending_request.browse_object_class = browse_class;
+    harness->runtime.pending_request.browse_object_scope = browse_scope;
+    if (browse_domain_id != NULL) {
+        snprintf(harness->runtime.pending_request.browse_domain_id, sizeof(harness->runtime.pending_request.browse_domain_id), "%s", browse_domain_id);
+    }
+    if (browse_node_id != NULL) {
+        snprintf(harness->runtime.pending_request.browse_node_id, sizeof(harness->runtime.pending_request.browse_node_id), "%s", browse_node_id);
+    }
+    if (browse_continue_after != NULL) {
+        snprintf(harness->runtime.pending_request.browse_continue_after, sizeof(harness->runtime.pending_request.browse_continue_after), "%s", browse_continue_after);
+    }
+    if (!unitlab_mms_server_runtime_build_confirmed_response_bytes(&harness->runtime, NULL, 0U, harness->response, sizeof(harness->response), &harness->response_length, &harness->diagnostic)) {
+        return 0;
+    }
+    return 1;
+}
+
+static int discovery_harness_get_name_list_step(
+    UnitLabNativeClientSessionState* session,
+    const UnitLabNativeDiscoveryIo* io,
+    const char* label,
+    uint32_t object_class,
+    uint32_t object_scope,
+    const char* domain_id,
+    const char* node_id,
+    const char* continue_after,
+    uint32_t invoke_id)
+{
+    (void)session;
+    (void)label;
+    const char* advertised_domain = g_discovery_harness != NULL ? server_runtime_advertised_domain_name(&g_discovery_harness->runtime) : domain_id;
+    if (!discovery_harness_build_response(invoke_id, UNITLAB_MMS_REQUEST_GET_NAME_LIST, NULL, object_class, object_scope, advertised_domain != NULL ? advertised_domain : domain_id, node_id, continue_after)) {
+        return 0;
+    }
+    if (io->encoded_response_length != NULL) {
+        *io->encoded_response_length = g_discovery_harness != NULL ? g_discovery_harness->response_length : 0U;
+    }
+    return 1;
+}
+
+static int discovery_harness_read_step(
+    UnitLabNativeClientSessionState* session,
+    const UnitLabNativeDiscoveryIo* io,
+    const char* label,
+    const char* domain_id,
+    const char* item_id,
+    uint32_t invoke_id)
+{
+    (void)session;
+    (void)io;
+    (void)label;
+    (void)domain_id;
+    (void)item_id;
+    (void)invoke_id;
+    return 1;
+}
+
+static int discovery_harness_attributes_step(
+    UnitLabNativeClientSessionState* session,
+    const UnitLabNativeDiscoveryIo* io,
+    const char* label,
+    const char* domain_id,
+    const char* item_id,
+    uint32_t invoke_id,
+    int named_variable_list)
+{
+    char object_reference[256U];
+    const char* advertised_domain = g_discovery_harness != NULL ? server_runtime_advertised_domain_name(&g_discovery_harness->runtime) : domain_id;
+
+    (void)session;
+    (void)label;
+    (void)named_variable_list;
+    if (named_variable_list) {
+        snprintf(object_reference, sizeof(object_reference), "%s/%s", domain_id != NULL ? domain_id : (advertised_domain != NULL ? advertised_domain : ""), item_id != NULL ? item_id : "");
+    } else {
+        snprintf(object_reference, sizeof(object_reference), "%s.%s", advertised_domain != NULL ? advertised_domain : (domain_id != NULL ? domain_id : ""), item_id != NULL ? item_id : "");
+    }
+    if (!discovery_harness_build_response(invoke_id, named_variable_list ? UNITLAB_MMS_REQUEST_GET_NAMED_VARIABLE_LIST_ATTRIBUTES : UNITLAB_MMS_REQUEST_GET_VARIABLE_ACCESS_ATTRIBUTES, object_reference, 0U, 0U, NULL, NULL, NULL)) {
+        return 0;
+    }
+    if (io->encoded_response_length != NULL) {
+        *io->encoded_response_length = g_discovery_harness != NULL ? g_discovery_harness->response_length : 0U;
+    }
+    return 1;
+}
+
+static void discovery_harness_emit_model_summary(const UnitLabNativeClientSessionState* session, const char* phase)
+{
+    (void)session;
+    (void)phase;
+}
+
+static int test_fixture_backed_discover_sequence_normalizes_mx_fc_tree(void)
+{
+    DiscoveryFixtureHarness harness;
+    UnitLabNativeClientSessionState session;
+    UnitLabNativeDiscoveryIo io;
+    uint32_t next_invoke_id = 0U;
+    int passed = 1;
+
+    memset(&harness, 0, sizeof(harness));
+    memset(&session, 0, sizeof(session));
+
+    harness.signals[0] = (UnitLabIedFixtureSignal){
+        .data_set_index = 0U,
+        .reference = "LD0/GGIO1.MX.AnIn1.mag.f[MX]",
+        .kind = "FCDA",
+        .component = "",
+        .fc = "MX",
+        .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER,
+        .initial_value = "0",
+    };
+    harness.data_sets[0U] = (UnitLabIedFixtureDataSet){
+        .reference = "IED1/AP1/LD0/GGIO1.dsWire",
+        .signal_count = 1U,
+        .signals = harness.signals,
+    };
+    harness.fixture = (UnitLabIedFixtureModel){
+        .device_count = 1U,
+        .ied_name = "IED1",
+        .access_point_name = "AP1",
+        .data_set_count = 1U,
+        .data_sets = harness.data_sets,
+        .report_count = 0U,
+        .reports = harness.reports,
+        .signal_count = 1U,
+    };
+    if (!unitlab_build_ied_model_plan(&harness.fixture, &harness.plan, (char[256U]){0}, 256U)) {
+        fprintf(stderr, "FAIL: fixture-backed discovery plan should build\n");
+        return 1;
+    }
+    unitlab_mms_server_runtime_init(&harness.runtime);
+    if (!expect_true(unitlab_mms_server_runtime_apply_model_plan(&harness.runtime, &harness.plan) == 1, "expected discovery harness model plan to apply")) {
+        unitlab_free_ied_model_plan(&harness.plan);
+        return 1;
+    }
+    harness.config.bind_address = "127.0.0.1";
+    harness.config.port = 15121;
+    if (!expect_true(unitlab_mms_server_runtime_prepare(&harness.runtime, &harness.config, &harness.diagnostic) == 1, "expected discovery harness prepare to succeed")) {
+        unitlab_free_ied_model_plan(&harness.plan);
+        return 1;
+    }
+    if (!expect_true(unitlab_mms_server_runtime_start(&harness.runtime, &harness.diagnostic) == 1, "expected discovery harness start to succeed")) {
+        unitlab_free_ied_model_plan(&harness.plan);
+        return 1;
+    }
+    if (!expect_true(unitlab_mms_session_begin_association(&harness.runtime.session, &harness.diagnostic) == 1, "expected discovery harness session begin to succeed")) {
+        unitlab_free_ied_model_plan(&harness.plan);
+        return 1;
+    }
+    if (!expect_true(unitlab_mms_session_complete_association(&harness.runtime.session, 1U, &harness.diagnostic) == 1, "expected discovery harness session complete to succeed")) {
+        unitlab_free_ied_model_plan(&harness.plan);
+        return 1;
+    }
+
+    io.data_fd = -1;
+    io.scratch = harness.scratch;
+    io.scratch_length = sizeof(harness.scratch);
+    io.request = harness.scratch;
+    io.request_length = sizeof(harness.scratch);
+    io.response = harness.response;
+    io.response_length = sizeof(harness.response);
+    io.encoded_response_length = &harness.response_length;
+    io.text_buffer = (uint8_t[512U]){0};
+    io.text_buffer_length = 512U;
+    io.diagnostic = &harness.diagnostic;
+    io.get_name_list_step = discovery_harness_get_name_list_step;
+    io.read_step = discovery_harness_read_step;
+    io.attributes_step = discovery_harness_attributes_step;
+    io.emit_model_summary = discovery_harness_emit_model_summary;
+
+    g_discovery_harness = &harness;
+    passed &= expect_true(unitlab_native_client_run_discover_sequence(&session, &io, "LD0", 100U, &next_invoke_id) == 1, "expected fixture-backed discovery sequence to succeed");
+    g_discovery_harness = NULL;
+
+    passed &= expect_true(session.discovered_logical_device_count == 1U, "expected one logical device in discovery harness");
+    passed &= expect_true(session.discovered_logical_node_count == 1U, "expected one logical node in discovery harness");
+    passed &= expect_true(session.discovered_data_name_count == 1U, "expected one data name in discovery harness");
+    passed &= expect_true(session.discovered_typed_data_node_count >= 4U, "expected MX tree to populate typed nodes");
+    if (session.discovered_typed_data_node_count >= 4U) {
+        const UnitLabNativeDiscoveredTypedDataNode* root = unitlab_native_client_session_typed_data_node_at(&session, 0U);
+        const UnitLabNativeDiscoveredTypedDataNode* first = unitlab_native_client_session_typed_data_node_at(&session, 1U);
+        const UnitLabNativeDiscoveredTypedDataNode* second = unitlab_native_client_session_typed_data_node_at(&session, 2U);
+        const UnitLabNativeDiscoveredTypedDataNode* leaf = unitlab_native_client_session_typed_data_node_at(&session, 3U);
+        passed &= expect_true(root != NULL && first != NULL && second != NULL && leaf != NULL, "expected MX typed nodes to be readable");
+        if (root != NULL && first != NULL && second != NULL && leaf != NULL) {
+            passed &= expect_true(strcmp(root->request_item, "MX") == 0 && strcmp(root->reference_kind, "fc-context") == 0, "expected MX root to preserve FC context");
+            passed &= expect_true(strcmp(first->request_item, "MX.AnIn1") == 0 && strcmp(first->reference_kind, "fc-context") == 0, "expected MX child to preserve FC context");
+            passed &= expect_true(strcmp(second->request_item, "MX.AnIn1.mag") == 0, "expected MX grandchild request item");
+            passed &= expect_true(strcmp(leaf->request_item, "MX.AnIn1.mag.f") == 0 && strcmp(leaf->node_kind, "leaf") == 0, "expected MX leaf normalization");
+            passed &= expect_true(strcmp(leaf->mms_reference, "LD0/GGIO1$MX$AnIn1$mag$f") == 0, "expected MX leaf MMS reference");
+            passed &= expect_true(session.discovered_leaf_ref_count >= 1U, "expected MX leaf ref to be captured");
+            if (session.discovered_leaf_ref_count >= 1U) {
+                passed &= expect_true(strcmp(session.discovered_leaf_refs[0U].display_reference, "LD0/GGIO1.MX.AnIn1.mag.f") == 0, "expected MX leaf display reference");
+            }
+        }
+    }
+
+    unitlab_mms_server_runtime_stop(&harness.runtime, &harness.diagnostic);
+    unitlab_free_ied_model_plan(&harness.plan);
+    return passed;
 }
 
 int main(void)
@@ -308,6 +544,10 @@ int main(void)
         }
     }
     if (!expect_true(session.discovered_rcb_count == 300U && session.discovered_model.brcb_count == 300U, "expected all dynamic RCBs to be retained")) {
+        return 1;
+    }
+
+    if (!expect_true(test_fixture_backed_discover_sequence_normalizes_mx_fc_tree() == 1, "expected fixture-backed discovery sequence coverage")) {
         return 1;
     }
 

@@ -142,7 +142,7 @@ Closed in current slice:
 
 Remaining:
 
-- Vendor-specific FC normalization beyond the request context still needs fixture coverage.
+- External vendor golden-frame validation from saved IEDScout/Wireshark captures is not automated yet.
 
 Goal: build a useful IEC 61850 model, not just enough state to subscribe to one report.
 

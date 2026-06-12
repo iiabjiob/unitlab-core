@@ -170,10 +170,13 @@ add_test(
 
 
 add_executable(unitlab-iec61850-native-wire-client-session-test
+  src/server/native_wire_client_ber_helpers.c
   src/server/native_wire_client_session.c
+  src/server/native_wire_client_discovery.c
   tests/native_wire_client_session_test.c
 )
 target_include_directories(unitlab-iec61850-native-wire-client-session-test PRIVATE src)
+target_link_libraries(unitlab-iec61850-native-wire-client-session-test PRIVATE unitlab-iec61850-mms)
 unitlab_iec61850_sim_warnings(unitlab-iec61850-native-wire-client-session-test)
 add_test(NAME unitlab-iec61850-native-wire-client-session COMMAND unitlab-iec61850-native-wire-client-session-test)
 

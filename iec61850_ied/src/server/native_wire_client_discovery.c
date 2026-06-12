@@ -239,6 +239,9 @@ static int build_gva_reference_fields(
     char* display_reference,
     size_t display_reference_size)
 {
+    const char* suffix = NULL;
+    char normalized_suffix[256U];
+
     if (mms_reference != NULL && mms_reference_size > 0U) {
         mms_reference[0] = '\0';
     }
@@ -248,11 +251,37 @@ static int build_gva_reference_fields(
     if (data_name == NULL || path == NULL || path[0] == '\0' || fc == NULL || fc[0] == '\0') {
         return 1;
     }
+    suffix = path;
+    if (strncmp(path, fc, strlen(fc)) == 0) {
+        suffix = path + strlen(fc);
+        if (suffix[0] == '.') {
+            suffix++;
+        }
+        if (suffix[0] == '\0') {
+            suffix = NULL;
+        }
+    }
+    if (suffix != NULL) {
+        size_t normalized_length = 0U;
+        for (size_t index = 0U; suffix[index] != '\0' && normalized_length + 1U < sizeof(normalized_suffix); index++) {
+            normalized_suffix[normalized_length++] = suffix[index] == '.' ? '$' : suffix[index];
+        }
+        normalized_suffix[normalized_length] = '\0';
+        suffix = normalized_suffix;
+    }
     if (mms_reference != NULL && mms_reference_size > 0U) {
-        snprintf(mms_reference, mms_reference_size, "%s/%s$%s$%s", data_name->logical_device, data_name->logical_node, fc, path);
+        if (suffix != NULL) {
+            snprintf(mms_reference, mms_reference_size, "%s/%s$%s$%s", data_name->logical_device, data_name->logical_node, fc, suffix);
+        } else {
+            snprintf(mms_reference, mms_reference_size, "%s/%s$%s", data_name->logical_device, data_name->logical_node, fc);
+        }
     }
     if (display_reference != NULL && display_reference_size > 0U) {
-        snprintf(display_reference, display_reference_size, "%s/%s.%s.%s", data_name->logical_device, data_name->logical_node, fc, path);
+        if (suffix != NULL) {
+            snprintf(display_reference, display_reference_size, "%s/%s.%s.%s", data_name->logical_device, data_name->logical_node, fc, suffix);
+        } else {
+            snprintf(display_reference, display_reference_size, "%s/%s.%s", data_name->logical_device, data_name->logical_node, fc);
+        }
     }
     return 1;
 }
@@ -356,6 +385,14 @@ static int collect_gva_components_from_bytes(
                 if (!build_gva_path(path_prefix, component_name, child_path, sizeof(child_path))) {
                     set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not build GVA path.");
                     return 0;
+                }
+                if (fc != NULL && fc[0] != '\0' && strcmp(component_name, fc) == 0 && path_prefix != NULL && strcmp(path_prefix, fc) == 0) {
+                    if (child_consumed < element.value_length
+                        && !collect_gva_components_from_bytes(session, io, data_name, item_id, fc, path_prefix, parent_index, &element.value_bytes[child_consumed], element.value_length - child_consumed, depth + 1U, component_count)) {
+                        return 0;
+                    }
+                    offset += consumed;
+                    continue;
                 }
                 if (fc == NULL || fc[0] == '\0') {
                     if (gva_component_is_fc_token(component_name)) {
