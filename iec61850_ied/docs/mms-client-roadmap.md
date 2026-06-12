@@ -136,14 +136,14 @@ Closed in current slice:
 - Reports without `dataRef` are mapped through discovered Dataset order using the inclusion bitstring.
 - Latest report entries now retain primitive typed value metadata alongside text summaries: raw BER tag, raw length, bool, signed/unsigned integer, MMS float32, quality raw code/validity for `$q`, string/octet/bit-string/structure classification, and raw report reason code metadata plus semantic reason flags/labels.
 - Session tests cover dynamic growth and reset for logical devices, logical nodes, data names, leaf references, and mapped report entries.
-- Real TCP GI smoke now also exercises a quality-bearing `q` report member through the fixture-backed server/client path.
+- Real TCP GI smoke now also exercises the fixture-backed discovery/report path with deterministic model ordering checks.
+- Fixture-backed discover smoke now snapshots deterministic logical-device, dataset, and BRCB ordering.
 
 Remaining:
 
 - Expand shallow LN data names and GVA components into full data object/data attribute trees.
 - Store FC/SCL-specific type metadata from `GetVariableAccessAttributes`; current storage is coarse BER type-kind only.
 - Normalize and expose stable MMS/display references for every discovered leaf; dataset member leaf references are stored, full GVA-derived leaves remain in progress.
-- Add deterministic model snapshot tests from fixture/golden responses.
 
 Goal: build a useful IEC 61850 model, not just enough state to subscribe to one report.
 

@@ -55,15 +55,16 @@ static int expect_string_contains(const char* actual, const char* expected, cons
     return 1;
 }
 
-static int string_list_contains(LinkedList list, const char* expected)
+static const char* list_nth_item(LinkedList list, size_t index)
 {
+    size_t current = 0U;
     for (LinkedList entry = LinkedList_getNext(list); entry != NULL; entry = LinkedList_getNext(entry)) {
-        const char* value = (const char*)LinkedList_getData(entry);
-        if (value != NULL && strcmp(value, expected) == 0) {
-            return 1;
+        if (current == index) {
+            return (const char*)LinkedList_getData(entry);
         }
+        current++;
     }
-    return 0;
+    return NULL;
 }
 
 static UnitLabIedFixtureModel valid_fixture(
@@ -73,7 +74,7 @@ static UnitLabIedFixtureModel valid_fixture(
 {
     signals[0] = (UnitLabIedFixtureSignal){
         .data_set_index = 0U,
-        .reference = "LD0/XCBR1.Pos.stVal[ST]",
+        .reference = "IED1LD0/XCBR1.Pos.stVal[ST]",
         .kind = "FCDA",
         .fc = "ST",
         .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER,
@@ -81,7 +82,7 @@ static UnitLabIedFixtureModel valid_fixture(
     };
     signals[1] = (UnitLabIedFixtureSignal){
         .data_set_index = 1U,
-        .reference = "LD0/PGGIO1.Ind1.q[ST]",
+        .reference = "IED1LD0/PGGIO1.Ind1.q[ST]",
         .kind = "FCDA",
         .fc = "ST",
         .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER,
@@ -323,7 +324,8 @@ static int verify_server_metadata(IedConnection connection)
     passed &= expect_true(error == IED_ERROR_OK, "logical device list read should succeed");
     passed &= expect_true(devices != NULL, "logical device list should be present");
     if (devices != NULL) {
-        passed &= expect_true(string_list_contains(devices, "IED1LD0"), "server should expose IED-prefixed LD");
+        passed &= expect_true(LinkedList_size(devices) == 1, "snapshot should expose one logical device");
+        passed &= expect_true(strcmp(list_nth_item(devices, 0U), "IED1LD0") == 0, "snapshot should preserve logical device order");
         LinkedList_destroy(devices);
     }
 
@@ -331,8 +333,9 @@ static int verify_server_metadata(IedConnection connection)
     passed &= expect_true(error == IED_ERROR_OK, "DataSet directory read should succeed");
     passed &= expect_true(data_sets != NULL, "DataSet directory should be present");
     if (data_sets != NULL) {
-        passed &= expect_true(string_list_contains(data_sets, "dsEvents"), "LLN0 should expose the fixture events DataSet");
-        passed &= expect_true(string_list_contains(data_sets, "dsUpdates"), "LLN0 should expose the fixture updates DataSet");
+        passed &= expect_true(LinkedList_size(data_sets) == 2, "snapshot should expose two DataSets");
+        passed &= expect_true(strcmp(list_nth_item(data_sets, 0U), "dsEvents") == 0, "snapshot should preserve first DataSet order");
+        passed &= expect_true(strcmp(list_nth_item(data_sets, 1U), "dsUpdates") == 0, "snapshot should preserve second DataSet order");
         LinkedList_destroy(data_sets);
     }
 
@@ -343,6 +346,8 @@ static int verify_server_metadata(IedConnection connection)
     passed &= expect_true(!is_deletable, "fixture DataSet should be non-deletable");
     if (data_set_members != NULL) {
         passed &= expect_true(LinkedList_size(data_set_members) == 2, "DataSet should expose both members");
+        passed &= expect_true(strcmp(list_nth_item(data_set_members, 0U), "IED1LD0/XCBR1.Pos.stVal[ST]") == 0, "snapshot should preserve first DataSet member order");
+        passed &= expect_true(strcmp(list_nth_item(data_set_members, 1U), "IED1LD0/PGGIO1.Ind1.q[ST]") == 0, "snapshot should preserve second DataSet member order");
         LinkedList_destroy(data_set_members);
     }
 
@@ -350,7 +355,8 @@ static int verify_server_metadata(IedConnection connection)
     passed &= expect_true(error == IED_ERROR_OK, "BRCB directory read should succeed");
     passed &= expect_true(reports != NULL, "BRCB directory should be present");
     if (reports != NULL) {
-        passed &= expect_true(string_list_contains(reports, "brcbEvents"), "LLN0 should expose the fixture BRCB");
+        passed &= expect_true(LinkedList_size(reports) == 1, "snapshot should expose one BRCB");
+        passed &= expect_true(strcmp(list_nth_item(reports, 0U), "brcbEvents") == 0, "snapshot should preserve BRCB order");
         LinkedList_destroy(reports);
     }
 
