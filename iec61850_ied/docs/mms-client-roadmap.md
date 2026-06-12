@@ -136,6 +136,7 @@ Closed in current slice:
 - Reports without `dataRef` are mapped through discovered Dataset order using the inclusion bitstring.
 - Latest report entries now retain primitive typed value metadata alongside text summaries: raw BER tag, raw length, bool, signed/unsigned integer, MMS float32, quality raw code/validity for `$q`, string/octet/bit-string/structure classification, and raw report reason code metadata plus semantic reason flags/labels.
 - Session tests cover dynamic growth and reset for logical devices, logical nodes, data names, leaf references, and mapped report entries.
+- Real TCP GI smoke now also exercises a quality-bearing `q` report member through the fixture-backed server/client path.
 
 Remaining:
 

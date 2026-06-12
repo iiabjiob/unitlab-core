@@ -17,10 +17,10 @@
             },
             {
               "dataSetIndex": 1,
-              "reference": "LD0/PGGIO1.Ind1.stVal[ST]",
+              "reference": "LD0/PGGIO1.Ind1.q[ST]",
               "kind": "FCDA",
               "fc": "ST",
-              "initialValue": 1
+              "initialValue": 0
             }
           ]
         },

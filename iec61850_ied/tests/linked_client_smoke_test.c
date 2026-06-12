@@ -21,6 +21,8 @@ typedef struct ReportProbeContext {
     volatile int report_count;
     int value_count;
     int values[4];
+    int second_value_integer;
+    char second_data_reference[256];
     int first_reason;
     int conf_rev;
     char rpt_id[128];
@@ -79,11 +81,11 @@ static UnitLabIedFixtureModel valid_fixture(
     };
     signals[1] = (UnitLabIedFixtureSignal){
         .data_set_index = 1U,
-        .reference = "LD0/PGGIO1.Ind1.stVal[ST]",
+        .reference = "LD0/PGGIO1.Ind1.q[ST]",
         .kind = "FCDA",
         .fc = "ST",
         .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER,
-        .initial_value = "2",
+        .initial_value = "0",
     };
     signals[2] = (UnitLabIedFixtureSignal){
         .data_set_index = 0U,
@@ -253,7 +255,13 @@ static void report_callback(void* parameter, ClientReport report)
             if (context->value_count > 1) {
                 MmsValue* second_value = MmsValue_getElement(values, 1);
                 if (second_value != NULL) {
-                    context->values[1] = MmsValue_toInt32(second_value);
+                    context->second_value_integer = MmsValue_toInt32(second_value);
+                }
+                {
+                    const char* second_data_reference = ClientReport_getDataReference(report, 1);
+                    if (second_data_reference != NULL) {
+                        snprintf(context->second_data_reference, sizeof(context->second_data_reference), "%s", second_data_reference);
+                    }
                 }
             }
         }
@@ -289,9 +297,10 @@ static int verify_report_gi(IedConnection connection)
     passed &= expect_string(context.rpt_id, "events", "GI report RptID");
     passed &= expect_string_contains(context.data_set_name, "dsEvents", "GI report DataSet name");
     passed &= expect_true(context.conf_rev == 1, "GI report ConfRev should come from fixture");
-    passed &= expect_true(context.value_count == 2, "GI report should include both DataSet values");
+    passed &= expect_true(context.value_count == 2, "GI report should include value and quality members");
     passed &= expect_true(context.values[0] == 1, "GI report first value should come from fixture initialValue");
-    passed &= expect_true(context.values[1] == 2, "GI report second value should come from fixture initialValue");
+    passed &= expect_true(context.second_value_integer == 0, "GI report quality value should default to zero");
+    passed &= expect_string_contains(context.second_data_reference, "$q", "GI report second DataRef should point at quality");
     passed &= expect_true((context.first_reason & IEC61850_REASON_GI) != 0, "GI report reason should include GI");
 
     ClientReportControlBlock_setRptEna(rcb, false);
