@@ -116,17 +116,32 @@ static void emit_subscription_summary(const UnitLabNativeClientSessionState* ses
 
 static void emit_discovered_model_summary(const UnitLabNativeClientSessionState* session, const char* phase)
 {
+    size_t typed_data_name_count = 0U;
+    size_t typed_data_component_count = 0U;
+
     if (session == NULL) {
         return;
     }
+    for (size_t index = 0U; index < session->discovered_data_name_count; index++) {
+        if (session->discovered_data_names[index].type_kind[0] != '\0' && strcmp(session->discovered_data_names[index].type_kind, "unknown") != 0) {
+            typed_data_name_count++;
+        }
+    }
+    for (size_t index = 0U; index < session->discovered_data_component_count; index++) {
+        if (session->discovered_data_components[index].type_kind[0] != '\0' && strcmp(session->discovered_data_components[index].type_kind, "unknown") != 0) {
+            typed_data_component_count++;
+        }
+    }
     printf(
-        "native-wire-client: model-summary phase=%s domain=%s logical-devices=%zu logical-nodes=%zu data-names=%zu data-components=%zu datasets=%zu dataset-members=%zu brcbs=%zu last-report-dataRefs=%zu last-report-values=%zu last-report-reasons=%zu last-report-matched-dataRefs=%zu last-report-rptId=%s last-report-datSet=%s\n",
+        "native-wire-client: model-summary phase=%s domain=%s logical-devices=%zu logical-nodes=%zu data-names=%zu typed-data-names=%zu data-components=%zu typed-data-components=%zu datasets=%zu dataset-members=%zu brcbs=%zu last-report-dataRefs=%zu last-report-values=%zu last-report-reasons=%zu last-report-matched-dataRefs=%zu last-report-rptId=%s last-report-datSet=%s\n",
         phase != NULL ? phase : "snapshot",
         session->discovered_model.domain[0] != '\0' ? session->discovered_model.domain : "<none>",
         session->discovered_model.logical_device_count,
         session->discovered_model.logical_node_count,
         session->discovered_model.data_name_count,
+        typed_data_name_count,
         session->discovered_model.data_component_count,
+        typed_data_component_count,
         session->discovered_model.data_set_count,
         session->discovered_model.data_set_member_count,
         session->discovered_model.brcb_count,

@@ -145,6 +145,72 @@ static int collect_get_named_variable_list_members_from_frame(UnitLabNativeClien
 }
 
 
+
+static const char* gva_type_kind_label_for_context_number(uint32_t tag_number)
+{
+    switch (tag_number) {
+        case 0U: return "array";
+        case 1U: return "structure";
+        case 2U: return "structure";
+        case 3U: return "boolean";
+        case 4U: return "bit-string";
+        case 5U: return "integer";
+        case 6U: return "unsigned";
+        case 7U: return "float";
+        case 8U: return "octet-string";
+        case 9U: return "visible-string";
+        case 10U: return "generalized-time";
+        case 11U: return "binary-time";
+        case 12U: return "bcd";
+        case 13U: return "boolean-array";
+        case 14U: return "obj-id";
+        default: return "unknown";
+    }
+}
+
+static const char* gva_type_kind_label_from_type_spec(const UnitLabMmsBerElement* type_spec)
+{
+    UnitLabMmsBerElement nested;
+    UnitLabMmsDiagnostic diagnostic;
+    size_t consumed = 0U;
+
+    if (type_spec == NULL || type_spec->tag.tag_class != UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC) {
+        return "unknown";
+    }
+    if (type_spec->tag.tag_number != 1U) {
+        return gva_type_kind_label_for_context_number(type_spec->tag.tag_number);
+    }
+    if (!type_spec->tag.constructed || type_spec->value_bytes == NULL || type_spec->value_length == 0U) {
+        return "structure";
+    }
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_ber_element_init(&nested);
+    if (!unitlab_mms_ber_read(&nested, type_spec->value_bytes, type_spec->value_length, &consumed, &diagnostic) || consumed == 0U) {
+        return "structure";
+    }
+    if (nested.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC) {
+        return gva_type_kind_label_for_context_number(nested.tag.tag_number);
+    }
+    return "structure";
+}
+
+static const char* gva_type_kind_from_bytes(const uint8_t* bytes, size_t length)
+{
+    UnitLabMmsBerElement element;
+    UnitLabMmsDiagnostic diagnostic;
+    size_t consumed = 0U;
+
+    if (bytes == NULL || length == 0U) {
+        return "unknown";
+    }
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_ber_element_init(&element);
+    if (!unitlab_mms_ber_read(&element, bytes, length, &consumed, &diagnostic) || consumed == 0U) {
+        return "unknown";
+    }
+    return gva_type_kind_label_from_type_spec(&element);
+}
+
 static int collect_gva_components_from_bytes(UnitLabNativeClientSessionState* session, const UnitLabNativeDiscoveryIo* io, UnitLabNativeDiscoveredDataName* data_name, const uint8_t* bytes, size_t length, size_t depth, size_t* component_count)
 {
     UnitLabMmsDiagnostic diagnostic;
@@ -175,7 +241,11 @@ static int collect_gva_components_from_bytes(UnitLabNativeClientSessionState* se
                 size_t copy_length = first_child.value_length < sizeof(component_name) - 1U ? first_child.value_length : sizeof(component_name) - 1U;
                 memcpy(component_name, first_child.value_bytes, copy_length);
                 component_name[copy_length] = '\0';
-                if (!unitlab_native_client_session_append_data_component(session, data_name, component_name)) {
+                const char* component_type_kind = "unknown";
+                if (child_consumed < element.value_length) {
+                    component_type_kind = gva_type_kind_from_bytes(&element.value_bytes[child_consumed], element.value_length - child_consumed);
+                }
+                if (!unitlab_native_client_session_append_data_component(session, data_name, component_name, component_type_kind)) {
                     set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered data component state.");
                     return 0;
                 }
@@ -222,6 +292,7 @@ static int collect_get_variable_access_attributes_components_from_frame(UnitLabN
     if (!unitlab_mms_ber_read(&mms_deletable, pdu.service_bytes, pdu.service_length, &consumed, &diagnostic) || consumed >= pdu.service_length) {
         return 1;
     }
+    unitlab_native_client_session_set_data_name_type(data_name, gva_type_kind_from_bytes(&pdu.service_bytes[consumed], pdu.service_length - consumed));
     if (!collect_gva_components_from_bytes(session, io, data_name, &pdu.service_bytes[consumed], pdu.service_length - consumed, 0U, &component_count)) {
         return 0;
     }

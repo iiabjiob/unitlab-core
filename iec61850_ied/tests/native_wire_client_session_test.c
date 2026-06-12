@@ -78,7 +78,8 @@ int main(void)
         if (!expect_true(discovered_data_name != NULL, "expected data name append to grow beyond initial capacity")) {
             return 1;
         }
-        if (!expect_true(unitlab_native_client_session_append_data_component(&session, discovered_data_name, "stVal"), "expected data component append to grow beyond initial capacity")) {
+        unitlab_native_client_session_set_data_name_type(discovered_data_name, "structure");
+        if (!expect_true(unitlab_native_client_session_append_data_component(&session, discovered_data_name, "stVal", "boolean"), "expected data component append to grow beyond initial capacity")) {
             return 1;
         }
     }
@@ -100,10 +101,10 @@ int main(void)
     if (!expect_true(strcmp(session.discovered_logical_nodes[149U].logical_device, "LD149") == 0 && strcmp(session.discovered_logical_nodes[149U].name, "LLN149") == 0, "expected logical node lookup after growth to succeed")) {
         return 1;
     }
-    if (!expect_true(strcmp(session.discovered_data_names[149U].logical_node, "LLN149") == 0 && strcmp(session.discovered_data_names[149U].name, "Data149") == 0, "expected data name lookup after growth to succeed")) {
+    if (!expect_true(strcmp(session.discovered_data_names[149U].logical_node, "LLN149") == 0 && strcmp(session.discovered_data_names[149U].name, "Data149") == 0 && strcmp(session.discovered_data_names[149U].type_kind, "structure") == 0, "expected data name lookup after growth to succeed")) {
         return 1;
     }
-    if (!expect_true(session.discovered_data_names[149U].component_count == 1U && strcmp(session.discovered_data_components[149U].name, "stVal") == 0, "expected data component lookup after growth to succeed")) {
+    if (!expect_true(session.discovered_data_names[149U].component_count == 1U && strcmp(session.discovered_data_components[149U].name, "stVal") == 0 && strcmp(session.discovered_data_components[149U].type_kind, "boolean") == 0, "expected data component lookup after growth to succeed")) {
         return 1;
     }
 

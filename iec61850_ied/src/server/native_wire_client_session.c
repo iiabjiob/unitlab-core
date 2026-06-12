@@ -289,7 +289,15 @@ UnitLabNativeDiscoveredDataName* unitlab_native_client_session_append_data_name(
 }
 
 
-int unitlab_native_client_session_append_data_component(UnitLabNativeClientSessionState* session, UnitLabNativeDiscoveredDataName* data_name, const char* component_name)
+void unitlab_native_client_session_set_data_name_type(UnitLabNativeDiscoveredDataName* data_name, const char* type_kind)
+{
+    if (data_name == NULL) {
+        return;
+    }
+    snprintf(data_name->type_kind, sizeof(data_name->type_kind), "%s", type_kind != NULL && type_kind[0] != '\0' ? type_kind : "unknown");
+}
+
+int unitlab_native_client_session_append_data_component(UnitLabNativeClientSessionState* session, UnitLabNativeDiscoveredDataName* data_name, const char* component_name, const char* type_kind)
 {
     if (session == NULL || data_name == NULL || component_name == NULL || component_name[0] == '\0') {
         return 0;
@@ -298,6 +306,7 @@ int unitlab_native_client_session_append_data_component(UnitLabNativeClientSessi
         return 0;
     }
     snprintf(session->discovered_data_components[session->discovered_data_component_count].name, sizeof(session->discovered_data_components[session->discovered_data_component_count].name), "%s", component_name);
+    snprintf(session->discovered_data_components[session->discovered_data_component_count].type_kind, sizeof(session->discovered_data_components[session->discovered_data_component_count].type_kind), "%s", type_kind != NULL && type_kind[0] != '\0' ? type_kind : "unknown");
     session->discovered_data_component_count++;
     data_name->component_count++;
     session->discovered_model.data_component_count = session->discovered_data_component_count;

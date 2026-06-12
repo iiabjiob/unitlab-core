@@ -58,12 +58,14 @@ typedef struct {
     char logical_device[128U];
     char logical_node[128U];
     char name[128U];
+    char type_kind[32U];
     size_t component_start;
     size_t component_count;
 } UnitLabNativeDiscoveredDataName;
 
 typedef struct {
     char name[128U];
+    char type_kind[32U];
 } UnitLabNativeDiscoveredDataComponent;
 
 typedef struct {
@@ -107,7 +109,8 @@ void unitlab_native_client_session_reset(UnitLabNativeClientSessionState* sessio
 UnitLabNativeDiscoveredLogicalDevice* unitlab_native_client_session_append_logical_device(UnitLabNativeClientSessionState* session, const char* name);
 UnitLabNativeDiscoveredLogicalNode* unitlab_native_client_session_append_logical_node(UnitLabNativeClientSessionState* session, const char* logical_device, const char* name);
 UnitLabNativeDiscoveredDataName* unitlab_native_client_session_append_data_name(UnitLabNativeClientSessionState* session, const char* logical_device, const char* logical_node, const char* name);
-int unitlab_native_client_session_append_data_component(UnitLabNativeClientSessionState* session, UnitLabNativeDiscoveredDataName* data_name, const char* component_name);
+void unitlab_native_client_session_set_data_name_type(UnitLabNativeDiscoveredDataName* data_name, const char* type_kind);
+int unitlab_native_client_session_append_data_component(UnitLabNativeClientSessionState* session, UnitLabNativeDiscoveredDataName* data_name, const char* component_name, const char* type_kind);
 int unitlab_native_client_session_data_set_member_exists(const UnitLabNativeClientSessionState* session, const char* reference);
 int unitlab_native_client_session_data_set_index_by_reference(const UnitLabNativeClientSessionState* session, const char* reference, size_t* data_set_index);
 int unitlab_native_client_session_data_set_contains_member(const UnitLabNativeClientSessionState* session, const char* data_set_reference, const char* member_reference);

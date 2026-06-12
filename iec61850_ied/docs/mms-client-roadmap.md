@@ -35,7 +35,7 @@ These are not yet production-client guarantees:
 
 - Discovery still needs a configurable safety cap for extremely large/malformed IED models.
 - Pagination is implemented for the current discovery branches but still needs golden-frame coverage from saved large-model captures.
-- Logical model discovery stores logical devices, logical nodes, shallow LN data names, and first-level GVA component names; full typed data object/data attribute trees are not yet modeled.
+- Logical model discovery stores logical devices, logical nodes, shallow LN data names, and first-level GVA component names and coarse BER type-kind metadata; full typed data object/data attribute trees are not yet modeled.
 - BRCB support is ahead of URCB support.
 - RCB lifecycle is incomplete for real devices that require reservation, release, purge, or replay handling.
 - Report decoding does not yet cover all valid MMS data shapes from real devices.
@@ -128,15 +128,15 @@ Closed in current slice:
 - Dynamic session-owned storage exists for discovered logical devices.
 - Dynamic session-owned storage exists for discovered logical nodes.
 - Dynamic session-owned storage exists for shallow LN data names returned by `GetNameList` class 3.
-- Dynamic session-owned storage exists for GVA component names read from each discovered LN data item.
+- Dynamic session-owned storage exists for GVA component names and coarse type-kind metadata read from each discovered LN data item.
 - Discovery populates those collections during `discover`.
-- Debug model summary reports `data-names` and `data-components` counts.
+- Debug model summary reports `data-names`, `typed-data-names`, `data-components`, and `typed-data-components` counts.
 - Session tests cover dynamic growth and reset for logical devices, logical nodes, and data names.
 
 Remaining:
 
 - Expand shallow LN data names and GVA components into full data object/data attribute trees.
-- Store FC/type/structure metadata from `GetVariableAccessAttributes`, not only component names.
+- Store FC/SCL-specific type metadata from `GetVariableAccessAttributes`; current storage is coarse BER type-kind only.
 - Normalize and expose stable MMS/display references for every discovered leaf.
 - Add deterministic model snapshot tests from fixture/golden responses.
 
