@@ -325,6 +325,60 @@ static int verify_report_gi(IedConnection connection)
     return passed;
 }
 
+static int verify_report_urcb(IedConnection connection)
+{
+    int passed = 1;
+    IedClientError error = IED_ERROR_OK;
+    const char* rcb_ref = "IED1LD0/LLN0.RP.urcbUpdates";
+    ReportProbeContext context = {0};
+
+    ClientReportControlBlock rcb = IedConnection_getRCBValues(connection, &error, rcb_ref, NULL);
+    passed &= expect_true(error == IED_ERROR_OK, "URCB metadata read should succeed before GI");
+    passed &= expect_true(rcb != NULL, "URCB should be readable before GI");
+    if (rcb == NULL) {
+        return 0;
+    }
+
+    passed &= expect_true(!ClientReportControlBlock_isBuffered(rcb), "URCB should not be buffered");
+
+    IedConnection_installReportHandler(connection, rcb_ref, ClientReportControlBlock_getRptId(rcb), report_callback, &context);
+
+    ClientReportControlBlock_setRptEna(rcb, true);
+    ClientReportControlBlock_setGI(rcb, true);
+    IedConnection_setRCBValues(connection, &error, rcb, RCB_ELEMENT_RPT_ENA | RCB_ELEMENT_GI, true);
+    passed &= expect_true(error == IED_ERROR_OK, "URCB enable and GI write should succeed");
+
+    for (int attempt = 0; attempt < 20 && context.report_count == 0; attempt++) {
+        Thread_sleep(100);
+    }
+
+    passed &= expect_true(context.report_count > 0, "URCB GI should produce at least one report");
+    passed &= expect_string(context.rpt_id, "updates", "URCB GI report RptID");
+    passed &= expect_string_contains(context.data_set_name, "dsUpdates", "URCB GI report DataSet name");
+    passed &= expect_true(context.conf_rev == 2, "URCB GI report ConfRev should come from fixture");
+    passed &= expect_true(context.value_count == 1, "URCB GI report should include one dataset member");
+    passed &= expect_true(context.values[0] == 3, "URCB GI report first value should come from fixture initialValue");
+    passed &= expect_true(context.second_data_reference[0] == '\0', "URCB GI report should not populate a second DataRef");
+    passed &= expect_true((context.first_reason & IEC61850_REASON_GI) != 0, "URCB GI report reason should include GI");
+
+    ClientReportControlBlock_setRptEna(rcb, false);
+    IedConnection_setRCBValues(connection, &error, rcb, RCB_ELEMENT_RPT_ENA, true);
+    passed &= expect_true(error == IED_ERROR_OK, "URCB disable should succeed");
+
+    ClientReportControlBlock cleanup_rcb = IedConnection_getRCBValues(connection, &error, rcb_ref, NULL);
+    passed &= expect_true(error == IED_ERROR_OK, "URCB cleanup read should succeed");
+    passed &= expect_true(cleanup_rcb != NULL, "URCB cleanup read should return a block");
+    if (cleanup_rcb != NULL) {
+        passed &= expect_true(ClientReportControlBlock_getRptEna(cleanup_rcb) == false, "URCB cleanup should leave RptEna disabled");
+        passed &= expect_true(!ClientReportControlBlock_isBuffered(cleanup_rcb), "URCB cleanup should preserve unbuffered mode");
+        ClientReportControlBlock_destroy(cleanup_rcb);
+    }
+
+    IedConnection_uninstallReportHandler(connection, rcb_ref);
+    ClientReportControlBlock_destroy(rcb);
+    return passed;
+}
+
 static int verify_server_metadata(IedConnection connection)
 {
     int passed = 1;
@@ -425,9 +479,6 @@ int main(void)
 
     if (connection != NULL) {
         passed &= verify_server_metadata(connection);
-        passed &= verify_report_gi(connection);
-        IedConnection_close(connection);
-        IedConnection_destroy(connection);
     }
 
     UnitLabIedModelLoadResult probe_result;
@@ -449,6 +500,13 @@ int main(void)
         !unitlab_probe_ied_server_gi(&fixture, &plan, &server.config, "IED1/AP1/LD0/LLN0/missing/buffered", &probe_result),
         "targeted GI probe should reject an unknown ReportControl key");
     passed &= expect_string(probe_result.code, "IEC61850_GI_PROBE_REPORT_NOT_FOUND", "targeted GI probe missing report status code");
+
+    if (connection != NULL) {
+        passed &= verify_report_gi(connection);
+        passed &= verify_report_urcb(connection);
+        IedConnection_close(connection);
+        IedConnection_destroy(connection);
+    }
 
     server.stop_requested = 1;
     Thread_destroy(server_thread);
