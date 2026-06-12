@@ -132,7 +132,8 @@ Closed in current slice:
 - Dynamic session-owned storage exists for normalized dataset member leaf references with MMS and display forms.
 - Discovery populates those collections during `discover`.
 - Debug model summary reports `data-names`, `typed-data-names`, `data-components`, `typed-data-components`, and `leaf-refs` counts.
-- Session tests cover dynamic growth and reset for logical devices, logical nodes, and data names.
+- Report decoder stores session-owned mapped entries for reports that include `dataRef`, including normalized display reference, match flags, value summary, and reason summary.
+- Session tests cover dynamic growth and reset for logical devices, logical nodes, data names, leaf references, and mapped report entries.
 
 Remaining:
 
@@ -218,12 +219,13 @@ Change boundary:
 Acceptance criteria:
 
 - Reports without `dataRef` are mapped through the discovered dataset order.
-- Reports with `dataRef` are mapped by reference and checked against the dataset model.
+- Reports with `dataRef` are mapped by reference and checked against the dataset model. Current implementation stores this mapping in session state for the latest report.
 - Missing values, unknown reasons, unsupported types, and `ConfRev` mismatch are visible diagnostics.
 - Decoder never treats an unknown/unsupported value as successful typed data.
 
 Validation:
 
+- Session mapping tests for latest-report entries.
 - Golden report decoder tests from saved frames.
 - Real TCP GI report smoke.
 - Regression check that current `dataset-match=true` path still passes.

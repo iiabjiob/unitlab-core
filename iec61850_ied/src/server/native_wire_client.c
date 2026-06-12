@@ -133,7 +133,7 @@ static void emit_discovered_model_summary(const UnitLabNativeClientSessionState*
         }
     }
     printf(
-        "native-wire-client: model-summary phase=%s domain=%s logical-devices=%zu logical-nodes=%zu data-names=%zu typed-data-names=%zu data-components=%zu typed-data-components=%zu leaf-refs=%zu datasets=%zu dataset-members=%zu brcbs=%zu last-report-dataRefs=%zu last-report-values=%zu last-report-reasons=%zu last-report-matched-dataRefs=%zu last-report-rptId=%s last-report-datSet=%s\n",
+        "native-wire-client: model-summary phase=%s domain=%s logical-devices=%zu logical-nodes=%zu data-names=%zu typed-data-names=%zu data-components=%zu typed-data-components=%zu leaf-refs=%zu datasets=%zu dataset-members=%zu brcbs=%zu last-report-entries=%zu last-report-dataRefs=%zu last-report-values=%zu last-report-reasons=%zu last-report-matched-dataRefs=%zu last-report-rptId=%s last-report-datSet=%s\n",
         phase != NULL ? phase : "snapshot",
         session->discovered_model.domain[0] != '\0' ? session->discovered_model.domain : "<none>",
         session->discovered_model.logical_device_count,
@@ -146,6 +146,7 @@ static void emit_discovered_model_summary(const UnitLabNativeClientSessionState*
         session->discovered_model.data_set_count,
         session->discovered_model.data_set_member_count,
         session->discovered_model.brcb_count,
+        session->last_report_entry_count,
         session->discovered_model.last_report_data_ref_count,
         session->discovered_model.last_report_value_count,
         session->discovered_model.last_report_reason_count,
@@ -383,6 +384,55 @@ static void print_data_value_summary(const UnitLabMmsBerElement* value)
     } else {
         printf("0x");
         print_hex_value(value->value_bytes, value->value_length);
+    }
+}
+
+static void append_hex_summary(char* buffer, size_t buffer_size, const uint8_t* bytes, size_t length)
+{
+    static const char hex[] = "0123456789abcdef";
+    size_t used;
+
+    if (buffer == NULL || buffer_size == 0U || bytes == NULL) {
+        return;
+    }
+    used = strlen(buffer);
+    for (size_t index = 0U; index < length && used + 2U < buffer_size; index++) {
+        buffer[used++] = hex[(bytes[index] >> 4U) & 0x0FU];
+        buffer[used++] = hex[bytes[index] & 0x0FU];
+    }
+    buffer[used] = '\0';
+}
+
+static void copy_data_value_summary(const UnitLabMmsBerElement* value, char* buffer, size_t buffer_size)
+{
+    if (buffer == NULL || buffer_size == 0U) {
+        return;
+    }
+    buffer[0] = '\0';
+    if (value == NULL || value->value_bytes == NULL || value->value_length == 0U) {
+        snprintf(buffer, buffer_size, "%s", "<empty>");
+        return;
+    }
+    if (value->tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && value->tag.tag_number == 3U && value->value_length == 1U) {
+        snprintf(buffer, buffer_size, "%s", value->value_bytes[0] != 0U ? "true" : "false");
+    } else if (unitlab_native_client_bytes_are_printable_ascii(value->value_bytes, value->value_length)) {
+        size_t printable_length = value->value_length < 96U ? value->value_length : 96U;
+        size_t copy_length = printable_length < buffer_size - 1U ? printable_length : buffer_size - 1U;
+        if (buffer_size > 2U) {
+            buffer[0] = '"';
+            copy_length = printable_length < buffer_size - 3U ? printable_length : buffer_size - 3U;
+            memcpy(&buffer[1], value->value_bytes, copy_length);
+            buffer[1U + copy_length] = '"';
+            buffer[2U + copy_length] = '\0';
+        }
+        if (value->value_length > printable_length && strlen(buffer) + 3U < buffer_size) {
+            strncat(buffer, "...", buffer_size - strlen(buffer) - 1U);
+        }
+    } else if (value->value_length <= 4U && (value->tag.tag_number == 5U || value->tag.tag_number == 6U)) {
+        snprintf(buffer, buffer_size, "%u", (unsigned)decode_unsigned_bytes(value->value_bytes, value->value_length));
+    } else {
+        snprintf(buffer, buffer_size, "%s", "0x");
+        append_hex_summary(buffer, buffer_size, value->value_bytes, value->value_length);
     }
 }
 
@@ -773,6 +823,7 @@ static void emit_information_report_summary(UnitLabNativeClientSessionState* ses
         return;
     }
     unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_native_client_session_reset_last_report(session);
     unitlab_mms_ber_element_init(&list_name_wrapper);
     if (!unitlab_mms_ber_read(&list_name_wrapper, pdu->service_bytes, pdu->service_length, &consumed, &diagnostic)
         || list_name_wrapper.tag.tag_class != UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC
@@ -875,12 +926,20 @@ static void emit_information_report_summary(UnitLabNativeClientSessionState* ses
                 int copied = copy_printable_value(&next, reference, sizeof(reference));
                 int global_matched = copied && unitlab_native_client_session_data_set_member_exists(session, reference);
                 int data_set_matched = copied && unitlab_native_client_session_data_set_contains_member(session, session->discovered_model.last_report_data_set, reference);
+                UnitLabNativeLastReportEntry* entry = NULL;
                 if (data_set_matched) {
                     matched_data_ref_count++;
                 }
+                if (copied) {
+                    entry = unitlab_native_client_session_append_last_report_entry(session, reference, data_set_matched, data_ref_count);
+                }
                 printf("mms-summary: report.dataRef[%zu]=", data_ref_count);
                 print_report_value_summary(&next);
-                printf(" discovered-match=%s dataset-match=%s\n", global_matched ? "true" : "false", data_set_matched ? "true" : "false");
+                printf(" discovered-match=%s dataset-match=%s", global_matched ? "true" : "false", data_set_matched ? "true" : "false");
+                if (entry != NULL) {
+                    printf(" display-ref=%s", entry->display_reference);
+                }
+                printf("\n");
             }
             data_ref_count++;
         }
@@ -900,8 +959,14 @@ static void emit_information_report_summary(UnitLabNativeClientSessionState* ses
             values_offset = checkpoint;
             break;
         }
+        if (value_count < session->last_report_entry_count) {
+            copy_data_value_summary(&next, session->last_report_entries[value_count].value_summary, sizeof(session->last_report_entries[value_count].value_summary));
+        }
         printf("mms-summary: report.value[%zu]=", value_count);
         print_report_value_summary(&next);
+        if (value_count < session->last_report_entry_count) {
+            printf(" ref=%s", session->last_report_entries[value_count].display_reference);
+        }
         printf("\n");
         value_count++;
     }
@@ -911,8 +976,14 @@ static void emit_information_report_summary(UnitLabNativeClientSessionState* ses
             if (!read_next_report_value(values_wrapper.value_bytes, values_wrapper.value_length, &values_offset, &value, &diagnostic)) {
                 return;
             }
+            if (reason_count < session->last_report_entry_count) {
+                copy_data_value_summary(&value, session->last_report_entries[reason_count].reason_summary, sizeof(session->last_report_entries[reason_count].reason_summary));
+            }
             printf("mms-summary: report.reason[%zu]=", reason_count);
             print_report_value_summary(&value);
+            if (reason_count < session->last_report_entry_count) {
+                printf(" ref=%s", session->last_report_entries[reason_count].display_reference);
+            }
             printf("\n");
             reason_count++;
         }
@@ -922,7 +993,7 @@ static void emit_information_report_summary(UnitLabNativeClientSessionState* ses
     session->discovered_model.last_report_reason_count = reason_count;
     session->discovered_model.last_report_matched_data_ref_count = matched_data_ref_count;
     session->subscription_model.last_report_received = 1;
-    printf("mms-summary: report.dataRef-count=%zu value-count=%zu reason-count=%zu\n", data_ref_count, value_count, reason_count);
+    printf("mms-summary: report.dataRef-count=%zu value-count=%zu reason-count=%zu mapped-entry-count=%zu\n", data_ref_count, value_count, reason_count, session->last_report_entry_count);
     emit_discovered_model_summary(session, "report");
     emit_subscription_summary(session, "report");
     fflush(stdout);

@@ -12,6 +12,7 @@ enum {
     UNITLAB_NATIVE_DISCOVERY_INITIAL_DATA_NAME_CAPACITY = 64U,
     UNITLAB_NATIVE_DISCOVERY_INITIAL_DATA_COMPONENT_CAPACITY = 128U,
     UNITLAB_NATIVE_DISCOVERY_INITIAL_LEAF_REF_CAPACITY = 128U,
+    UNITLAB_NATIVE_INITIAL_REPORT_ENTRY_CAPACITY = 32U,
     UNITLAB_NATIVE_DISCOVERY_INITIAL_DATA_SET_CAPACITY = 16U,
     UNITLAB_NATIVE_DISCOVERY_INITIAL_DATA_SET_MEMBER_CAPACITY = 64U,
     UNITLAB_NATIVE_DISCOVERY_INITIAL_RCB_CAPACITY = 16U,
@@ -82,6 +83,17 @@ typedef struct {
 } UnitLabNativeDiscoveredLeafRef;
 
 typedef struct {
+    char data_reference[384U];
+    char display_reference[384U];
+    char value_summary[160U];
+    char reason_summary[64U];
+    char type_kind[32U];
+    size_t inclusion_index;
+    int discovered_match;
+    int dataset_match;
+} UnitLabNativeLastReportEntry;
+
+typedef struct {
     char reference[384U];
     size_t member_start;
     size_t member_count;
@@ -110,6 +122,9 @@ typedef struct {
     UnitLabNativeDiscoveredLeafRef* discovered_leaf_refs;
     size_t discovered_leaf_ref_count;
     size_t discovered_leaf_ref_capacity;
+    UnitLabNativeLastReportEntry* last_report_entries;
+    size_t last_report_entry_count;
+    size_t last_report_entry_capacity;
     UnitLabNativeDiscoveredDataSet* discovered_data_sets;
     size_t discovered_data_set_count;
     size_t discovered_data_set_capacity;
@@ -129,6 +144,9 @@ void unitlab_native_client_session_set_data_name_type(UnitLabNativeDiscoveredDat
 int unitlab_native_client_session_append_data_component(UnitLabNativeClientSessionState* session, UnitLabNativeDiscoveredDataName* data_name, const char* component_name, const char* type_kind);
 UnitLabNativeDiscoveredLeafRef* unitlab_native_client_session_append_leaf_ref(UnitLabNativeClientSessionState* session, const char* mms_reference);
 int unitlab_native_client_session_leaf_ref_exists(const UnitLabNativeClientSessionState* session, const char* mms_reference);
+const UnitLabNativeDiscoveredLeafRef* unitlab_native_client_session_find_leaf_ref(const UnitLabNativeClientSessionState* session, const char* mms_reference);
+void unitlab_native_client_session_reset_last_report(UnitLabNativeClientSessionState* session);
+UnitLabNativeLastReportEntry* unitlab_native_client_session_append_last_report_entry(UnitLabNativeClientSessionState* session, const char* data_reference, int dataset_match, size_t inclusion_index);
 int unitlab_native_client_session_data_set_member_exists(const UnitLabNativeClientSessionState* session, const char* reference);
 int unitlab_native_client_session_data_set_index_by_reference(const UnitLabNativeClientSessionState* session, const char* reference, size_t* data_set_index);
 int unitlab_native_client_session_data_set_contains_member(const UnitLabNativeClientSessionState* session, const char* data_set_reference, const char* member_reference);

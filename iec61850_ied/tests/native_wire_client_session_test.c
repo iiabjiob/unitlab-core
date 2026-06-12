@@ -149,6 +149,31 @@ int main(void)
         return 1;
     }
 
+    {
+        UnitLabNativeLastReportEntry* report_entry = unitlab_native_client_session_append_last_report_entry(&session, "IED1LD0/LLN0$ST$Member299$stVal", 1, 0U);
+        if (!expect_true(report_entry != NULL, "expected last report entry append to succeed")) {
+            return 1;
+        }
+        snprintf(report_entry->value_summary, sizeof(report_entry->value_summary), "%s", "true");
+        snprintf(report_entry->reason_summary, sizeof(report_entry->reason_summary), "%s", "0x0204");
+        if (!expect_true(session.last_report_entry_count == 1U, "expected last report entry count")) {
+            return 1;
+        }
+        if (!expect_true(report_entry->discovered_match && report_entry->dataset_match, "expected report entry to retain match flags")) {
+            return 1;
+        }
+        if (!expect_true(strcmp(report_entry->display_reference, "IED1LD0/LLN0.ST.Member299.stVal") == 0, "expected report entry normalized display reference")) {
+            return 1;
+        }
+        if (!expect_true(strcmp(report_entry->value_summary, "true") == 0 && strcmp(report_entry->reason_summary, "0x0204") == 0, "expected report entry value and reason summaries")) {
+            return 1;
+        }
+        unitlab_native_client_session_reset_last_report(&session);
+        if (!expect_true(session.last_report_entry_count == 0U && session.discovered_model.last_report_value_count == 0U, "expected last report reset to clear mapped entries")) {
+            return 1;
+        }
+    }
+
 
     for (size_t rcb_index = 0U; rcb_index < 300U; rcb_index++) {
         char item[320U];

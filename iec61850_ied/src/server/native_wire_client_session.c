@@ -156,6 +156,36 @@ static int ensure_leaf_ref_capacity(UnitLabNativeClientSessionState* session, si
     return 1;
 }
 
+static int ensure_last_report_entry_capacity(UnitLabNativeClientSessionState* session, size_t required)
+{
+    UnitLabNativeLastReportEntry* resized;
+    size_t new_capacity;
+
+    if (session == NULL) {
+        return 0;
+    }
+    if (required <= session->last_report_entry_capacity) {
+        return 1;
+    }
+    new_capacity = session->last_report_entry_capacity != 0U ? session->last_report_entry_capacity : UNITLAB_NATIVE_INITIAL_REPORT_ENTRY_CAPACITY;
+    while (new_capacity < required) {
+        if (new_capacity > ((size_t)-1) / 2U) {
+            return 0;
+        }
+        new_capacity *= 2U;
+    }
+    resized = (UnitLabNativeLastReportEntry*)realloc(session->last_report_entries, new_capacity * sizeof(session->last_report_entries[0]));
+    if (resized == NULL) {
+        return 0;
+    }
+    if (new_capacity > session->last_report_entry_capacity) {
+        memset(&resized[session->last_report_entry_capacity], 0, (new_capacity - session->last_report_entry_capacity) * sizeof(resized[0]));
+    }
+    session->last_report_entries = resized;
+    session->last_report_entry_capacity = new_capacity;
+    return 1;
+}
+
 static void normalize_path_dollars_to_dots(const char* input, char* output, size_t output_size)
 {
     size_t index = 0U;
@@ -342,6 +372,7 @@ void unitlab_native_client_session_reset(UnitLabNativeClientSessionState* sessio
     free(session->discovered_data_names);
     free(session->discovered_data_components);
     free(session->discovered_leaf_refs);
+    free(session->last_report_entries);
     free(session->discovered_data_sets);
     free(session->discovered_data_set_members);
     free(session->discovered_rcbs);
@@ -470,6 +501,65 @@ int unitlab_native_client_session_leaf_ref_exists(const UnitLabNativeClientSessi
         }
     }
     return 0;
+}
+
+const UnitLabNativeDiscoveredLeafRef* unitlab_native_client_session_find_leaf_ref(const UnitLabNativeClientSessionState* session, const char* mms_reference)
+{
+    if (session == NULL || mms_reference == NULL || mms_reference[0] == '\0') {
+        return NULL;
+    }
+    for (size_t index = 0U; index < session->discovered_leaf_ref_count; index++) {
+        if (strcmp(session->discovered_leaf_refs[index].mms_reference, mms_reference) == 0) {
+            return &session->discovered_leaf_refs[index];
+        }
+    }
+    return NULL;
+}
+
+void unitlab_native_client_session_reset_last_report(UnitLabNativeClientSessionState* session)
+{
+    if (session == NULL) {
+        return;
+    }
+    if (session->last_report_entries != NULL && session->last_report_entry_capacity > 0U) {
+        memset(session->last_report_entries, 0, session->last_report_entry_capacity * sizeof(session->last_report_entries[0]));
+    }
+    session->last_report_entry_count = 0U;
+    session->discovered_model.last_report_data_ref_count = 0U;
+    session->discovered_model.last_report_value_count = 0U;
+    session->discovered_model.last_report_reason_count = 0U;
+    session->discovered_model.last_report_matched_data_ref_count = 0U;
+    session->discovered_model.last_report_rpt_id[0] = '\0';
+    session->discovered_model.last_report_data_set[0] = '\0';
+}
+
+UnitLabNativeLastReportEntry* unitlab_native_client_session_append_last_report_entry(UnitLabNativeClientSessionState* session, const char* data_reference, int dataset_match, size_t inclusion_index)
+{
+    UnitLabNativeLastReportEntry* entry;
+    const UnitLabNativeDiscoveredLeafRef* leaf_ref;
+
+    if (session == NULL || data_reference == NULL || data_reference[0] == '\0') {
+        return NULL;
+    }
+    if (!ensure_last_report_entry_capacity(session, session->last_report_entry_count + 1U)) {
+        return NULL;
+    }
+    entry = &session->last_report_entries[session->last_report_entry_count];
+    memset(entry, 0, sizeof(*entry));
+    snprintf(entry->data_reference, sizeof(entry->data_reference), "%s", data_reference);
+    entry->inclusion_index = inclusion_index;
+    entry->dataset_match = dataset_match ? 1 : 0;
+    leaf_ref = unitlab_native_client_session_find_leaf_ref(session, data_reference);
+    if (leaf_ref != NULL) {
+        snprintf(entry->display_reference, sizeof(entry->display_reference), "%s", leaf_ref->display_reference);
+        snprintf(entry->type_kind, sizeof(entry->type_kind), "%s", leaf_ref->type_kind[0] != '\0' ? leaf_ref->type_kind : "unknown");
+        entry->discovered_match = 1;
+    } else {
+        snprintf(entry->display_reference, sizeof(entry->display_reference), "%s", data_reference);
+        snprintf(entry->type_kind, sizeof(entry->type_kind), "%s", "unknown");
+    }
+    session->last_report_entry_count++;
+    return entry;
 }
 
 int unitlab_native_client_session_data_set_member_exists(const UnitLabNativeClientSessionState* session, const char* reference)
