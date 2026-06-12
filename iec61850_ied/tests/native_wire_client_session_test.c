@@ -220,6 +220,9 @@ int main(void)
         if (!expect_true(strcmp(root_node->request_item, "Pos") == 0 && strcmp(root_node->reference_kind, "fc-context") == 0, "expected typed root to retain FC request context")) {
             return 1;
         }
+        if (!expect_true(strcmp(root_node->semantic_kind, "root") == 0 && strcmp(child_node->semantic_kind, "leaf") == 0, "expected typed structural semantics to be retained")) {
+            return 1;
+        }
         if (!expect_true(strcmp(child_node->request_item, "Pos.stVal") == 0 && strcmp(child_node->reference_kind, "fc-context") == 0, "expected typed leaf to retain FC request context")) {
             return 1;
         }
