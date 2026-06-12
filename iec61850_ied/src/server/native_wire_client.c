@@ -1910,9 +1910,7 @@ int unitlab_run_native_wire_client_with_options(
     uint8_t read_request[2048U];
     uint8_t report_frame[2048U];
     size_t report_length = 0U;
-    char discovered_domain[128U];
-    char discovered_brcb_items[UNITLAB_NATIVE_DISCOVERY_MAX_RCBS][320U];
-    size_t discovered_brcb_count = 0U;
+    const UnitLabNativeDiscoveredRcb* selected_rcb = NULL;
     UnitLabMmsDiagnostic diagnostic;
     UnitLabNativeClientSessionState session = {0};
     const char* initial_read_domain = "XCBR1";
@@ -1928,8 +1926,6 @@ int unitlab_run_native_wire_client_with_options(
         set_result(result, "NATIVE_WIRE_CLIENT_INVALID_ARGUMENT", "Native wire client requires config and result.");
         return 0;
     }
-    discovered_domain[0] = '\0';
-    memset(discovered_brcb_items, 0, sizeof(discovered_brcb_items));
     unitlab_native_client_session_reset(&session);
     if (config->bind_address == NULL || config->bind_address[0] == '\0') {
         set_result(result, "NATIVE_WIRE_CLIENT_HOST_REQUIRED", "Native wire client requires a target host.");
@@ -2138,12 +2134,7 @@ int unitlab_run_native_wire_client_with_options(
                         &discovery_io,
                         domain_id,
                         invoke_id,
-                        &next_invoke_id,
-                        discovered_domain,
-                        sizeof(discovered_domain),
-                        discovered_brcb_items,
-                        UNITLAB_NATIVE_DISCOVERY_MAX_RCBS,
-                        &discovered_brcb_count)) {
+                        &next_invoke_id)) {
                     state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
                     set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_FAILED", diagnostic.message);
                     goto fail;
@@ -2343,9 +2334,6 @@ int unitlab_run_native_wire_client_with_options(
             continue;
         }
         if (strcmp(command, "close-ied") == 0) {
-            discovered_domain[0] = '\0';
-            memset(discovered_brcb_items, 0, sizeof(discovered_brcb_items));
-            discovered_brcb_count = 0U;
             unitlab_native_client_session_reset(&session);
             emit_discovered_model_summary(&session, "close-ied");
             emit_subscription_summary(&session, "close-ied");
@@ -2395,7 +2383,8 @@ int unitlab_run_native_wire_client_with_options(
                     next_invoke_id = invoke_id + 1U;
                 }
             }
-            if (discovered_brcb_count == 0U || rcb_index >= discovered_brcb_count) {
+            selected_rcb = unitlab_native_client_session_discovered_rcb_at(&session, rcb_index);
+            if (selected_rcb == NULL) {
                 set_result(result, "NATIVE_WIRE_CLIENT_RPTENA_NO_DISCOVERED_RCB", "Run discover first and select an existing discovered BRCB index.");
                 goto fail;
             }
@@ -2404,7 +2393,7 @@ int unitlab_run_native_wire_client_with_options(
                 set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its write-requested state.");
                 goto fail;
             }
-            if (!emit_discovered_rcb_bool_step(&session, data_fd, "rptena", discovered_domain, discovered_brcb_items[rcb_index], "RptEna", 1U, invoke_id, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
+            if (!emit_discovered_rcb_bool_step(&session, data_fd, "rptena", selected_rcb->domain, selected_rcb->item, "RptEna", 1U, invoke_id, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
                 state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
                 set_result(result, "NATIVE_WIRE_CLIENT_RPTENA_FAILED", diagnostic.message);
                 goto fail;
@@ -2412,8 +2401,8 @@ int unitlab_run_native_wire_client_with_options(
             session.subscription_model.rpt_enabled = 1;
             session.subscription_model.selected_rcb_index = rcb_index;
             session.subscription_model.last_rptena_invoke_id = invoke_id;
-            snprintf(session.subscription_model.rcb_domain, sizeof(session.subscription_model.rcb_domain), "%s", discovered_domain);
-            snprintf(session.subscription_model.rcb_item, sizeof(session.subscription_model.rcb_item), "%s", discovered_brcb_items[rcb_index]);
+            snprintf(session.subscription_model.rcb_domain, sizeof(session.subscription_model.rcb_domain), "%s", selected_rcb->domain);
+            snprintf(session.subscription_model.rcb_item, sizeof(session.subscription_model.rcb_item), "%s", selected_rcb->item);
             emit_subscription_summary(&session, "rptena");
             state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_READY;
             if (!emit_state_response(state)) {
@@ -2447,7 +2436,8 @@ int unitlab_run_native_wire_client_with_options(
                     next_invoke_id = invoke_id + 1U;
                 }
             }
-            if (discovered_brcb_count == 0U || rcb_index >= discovered_brcb_count) {
+            selected_rcb = unitlab_native_client_session_discovered_rcb_at(&session, rcb_index);
+            if (selected_rcb == NULL) {
                 set_result(result, "NATIVE_WIRE_CLIENT_GI_NO_DISCOVERED_RCB", "Run discover first and select an existing discovered BRCB index.");
                 goto fail;
             }
@@ -2456,7 +2446,7 @@ int unitlab_run_native_wire_client_with_options(
                 set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its write-requested state.");
                 goto fail;
             }
-            if (!emit_discovered_rcb_bool_step(&session, data_fd, "gi", discovered_domain, discovered_brcb_items[rcb_index], "GI", 1U, invoke_id, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
+            if (!emit_discovered_rcb_bool_step(&session, data_fd, "gi", selected_rcb->domain, selected_rcb->item, "GI", 1U, invoke_id, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
                 state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
                 set_result(result, "NATIVE_WIRE_CLIENT_GI_FAILED", diagnostic.message);
                 goto fail;
@@ -2464,8 +2454,8 @@ int unitlab_run_native_wire_client_with_options(
             session.subscription_model.gi_requested = 1;
             session.subscription_model.selected_rcb_index = rcb_index;
             session.subscription_model.last_gi_invoke_id = invoke_id;
-            snprintf(session.subscription_model.rcb_domain, sizeof(session.subscription_model.rcb_domain), "%s", discovered_domain);
-            snprintf(session.subscription_model.rcb_item, sizeof(session.subscription_model.rcb_item), "%s", discovered_brcb_items[rcb_index]);
+            snprintf(session.subscription_model.rcb_domain, sizeof(session.subscription_model.rcb_domain), "%s", selected_rcb->domain);
+            snprintf(session.subscription_model.rcb_item, sizeof(session.subscription_model.rcb_item), "%s", selected_rcb->item);
             emit_subscription_summary(&session, "gi");
             state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_READY;
             if (!emit_state_response(state)) {

@@ -59,7 +59,7 @@ static void set_discovery_diagnostic(const UnitLabNativeDiscoveryIo* io, UnitLab
     snprintf(io->diagnostic->message, sizeof(io->diagnostic->message), "%s", message != NULL ? message : "Native wire discovery failed.");
 }
 
-static size_t collect_get_named_variable_list_members_from_frame(UnitLabNativeClientSessionState* session, const char* data_set_reference, const uint8_t* frame, size_t frame_length)
+static int collect_get_named_variable_list_members_from_frame(UnitLabNativeClientSessionState* session, const UnitLabNativeDiscoveryIo* io, const char* data_set_reference, const uint8_t* frame, size_t frame_length)
 {
     UnitLabMmsAssociationFrame association_frame;
     UnitLabMmsPdu pdu;
@@ -98,7 +98,8 @@ static size_t collect_get_named_variable_list_members_from_frame(UnitLabNativeCl
     }
     data_set = unitlab_native_client_session_append_data_set(session, data_set_reference);
     if (data_set == NULL) {
-        return 0U;
+        set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered DataSet state.");
+        return 0;
     }
     while (offset < list.value_length) {
         UnitLabMmsBerElement member;
@@ -125,7 +126,8 @@ static size_t collect_get_named_variable_list_members_from_frame(UnitLabNativeCl
             && unitlab_native_client_decode_object_name_domain_item(&object_name, domain, sizeof(domain), item, sizeof(item))) {
             snprintf(reference, sizeof(reference), "%s/%s", domain[0] != '\0' ? domain : "<vmd>", item);
             if (!unitlab_native_client_session_append_data_set_member(session, data_set, reference)) {
-                return added;
+                set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered DataSet member state.");
+                return 0;
             }
             printf(
                 "native-wire-client: discovered-dataset-member[%zu.%zu] dataset=%s ref=%s\n",
@@ -138,7 +140,8 @@ static size_t collect_get_named_variable_list_members_from_frame(UnitLabNativeCl
         }
         offset += member_consumed;
     }
-    return added;
+    (void)added;
+    return 1;
 }
 
 static int extract_get_name_list_identifiers(
@@ -229,12 +232,7 @@ int unitlab_native_client_run_discover_sequence(
     const UnitLabNativeDiscoveryIo* io,
     const char* domain_id,
     uint32_t invoke_id,
-    uint32_t* next_invoke_id,
-    char* discovered_domain,
-    size_t discovered_domain_size,
-    char discovered_brcb_items[][320U],
-    size_t max_discovered_brcb_items,
-    size_t* discovered_brcb_count)
+    uint32_t* next_invoke_id)
 {
     UnitLabNativeIdentifierList logical_device_names = {0};
     UnitLabNativeIdentifierList logical_node_names = {0};
@@ -246,14 +244,11 @@ int unitlab_native_client_run_discover_sequence(
     char last_identifier[128U];
     int ok = 0;
 
-    if (session == NULL || io == NULL || io->get_name_list_step == NULL || io->read_step == NULL || io->attributes_step == NULL || domain_id == NULL || domain_id[0] == '\0' || next_invoke_id == NULL || discovered_domain == NULL || discovered_domain_size == 0U || discovered_brcb_items == NULL || discovered_brcb_count == NULL) {
-        set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Native wire client discover sequence requires session, domain, and discovery buffers.");
+    if (session == NULL || io == NULL || io->get_name_list_step == NULL || io->read_step == NULL || io->attributes_step == NULL || domain_id == NULL || domain_id[0] == '\0' || next_invoke_id == NULL) {
+        set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Native wire client discover sequence requires session, domain, and discovery callbacks.");
         return 0;
     }
 
-    discovered_domain[0] = '\0';
-    memset(discovered_brcb_items, 0, max_discovered_brcb_items * 320U);
-    *discovered_brcb_count = 0U;
     unitlab_native_client_session_reset(session);
     snprintf(session->discovered_model.domain, sizeof(session->discovered_model.domain), "%s", domain_id);
 
@@ -371,16 +366,12 @@ int unitlab_native_client_run_discover_sequence(
             goto cleanup;
         }
         snprintf(brcb_read_item, sizeof(brcb_read_item), "%s$BR$%s", brcb_logical_nodes.items[index], brcb_names.items[index]);
-        if (*discovered_brcb_count < max_discovered_brcb_items) {
-            snprintf(discovered_domain, discovered_domain_size, "%s", domain_id);
-            snprintf(discovered_brcb_items[*discovered_brcb_count], sizeof(discovered_brcb_items[*discovered_brcb_count]), "%s", brcb_read_item);
-            printf("native-wire-client: discovered-brcb[%zu] domain=%s item=%s\n", *discovered_brcb_count, discovered_domain, discovered_brcb_items[*discovered_brcb_count]);
-            fflush(stdout);
-            (*discovered_brcb_count)++;
-        } else {
-            printf("native-wire-client: discover-truncated=client-brcb-selection limit=%zu discovered=%zu\n", max_discovered_brcb_items, brcb_names.count);
-            fflush(stdout);
+        if (unitlab_native_client_session_append_discovered_rcb(session, domain_id, brcb_read_item) == NULL) {
+            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered BRCB state.");
+            goto cleanup;
         }
+        printf("native-wire-client: discovered-brcb[%zu] domain=%s item=%s\n", session->discovered_rcb_count - 1U, domain_id, brcb_read_item);
+        fflush(stdout);
         if (!io->read_step(session, io, "brcb-values", domain_id, brcb_read_item, followup_invoke_id++)) {
             goto cleanup;
         }
@@ -395,7 +386,9 @@ int unitlab_native_client_run_discover_sequence(
         if (!io->attributes_step(session, io, "dataset-members", domain_id, data_set_items.items[index], followup_invoke_id++, 1)) {
             goto cleanup;
         }
-        (void)collect_get_named_variable_list_members_from_frame(session, data_set_reference, io->response, *io->encoded_response_length);
+        if (!collect_get_named_variable_list_members_from_frame(session, io, data_set_reference, io->response, *io->encoded_response_length)) {
+            goto cleanup;
+        }
     }
     *next_invoke_id = followup_invoke_id;
     if (io->emit_model_summary != NULL) {

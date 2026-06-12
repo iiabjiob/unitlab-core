@@ -84,6 +84,23 @@ int main(void)
         return 1;
     }
 
+
+    for (size_t rcb_index = 0U; rcb_index < 300U; rcb_index++) {
+        char item[320U];
+        const UnitLabNativeDiscoveredRcb* rcb;
+        snprintf(item, sizeof(item), "LLN0$BR$brcb%03zu", rcb_index);
+        if (!expect_true(unitlab_native_client_session_append_discovered_rcb(&session, "IED1LD0", item) != NULL, "expected dynamic RCB append to grow beyond initial capacity")) {
+            return 1;
+        }
+        rcb = unitlab_native_client_session_discovered_rcb_at(&session, rcb_index);
+        if (!expect_true(rcb != NULL && strcmp(rcb->domain, "IED1LD0") == 0 && strcmp(rcb->item, item) == 0, "expected dynamic RCB lookup to succeed")) {
+            return 1;
+        }
+    }
+    if (!expect_true(session.discovered_rcb_count == 300U && session.discovered_model.brcb_count == 300U, "expected all dynamic RCBs to be retained")) {
+        return 1;
+    }
+
     unitlab_native_client_session_reset(&session);
     return 0;
 }

@@ -42,19 +42,16 @@ These are not yet production-client guarantees:
 
 ## Slice 1: Dynamic Discovery Model
 
-Status: in progress.
+Status: complete.
 
-Closed in current implementation slice:
+Closed:
 
 - Session-owned DataSet and DataSet member storage is dynamic.
+- Session-owned discovered BRCB storage is dynamic and used by `rptena`/`gi` selection.
 - Discovery runner uses dynamic local identifier lists for logical devices, logical nodes, datasets, and discovered BRCB names.
 - Repeated `discover`/`close-ied` clears dynamic discovery storage.
+- DataSet and DataSet member allocation failures are explicit discovery failures.
 - Existing real TCP smoke still reports `dataset-match=true`.
-
-Remaining before this slice is complete:
-
-- Move debug-client selected BRCB storage out of the fixed `UNITLAB_NATIVE_DISCOVERY_MAX_RCBS` buffer.
-- Add explicit allocation-failure diagnostics for DataSet member collection instead of returning a partial count silently.
 
 Goal: make discovery reliable for real substations where object counts exceed debug limits.
 

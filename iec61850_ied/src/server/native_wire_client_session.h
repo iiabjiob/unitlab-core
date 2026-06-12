@@ -5,11 +5,11 @@
 #include <stdint.h>
 
 enum {
-    UNITLAB_NATIVE_DISCOVERY_MAX_RCBS = 256U,
     UNITLAB_NATIVE_DISCOVERY_PAGE_SIZE = 32U,
     UNITLAB_NATIVE_DISCOVERY_MAX_INVOKE_SPAN = 2048U,
     UNITLAB_NATIVE_DISCOVERY_INITIAL_DATA_SET_CAPACITY = 16U,
     UNITLAB_NATIVE_DISCOVERY_INITIAL_DATA_SET_MEMBER_CAPACITY = 64U,
+    UNITLAB_NATIVE_DISCOVERY_INITIAL_RCB_CAPACITY = 16U,
 };
 
 typedef struct {
@@ -46,6 +46,11 @@ typedef struct {
 } UnitLabNativeDiscoveredDataSet;
 
 typedef struct {
+    char domain[128U];
+    char item[320U];
+} UnitLabNativeDiscoveredRcb;
+
+typedef struct {
     UnitLabNativeDiscoveredDeviceModel discovered_model;
     UnitLabNativeSubscriptionModel subscription_model;
     UnitLabNativeDiscoveredDataSet* discovered_data_sets;
@@ -54,6 +59,9 @@ typedef struct {
     char (*discovered_data_set_members)[384U];
     size_t discovered_data_set_member_count;
     size_t discovered_data_set_member_capacity;
+    UnitLabNativeDiscoveredRcb* discovered_rcbs;
+    size_t discovered_rcb_count;
+    size_t discovered_rcb_capacity;
 } UnitLabNativeClientSessionState;
 
 void unitlab_native_client_session_reset(UnitLabNativeClientSessionState* session);
@@ -62,5 +70,7 @@ int unitlab_native_client_session_data_set_index_by_reference(const UnitLabNativ
 int unitlab_native_client_session_data_set_contains_member(const UnitLabNativeClientSessionState* session, const char* data_set_reference, const char* member_reference);
 UnitLabNativeDiscoveredDataSet* unitlab_native_client_session_append_data_set(UnitLabNativeClientSessionState* session, const char* data_set_reference);
 int unitlab_native_client_session_append_data_set_member(UnitLabNativeClientSessionState* session, UnitLabNativeDiscoveredDataSet* data_set, const char* member_reference);
+UnitLabNativeDiscoveredRcb* unitlab_native_client_session_append_discovered_rcb(UnitLabNativeClientSessionState* session, const char* domain, const char* item);
+const UnitLabNativeDiscoveredRcb* unitlab_native_client_session_discovered_rcb_at(const UnitLabNativeClientSessionState* session, size_t index);
 
 #endif

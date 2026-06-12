@@ -63,11 +63,6 @@ int unitlab_native_client_run_discover_sequence(
     const UnitLabNativeDiscoveryIo* io,
     const char* domain_id,
     uint32_t invoke_id,
-    uint32_t* next_invoke_id,
-    char* discovered_domain,
-    size_t discovered_domain_size,
-    char discovered_brcb_items[][320U],
-    size_t max_discovered_brcb_items,
-    size_t* discovered_brcb_count);
+    uint32_t* next_invoke_id);
 
 #endif

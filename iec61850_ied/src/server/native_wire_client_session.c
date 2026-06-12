@@ -64,6 +64,36 @@ static int ensure_data_set_member_capacity(UnitLabNativeClientSessionState* sess
     return 1;
 }
 
+static int ensure_discovered_rcb_capacity(UnitLabNativeClientSessionState* session, size_t required)
+{
+    UnitLabNativeDiscoveredRcb* resized;
+    size_t new_capacity;
+
+    if (session == NULL) {
+        return 0;
+    }
+    if (required <= session->discovered_rcb_capacity) {
+        return 1;
+    }
+    new_capacity = session->discovered_rcb_capacity != 0U ? session->discovered_rcb_capacity : UNITLAB_NATIVE_DISCOVERY_INITIAL_RCB_CAPACITY;
+    while (new_capacity < required) {
+        if (new_capacity > ((size_t)-1) / 2U) {
+            return 0;
+        }
+        new_capacity *= 2U;
+    }
+    resized = (UnitLabNativeDiscoveredRcb*)realloc(session->discovered_rcbs, new_capacity * sizeof(session->discovered_rcbs[0]));
+    if (resized == NULL) {
+        return 0;
+    }
+    if (new_capacity > session->discovered_rcb_capacity) {
+        memset(&resized[session->discovered_rcb_capacity], 0, (new_capacity - session->discovered_rcb_capacity) * sizeof(resized[0]));
+    }
+    session->discovered_rcbs = resized;
+    session->discovered_rcb_capacity = new_capacity;
+    return 1;
+}
+
 void unitlab_native_client_session_reset(UnitLabNativeClientSessionState* session)
 {
     if (session == NULL) {
@@ -71,6 +101,7 @@ void unitlab_native_client_session_reset(UnitLabNativeClientSessionState* sessio
     }
     free(session->discovered_data_sets);
     free(session->discovered_data_set_members);
+    free(session->discovered_rcbs);
     memset(session, 0, sizeof(*session));
 }
 
@@ -152,4 +183,31 @@ int unitlab_native_client_session_append_data_set_member(UnitLabNativeClientSess
     data_set->member_count++;
     session->discovered_model.data_set_member_count = session->discovered_data_set_member_count;
     return 1;
+}
+
+UnitLabNativeDiscoveredRcb* unitlab_native_client_session_append_discovered_rcb(UnitLabNativeClientSessionState* session, const char* domain, const char* item)
+{
+    UnitLabNativeDiscoveredRcb* rcb;
+
+    if (session == NULL || domain == NULL || domain[0] == '\0' || item == NULL || item[0] == '\0') {
+        return NULL;
+    }
+    if (!ensure_discovered_rcb_capacity(session, session->discovered_rcb_count + 1U)) {
+        return NULL;
+    }
+    rcb = &session->discovered_rcbs[session->discovered_rcb_count];
+    memset(rcb, 0, sizeof(*rcb));
+    snprintf(rcb->domain, sizeof(rcb->domain), "%s", domain);
+    snprintf(rcb->item, sizeof(rcb->item), "%s", item);
+    session->discovered_rcb_count++;
+    session->discovered_model.brcb_count = session->discovered_rcb_count;
+    return rcb;
+}
+
+const UnitLabNativeDiscoveredRcb* unitlab_native_client_session_discovered_rcb_at(const UnitLabNativeClientSessionState* session, size_t index)
+{
+    if (session == NULL || index >= session->discovered_rcb_count) {
+        return NULL;
+    }
+    return &session->discovered_rcbs[index];
 }
