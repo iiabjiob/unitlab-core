@@ -181,6 +181,7 @@ Closed in current slice:
 - Linked client smoke verifies that cleanup leaves the buffered BRCB disabled and `ResvTms` cleared.
 - Linked client smoke also covers URCB enable/GI/disable behavior without buffered reservation cleanup.
 - Native client now performs a preflight RCB attribute read before `RptEna` and `GI` control writes.
+- Native client now reserves and releases unbuffered report controls through `Resv` around `RptEna` cleanup.
 - `GI` now requires an active subscription state and rejects writes that do not match the selected subscription index.
 - Server runtime now treats `Resv` as a real reserve/release field for report controls and release accepts reserved state transitions.
 

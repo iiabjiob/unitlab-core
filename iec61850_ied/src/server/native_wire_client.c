@@ -1955,6 +1955,13 @@ static int native_wire_client_subscription_is_buffered_rcb(const UnitLabNativeCl
         && strstr(session->subscription_model.rcb_item, "$BR$") != NULL;
 }
 
+static int native_wire_client_subscription_is_unbuffered_rcb(const UnitLabNativeClientSessionState* session)
+{
+    return session != NULL
+        && session->subscription_model.rcb_item[0] != ' '
+        && strstr(session->subscription_model.rcb_item, "$RP$") != NULL;
+}
+
 static int native_wire_client_cleanup_selected_subscription(
     UnitLabNativeClientSessionState* session,
     int data_fd,
@@ -1991,6 +1998,11 @@ static int native_wire_client_cleanup_selected_subscription(
     if (native_wire_client_subscription_is_buffered_rcb(session)) {
         invoke_id = (*next_invoke_id)++;
         if (!emit_discovered_rcb_unsigned_step(session, data_fd, "cleanup-resvtms", domain_id, rcb_item, "ResvTms", 0U, invoke_id, scratch, scratch_length, request, request_length, response, response_length, encoded_response_length, text_buffer, text_buffer_length, diagnostic)) {
+            return 0;
+        }
+    } else if (native_wire_client_subscription_is_unbuffered_rcb(session)) {
+        invoke_id = (*next_invoke_id)++;
+        if (!emit_discovered_rcb_bool_step(session, data_fd, "cleanup-resv", domain_id, rcb_item, "Resv", 0U, invoke_id, scratch, scratch_length, request, request_length, response, response_length, encoded_response_length, text_buffer, text_buffer_length, diagnostic)) {
             return 0;
         }
     }
@@ -3003,6 +3015,14 @@ int unitlab_run_native_wire_client_with_options(
             if (!emit_state_response(state)) {
                 set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its write-requested state.");
                 goto fail;
+            }
+            if (native_wire_client_subscription_is_unbuffered_rcb(&session)) {
+                uint32_t reserve_invoke_id = next_invoke_id++;
+                if (!emit_discovered_rcb_bool_step(&session, data_fd, "reserve", selected_rcb->domain, selected_rcb->item, "Resv", 1U, reserve_invoke_id, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
+                    state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
+                    set_result(result, "NATIVE_WIRE_CLIENT_RPTENA_RESERVE_FAILED", diagnostic.message);
+                    goto fail;
+                }
             }
             if (!emit_discovered_rcb_bool_step(&session, data_fd, "rptena", selected_rcb->domain, selected_rcb->item, "RptEna", 1U, invoke_id, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
                 state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
