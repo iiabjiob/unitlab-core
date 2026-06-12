@@ -281,8 +281,36 @@ static int server_runtime_apply_report_control_write(UnitLabMmsServerRuntime* se
                         snprintf(server_runtime->brcb_owner, sizeof(server_runtime->brcb_owner), "%s", "local-client");
                         (void)unitlab_iec61850_report_control_reserve(&server_runtime->report_control, &reserve_diagnostic);
                     } else if (value == 0U && server_runtime->report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_RESERVED) {
-                        server_runtime->report_control.state = UNITLAB_IEC61850_REPORT_CONTROL_DISABLED;
+                        UnitLabMmsDiagnostic release_diagnostic;
+                        unitlab_mms_diagnostic_clear(&release_diagnostic);
+                        (void)unitlab_iec61850_report_control_release(&server_runtime->report_control, &release_diagnostic);
                         server_runtime->brcb_owner[0] = 0;
+                    }
+                    continue;
+                }
+                if (strcmp(rcb_field_name, "Resv") == 0) {
+                    uint8_t boolean_value = 0U;
+                    if (!server_runtime_decode_write_boolean(value_bytes, value_length, &boolean_value)) {
+                        server_runtime_mark_write_failure(server_runtime, index, UNITLAB_MMS_WRITE_DATA_ACCESS_ERROR_OBJECT_ACCESS_DENIED);
+                        continue;
+                    }
+                    value = boolean_value;
+                    if (value != 0U) {
+                        if (server_runtime->report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_DISABLED) {
+                            UnitLabMmsDiagnostic reserve_diagnostic;
+                            unitlab_mms_diagnostic_clear(&reserve_diagnostic);
+                            (void)unitlab_iec61850_report_control_reserve(&server_runtime->report_control, &reserve_diagnostic);
+                        } else if (server_runtime->report_control.state != UNITLAB_IEC61850_REPORT_CONTROL_RESERVED) {
+                            server_runtime_mark_write_failure(server_runtime, index, UNITLAB_MMS_WRITE_DATA_ACCESS_ERROR_OBJECT_ACCESS_DENIED);
+                        }
+                    } else {
+                        if (server_runtime->report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_RESERVED || server_runtime->report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_DISABLED) {
+                            UnitLabMmsDiagnostic release_diagnostic;
+                            unitlab_mms_diagnostic_clear(&release_diagnostic);
+                            (void)unitlab_iec61850_report_control_release(&server_runtime->report_control, &release_diagnostic);
+                        } else {
+                            server_runtime_mark_write_failure(server_runtime, index, UNITLAB_MMS_WRITE_DATA_ACCESS_ERROR_OBJECT_ACCESS_DENIED);
+                        }
                     }
                     continue;
                 }

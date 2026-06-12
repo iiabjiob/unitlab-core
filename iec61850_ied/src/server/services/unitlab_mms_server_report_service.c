@@ -485,6 +485,9 @@ static int server_runtime_encode_report_control_block_structure_field_value(
         if (strcmp(field_name, "RptEna") == 0 && server_runtime != NULL && server_runtime->brcb_rpt_ena != 0U) {
             bool_value[0] = 0x01U;
         }
+        else if (strcmp(field_name, "Resv") == 0 && server_runtime != NULL && server_runtime->report_control.state != UNITLAB_IEC61850_REPORT_CONTROL_DISABLED) {
+            bool_value[0] = 0x01U;
+        }
         value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
         value_element.tag.constructed = 0;
         value_element.tag.tag_number = 3U;
