@@ -273,7 +273,12 @@ int unitlab_native_client_run_discover_sequence(
             goto cleanup;
         }
     }
-    session->discovered_model.logical_device_count = logical_device_names.count;
+    for (size_t index = 0U; index < logical_device_names.count; index++) {
+        if (unitlab_native_client_session_append_logical_device(session, logical_device_names.items[index]) == NULL) {
+            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered logical device state.");
+            goto cleanup;
+        }
+    }
 
     if (!io->get_name_list_step(session, io, "domain-logical-nodes", 1U, 1U, domain_id, NULL, NULL, invoke_id + 1U)) {
         goto cleanup;
@@ -328,17 +333,60 @@ int unitlab_native_client_run_discover_sequence(
         printf("native-wire-client: discover-fallback=logical-nodes value=LLN0\n");
         fflush(stdout);
     }
-    session->discovered_model.logical_node_count = logical_node_names.count;
+    for (size_t index = 0U; index < logical_node_names.count; index++) {
+        if (unitlab_native_client_session_append_logical_node(session, domain_id, logical_node_names.items[index]) == NULL) {
+            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered logical node state.");
+            goto cleanup;
+        }
+    }
 
     for (size_t ln_index = 0U; ln_index < logical_node_names.count; ln_index++) {
         char step_label[160U];
+        UnitLabNativeIdentifierList ln_data_names = {0};
         UnitLabNativeIdentifierList ln_brcb_names = {0};
 
         snprintf(step_label, sizeof(step_label), "ln-data-attributes:%s", logical_node_names.items[ln_index]);
         if (!io->get_name_list_step(session, io, step_label, 3U, 1U, domain_id, logical_node_names.items[ln_index], NULL, followup_invoke_id++)) {
+            identifier_list_reset(&ln_data_names);
             identifier_list_reset(&ln_brcb_names);
             goto cleanup;
         }
+        if (!extract_get_name_list_identifiers(io->response, *io->encoded_response_length, &ln_data_names, &more_follows, last_identifier, sizeof(last_identifier))) {
+            identifier_list_reset(&ln_data_names);
+            identifier_list_reset(&ln_brcb_names);
+            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not decode LN data GetNameList response.");
+            goto cleanup;
+        }
+        while (more_follows && last_identifier[0] != '\0') {
+            size_t before_count = ln_data_names.count;
+            snprintf(step_label, sizeof(step_label), "ln-data-attributes-page:%s", logical_node_names.items[ln_index]);
+            if (!io->get_name_list_step(session, io, step_label, 3U, 1U, domain_id, logical_node_names.items[ln_index], last_identifier, followup_invoke_id++)) {
+                identifier_list_reset(&ln_data_names);
+                identifier_list_reset(&ln_brcb_names);
+                goto cleanup;
+            }
+            if (!extract_get_name_list_identifiers(io->response, *io->encoded_response_length, &ln_data_names, &more_follows, last_identifier, sizeof(last_identifier))) {
+                identifier_list_reset(&ln_data_names);
+                identifier_list_reset(&ln_brcb_names);
+                set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not decode LN data GetNameList page.");
+                goto cleanup;
+            }
+            if (ln_data_names.count == before_count) {
+                identifier_list_reset(&ln_data_names);
+                identifier_list_reset(&ln_brcb_names);
+                set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client LN data pagination did not advance.");
+                goto cleanup;
+            }
+        }
+        for (size_t data_index = 0U; data_index < ln_data_names.count; data_index++) {
+            if (unitlab_native_client_session_append_data_name(session, domain_id, logical_node_names.items[ln_index], ln_data_names.items[data_index]) == NULL) {
+                identifier_list_reset(&ln_data_names);
+                identifier_list_reset(&ln_brcb_names);
+                set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered LN data state.");
+                goto cleanup;
+            }
+        }
+        identifier_list_reset(&ln_data_names);
         snprintf(step_label, sizeof(step_label), "ln-brcbs:%s", logical_node_names.items[ln_index]);
         if (!io->get_name_list_step(session, io, step_label, 4U, 1U, domain_id, logical_node_names.items[ln_index], NULL, followup_invoke_id++)) {
             identifier_list_reset(&ln_brcb_names);

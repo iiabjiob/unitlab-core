@@ -4,6 +4,96 @@
 #include <stdlib.h>
 #include <string.h>
 
+static int ensure_logical_device_capacity(UnitLabNativeClientSessionState* session, size_t required)
+{
+    UnitLabNativeDiscoveredLogicalDevice* resized;
+    size_t new_capacity;
+
+    if (session == NULL) {
+        return 0;
+    }
+    if (required <= session->discovered_logical_device_capacity) {
+        return 1;
+    }
+    new_capacity = session->discovered_logical_device_capacity != 0U ? session->discovered_logical_device_capacity : UNITLAB_NATIVE_DISCOVERY_INITIAL_LOGICAL_DEVICE_CAPACITY;
+    while (new_capacity < required) {
+        if (new_capacity > ((size_t)-1) / 2U) {
+            return 0;
+        }
+        new_capacity *= 2U;
+    }
+    resized = (UnitLabNativeDiscoveredLogicalDevice*)realloc(session->discovered_logical_devices, new_capacity * sizeof(session->discovered_logical_devices[0]));
+    if (resized == NULL) {
+        return 0;
+    }
+    if (new_capacity > session->discovered_logical_device_capacity) {
+        memset(&resized[session->discovered_logical_device_capacity], 0, (new_capacity - session->discovered_logical_device_capacity) * sizeof(resized[0]));
+    }
+    session->discovered_logical_devices = resized;
+    session->discovered_logical_device_capacity = new_capacity;
+    return 1;
+}
+
+static int ensure_logical_node_capacity(UnitLabNativeClientSessionState* session, size_t required)
+{
+    UnitLabNativeDiscoveredLogicalNode* resized;
+    size_t new_capacity;
+
+    if (session == NULL) {
+        return 0;
+    }
+    if (required <= session->discovered_logical_node_capacity) {
+        return 1;
+    }
+    new_capacity = session->discovered_logical_node_capacity != 0U ? session->discovered_logical_node_capacity : UNITLAB_NATIVE_DISCOVERY_INITIAL_LOGICAL_NODE_CAPACITY;
+    while (new_capacity < required) {
+        if (new_capacity > ((size_t)-1) / 2U) {
+            return 0;
+        }
+        new_capacity *= 2U;
+    }
+    resized = (UnitLabNativeDiscoveredLogicalNode*)realloc(session->discovered_logical_nodes, new_capacity * sizeof(session->discovered_logical_nodes[0]));
+    if (resized == NULL) {
+        return 0;
+    }
+    if (new_capacity > session->discovered_logical_node_capacity) {
+        memset(&resized[session->discovered_logical_node_capacity], 0, (new_capacity - session->discovered_logical_node_capacity) * sizeof(resized[0]));
+    }
+    session->discovered_logical_nodes = resized;
+    session->discovered_logical_node_capacity = new_capacity;
+    return 1;
+}
+
+static int ensure_data_name_capacity(UnitLabNativeClientSessionState* session, size_t required)
+{
+    UnitLabNativeDiscoveredDataName* resized;
+    size_t new_capacity;
+
+    if (session == NULL) {
+        return 0;
+    }
+    if (required <= session->discovered_data_name_capacity) {
+        return 1;
+    }
+    new_capacity = session->discovered_data_name_capacity != 0U ? session->discovered_data_name_capacity : UNITLAB_NATIVE_DISCOVERY_INITIAL_DATA_NAME_CAPACITY;
+    while (new_capacity < required) {
+        if (new_capacity > ((size_t)-1) / 2U) {
+            return 0;
+        }
+        new_capacity *= 2U;
+    }
+    resized = (UnitLabNativeDiscoveredDataName*)realloc(session->discovered_data_names, new_capacity * sizeof(session->discovered_data_names[0]));
+    if (resized == NULL) {
+        return 0;
+    }
+    if (new_capacity > session->discovered_data_name_capacity) {
+        memset(&resized[session->discovered_data_name_capacity], 0, (new_capacity - session->discovered_data_name_capacity) * sizeof(resized[0]));
+    }
+    session->discovered_data_names = resized;
+    session->discovered_data_name_capacity = new_capacity;
+    return 1;
+}
+
 static int ensure_data_set_capacity(UnitLabNativeClientSessionState* session, size_t required)
 {
     UnitLabNativeDiscoveredDataSet* resized;
@@ -99,10 +189,70 @@ void unitlab_native_client_session_reset(UnitLabNativeClientSessionState* sessio
     if (session == NULL) {
         return;
     }
+    free(session->discovered_logical_devices);
+    free(session->discovered_logical_nodes);
+    free(session->discovered_data_names);
     free(session->discovered_data_sets);
     free(session->discovered_data_set_members);
     free(session->discovered_rcbs);
     memset(session, 0, sizeof(*session));
+}
+
+UnitLabNativeDiscoveredLogicalDevice* unitlab_native_client_session_append_logical_device(UnitLabNativeClientSessionState* session, const char* name)
+{
+    UnitLabNativeDiscoveredLogicalDevice* logical_device;
+
+    if (session == NULL || name == NULL || name[0] == '\0') {
+        return NULL;
+    }
+    if (!ensure_logical_device_capacity(session, session->discovered_logical_device_count + 1U)) {
+        return NULL;
+    }
+    logical_device = &session->discovered_logical_devices[session->discovered_logical_device_count];
+    memset(logical_device, 0, sizeof(*logical_device));
+    snprintf(logical_device->name, sizeof(logical_device->name), "%s", name);
+    session->discovered_logical_device_count++;
+    session->discovered_model.logical_device_count = session->discovered_logical_device_count;
+    return logical_device;
+}
+
+UnitLabNativeDiscoveredLogicalNode* unitlab_native_client_session_append_logical_node(UnitLabNativeClientSessionState* session, const char* logical_device, const char* name)
+{
+    UnitLabNativeDiscoveredLogicalNode* logical_node;
+
+    if (session == NULL || logical_device == NULL || logical_device[0] == '\0' || name == NULL || name[0] == '\0') {
+        return NULL;
+    }
+    if (!ensure_logical_node_capacity(session, session->discovered_logical_node_count + 1U)) {
+        return NULL;
+    }
+    logical_node = &session->discovered_logical_nodes[session->discovered_logical_node_count];
+    memset(logical_node, 0, sizeof(*logical_node));
+    snprintf(logical_node->logical_device, sizeof(logical_node->logical_device), "%s", logical_device);
+    snprintf(logical_node->name, sizeof(logical_node->name), "%s", name);
+    session->discovered_logical_node_count++;
+    session->discovered_model.logical_node_count = session->discovered_logical_node_count;
+    return logical_node;
+}
+
+UnitLabNativeDiscoveredDataName* unitlab_native_client_session_append_data_name(UnitLabNativeClientSessionState* session, const char* logical_device, const char* logical_node, const char* name)
+{
+    UnitLabNativeDiscoveredDataName* data_name;
+
+    if (session == NULL || logical_device == NULL || logical_device[0] == '\0' || logical_node == NULL || logical_node[0] == '\0' || name == NULL || name[0] == '\0') {
+        return NULL;
+    }
+    if (!ensure_data_name_capacity(session, session->discovered_data_name_count + 1U)) {
+        return NULL;
+    }
+    data_name = &session->discovered_data_names[session->discovered_data_name_count];
+    memset(data_name, 0, sizeof(*data_name));
+    snprintf(data_name->logical_device, sizeof(data_name->logical_device), "%s", logical_device);
+    snprintf(data_name->logical_node, sizeof(data_name->logical_node), "%s", logical_node);
+    snprintf(data_name->name, sizeof(data_name->name), "%s", name);
+    session->discovered_data_name_count++;
+    session->discovered_model.data_name_count = session->discovered_data_name_count;
+    return data_name;
 }
 
 int unitlab_native_client_session_data_set_member_exists(const UnitLabNativeClientSessionState* session, const char* reference)

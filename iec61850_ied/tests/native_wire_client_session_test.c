@@ -60,6 +60,48 @@ int main(void)
         return 1;
     }
 
+
+    for (size_t logical_index = 0U; logical_index < 150U; logical_index++) {
+        char logical_device[128U];
+        char logical_node[128U];
+        char data_name[128U];
+        snprintf(logical_device, sizeof(logical_device), "LD%03zu", logical_index);
+        snprintf(logical_node, sizeof(logical_node), "LLN%03zu", logical_index);
+        snprintf(data_name, sizeof(data_name), "Data%03zu", logical_index);
+        if (!expect_true(unitlab_native_client_session_append_logical_device(&session, logical_device) != NULL, "expected logical device append to grow beyond initial capacity")) {
+            return 1;
+        }
+        if (!expect_true(unitlab_native_client_session_append_logical_node(&session, logical_device, logical_node) != NULL, "expected logical node append to grow beyond initial capacity")) {
+            return 1;
+        }
+        if (!expect_true(unitlab_native_client_session_append_data_name(&session, logical_device, logical_node, data_name) != NULL, "expected data name append to grow beyond initial capacity")) {
+            return 1;
+        }
+    }
+    if (!expect_true(session.discovered_logical_device_count == 150U && session.discovered_model.logical_device_count == 150U, "expected all logical devices to be retained")) {
+        return 1;
+    }
+    if (!expect_true(session.discovered_logical_node_count == 150U && session.discovered_model.logical_node_count == 150U, "expected all logical nodes to be retained")) {
+        return 1;
+    }
+    if (!expect_true(session.discovered_data_name_count == 150U && session.discovered_model.data_name_count == 150U, "expected all data names to be retained")) {
+        return 1;
+    }
+    if (!expect_true(strcmp(session.discovered_logical_devices[149U].name, "LD149") == 0, "expected logical device lookup after growth to succeed")) {
+        return 1;
+    }
+    if (!expect_true(strcmp(session.discovered_logical_nodes[149U].logical_device, "LD149") == 0 && strcmp(session.discovered_logical_nodes[149U].name, "LLN149") == 0, "expected logical node lookup after growth to succeed")) {
+        return 1;
+    }
+    if (!expect_true(strcmp(session.discovered_data_names[149U].logical_node, "LLN149") == 0 && strcmp(session.discovered_data_names[149U].name, "Data149") == 0, "expected data name lookup after growth to succeed")) {
+        return 1;
+    }
+
+    unitlab_native_client_session_reset(&session);
+    if (!expect_true(session.discovered_logical_device_count == 0U && session.discovered_logical_node_count == 0U && session.discovered_data_name_count == 0U, "expected reset to clear logical model state")) {
+        return 1;
+    }
+
     for (size_t data_set_index = 0U; data_set_index < 300U; data_set_index++) {
         char data_set_reference[384U];
         char member_reference[384U];
