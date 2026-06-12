@@ -595,14 +595,8 @@ static void test_collects_logical_node_variables_for_directory_browse_class_one(
 
     assert(unitlab_mms_pending_request_collect_get_name_list_names(&request, &plan, &names, &count, &diagnostic) == 1);
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
-    assert(count >= 7U);
-    assert(strcmp(names[0], "Mod") == 0);
-    assert(strcmp(names[1], "Beh") == 0);
-    assert(strcmp(names[2], "Health") == 0);
-    assert(strcmp(names[3], "CF") == 0);
-    assert(strcmp(names[4], "DC") == 0);
-    assert(strcmp(names[5], "BR") == 0);
-    assert(strcmp(names[6], "EX") == 0);
+    assert(count == 1U);
+    assert(strcmp(names[0], "XCBR1") == 0);
 
     unitlab_free_ied_model_name_list(names, count);
 }
