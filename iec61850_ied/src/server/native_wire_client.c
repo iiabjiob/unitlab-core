@@ -1757,6 +1757,183 @@ static int emit_discovered_rcb_bool_step(
         diagnostic);
 }
 
+static int emit_write_element_response(
+    UnitLabNativeClientSessionState* session,
+    int data_fd,
+    const char* domain_id,
+    const char* item_id,
+    uint32_t tag_number,
+    const uint8_t* value_bytes,
+    size_t value_length,
+    uint32_t invoke_id,
+    uint8_t* scratch,
+    size_t scratch_length,
+    uint8_t* request,
+    size_t request_length,
+    uint8_t* response,
+    size_t response_length,
+    size_t* encoded_response_length,
+    uint8_t* text_buffer,
+    size_t text_buffer_length,
+    UnitLabMmsDiagnostic* diagnostic);
+
+static size_t encode_uint32_be_minimal(uint32_t value, uint8_t* output, size_t output_size)
+{
+    size_t length = 0U;
+
+    if (output == NULL || output_size == 0U) {
+        return 0U;
+    }
+    if (value == 0U) {
+        output[0] = 0U;
+        return 1U;
+    }
+    while (value != 0U && length < output_size) {
+        output[output_size - 1U - length] = (uint8_t)(value & 0xFFU);
+        value >>= 8U;
+        length++;
+    }
+    if (length == 0U || length > output_size) {
+        return 0U;
+    }
+    memmove(output, &output[output_size - length], length);
+    return length;
+}
+
+static int emit_discovered_rcb_unsigned_step(
+    UnitLabNativeClientSessionState* session,
+    int data_fd,
+    const char* label,
+    const char* domain_id,
+    const char* rcb_item,
+    const char* field_name,
+    uint32_t value,
+    uint32_t invoke_id,
+    uint8_t* scratch,
+    size_t scratch_length,
+    uint8_t* request,
+    size_t request_length,
+    uint8_t* response,
+    size_t response_length,
+    size_t* encoded_response_length,
+    uint8_t* text_buffer,
+    size_t text_buffer_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    char item_id[384U];
+    uint8_t encoded_value[4U];
+    size_t encoded_value_length = 0U;
+    int written;
+
+    if (domain_id == NULL || domain_id[0] == ' ' || rcb_item == NULL || rcb_item[0] == ' ' || field_name == NULL || field_name[0] == ' ') {
+        if (diagnostic != NULL) {
+            diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT;
+            snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Native wire client discovered RCB write requires domain, RCB item, and field.");
+        }
+        return 0;
+    }
+    written = snprintf(item_id, sizeof(item_id), "%s$%s", rcb_item, field_name);
+    if (written < 0 || (size_t)written >= sizeof(item_id)) {
+        if (diagnostic != NULL) {
+            diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL;
+            snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Native wire client discovered RCB field item is too long.");
+        }
+        return 0;
+    }
+    encoded_value_length = encode_uint32_be_minimal(value, encoded_value, sizeof(encoded_value));
+    if (encoded_value_length == 0U) {
+        if (diagnostic != NULL) {
+            diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL;
+            snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Native wire client could not encode RCB unsigned value.");
+        }
+        return 0;
+    }
+    printf(
+        "native-wire-client: %s invoke=%u domain=%s item=%s value=%u
+",
+        label != NULL ? label : "rcb-write",
+        (unsigned)invoke_id,
+        domain_id,
+        item_id,
+        (unsigned)value);
+    fflush(stdout);
+    return emit_write_element_response(
+        session,
+        data_fd,
+        domain_id,
+        item_id,
+        5U,
+        encoded_value,
+        encoded_value_length,
+        invoke_id,
+        scratch,
+        scratch_length,
+        request,
+        request_length,
+        response,
+        response_length,
+        encoded_response_length,
+        text_buffer,
+        text_buffer_length,
+        diagnostic);
+}
+
+static int native_wire_client_subscription_is_buffered_rcb(const UnitLabNativeClientSessionState* session)
+{
+    return session != NULL
+        && session->subscription_model.rcb_item[0] != ' '
+        && strstr(session->subscription_model.rcb_item, "$BR$") != NULL;
+}
+
+static int native_wire_client_cleanup_selected_subscription(
+    UnitLabNativeClientSessionState* session,
+    int data_fd,
+    uint8_t* scratch,
+    size_t scratch_length,
+    uint8_t* request,
+    size_t request_length,
+    uint8_t* response,
+    size_t response_length,
+    size_t* encoded_response_length,
+    uint8_t* text_buffer,
+    size_t text_buffer_length,
+    uint32_t* next_invoke_id,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    uint32_t invoke_id;
+    const char* domain_id;
+    const char* rcb_item;
+
+    if (session == NULL || next_invoke_id == NULL) {
+        return 1;
+    }
+    domain_id = session->subscription_model.rcb_domain;
+    rcb_item = session->subscription_model.rcb_item;
+    if (domain_id[0] == ' ' || rcb_item[0] == ' ') {
+        return 1;
+    }
+    if (session->subscription_model.rpt_enabled) {
+        invoke_id = (*next_invoke_id)++;
+        if (!emit_discovered_rcb_bool_step(session, data_fd, "cleanup-rptena", domain_id, rcb_item, "RptEna", 0U, invoke_id, scratch, scratch_length, request, request_length, response, response_length, encoded_response_length, text_buffer, text_buffer_length, diagnostic)) {
+            return 0;
+        }
+    }
+    if (native_wire_client_subscription_is_buffered_rcb(session)) {
+        invoke_id = (*next_invoke_id)++;
+        if (!emit_discovered_rcb_unsigned_step(session, data_fd, "cleanup-resvtms", domain_id, rcb_item, "ResvTms", 0U, invoke_id, scratch, scratch_length, request, request_length, response, response_length, encoded_response_length, text_buffer, text_buffer_length, diagnostic)) {
+            return 0;
+        }
+    }
+    session->subscription_model.rpt_enabled = 0;
+    session->subscription_model.gi_requested = 0;
+    session->subscription_model.selected_rcb_index = 0U;
+    session->subscription_model.last_rptena_invoke_id = 0U;
+    session->subscription_model.last_gi_invoke_id = 0U;
+    session->subscription_model.rcb_domain[0] = ' ';
+    session->subscription_model.rcb_item[0] = ' ';
+    return 1;
+}
+
 static int emit_discover_attributes_step(
     UnitLabNativeClientSessionState* session,
     int data_fd,
@@ -2680,6 +2857,11 @@ int unitlab_run_native_wire_client_with_options(
             continue;
         }
         if (strcmp(command, "close-ied") == 0) {
+            if (!native_wire_client_cleanup_selected_subscription(&session, data_fd, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
+                state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
+                set_result(result, "NATIVE_WIRE_CLIENT_CLOSE_IED_FAILED", diagnostic.message);
+                goto fail;
+            }
             unitlab_native_client_session_reset(&session);
             emit_discovered_model_summary(&session, "close-ied");
             emit_subscription_summary(&session, "close-ied");
@@ -3038,6 +3220,11 @@ int unitlab_run_native_wire_client_with_options(
             continue;
         }
         if (strcmp(command, "disconnect") == 0) {
+            if (!native_wire_client_cleanup_selected_subscription(&session, data_fd, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
+                state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
+                set_result(result, "NATIVE_WIRE_CLIENT_DISCONNECT_FAILED", diagnostic.message);
+                goto fail;
+            }
             if (data_fd >= 0) {
                 close(data_fd);
                 data_fd = -1;

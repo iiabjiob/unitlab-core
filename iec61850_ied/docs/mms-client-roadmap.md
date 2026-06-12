@@ -174,6 +174,11 @@ Validation:
 
 Goal: support real BRCB/URCB subscription flows, not only the simple local-server path.
 
+Closed in current slice:
+
+- Native client now tracks the selected discovered BRCB in subscription state.
+- `close-ied` and `disconnect` perform explicit cleanup for the selected RCB: disable `RptEna` when enabled and release buffered `ResvTms` ownership when applicable.
+
 Change boundary:
 
 - Separate BRCB and URCB control logic.
