@@ -159,6 +159,67 @@ int main(void)
     }
 
     {
+        UnitLabNativeDiscoveredTypedDataNode* root_node;
+        UnitLabNativeDiscoveredTypedDataNode* child_node;
+        UnitLabNativeDiscoveredTypedDataNode* duplicate_node;
+
+        root_node = unitlab_native_client_session_append_typed_data_node(
+            &session,
+            "IED1LD0",
+            "LLN0",
+            "ST",
+            "Pos",
+            "IED1LD0/LLN0$ST$Pos",
+            "IED1LD0/LLN0.ST.Pos",
+            "structure",
+            "root",
+            0U,
+            (size_t)-1);
+        if (!expect_true(root_node != NULL, "expected typed root node append to succeed")) {
+            return 1;
+        }
+        child_node = unitlab_native_client_session_append_typed_data_node(
+            &session,
+            "IED1LD0",
+            "LLN0",
+            "ST",
+            "Pos.stVal",
+            "IED1LD0/LLN0$ST$Pos$stVal",
+            "IED1LD0/LLN0.ST.Pos.stVal",
+            "boolean",
+            "leaf",
+            1U,
+            session.discovered_typed_data_node_count - 1U);
+        if (!expect_true(child_node != NULL, "expected typed child node append to succeed")) {
+            return 1;
+        }
+        duplicate_node = unitlab_native_client_session_append_typed_data_node(
+            &session,
+            "IED1LD0",
+            "LLN0",
+            "ST",
+            "Pos.stVal",
+            "IED1LD0/LLN0$ST$Pos$stVal",
+            "IED1LD0/LLN0.ST.Pos.stVal",
+            "boolean",
+            "leaf",
+            1U,
+            session.discovered_typed_data_node_count - 1U);
+        if (!expect_true(duplicate_node == child_node, "expected stable MMS refs to dedupe typed nodes")) {
+            return 1;
+        }
+        if (!expect_true(session.discovered_typed_data_node_count == 2U && session.discovered_model.typed_data_node_count == 2U, "expected typed tree count to track appended nodes")) {
+            return 1;
+        }
+        if (!expect_true(root_node->child_count == 1U && child_node->child_count == 0U, "expected typed tree parent/leaf counts")) {
+            return 1;
+        }
+        if (!expect_true(strcmp(root_node->display_reference, "IED1LD0/LLN0.ST.Pos") == 0 && strcmp(child_node->mms_reference, "IED1LD0/LLN0$ST$Pos$stVal") == 0, "expected typed tree normalized refs")) {
+            return 1;
+        }
+    }
+
+    {
         UnitLabNativeLastReportEntry* report_entry = unitlab_native_client_session_append_last_report_entry(&session, "IED1LD0/LLN0$ST$Member299$stVal", 1, 299U);
         if (!expect_true(report_entry != NULL, "expected last report entry append to succeed")) {
             return 1;

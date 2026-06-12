@@ -129,9 +129,10 @@ Closed in current slice:
 - Dynamic session-owned storage exists for discovered logical nodes.
 - Dynamic session-owned storage exists for shallow LN data names returned by `GetNameList` class 3.
 - Dynamic session-owned storage exists for GVA component names and coarse type-kind metadata read from each discovered LN data item.
+- Dynamic session-owned storage exists for recursive typed GVA tree nodes with normalized refs when FC context is available from the request path.
 - Dynamic session-owned storage exists for normalized dataset member leaf references with MMS and display forms.
 - Discovery populates those collections during `discover`.
-- Debug model summary reports `data-names`, `typed-data-names`, `data-components`, `typed-data-components`, and `leaf-refs` counts.
+- Debug model summary reports `data-names`, `typed-data-names`, `data-components`, `typed-data-components`, `typed-data-nodes`, and `leaf-refs` counts.
 - Report decoder stores session-owned mapped entries for reports that include `dataRef`, including normalized display reference, match flags, value summary, and reason summary.
 - Reports without `dataRef` are mapped through discovered Dataset order using the inclusion bitstring.
 - Latest report entries now retain primitive typed value metadata alongside text summaries: raw BER tag, raw length, bool, signed/unsigned integer, MMS float32, quality raw code/validity for `$q`, string/octet/bit-string/structure classification, and raw report reason code metadata plus semantic reason flags/labels.
@@ -141,9 +142,7 @@ Closed in current slice:
 
 Remaining:
 
-- Expand shallow LN data names and GVA components into full data object/data attribute trees.
-- Store FC/SCL-specific type metadata from `GetVariableAccessAttributes`; current storage is coarse BER type-kind only.
-- Normalize and expose stable MMS/display references for every discovered leaf; dataset member leaf references are stored, full GVA-derived leaves remain in progress.
+- Generic LN data-name browse results without explicit FC context still fall back to partial root metadata; vendor-specific FC normalization beyond the request context still needs fixture coverage.
 
 Goal: build a useful IEC 61850 model, not just enough state to subscribe to one report.
 

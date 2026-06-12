@@ -126,6 +126,36 @@ static int ensure_data_component_capacity(UnitLabNativeClientSessionState* sessi
 }
 
 
+static int ensure_typed_data_node_capacity(UnitLabNativeClientSessionState* session, size_t required)
+{
+    UnitLabNativeDiscoveredTypedDataNode* resized;
+    size_t new_capacity;
+
+    if (session == NULL) {
+        return 0;
+    }
+    if (required <= session->discovered_typed_data_node_capacity) {
+        return 1;
+    }
+    new_capacity = session->discovered_typed_data_node_capacity != 0U ? session->discovered_typed_data_node_capacity : UNITLAB_NATIVE_DISCOVERY_INITIAL_TYPED_NODE_CAPACITY;
+    while (new_capacity < required) {
+        if (new_capacity > ((size_t)-1) / 2U) {
+            return 0;
+        }
+        new_capacity *= 2U;
+    }
+    resized = (UnitLabNativeDiscoveredTypedDataNode*)realloc(session->discovered_typed_data_nodes, new_capacity * sizeof(session->discovered_typed_data_nodes[0]));
+    if (resized == NULL) {
+        return 0;
+    }
+    if (new_capacity > session->discovered_typed_data_node_capacity) {
+        memset(&resized[session->discovered_typed_data_node_capacity], 0, (new_capacity - session->discovered_typed_data_node_capacity) * sizeof(resized[0]));
+    }
+    session->discovered_typed_data_nodes = resized;
+    session->discovered_typed_data_node_capacity = new_capacity;
+    return 1;
+}
+
 static int ensure_leaf_ref_capacity(UnitLabNativeClientSessionState* session, size_t required)
 {
     UnitLabNativeDiscoveredLeafRef* resized;
@@ -371,6 +401,7 @@ void unitlab_native_client_session_reset(UnitLabNativeClientSessionState* sessio
     free(session->discovered_logical_nodes);
     free(session->discovered_data_names);
     free(session->discovered_data_components);
+    free(session->discovered_typed_data_nodes);
     free(session->discovered_leaf_refs);
     free(session->last_report_entries);
     free(session->discovered_data_sets);
@@ -462,6 +493,56 @@ int unitlab_native_client_session_append_data_component(UnitLabNativeClientSessi
     return 1;
 }
 
+
+UnitLabNativeDiscoveredTypedDataNode* unitlab_native_client_session_append_typed_data_node(UnitLabNativeClientSessionState* session, const char* logical_device, const char* logical_node, const char* fc, const char* path, const char* mms_reference, const char* display_reference, const char* type_kind, const char* node_kind, size_t depth, size_t parent_index)
+{
+    UnitLabNativeDiscoveredTypedDataNode* node;
+
+    if (session == NULL || logical_device == NULL || logical_device[0] == '\0' || logical_node == NULL || logical_node[0] == '\0' || path == NULL || path[0] == '\0') {
+        return NULL;
+    }
+    if (mms_reference != NULL && mms_reference[0] != '\0') {
+        for (size_t index = 0U; index < session->discovered_typed_data_node_count; index++) {
+            if (strcmp(session->discovered_typed_data_nodes[index].mms_reference, mms_reference) == 0) {
+                return &session->discovered_typed_data_nodes[index];
+            }
+        }
+    }
+    if (!ensure_typed_data_node_capacity(session, session->discovered_typed_data_node_count + 1U)) {
+        return NULL;
+    }
+    node = &session->discovered_typed_data_nodes[session->discovered_typed_data_node_count];
+    memset(node, 0, sizeof(*node));
+    snprintf(node->logical_device, sizeof(node->logical_device), "%s", logical_device);
+    snprintf(node->logical_node, sizeof(node->logical_node), "%s", logical_node);
+    snprintf(node->fc, sizeof(node->fc), "%s", fc != NULL ? fc : "");
+    snprintf(node->path, sizeof(node->path), "%s", path);
+    if (mms_reference != NULL && mms_reference[0] != '\0') {
+        snprintf(node->mms_reference, sizeof(node->mms_reference), "%s", mms_reference);
+    }
+    if (display_reference != NULL && display_reference[0] != '\0') {
+        snprintf(node->display_reference, sizeof(node->display_reference), "%s", display_reference);
+    }
+    snprintf(node->type_kind, sizeof(node->type_kind), "%s", type_kind != NULL && type_kind[0] != '\0' ? type_kind : "unknown");
+    snprintf(node->node_kind, sizeof(node->node_kind), "%s", node_kind != NULL && node_kind[0] != '\0' ? node_kind : "branch");
+    node->depth = depth;
+    node->parent_index = parent_index;
+    node->child_count = 0U;
+    session->discovered_typed_data_node_count++;
+    session->discovered_model.typed_data_node_count = session->discovered_typed_data_node_count;
+    if (parent_index != (size_t)-1 && parent_index < session->discovered_typed_data_node_count - 1U) {
+        session->discovered_typed_data_nodes[parent_index].child_count++;
+    }
+    return node;
+}
+
+const UnitLabNativeDiscoveredTypedDataNode* unitlab_native_client_session_typed_data_node_at(const UnitLabNativeClientSessionState* session, size_t index)
+{
+    if (session == NULL || index >= session->discovered_typed_data_node_count) {
+        return NULL;
+    }
+    return &session->discovered_typed_data_nodes[index];
+}
 
 UnitLabNativeDiscoveredLeafRef* unitlab_native_client_session_append_leaf_ref(UnitLabNativeClientSessionState* session, const char* mms_reference)
 {

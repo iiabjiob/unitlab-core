@@ -215,7 +215,93 @@ static const char* gva_type_kind_from_bytes(const uint8_t* bytes, size_t length)
     return gva_type_kind_label_from_type_spec(&element);
 }
 
-static int collect_gva_components_from_bytes(UnitLabNativeClientSessionState* session, const UnitLabNativeDiscoveryIo* io, UnitLabNativeDiscoveredDataName* data_name, const uint8_t* bytes, size_t length, size_t depth, size_t* component_count)
+static int build_gva_path(const char* prefix, const char* component_name, char* output, size_t output_size)
+{
+    int written = 0;
+
+    if (output == NULL || output_size == 0U || component_name == NULL || component_name[0] == '\0') {
+        return 0;
+    }
+    if (prefix != NULL && prefix[0] != '\0') {
+        written = snprintf(output, output_size, "%s.%s", prefix, component_name);
+    } else {
+        written = snprintf(output, output_size, "%s", component_name);
+    }
+    return written > 0 && (size_t)written < output_size;
+}
+
+static int build_gva_reference_fields(
+    const UnitLabNativeDiscoveredDataName* data_name,
+    const char* fc,
+    const char* path,
+    char* mms_reference,
+    size_t mms_reference_size,
+    char* display_reference,
+    size_t display_reference_size)
+{
+    if (mms_reference != NULL && mms_reference_size > 0U) {
+        mms_reference[0] = '\0';
+    }
+    if (display_reference != NULL && display_reference_size > 0U) {
+        display_reference[0] = '\0';
+    }
+    if (data_name == NULL || path == NULL || path[0] == '\0' || fc == NULL || fc[0] == '\0') {
+        return 1;
+    }
+    if (mms_reference != NULL && mms_reference_size > 0U) {
+        snprintf(mms_reference, mms_reference_size, "%s/%s$%s$%s", data_name->logical_device, data_name->logical_node, fc, path);
+    }
+    if (display_reference != NULL && display_reference_size > 0U) {
+        snprintf(display_reference, display_reference_size, "%s/%s.%s.%s", data_name->logical_device, data_name->logical_node, fc, path);
+    }
+    return 1;
+}
+
+static void derive_gva_fc_context(const char* item_id, const char* component_name, char* fc, size_t fc_size)
+{
+    const char* first_dollar = NULL;
+    const char* second_dollar = NULL;
+    size_t fc_length = 0U;
+
+    if (fc == NULL || fc_size == 0U) {
+        return;
+    }
+    fc[0] = '\0';
+    if (item_id != NULL) {
+        first_dollar = strchr(item_id, '$');
+        if (first_dollar != NULL) {
+            second_dollar = strchr(first_dollar + 1, '$');
+            if (second_dollar != NULL && second_dollar > first_dollar + 1) {
+                fc_length = (size_t)(second_dollar - first_dollar - 1);
+                if (fc_length >= fc_size) {
+                    fc_length = fc_size - 1U;
+                }
+                memcpy(fc, first_dollar + 1, fc_length);
+                fc[fc_length] = '\0';
+                return;
+            }
+        }
+    }
+    if (component_name == NULL) {
+        return;
+    }
+    if (strcmp(component_name, "BR") == 0 || strcmp(component_name, "RP") == 0 || strcmp(component_name, "ST") == 0 || strcmp(component_name, "MX") == 0 || strcmp(component_name, "CF") == 0 || strcmp(component_name, "DC") == 0 || strcmp(component_name, "EX") == 0) {
+        snprintf(fc, fc_size, "%s", component_name);
+    }
+}
+
+static int collect_gva_components_from_bytes(
+    UnitLabNativeClientSessionState* session,
+    const UnitLabNativeDiscoveryIo* io,
+    UnitLabNativeDiscoveredDataName* data_name,
+    const char* item_id,
+    const char* fc,
+    const char* path_prefix,
+    size_t parent_index,
+    const uint8_t* bytes,
+    size_t length,
+    size_t depth,
+    size_t* component_count)
 {
     UnitLabMmsDiagnostic diagnostic;
     size_t offset = 0U;
@@ -227,6 +313,7 @@ static int collect_gva_components_from_bytes(UnitLabNativeClientSessionState* se
     while (offset < length) {
         UnitLabMmsBerElement element;
         size_t consumed = 0U;
+
         unitlab_mms_ber_element_init(&element);
         if (!unitlab_mms_ber_read(&element, &bytes[offset], length - offset, &consumed, &diagnostic) || consumed == 0U) {
             break;
@@ -234,6 +321,14 @@ static int collect_gva_components_from_bytes(UnitLabNativeClientSessionState* se
         if (element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL && element.tag.constructed && element.tag.tag_number == 16U) {
             UnitLabMmsBerElement first_child;
             size_t child_consumed = 0U;
+            char component_name[128U];
+            char child_path[192U];
+            char mms_reference[384U];
+            char display_reference[384U];
+            const char* component_type_kind = "unknown";
+            UnitLabNativeDiscoveredTypedDataNode* node;
+            size_t node_index;
+
             unitlab_mms_ber_element_init(&first_child);
             if (unitlab_mms_ber_read(&first_child, element.value_bytes, element.value_length, &child_consumed, &diagnostic)
                 && first_child.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC
@@ -241,24 +336,73 @@ static int collect_gva_components_from_bytes(UnitLabNativeClientSessionState* se
                 && first_child.tag.tag_number == 0U
                 && first_child.value_length > 0U
                 && unitlab_native_client_bytes_are_printable_ascii(first_child.value_bytes, first_child.value_length)) {
-                char component_name[128U];
                 size_t copy_length = first_child.value_length < sizeof(component_name) - 1U ? first_child.value_length : sizeof(component_name) - 1U;
                 memcpy(component_name, first_child.value_bytes, copy_length);
                 component_name[copy_length] = '\0';
-                const char* component_type_kind = "unknown";
                 if (child_consumed < element.value_length) {
                     component_type_kind = gva_type_kind_from_bytes(&element.value_bytes[child_consumed], element.value_length - child_consumed);
+                }
+                if (!build_gva_path(path_prefix, component_name, child_path, sizeof(child_path))) {
+                    set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not build GVA path.");
+                    return 0;
+                }
+                if (!build_gva_reference_fields(data_name, fc, child_path, mms_reference, sizeof(mms_reference), display_reference, sizeof(display_reference))) {
+                    set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not build GVA reference fields.");
+                    return 0;
+                }
+                node_index = session->discovered_typed_data_node_count;
+                node = unitlab_native_client_session_append_typed_data_node(
+                    session,
+                    data_name->logical_device,
+                    data_name->logical_node,
+                    fc,
+                    child_path,
+                    mms_reference,
+                    display_reference,
+                    component_type_kind,
+                    "branch",
+                    depth,
+                    parent_index);
+                if (node == NULL) {
+                    set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate typed GVA tree node state.");
+                    return 0;
                 }
                 if (!unitlab_native_client_session_append_data_component(session, data_name, component_name, component_type_kind)) {
                     set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered data component state.");
                     return 0;
                 }
                 (*component_count)++;
-            } else if (!collect_gva_components_from_bytes(session, io, data_name, element.value_bytes, element.value_length, depth + 1U, component_count)) {
+                if (child_consumed < element.value_length
+                    && !collect_gva_components_from_bytes(session, io, data_name, item_id, fc, child_path, node_index, &element.value_bytes[child_consumed], element.value_length - child_consumed, depth + 1U, component_count)) {
+                    return 0;
+                }
+                if (node->child_count == 0U) {
+                    snprintf(node->node_kind, sizeof(node->node_kind), "%s", "leaf");
+                    if (mms_reference[0] != '\0') {
+                        UnitLabNativeDiscoveredLeafRef* leaf_ref = unitlab_native_client_session_append_leaf_ref(session, mms_reference);
+                        if (leaf_ref == NULL) {
+                            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered leaf reference state.");
+                            return 0;
+                        }
+                        snprintf(leaf_ref->type_kind, sizeof(leaf_ref->type_kind), "%s", component_type_kind);
+                    }
+                } else {
+                    snprintf(node->node_kind, sizeof(node->node_kind), "%s", "branch");
+                }
+                if (node->mms_reference[0] == '\0' && mms_reference[0] != '\0') {
+                    snprintf(node->mms_reference, sizeof(node->mms_reference), "%s", mms_reference);
+                }
+                if (node->display_reference[0] == '\0' && display_reference[0] != '\0') {
+                    snprintf(node->display_reference, sizeof(node->display_reference), "%s", display_reference);
+                }
+                if (node->type_kind[0] == '\0') {
+                    snprintf(node->type_kind, sizeof(node->type_kind), "%s", component_type_kind);
+                }
+            } else if (!collect_gva_components_from_bytes(session, io, data_name, item_id, fc, path_prefix, parent_index, element.value_bytes, element.value_length, depth + 1U, component_count)) {
                 return 0;
             }
         } else if (element.tag.constructed) {
-            if (!collect_gva_components_from_bytes(session, io, data_name, element.value_bytes, element.value_length, depth + 1U, component_count)) {
+            if (!collect_gva_components_from_bytes(session, io, data_name, item_id, fc, path_prefix, parent_index, element.value_bytes, element.value_length, depth + 1U, component_count)) {
                 return 0;
             }
         }
@@ -267,7 +411,7 @@ static int collect_gva_components_from_bytes(UnitLabNativeClientSessionState* se
     return 1;
 }
 
-static int collect_get_variable_access_attributes_components_from_frame(UnitLabNativeClientSessionState* session, const UnitLabNativeDiscoveryIo* io, UnitLabNativeDiscoveredDataName* data_name, const uint8_t* frame, size_t frame_length)
+static int collect_get_variable_access_attributes_components_from_frame(UnitLabNativeClientSessionState* session, const UnitLabNativeDiscoveryIo* io, UnitLabNativeDiscoveredDataName* data_name, const char* item_id, const uint8_t* frame, size_t frame_length)
 {
     UnitLabMmsAssociationFrame association_frame;
     UnitLabMmsPdu pdu;
@@ -275,6 +419,12 @@ static int collect_get_variable_access_attributes_components_from_frame(UnitLabN
     UnitLabMmsBerElement mms_deletable;
     size_t consumed = 0U;
     size_t component_count = 0U;
+    char fc[32U];
+    char root_path[192U];
+    char root_mms_reference[384U];
+    char root_display_reference[384U];
+    UnitLabNativeDiscoveredTypedDataNode* root_node = NULL;
+    const char* root_type_kind;
 
     if (session == NULL || data_name == NULL || frame == NULL || frame_length == 0U) {
         return 0;
@@ -296,19 +446,62 @@ static int collect_get_variable_access_attributes_components_from_frame(UnitLabN
     if (!unitlab_mms_ber_read(&mms_deletable, pdu.service_bytes, pdu.service_length, &consumed, &diagnostic) || consumed >= pdu.service_length) {
         return 1;
     }
-    unitlab_native_client_session_set_data_name_type(data_name, gva_type_kind_from_bytes(&pdu.service_bytes[consumed], pdu.service_length - consumed));
-    if (!collect_gva_components_from_bytes(session, io, data_name, &pdu.service_bytes[consumed], pdu.service_length - consumed, 0U, &component_count)) {
-        return 0;
-    }
-    if (component_count > 0U) {
-        printf(
-            "native-wire-client: discovered-data-components data=%s/%s$%s count=%zu\n",
+    root_type_kind = gva_type_kind_from_bytes(&pdu.service_bytes[consumed], pdu.service_length - consumed);
+    unitlab_native_client_session_set_data_name_type(data_name, root_type_kind);
+    derive_gva_fc_context(item_id, data_name->name, fc, sizeof(fc));
+    snprintf(root_path, sizeof(root_path), "%s", data_name->name);
+    if (fc[0] != '\0') {
+        if (!build_gva_reference_fields(data_name, fc, root_path, root_mms_reference, sizeof(root_mms_reference), root_display_reference, sizeof(root_display_reference))) {
+            return 0;
+        }
+        root_node = unitlab_native_client_session_append_typed_data_node(
+            session,
             data_name->logical_device,
             data_name->logical_node,
-            data_name->name,
-            component_count);
-        fflush(stdout);
+            fc,
+            root_path,
+            root_mms_reference,
+            root_display_reference,
+            root_type_kind,
+            "root",
+            0U,
+            (size_t)-1);
+    } else {
+        root_node = unitlab_native_client_session_append_typed_data_node(
+            session,
+            data_name->logical_device,
+            data_name->logical_node,
+            "",
+            root_path,
+            NULL,
+            NULL,
+            root_type_kind,
+            "root",
+            0U,
+            (size_t)-1);
     }
+    if (root_node == NULL) {
+        set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate typed GVA root node state.");
+        return 0;
+    }
+    if (!collect_gva_components_from_bytes(session, io, data_name, item_id, fc, root_path, session->discovered_typed_data_node_count - 1U, &pdu.service_bytes[consumed], pdu.service_length - consumed, 0U, &component_count)) {
+        return 0;
+    }
+    if (root_node->child_count == 0U && root_mms_reference[0] != '\0') {
+        UnitLabNativeDiscoveredLeafRef* leaf_ref = unitlab_native_client_session_append_leaf_ref(session, root_mms_reference);
+        if (leaf_ref == NULL) {
+            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate typed root leaf reference state.");
+            return 0;
+        }
+        snprintf(leaf_ref->type_kind, sizeof(leaf_ref->type_kind), "%s", root_type_kind);
+    }
+    printf(
+        "native-wire-client: discovered-data-components data=%s/%s$%s count=%zu\n",
+        data_name->logical_device,
+        data_name->logical_node,
+        data_name->name,
+        component_count);
+    fflush(stdout);
     return 1;
 }
 
@@ -561,7 +754,7 @@ int unitlab_native_client_run_discover_sequence(
                 identifier_list_reset(&ln_brcb_names);
                 goto cleanup;
             }
-            if (!collect_get_variable_access_attributes_components_from_frame(session, io, data_name, io->response, *io->encoded_response_length)) {
+            if (!collect_get_variable_access_attributes_components_from_frame(session, io, data_name, data_item, io->response, *io->encoded_response_length)) {
                 identifier_list_reset(&ln_data_names);
                 identifier_list_reset(&ln_brcb_names);
                 set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not decode LN data component attributes.");

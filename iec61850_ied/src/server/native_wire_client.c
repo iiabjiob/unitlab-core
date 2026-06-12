@@ -133,7 +133,7 @@ static void emit_discovered_model_summary(const UnitLabNativeClientSessionState*
         }
     }
     printf(
-        "native-wire-client: model-summary phase=%s domain=%s logical-devices=%zu logical-nodes=%zu data-names=%zu typed-data-names=%zu data-components=%zu typed-data-components=%zu leaf-refs=%zu datasets=%zu dataset-members=%zu brcbs=%zu last-report-entries=%zu last-report-dataRefs=%zu last-report-values=%zu last-report-reasons=%zu last-report-matched-dataRefs=%zu last-report-rptId=%s last-report-datSet=%s\n",
+        "native-wire-client: model-summary phase=%s domain=%s logical-devices=%zu logical-nodes=%zu data-names=%zu typed-data-names=%zu data-components=%zu typed-data-components=%zu typed-data-nodes=%zu leaf-refs=%zu datasets=%zu dataset-members=%zu brcbs=%zu last-report-entries=%zu last-report-dataRefs=%zu last-report-values=%zu last-report-reasons=%zu last-report-matched-dataRefs=%zu last-report-rptId=%s last-report-datSet=%s\n",
         phase != NULL ? phase : "snapshot",
         session->discovered_model.domain[0] != '\0' ? session->discovered_model.domain : "<none>",
         session->discovered_model.logical_device_count,
@@ -142,6 +142,7 @@ static void emit_discovered_model_summary(const UnitLabNativeClientSessionState*
         typed_data_name_count,
         session->discovered_model.data_component_count,
         typed_data_component_count,
+        session->discovered_model.typed_data_node_count,
         session->discovered_model.leaf_ref_count,
         session->discovered_model.data_set_count,
         session->discovered_model.data_set_member_count,

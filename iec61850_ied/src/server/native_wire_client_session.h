@@ -11,6 +11,7 @@ enum {
     UNITLAB_NATIVE_DISCOVERY_INITIAL_LOGICAL_NODE_CAPACITY = 32U,
     UNITLAB_NATIVE_DISCOVERY_INITIAL_DATA_NAME_CAPACITY = 64U,
     UNITLAB_NATIVE_DISCOVERY_INITIAL_DATA_COMPONENT_CAPACITY = 128U,
+    UNITLAB_NATIVE_DISCOVERY_INITIAL_TYPED_NODE_CAPACITY = 128U,
     UNITLAB_NATIVE_DISCOVERY_INITIAL_LEAF_REF_CAPACITY = 128U,
     UNITLAB_NATIVE_INITIAL_REPORT_ENTRY_CAPACITY = 32U,
     UNITLAB_NATIVE_DISCOVERY_INITIAL_DATA_SET_CAPACITY = 16U,
@@ -25,6 +26,7 @@ typedef struct {
     size_t data_name_count;
     size_t data_component_count;
     size_t leaf_ref_count;
+    size_t typed_data_node_count;
     size_t data_set_count;
     size_t data_set_member_count;
     size_t brcb_count;
@@ -70,6 +72,26 @@ typedef struct {
     char name[128U];
     char type_kind[32U];
 } UnitLabNativeDiscoveredDataComponent;
+
+typedef enum {
+    UNITLAB_NATIVE_GVA_NODE_KIND_ROOT = 0,
+    UNITLAB_NATIVE_GVA_NODE_KIND_BRANCH,
+    UNITLAB_NATIVE_GVA_NODE_KIND_LEAF
+} UnitLabNativeGvaNodeKind;
+
+typedef struct {
+    char logical_device[128U];
+    char logical_node[128U];
+    char fc[32U];
+    char path[192U];
+    char mms_reference[384U];
+    char display_reference[384U];
+    char type_kind[32U];
+    char node_kind[32U];
+    size_t depth;
+    size_t parent_index;
+    size_t child_count;
+} UnitLabNativeDiscoveredTypedDataNode;
 
 typedef struct {
     char mms_reference[384U];
@@ -160,6 +182,9 @@ typedef struct {
     UnitLabNativeDiscoveredLeafRef* discovered_leaf_refs;
     size_t discovered_leaf_ref_count;
     size_t discovered_leaf_ref_capacity;
+    UnitLabNativeDiscoveredTypedDataNode* discovered_typed_data_nodes;
+    size_t discovered_typed_data_node_count;
+    size_t discovered_typed_data_node_capacity;
     UnitLabNativeLastReportEntry* last_report_entries;
     size_t last_report_entry_count;
     size_t last_report_entry_capacity;
@@ -180,6 +205,8 @@ UnitLabNativeDiscoveredLogicalNode* unitlab_native_client_session_append_logical
 UnitLabNativeDiscoveredDataName* unitlab_native_client_session_append_data_name(UnitLabNativeClientSessionState* session, const char* logical_device, const char* logical_node, const char* name);
 void unitlab_native_client_session_set_data_name_type(UnitLabNativeDiscoveredDataName* data_name, const char* type_kind);
 int unitlab_native_client_session_append_data_component(UnitLabNativeClientSessionState* session, UnitLabNativeDiscoveredDataName* data_name, const char* component_name, const char* type_kind);
+UnitLabNativeDiscoveredTypedDataNode* unitlab_native_client_session_append_typed_data_node(UnitLabNativeClientSessionState* session, const char* logical_device, const char* logical_node, const char* fc, const char* path, const char* mms_reference, const char* display_reference, const char* type_kind, const char* node_kind, size_t depth, size_t parent_index);
+const UnitLabNativeDiscoveredTypedDataNode* unitlab_native_client_session_typed_data_node_at(const UnitLabNativeClientSessionState* session, size_t index);
 UnitLabNativeDiscoveredLeafRef* unitlab_native_client_session_append_leaf_ref(UnitLabNativeClientSessionState* session, const char* mms_reference);
 int unitlab_native_client_session_leaf_ref_exists(const UnitLabNativeClientSessionState* session, const char* mms_reference);
 const UnitLabNativeDiscoveredLeafRef* unitlab_native_client_session_find_leaf_ref(const UnitLabNativeClientSessionState* session, const char* mms_reference);
