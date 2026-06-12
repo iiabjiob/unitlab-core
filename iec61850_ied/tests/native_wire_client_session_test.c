@@ -126,6 +126,9 @@ int main(void)
         if (!expect_true(unitlab_native_client_session_append_data_set_member(&session, data_set, member_reference), "expected dynamic member append to grow beyond initial capacity")) {
             return 1;
         }
+        if (!expect_true(unitlab_native_client_session_append_leaf_ref(&session, member_reference) != NULL, "expected leaf reference append to grow beyond initial capacity")) {
+            return 1;
+        }
     }
     if (!expect_true(session.discovered_data_set_count == 300U, "expected all dynamic DataSets to be retained")) {
         return 1;
@@ -133,7 +136,16 @@ int main(void)
     if (!expect_true(session.discovered_data_set_member_count == 300U, "expected all dynamic DataSet members to be retained")) {
         return 1;
     }
+    if (!expect_true(session.discovered_leaf_ref_count == 300U && session.discovered_model.leaf_ref_count == 300U, "expected all dynamic leaf refs to be retained")) {
+        return 1;
+    }
     if (!expect_true(unitlab_native_client_session_data_set_contains_member(&session, "IED1LD0/LLN0$ds299", "IED1LD0/LLN0$ST$Member299$stVal"), "expected lookup after dynamic growth to succeed")) {
+        return 1;
+    }
+    if (!expect_true(unitlab_native_client_session_leaf_ref_exists(&session, "IED1LD0/LLN0$ST$Member299$stVal"), "expected leaf ref lookup after dynamic growth to succeed")) {
+        return 1;
+    }
+    if (!expect_true(strcmp(session.discovered_leaf_refs[299U].display_reference, "IED1LD0/LLN0.ST.Member299.stVal") == 0, "expected normalized display reference after growth")) {
         return 1;
     }
 

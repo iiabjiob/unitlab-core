@@ -11,6 +11,7 @@ enum {
     UNITLAB_NATIVE_DISCOVERY_INITIAL_LOGICAL_NODE_CAPACITY = 32U,
     UNITLAB_NATIVE_DISCOVERY_INITIAL_DATA_NAME_CAPACITY = 64U,
     UNITLAB_NATIVE_DISCOVERY_INITIAL_DATA_COMPONENT_CAPACITY = 128U,
+    UNITLAB_NATIVE_DISCOVERY_INITIAL_LEAF_REF_CAPACITY = 128U,
     UNITLAB_NATIVE_DISCOVERY_INITIAL_DATA_SET_CAPACITY = 16U,
     UNITLAB_NATIVE_DISCOVERY_INITIAL_DATA_SET_MEMBER_CAPACITY = 64U,
     UNITLAB_NATIVE_DISCOVERY_INITIAL_RCB_CAPACITY = 16U,
@@ -22,6 +23,7 @@ typedef struct {
     size_t logical_node_count;
     size_t data_name_count;
     size_t data_component_count;
+    size_t leaf_ref_count;
     size_t data_set_count;
     size_t data_set_member_count;
     size_t brcb_count;
@@ -69,6 +71,17 @@ typedef struct {
 } UnitLabNativeDiscoveredDataComponent;
 
 typedef struct {
+    char mms_reference[384U];
+    char display_reference[384U];
+    char logical_device[128U];
+    char logical_node[128U];
+    char fc[32U];
+    char path[192U];
+    char type_kind[32U];
+    int matched_discovery;
+} UnitLabNativeDiscoveredLeafRef;
+
+typedef struct {
     char reference[384U];
     size_t member_start;
     size_t member_count;
@@ -94,6 +107,9 @@ typedef struct {
     UnitLabNativeDiscoveredDataComponent* discovered_data_components;
     size_t discovered_data_component_count;
     size_t discovered_data_component_capacity;
+    UnitLabNativeDiscoveredLeafRef* discovered_leaf_refs;
+    size_t discovered_leaf_ref_count;
+    size_t discovered_leaf_ref_capacity;
     UnitLabNativeDiscoveredDataSet* discovered_data_sets;
     size_t discovered_data_set_count;
     size_t discovered_data_set_capacity;
@@ -111,6 +127,8 @@ UnitLabNativeDiscoveredLogicalNode* unitlab_native_client_session_append_logical
 UnitLabNativeDiscoveredDataName* unitlab_native_client_session_append_data_name(UnitLabNativeClientSessionState* session, const char* logical_device, const char* logical_node, const char* name);
 void unitlab_native_client_session_set_data_name_type(UnitLabNativeDiscoveredDataName* data_name, const char* type_kind);
 int unitlab_native_client_session_append_data_component(UnitLabNativeClientSessionState* session, UnitLabNativeDiscoveredDataName* data_name, const char* component_name, const char* type_kind);
+UnitLabNativeDiscoveredLeafRef* unitlab_native_client_session_append_leaf_ref(UnitLabNativeClientSessionState* session, const char* mms_reference);
+int unitlab_native_client_session_leaf_ref_exists(const UnitLabNativeClientSessionState* session, const char* mms_reference);
 int unitlab_native_client_session_data_set_member_exists(const UnitLabNativeClientSessionState* session, const char* reference);
 int unitlab_native_client_session_data_set_index_by_reference(const UnitLabNativeClientSessionState* session, const char* reference, size_t* data_set_index);
 int unitlab_native_client_session_data_set_contains_member(const UnitLabNativeClientSessionState* session, const char* data_set_reference, const char* member_reference);

@@ -129,6 +129,10 @@ static int collect_get_named_variable_list_members_from_frame(UnitLabNativeClien
                 set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered DataSet member state.");
                 return 0;
             }
+            if (unitlab_native_client_session_append_leaf_ref(session, reference) == NULL) {
+                set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered leaf reference state.");
+                return 0;
+            }
             printf(
                 "native-wire-client: discovered-dataset-member[%zu.%zu] dataset=%s ref=%s\n",
                 session->discovered_data_set_count - 1U,

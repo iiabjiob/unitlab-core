@@ -21,7 +21,7 @@ Implemented and validated against the local native/libIEC61850-oriented test pat
 - GetNameList request building/decoding separates LN selector (`node_id`) from MMS `continueAfter`, while preserving the legacy builder path.
 - Discovery runner is isolated from the CLI in `src/server/native_wire_client_discovery.c`.
 - Session/discovered/subscription state has started moving into `src/server/native_wire_client_session.*`.
-- Session model now stores discovered logical devices, logical nodes, shallow LN data names, and GVA component names, not only summary counts.
+- Session model now stores discovered logical devices, logical nodes, shallow LN data names, GVA component names, and normalized leaf references, not only summary counts.
 - Discovery paginates VMD logical devices, domain logical nodes, datasets, BRCBs, and URCB browse calls with stalled-page detection.
 - BRCB discovery uses `GetNameList` class 4 and builds `LN$BR$brcbName` references.
 - RptEna and GI write paths exist for the selected BRCB.
@@ -129,15 +129,16 @@ Closed in current slice:
 - Dynamic session-owned storage exists for discovered logical nodes.
 - Dynamic session-owned storage exists for shallow LN data names returned by `GetNameList` class 3.
 - Dynamic session-owned storage exists for GVA component names and coarse type-kind metadata read from each discovered LN data item.
+- Dynamic session-owned storage exists for normalized dataset member leaf references with MMS and display forms.
 - Discovery populates those collections during `discover`.
-- Debug model summary reports `data-names`, `typed-data-names`, `data-components`, and `typed-data-components` counts.
+- Debug model summary reports `data-names`, `typed-data-names`, `data-components`, `typed-data-components`, and `leaf-refs` counts.
 - Session tests cover dynamic growth and reset for logical devices, logical nodes, and data names.
 
 Remaining:
 
 - Expand shallow LN data names and GVA components into full data object/data attribute trees.
 - Store FC/SCL-specific type metadata from `GetVariableAccessAttributes`; current storage is coarse BER type-kind only.
-- Normalize and expose stable MMS/display references for every discovered leaf.
+- Normalize and expose stable MMS/display references for every discovered leaf; dataset member leaf references are stored, full GVA-derived leaves remain in progress.
 - Add deterministic model snapshot tests from fixture/golden responses.
 
 Goal: build a useful IEC 61850 model, not just enough state to subscribe to one report.

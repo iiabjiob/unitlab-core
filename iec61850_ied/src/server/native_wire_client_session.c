@@ -125,6 +125,123 @@ static int ensure_data_component_capacity(UnitLabNativeClientSessionState* sessi
     return 1;
 }
 
+
+static int ensure_leaf_ref_capacity(UnitLabNativeClientSessionState* session, size_t required)
+{
+    UnitLabNativeDiscoveredLeafRef* resized;
+    size_t new_capacity;
+
+    if (session == NULL) {
+        return 0;
+    }
+    if (required <= session->discovered_leaf_ref_capacity) {
+        return 1;
+    }
+    new_capacity = session->discovered_leaf_ref_capacity != 0U ? session->discovered_leaf_ref_capacity : UNITLAB_NATIVE_DISCOVERY_INITIAL_LEAF_REF_CAPACITY;
+    while (new_capacity < required) {
+        if (new_capacity > ((size_t)-1) / 2U) {
+            return 0;
+        }
+        new_capacity *= 2U;
+    }
+    resized = (UnitLabNativeDiscoveredLeafRef*)realloc(session->discovered_leaf_refs, new_capacity * sizeof(session->discovered_leaf_refs[0]));
+    if (resized == NULL) {
+        return 0;
+    }
+    if (new_capacity > session->discovered_leaf_ref_capacity) {
+        memset(&resized[session->discovered_leaf_ref_capacity], 0, (new_capacity - session->discovered_leaf_ref_capacity) * sizeof(resized[0]));
+    }
+    session->discovered_leaf_refs = resized;
+    session->discovered_leaf_ref_capacity = new_capacity;
+    return 1;
+}
+
+static void normalize_path_dollars_to_dots(const char* input, char* output, size_t output_size)
+{
+    size_t index = 0U;
+
+    if (output == NULL || output_size == 0U) {
+        return;
+    }
+    output[0] = '\0';
+    if (input == NULL) {
+        return;
+    }
+    while (input[index] != '\0' && index + 1U < output_size) {
+        output[index] = input[index] == '$' ? '.' : input[index];
+        index++;
+    }
+    output[index] = '\0';
+}
+
+
+static void append_text(char* output, size_t output_size, const char* text)
+{
+    size_t used;
+    size_t remaining;
+
+    if (output == NULL || output_size == 0U || text == NULL) {
+        return;
+    }
+    used = strlen(output);
+    if (used >= output_size - 1U) {
+        return;
+    }
+    remaining = output_size - used - 1U;
+    strncat(output, text, remaining);
+}
+
+static int populate_leaf_ref_fields(UnitLabNativeDiscoveredLeafRef* leaf_ref, const char* mms_reference)
+{
+    char item[256U];
+    char* slash;
+    char* first_dollar;
+    char* second_dollar;
+    char dotted_path[192U];
+    size_t domain_length;
+    size_t ln_length;
+    size_t fc_length;
+
+    if (leaf_ref == NULL || mms_reference == NULL || mms_reference[0] == '\0') {
+        return 0;
+    }
+    snprintf(leaf_ref->mms_reference, sizeof(leaf_ref->mms_reference), "%s", mms_reference);
+    slash = strchr(leaf_ref->mms_reference, '/');
+    if (slash == NULL || slash == leaf_ref->mms_reference || slash[1] == '\0') {
+        snprintf(leaf_ref->display_reference, sizeof(leaf_ref->display_reference), "%s", mms_reference);
+        return 1;
+    }
+    domain_length = (size_t)(slash - leaf_ref->mms_reference);
+    snprintf(leaf_ref->logical_device, sizeof(leaf_ref->logical_device), "%.*s", (int)domain_length, leaf_ref->mms_reference);
+    snprintf(item, sizeof(item), "%s", slash + 1);
+    first_dollar = strchr(item, '$');
+    if (first_dollar == NULL || first_dollar == item || first_dollar[1] == '\0') {
+        snprintf(leaf_ref->display_reference, sizeof(leaf_ref->display_reference), "%s/%s", leaf_ref->logical_device, item);
+        return 1;
+    }
+    ln_length = (size_t)(first_dollar - item);
+    snprintf(leaf_ref->logical_node, sizeof(leaf_ref->logical_node), "%.*s", (int)ln_length, item);
+    second_dollar = strchr(first_dollar + 1, '$');
+    if (second_dollar == NULL || second_dollar == first_dollar + 1 || second_dollar[1] == '\0') {
+        normalize_path_dollars_to_dots(item, dotted_path, sizeof(dotted_path));
+        snprintf(leaf_ref->display_reference, sizeof(leaf_ref->display_reference), "%s/%s", leaf_ref->logical_device, dotted_path);
+        return 1;
+    }
+    fc_length = (size_t)(second_dollar - first_dollar - 1);
+    snprintf(leaf_ref->fc, sizeof(leaf_ref->fc), "%.*s", (int)fc_length, first_dollar + 1);
+    snprintf(leaf_ref->path, sizeof(leaf_ref->path), "%s", second_dollar + 1);
+    normalize_path_dollars_to_dots(leaf_ref->path, dotted_path, sizeof(dotted_path));
+    leaf_ref->display_reference[0] = '\0';
+    append_text(leaf_ref->display_reference, sizeof(leaf_ref->display_reference), leaf_ref->logical_device);
+    append_text(leaf_ref->display_reference, sizeof(leaf_ref->display_reference), "/");
+    append_text(leaf_ref->display_reference, sizeof(leaf_ref->display_reference), leaf_ref->logical_node);
+    append_text(leaf_ref->display_reference, sizeof(leaf_ref->display_reference), ".");
+    append_text(leaf_ref->display_reference, sizeof(leaf_ref->display_reference), leaf_ref->fc);
+    append_text(leaf_ref->display_reference, sizeof(leaf_ref->display_reference), ".");
+    append_text(leaf_ref->display_reference, sizeof(leaf_ref->display_reference), dotted_path);
+    return 1;
+}
+
 static int ensure_data_set_capacity(UnitLabNativeClientSessionState* session, size_t required)
 {
     UnitLabNativeDiscoveredDataSet* resized;
@@ -224,6 +341,7 @@ void unitlab_native_client_session_reset(UnitLabNativeClientSessionState* sessio
     free(session->discovered_logical_nodes);
     free(session->discovered_data_names);
     free(session->discovered_data_components);
+    free(session->discovered_leaf_refs);
     free(session->discovered_data_sets);
     free(session->discovered_data_set_members);
     free(session->discovered_rcbs);
@@ -311,6 +429,47 @@ int unitlab_native_client_session_append_data_component(UnitLabNativeClientSessi
     data_name->component_count++;
     session->discovered_model.data_component_count = session->discovered_data_component_count;
     return 1;
+}
+
+
+UnitLabNativeDiscoveredLeafRef* unitlab_native_client_session_append_leaf_ref(UnitLabNativeClientSessionState* session, const char* mms_reference)
+{
+    UnitLabNativeDiscoveredLeafRef* leaf_ref;
+
+    if (session == NULL || mms_reference == NULL || mms_reference[0] == '\0') {
+        return NULL;
+    }
+    if (unitlab_native_client_session_leaf_ref_exists(session, mms_reference)) {
+        for (size_t index = 0U; index < session->discovered_leaf_ref_count; index++) {
+            if (strcmp(session->discovered_leaf_refs[index].mms_reference, mms_reference) == 0) {
+                return &session->discovered_leaf_refs[index];
+            }
+        }
+    }
+    if (!ensure_leaf_ref_capacity(session, session->discovered_leaf_ref_count + 1U)) {
+        return NULL;
+    }
+    leaf_ref = &session->discovered_leaf_refs[session->discovered_leaf_ref_count];
+    memset(leaf_ref, 0, sizeof(*leaf_ref));
+    if (!populate_leaf_ref_fields(leaf_ref, mms_reference)) {
+        return NULL;
+    }
+    session->discovered_leaf_ref_count++;
+    session->discovered_model.leaf_ref_count = session->discovered_leaf_ref_count;
+    return leaf_ref;
+}
+
+int unitlab_native_client_session_leaf_ref_exists(const UnitLabNativeClientSessionState* session, const char* mms_reference)
+{
+    if (session == NULL || mms_reference == NULL || mms_reference[0] == '\0') {
+        return 0;
+    }
+    for (size_t index = 0U; index < session->discovered_leaf_ref_count; index++) {
+        if (strcmp(session->discovered_leaf_refs[index].mms_reference, mms_reference) == 0) {
+            return 1;
+        }
+    }
+    return 0;
 }
 
 int unitlab_native_client_session_data_set_member_exists(const UnitLabNativeClientSessionState* session, const char* reference)
