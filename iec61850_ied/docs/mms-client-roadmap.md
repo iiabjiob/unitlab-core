@@ -180,6 +180,8 @@ Closed in current slice:
 - `close-ied` and `disconnect` perform explicit cleanup for the selected RCB: disable `RptEna` when enabled and release buffered `ResvTms` ownership when applicable.
 - Linked client smoke verifies that cleanup leaves the buffered BRCB disabled and `ResvTms` cleared.
 - Linked client smoke also covers URCB enable/GI/disable behavior without buffered reservation cleanup.
+- Native client now performs a preflight RCB attribute read before `RptEna` and `GI` control writes.
+- `GI` now requires an active subscription state and rejects writes that do not match the selected subscription index.
 
 Change boundary:
 

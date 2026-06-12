@@ -1777,6 +1777,24 @@ static int emit_write_element_response(
     size_t text_buffer_length,
     UnitLabMmsDiagnostic* diagnostic);
 
+static int emit_get_attributes_response(
+    UnitLabNativeClientSessionState* session,
+    int data_fd,
+    const char* domain_id,
+    const char* item_id,
+    uint32_t invoke_id,
+    int named_variable_list,
+    uint8_t* scratch,
+    size_t scratch_length,
+    uint8_t* request,
+    size_t request_length,
+    uint8_t* response,
+    size_t response_length,
+    size_t* encoded_response_length,
+    uint8_t* text_buffer,
+    size_t text_buffer_length,
+    UnitLabMmsDiagnostic* diagnostic);
+
 static size_t encode_uint32_be_minimal(uint32_t value, uint8_t* output, size_t output_size)
 {
     size_t length = 0U;
@@ -1798,6 +1816,58 @@ static size_t encode_uint32_be_minimal(uint32_t value, uint8_t* output, size_t o
     }
     memmove(output, &output[output_size - length], length);
     return length;
+}
+
+static int native_wire_client_preflight_selected_rcb(
+    UnitLabNativeClientSessionState* session,
+    int data_fd,
+    const char* label,
+    const char* domain_id,
+    const char* rcb_item,
+    uint32_t invoke_id,
+    uint8_t* scratch,
+    size_t scratch_length,
+    uint8_t* request,
+    size_t request_length,
+    uint8_t* response,
+    size_t response_length,
+    size_t* encoded_response_length,
+    uint8_t* text_buffer,
+    size_t text_buffer_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    if (domain_id == NULL || domain_id[0] == ' ' || rcb_item == NULL || rcb_item[0] == ' ') {
+        if (diagnostic != NULL) {
+            diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT;
+            snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Native wire client RCB preflight requires domain and item.");
+        }
+        return 0;
+    }
+    printf(
+        "native-wire-client: %s invoke=%u domain=%s item=%s
+",
+        label != NULL ? label : "rcb-preflight",
+        (unsigned)invoke_id,
+        domain_id,
+        rcb_item);
+    fflush(stdout);
+    return emit_get_attributes_response(
+        session,
+        data_fd,
+        domain_id,
+        rcb_item,
+        invoke_id,
+        0,
+        scratch,
+        scratch_length,
+        request,
+        request_length,
+        response,
+        response_length,
+        encoded_response_length,
+        text_buffer,
+        text_buffer_length,
+        diagnostic);
 }
 
 static int emit_discovered_rcb_unsigned_step(
@@ -2916,6 +2986,19 @@ int unitlab_run_native_wire_client_with_options(
                 set_result(result, "NATIVE_WIRE_CLIENT_RPTENA_NO_DISCOVERED_RCB", "Run discover first and select an existing discovered BRCB index.");
                 goto fail;
             }
+            {
+                uint32_t preflight_invoke_id = next_invoke_id++;
+                state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_ATTRIBUTES_REQUESTED;
+                if (!emit_state_response(state)) {
+                    set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its attributes-requested state before RptEna.");
+                    goto fail;
+                }
+                if (!native_wire_client_preflight_selected_rcb(&session, data_fd, "rptena-preflight", selected_rcb->domain, selected_rcb->item, preflight_invoke_id, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
+                    state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
+                    set_result(result, "NATIVE_WIRE_CLIENT_RPTENA_PREFLIGHT_FAILED", diagnostic.message);
+                    goto fail;
+                }
+            }
             state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_WRITE_REQUESTED;
             if (!emit_state_response(state)) {
                 set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its write-requested state.");
@@ -2964,10 +3047,31 @@ int unitlab_run_native_wire_client_with_options(
                     next_invoke_id = invoke_id + 1U;
                 }
             }
-            selected_rcb = unitlab_native_client_session_discovered_rcb_at(&session, rcb_index);
+            if (!session.subscription_model.rpt_enabled) {
+                set_result(result, "NATIVE_WIRE_CLIENT_GI_NO_ACTIVE_SUBSCRIPTION", "Run rptena first before GI.");
+                goto fail;
+            }
+            if (index_text != NULL && rcb_index != session.subscription_model.selected_rcb_index) {
+                set_result(result, "NATIVE_WIRE_CLIENT_GI_ACTIVE_SUBSCRIPTION_MISMATCH", "GI must use the active subscription index.");
+                goto fail;
+            }
+            selected_rcb = unitlab_native_client_session_discovered_rcb_at(&session, session.subscription_model.selected_rcb_index);
             if (selected_rcb == NULL) {
                 set_result(result, "NATIVE_WIRE_CLIENT_GI_NO_DISCOVERED_RCB", "Run discover first and select an existing discovered BRCB index.");
                 goto fail;
+            }
+            {
+                uint32_t preflight_invoke_id = next_invoke_id++;
+                state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_ATTRIBUTES_REQUESTED;
+                if (!emit_state_response(state)) {
+                    set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its attributes-requested state before GI.");
+                    goto fail;
+                }
+                if (!native_wire_client_preflight_selected_rcb(&session, data_fd, "gi-preflight", selected_rcb->domain, selected_rcb->item, preflight_invoke_id, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
+                    state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
+                    set_result(result, "NATIVE_WIRE_CLIENT_GI_PREFLIGHT_FAILED", diagnostic.message);
+                    goto fail;
+                }
             }
             state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_WRITE_REQUESTED;
             if (!emit_state_response(state)) {
