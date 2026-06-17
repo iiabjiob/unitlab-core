@@ -244,6 +244,7 @@ Closed in current slice:
 - `mms-summary` emits named diagnostic lines for `DATASET_NOT_DISCOVERED`, `DATASET_MEMBER_MISMATCH`, `MISSING_REPORT_VALUES`, `EXTRA_REPORT_VALUES`, `MISSING_REPORT_REASONS`, and `EXTRA_REPORT_REASONS`, and `UNSUPPORTED_REPORT_VALUES`.
 - Session reset clears report diagnostic counters so stale report mismatch state cannot leak into the next report.
 - Fixture-based native report decoder test now builds model-backed and synthetic GI `InformationReport` frames and validates DataRef/value/reason mapping, zero-mismatch diagnostics, `DATASET_MEMBER_MISMATCH`, missing/extra value/reason diagnostics, and `UNSUPPORTED_REPORT_VALUES` without requiring a fresh pcap.
+- `scripts/check-external-mms-client-pcap.py` now provides a behavior-level gate for SCD-backed external MMS captures. Existing UnitLab and IEDScout `KINTE13LVC01` captures pass this gate on port `12447`.
 
 Acceptance criteria:
 

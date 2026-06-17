@@ -164,7 +164,19 @@ The debug client page can now target this external MMS endpoint before capture:
 3. Run `Discover`, `RptEna`, `GI`, and `Disconnect`. In external mode `Discover` and `RptEna` launch the libIEC61850-backed metadata probe against the configured endpoint, while `GI` launches the GI probe. `Start wire` is for the UnitLab native wire server path and should stay disabled for external MMS targets.
 4. Save the Wireshark capture as the golden artifact for the SCD-backed client flow.
 
-Capture each run separately, then diff the pcaps only after confirming the same browse tree, datasets, report-control names, and NamPlt namespace fields are present on both wires.
+Validate the UnitLab and IEDScout captures with the behavior-level gate:
+
+```bash
+iec61850_ied/scripts/check-external-mms-client-pcap.py \
+  iec61850_ied/artifacts/mms-client-discover-rptEna-GI.pcapng \
+  --port 12447
+
+iec61850_ied/scripts/check-external-mms-client-pcap.py \
+  iec61850_ied/artifacts/iedScout-discover-rptEna-GI.pcapng \
+  --port 12447
+```
+
+Capture each run separately, then diff the pcaps only after confirming the same browse tree, datasets, report-control names, and NamPlt namespace fields are present on both wires. The checker is behavior-level; it does not require byte-identical IEDScout parity.
 
 ## Build
 
