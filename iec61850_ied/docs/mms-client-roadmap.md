@@ -243,7 +243,7 @@ Closed in current slice:
 - Native report summaries now expose explicit diagnostic counters for Dataset member mismatches, missing/extra values, missing/extra reason codes, and unsupported decoded values.
 - `mms-summary` emits named diagnostic lines for `DATASET_NOT_DISCOVERED`, `DATASET_MEMBER_MISMATCH`, `MISSING_REPORT_VALUES`, `EXTRA_REPORT_VALUES`, `MISSING_REPORT_REASONS`, and `EXTRA_REPORT_REASONS`, and `UNSUPPORTED_REPORT_VALUES`.
 - Session reset clears report diagnostic counters so stale report mismatch state cannot leak into the next report.
-- Fixture-based native report decoder test now builds a model-backed GI `InformationReport` and validates DataRef/value/reason mapping, zero-mismatch diagnostics, and `DATASET_MEMBER_MISMATCH` detection without requiring a fresh pcap.
+- Fixture-based native report decoder test now builds model-backed and synthetic GI `InformationReport` frames and validates DataRef/value/reason mapping, zero-mismatch diagnostics, `DATASET_MEMBER_MISMATCH`, and missing/extra value/reason diagnostics without requiring a fresh pcap.
 
 Acceptance criteria:
 
