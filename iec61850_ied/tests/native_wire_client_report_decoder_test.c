@@ -79,6 +79,12 @@ static int build_report_plan(UnitLabIedModelPlan* plan)
     return unitlab_build_ied_model_plan(&fixture, plan, error, sizeof(error));
 }
 
+static void append_report_leaf_refs(UnitLabNativeClientSessionState* session)
+{
+    assert(unitlab_native_client_session_append_leaf_ref(session, "IED1LD0/XCBR1$ST$Pos$stVal") != NULL);
+    assert(unitlab_native_client_session_append_leaf_ref(session, "IED1LD0/PGGIO1$ST$Ind1$stVal") != NULL);
+}
+
 static void prepare_discovered_report_model(UnitLabNativeClientSessionState* session)
 {
     UnitLabNativeDiscoveredDataSet* data_set;
@@ -87,8 +93,17 @@ static void prepare_discovered_report_model(UnitLabNativeClientSessionState* ses
     assert(data_set != NULL);
     assert(unitlab_native_client_session_append_data_set_member(session, data_set, "IED1LD0/XCBR1$ST$Pos$stVal") == 1);
     assert(unitlab_native_client_session_append_data_set_member(session, data_set, "IED1LD0/PGGIO1$ST$Ind1$stVal") == 1);
-    assert(unitlab_native_client_session_append_leaf_ref(session, "IED1LD0/XCBR1$ST$Pos$stVal") != NULL);
-    assert(unitlab_native_client_session_append_leaf_ref(session, "IED1LD0/PGGIO1$ST$Ind1$stVal") != NULL);
+    append_report_leaf_refs(session);
+}
+
+static void prepare_mismatched_discovered_report_model(UnitLabNativeClientSessionState* session)
+{
+    UnitLabNativeDiscoveredDataSet* data_set;
+
+    data_set = unitlab_native_client_session_append_data_set(session, "IED1LD0/LLN0$dsEvents");
+    assert(data_set != NULL);
+    assert(unitlab_native_client_session_append_data_set_member(session, data_set, "IED1LD0/LLN0$ST$Health$stVal") == 1);
+    append_report_leaf_refs(session);
 }
 
 int main(void)
@@ -157,6 +172,28 @@ int main(void)
     assert(session.last_report_entries[0].reason_flags & UNITLAB_NATIVE_REPORT_REASON_GENERAL_INTERROGATION);
 
     unitlab_native_client_session_reset(&session);
+
+    memset(&session, 0, sizeof(session));
+    prepare_mismatched_discovered_report_model(&session);
+    assert(unitlab_native_wire_client_decode_frame_summary(&session, report_bytes, report_length) == 1);
+    assert(session.subscription_model.last_report_received == 1);
+    assert(session.discovered_model.data_set_count == 1U);
+    assert(session.discovered_model.data_set_member_count == 1U);
+    assert(session.discovered_model.last_report_data_ref_count == 2U);
+    assert(session.discovered_model.last_report_value_count == 2U);
+    assert(session.discovered_model.last_report_reason_count == 2U);
+    assert(session.discovered_model.last_report_matched_data_ref_count == 0U);
+    assert(session.discovered_model.last_report_dataset_mismatch_count == 2U);
+    assert(session.discovered_model.last_report_missing_value_count == 0U);
+    assert(session.discovered_model.last_report_extra_value_count == 0U);
+    assert(session.discovered_model.last_report_missing_reason_count == 0U);
+    assert(session.discovered_model.last_report_extra_reason_count == 0U);
+    assert(session.discovered_model.last_report_unsupported_value_count == 0U);
+    assert(session.last_report_entry_count == 2U);
+    assert(session.last_report_entries[0].dataset_match == 0);
+    assert(session.last_report_entries[1].dataset_match == 0);
+    unitlab_native_client_session_reset(&session);
+
     unitlab_free_ied_model_plan(&plan);
     return 0;
 }
