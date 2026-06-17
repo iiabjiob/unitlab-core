@@ -519,12 +519,14 @@ int main(void)
         session.discovered_model.last_report_extra_value_count = 3U;
         session.discovered_model.last_report_missing_reason_count = 4U;
         session.discovered_model.last_report_extra_reason_count = 5U;
+        session.discovered_model.last_report_unsupported_value_count = 6U;
         if (!expect_true(
                 session.discovered_model.last_report_dataset_mismatch_count == 2U
                 && session.discovered_model.last_report_missing_value_count == 1U
                 && session.discovered_model.last_report_extra_value_count == 3U
                 && session.discovered_model.last_report_missing_reason_count == 4U
-                && session.discovered_model.last_report_extra_reason_count == 5U,
+                && session.discovered_model.last_report_extra_reason_count == 5U
+                && session.discovered_model.last_report_unsupported_value_count == 6U,
                 "expected report diagnostic counters to be retained")) {
             return 1;
         }
@@ -547,7 +549,8 @@ int main(void)
                 && session.discovered_model.last_report_missing_value_count == 0U
                 && session.discovered_model.last_report_extra_value_count == 0U
                 && session.discovered_model.last_report_missing_reason_count == 0U
-                && session.discovered_model.last_report_extra_reason_count == 0U,
+                && session.discovered_model.last_report_extra_reason_count == 0U
+                && session.discovered_model.last_report_unsupported_value_count == 0U,
                 "expected last report reset to clear diagnostic counters")) {
             return 1;
         }

@@ -240,8 +240,8 @@ Change boundary:
 
 Closed in current slice:
 
-- Native report summaries now expose explicit diagnostic counters for Dataset member mismatches, missing/extra values, and missing/extra reason codes.
-- `mms-summary` emits named diagnostic lines for `DATASET_NOT_DISCOVERED`, `DATASET_MEMBER_MISMATCH`, `MISSING_REPORT_VALUES`, `EXTRA_REPORT_VALUES`, `MISSING_REPORT_REASONS`, and `EXTRA_REPORT_REASONS`.
+- Native report summaries now expose explicit diagnostic counters for Dataset member mismatches, missing/extra values, missing/extra reason codes, and unsupported decoded values.
+- `mms-summary` emits named diagnostic lines for `DATASET_NOT_DISCOVERED`, `DATASET_MEMBER_MISMATCH`, `MISSING_REPORT_VALUES`, `EXTRA_REPORT_VALUES`, `MISSING_REPORT_REASONS`, and `EXTRA_REPORT_REASONS`, and `UNSUPPORTED_REPORT_VALUES`.
 - Session reset clears report diagnostic counters so stale report mismatch state cannot leak into the next report.
 
 Acceptance criteria:

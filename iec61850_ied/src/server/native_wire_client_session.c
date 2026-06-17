@@ -618,6 +618,7 @@ void unitlab_native_client_session_reset_last_report(UnitLabNativeClientSessionS
     session->discovered_model.last_report_extra_value_count = 0U;
     session->discovered_model.last_report_missing_reason_count = 0U;
     session->discovered_model.last_report_extra_reason_count = 0U;
+    session->discovered_model.last_report_unsupported_value_count = 0U;
     session->discovered_model.last_report_rpt_id[0] = '\0';
     session->discovered_model.last_report_data_set[0] = '\0';
 }

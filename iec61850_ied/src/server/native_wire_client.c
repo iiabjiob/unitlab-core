@@ -96,7 +96,7 @@ static void emit_subscription_summary(const UnitLabNativeClientSessionState* ses
         return;
     }
     printf(
-        "native-wire-client: subscription-summary phase=%s rcb=%s/%s rcb-index=%zu rptEna=%s rptEna-invoke=%u giRequested=%s gi-invoke=%u lastReportReceived=%s asyncReports=%zu lastReportValues=%zu lastReportDataRefs=%zu lastReportMatchedDataRefs=%zu lastReportReasons=%zu lastReportDatasetMismatches=%zu lastReportMissingValues=%zu lastReportExtraValues=%zu lastReportMissingReasons=%zu lastReportExtraReasons=%zu\n",
+        "native-wire-client: subscription-summary phase=%s rcb=%s/%s rcb-index=%zu rptEna=%s rptEna-invoke=%u giRequested=%s gi-invoke=%u lastReportReceived=%s asyncReports=%zu lastReportValues=%zu lastReportDataRefs=%zu lastReportMatchedDataRefs=%zu lastReportReasons=%zu lastReportDatasetMismatches=%zu lastReportMissingValues=%zu lastReportExtraValues=%zu lastReportMissingReasons=%zu lastReportExtraReasons=%zu lastReportUnsupportedValues=%zu\n",
         phase != NULL ? phase : "snapshot",
         session->subscription_model.rcb_domain[0] != '\0' ? session->subscription_model.rcb_domain : "<none>",
         session->subscription_model.rcb_item[0] != '\0' ? session->subscription_model.rcb_item : "<none>",
@@ -115,7 +115,8 @@ static void emit_subscription_summary(const UnitLabNativeClientSessionState* ses
         session->discovered_model.last_report_missing_value_count,
         session->discovered_model.last_report_extra_value_count,
         session->discovered_model.last_report_missing_reason_count,
-        session->discovered_model.last_report_extra_reason_count);
+        session->discovered_model.last_report_extra_reason_count,
+        session->discovered_model.last_report_unsupported_value_count);
     fflush(stdout);
 }
 
@@ -138,7 +139,7 @@ static void emit_discovered_model_summary(const UnitLabNativeClientSessionState*
         }
     }
     printf(
-        "native-wire-client: model-summary phase=%s domain=%s logical-devices=%zu logical-nodes=%zu data-names=%zu typed-data-names=%zu data-components=%zu typed-data-components=%zu typed-data-nodes=%zu leaf-refs=%zu datasets=%zu dataset-members=%zu brcbs=%zu last-report-entries=%zu last-report-dataRefs=%zu last-report-values=%zu last-report-reasons=%zu last-report-matched-dataRefs=%zu last-report-dataset-mismatches=%zu last-report-missing-values=%zu last-report-extra-values=%zu last-report-missing-reasons=%zu last-report-extra-reasons=%zu last-report-rptId=%s last-report-datSet=%s\n",
+        "native-wire-client: model-summary phase=%s domain=%s logical-devices=%zu logical-nodes=%zu data-names=%zu typed-data-names=%zu data-components=%zu typed-data-components=%zu typed-data-nodes=%zu leaf-refs=%zu datasets=%zu dataset-members=%zu brcbs=%zu last-report-entries=%zu last-report-dataRefs=%zu last-report-values=%zu last-report-reasons=%zu last-report-matched-dataRefs=%zu last-report-dataset-mismatches=%zu last-report-missing-values=%zu last-report-extra-values=%zu last-report-missing-reasons=%zu last-report-extra-reasons=%zu last-report-unsupported-values=%zu last-report-rptId=%s last-report-datSet=%s\n",
         phase != NULL ? phase : "snapshot",
         session->discovered_model.domain[0] != '\0' ? session->discovered_model.domain : "<none>",
         session->discovered_model.logical_device_count,
@@ -162,6 +163,7 @@ static void emit_discovered_model_summary(const UnitLabNativeClientSessionState*
         session->discovered_model.last_report_extra_value_count,
         session->discovered_model.last_report_missing_reason_count,
         session->discovered_model.last_report_extra_reason_count,
+        session->discovered_model.last_report_unsupported_value_count,
         session->discovered_model.last_report_rpt_id[0] != '\0' ? session->discovered_model.last_report_rpt_id : "<none>",
         session->discovered_model.last_report_data_set[0] != '\0' ? session->discovered_model.last_report_data_set : "<none>");
     fflush(stdout);
@@ -1050,6 +1052,7 @@ static void emit_information_report_summary(UnitLabNativeClientSessionState* ses
     size_t extra_value_count = 0U;
     size_t missing_reason_count = 0U;
     size_t extra_reason_count = 0U;
+    size_t unsupported_value_count = 0U;
     const uint8_t* opt_flds = NULL;
     size_t opt_flds_length = 0U;
     int has_data_reference = 0;
@@ -1223,6 +1226,9 @@ static void emit_information_report_summary(UnitLabNativeClientSessionState* ses
         if (value_count < session->last_report_entry_count) {
             copy_data_value_summary(&next, session->last_report_entries[value_count].value_summary, sizeof(session->last_report_entries[value_count].value_summary));
             copy_report_typed_value(&next, &session->last_report_entries[value_count]);
+            if (session->last_report_entries[value_count].value_kind == UNITLAB_NATIVE_REPORT_VALUE_UNSUPPORTED) {
+                unsupported_value_count++;
+            }
         }
         printf("mms-summary: report.value[%zu]=", value_count);
         print_report_value_summary(&next);
@@ -1276,6 +1282,9 @@ static void emit_information_report_summary(UnitLabNativeClientSessionState* ses
     if (dataset_mismatch_count > 0U) {
         printf("mms-summary: report.diagnostic code=DATASET_MEMBER_MISMATCH datSet=%s mismatches=%zu dataRef-count=%zu\n", session->discovered_model.last_report_data_set[0] != '\0' ? session->discovered_model.last_report_data_set : "<none>", dataset_mismatch_count, data_ref_count);
     }
+    if (unsupported_value_count > 0U) {
+        printf("mms-summary: report.diagnostic code=UNSUPPORTED_REPORT_VALUES unsupported=%zu mapped-entry-count=%zu\n", unsupported_value_count, session->last_report_entry_count);
+    }
     session->discovered_model.last_report_data_ref_count = data_ref_count;
     session->discovered_model.last_report_value_count = value_count;
     session->discovered_model.last_report_reason_count = reason_count;
@@ -1285,8 +1294,9 @@ static void emit_information_report_summary(UnitLabNativeClientSessionState* ses
     session->discovered_model.last_report_extra_value_count = extra_value_count;
     session->discovered_model.last_report_missing_reason_count = missing_reason_count;
     session->discovered_model.last_report_extra_reason_count = extra_reason_count;
+    session->discovered_model.last_report_unsupported_value_count = unsupported_value_count;
     session->subscription_model.last_report_received = 1;
-    printf("mms-summary: report.dataRef-count=%zu value-count=%zu reason-count=%zu mapped-entry-count=%zu dataset-mismatch-count=%zu missing-value-count=%zu extra-value-count=%zu missing-reason-count=%zu extra-reason-count=%zu\n", data_ref_count, value_count, reason_count, session->last_report_entry_count, dataset_mismatch_count, missing_value_count, extra_value_count, missing_reason_count, extra_reason_count);
+    printf("mms-summary: report.dataRef-count=%zu value-count=%zu reason-count=%zu mapped-entry-count=%zu dataset-mismatch-count=%zu missing-value-count=%zu extra-value-count=%zu missing-reason-count=%zu extra-reason-count=%zu unsupported-value-count=%zu\n", data_ref_count, value_count, reason_count, session->last_report_entry_count, dataset_mismatch_count, missing_value_count, extra_value_count, missing_reason_count, extra_reason_count, unsupported_value_count);
     emit_discovered_model_summary(session, "report");
     emit_subscription_summary(session, "report");
     fflush(stdout);

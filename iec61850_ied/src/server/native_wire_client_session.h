@@ -39,6 +39,7 @@ typedef struct {
     size_t last_report_extra_value_count;
     size_t last_report_missing_reason_count;
     size_t last_report_extra_reason_count;
+    size_t last_report_unsupported_value_count;
     char last_report_rpt_id[160U];
     char last_report_data_set[160U];
 } UnitLabNativeDiscoveredDeviceModel;
