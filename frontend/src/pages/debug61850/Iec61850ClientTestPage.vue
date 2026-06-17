@@ -10,12 +10,19 @@ const state = ref<Iec61850ClientState | null>(null)
 const loading = ref(false)
 const busyAction = ref<string | null>(null)
 const errorMessage = ref<string | null>(null)
+const targetHost = ref("host.docker.internal")
+const targetPort = ref(12447)
+const targetSclPath = ref("/workspace/.refs/sld-rev2.scd")
+const targetIedName = ref("KINTE13LVC01")
 
 const transcript = computed(() => state.value?.transcript ?? [])
 const lastDiagnostic = computed(() => state.value?.last_diagnostic ?? null)
 const sessionStatus = computed(() => state.value?.session_open ? "Connected" : "Disconnected")
 const discoveryStatus = computed(() => state.value?.last_discovery ? "Structure loaded" : "Not discovered")
 const liveWireStatus = computed(() => state.value?.live_wire_open ? "Wire connected" : "Wire closed")
+const isExternalTarget = computed(() => state.value?.endpoint.mode === "mms")
+const externalActionDisabled = computed(() => busyAction.value !== null)
+const wireStartDisabled = computed(() => busyAction.value !== null || isExternalTarget.value)
 const reportStatus = computed(() => state.value?.last_report ? "Report received" : "Waiting for report")
 const wireFrameStatus = computed(() => state.value?.live_wire_last_frame_length ? `${state.value.live_wire_last_frame_length} bytes` : "No frame yet")
 const stateSummary = computed(() => {
@@ -52,6 +59,21 @@ async function runAction(action: string, operation: () => Promise<Iec61850Client
   }
 }
 
+async function configureExternalTarget() {
+  await runAction("target-external", () => Iec61850ClientAPI.configureTarget({
+    mode: "external-mms",
+    host: targetHost.value.trim(),
+    port: Number(targetPort.value),
+    scl_path: targetSclPath.value.trim(),
+    ied_name: targetIedName.value.trim(),
+    access_point_name: "AP1",
+  }))
+}
+
+async function configureSimulatorTarget() {
+  await runAction("target-simulator", () => Iec61850ClientAPI.configureTarget({ mode: "simulator" }))
+}
+
 function formatJson(value: unknown): string {
   return JSON.stringify(value, null, 2)
 }
@@ -71,17 +93,29 @@ function formatJson(value: unknown): string {
             Back to Debug
           </RouterLink>
         </div>
+        <div class="iec61850-client-page__target-group">
+          <input v-model="targetHost" class="iec61850-client-page__target-input" aria-label="MMS host" placeholder="host" />
+          <input v-model.number="targetPort" class="iec61850-client-page__target-input iec61850-client-page__target-input--port" aria-label="MMS port" type="number" min="1" max="65535" />
+          <input v-model="targetIedName" class="iec61850-client-page__target-input" aria-label="IED name" placeholder="IED" />
+          <input v-model="targetSclPath" class="iec61850-client-page__target-input iec61850-client-page__target-input--path" aria-label="SCD path" placeholder="SCD path" />
+          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="configureExternalTarget">
+            {{ busyAction === 'target-external' ? 'Setting target...' : 'Use external MMS' }}
+          </UiButton>
+          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="configureSimulatorTarget">
+            {{ busyAction === 'target-simulator' ? 'Resetting...' : 'Use fixture sim' }}
+          </UiButton>
+        </div>
         <div class="iec61850-client-page__action-group">
           <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="loading" @click="refreshState">
             Refresh state
           </UiButton>
-          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('discover', Iec61850ClientAPI.discoverIed)">
+          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="externalActionDisabled" @click="runAction('discover', Iec61850ClientAPI.discoverIed)">
             {{ busyAction === 'discover' ? 'Discovering...' : 'Discover' }}
           </UiButton>
           <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('connect', Iec61850ClientAPI.connectIed)">
             {{ busyAction === 'connect' ? 'Connecting...' : 'Connect' }}
           </UiButton>
-          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('disconnect', Iec61850ClientAPI.disconnectIed)">
+          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="externalActionDisabled" @click="runAction('disconnect', Iec61850ClientAPI.disconnectIed)">
             {{ busyAction === 'disconnect' ? 'Disconnecting...' : 'Disconnect' }}
           </UiButton>
           <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('close-ied', Iec61850ClientAPI.closeIed)">
@@ -89,15 +123,15 @@ function formatJson(value: unknown): string {
           </UiButton>
         </div>
         <div class="iec61850-client-page__action-group">
-          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('rptena', Iec61850ClientAPI.enableReporting)">
+          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="externalActionDisabled" @click="runAction('rptena', Iec61850ClientAPI.enableReporting)">
             {{ busyAction === 'rptena' ? 'Subscribing...' : 'RptEna' }}
           </UiButton>
-          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('gi', Iec61850ClientAPI.sendGeneralInterrogation)">
+          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="externalActionDisabled" @click="runAction('gi', Iec61850ClientAPI.sendGeneralInterrogation)">
             {{ busyAction === 'gi' ? 'Requesting GI...' : 'GI' }}
           </UiButton>
         </div>
         <div class="iec61850-client-page__action-group">
-          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('wire-start', Iec61850ClientAPI.startWireTransport)">
+          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="wireStartDisabled" @click="runAction('wire-start', Iec61850ClientAPI.startWireTransport)">
             {{ busyAction === 'wire-start' ? 'Starting wire...' : 'Start wire' }}
           </UiButton>
           <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('wire-emit', Iec61850ClientAPI.emitWireReport)">
@@ -263,6 +297,33 @@ function formatJson(value: unknown): string {
   gap: 0.35rem;
   align-items: center;
   min-width: 0;
+}
+
+.iec61850-client-page__target-group {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) 5.2rem minmax(8rem, 1fr) minmax(14rem, 1.7fr) auto auto;
+  gap: 0.35rem;
+  align-items: center;
+  width: min(100%, 64rem);
+}
+
+.iec61850-client-page__target-input {
+  min-width: 0;
+  height: 2rem;
+  border: 1px solid var(--color-neutral-300);
+  border-radius: 8px;
+  padding: 0 0.55rem;
+  font-size: 0.78rem;
+  color: var(--color-neutral-900);
+  background: var(--color-white);
+}
+
+.iec61850-client-page__target-input--port {
+  text-align: right;
+}
+
+.iec61850-client-page__target-input--path {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
 
 .iec61850-client-page__nav-link {

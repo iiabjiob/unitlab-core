@@ -3,12 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 import os
+import subprocess
 import time
 from pathlib import Path
 import select
 from threading import RLock
 from typing import Callable, Sequence
 import tempfile
+import xml.etree.ElementTree as ET
 
 from app.core.config import get_settings
 
@@ -48,6 +50,16 @@ class Iec61850ClientControlDiagnostic:
     action: str
     code: str
     message: str
+
+
+@dataclass(frozen=True, slots=True)
+class Iec61850ClientTargetRequest:
+    mode: str
+    host: str
+    port: int
+    ied_name: str
+    scl_path: str | None = None
+    access_point_name: str = "AP1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,6 +104,7 @@ class Iec61850ClientControlService:
         self._client_id = client_id
         self._endpoint = endpoint or _default_endpoint()
         self._candidate = candidate or _default_candidate()
+        self._target_scl_path: str | None = None
         self._last_read: Iec61850ReportControlReadResult | None = None
         self._last_discovery: dict | None = None
         self._last_state: Iec61850ReportControlState | None = None
@@ -144,6 +157,28 @@ class Iec61850ClientControlService:
                 live_wire_last_diagnostic=self._live_wire_last_diagnostic,
             )
 
+    def configure_target(self, request: Iec61850ClientTargetRequest) -> Iec61850ClientControlSnapshot:
+        with self._lock:
+            self._reset_runtime_state_for_target_change()
+            endpoint, candidate = _build_target_endpoint_and_candidate(request)
+            self._endpoint = endpoint
+            self._candidate = candidate
+            self._target_scl_path = request.scl_path.strip() if request.scl_path is not None and request.scl_path.strip() else None
+            if endpoint.mode == Iec61850RuntimeMode.MMS and endpoint.host is not None:
+                self._live_wire_service_host = endpoint.host
+                self._live_wire_data_port = endpoint.port
+            self._runtime._append_event(
+                kind="target-configured",
+                session_id=self._session_id,
+                endpoint_id=endpoint.id,
+                candidate_id=candidate.id,
+                report_control_name=candidate.report_control_name,
+                client_id=self._client_id,
+                outcome="configured",
+                message=f"Configured IEC 61850 client target {endpoint.ied_name}@{endpoint.host}:{endpoint.port}.",
+            )
+            return self.snapshot()
+
     def open_session(self) -> Iec61850ClientControlSnapshot:
         with self._lock:
             return self._run(
@@ -154,6 +189,8 @@ class Iec61850ClientControlService:
 
     def discover_ied(self) -> Iec61850ClientControlSnapshot:
         with self._lock:
+            if self._endpoint.mode == Iec61850RuntimeMode.MMS:
+                return self._run("external-discover-ied", self._discover_external_mms_ied)
             return self._run("discover-ied", self._discover_ied)
 
     def connect_ied(self) -> Iec61850ClientControlSnapshot:
@@ -179,6 +216,8 @@ class Iec61850ClientControlService:
 
     def disconnect_ied(self) -> Iec61850ClientControlSnapshot:
         with self._lock:
+            if self._endpoint.mode == Iec61850RuntimeMode.MMS:
+                return self._run("external-disconnect-ied", self._disconnect_external_mms_ied)
             if not self._session_open:
                 self._runtime._append_event(
                     kind="ied-disconnect",
@@ -240,10 +279,14 @@ class Iec61850ClientControlService:
 
     def enable_reporting(self) -> Iec61850ClientControlSnapshot:
         with self._lock:
+            if self._endpoint.mode == Iec61850RuntimeMode.MMS:
+                return self._run("external-rptena-precheck", self._enable_external_mms_reporting)
             return self._run("rptena", self._enable_reporting)
 
     def send_general_interrogation(self) -> Iec61850ClientControlSnapshot:
         with self._lock:
+            if self._endpoint.mode == Iec61850RuntimeMode.MMS:
+                return self._run("external-gi", self._send_external_mms_general_interrogation)
             return self._run(
                 "send-general-interrogation",
                 lambda: self._runtime.send_general_interrogation(session_id=self._session_id, candidate=self._candidate, client_id=self._client_id),
@@ -329,7 +372,14 @@ class Iec61850ClientControlService:
         self._last_state = enabled if enabled is not None else reserved
 
     def _start_live_wire_process_transport(self) -> None:
-        subscription_plan = _build_subscription_plan(self._candidate)
+        process_candidate = self._candidate
+        process_ied_name = self._candidate.ied_name
+        process_endpoint: Iec61850DeviceEndpoint | None = None
+        if self._endpoint.mode == Iec61850RuntimeMode.MMS:
+            process_candidate = _default_candidate()
+            process_ied_name = process_candidate.ied_name
+            process_endpoint = self._endpoint
+        subscription_plan = _build_subscription_plan(process_candidate)
         fixture = build_ied_simulator_fixture_from_subscription_plan(subscription_plan)
         fixture_dir: tempfile.TemporaryDirectory[str] | None = None
         fixture_path = Path("/workspace/iec61850_ied/examples/single-report.fixture.json")
@@ -341,7 +391,7 @@ class Iec61850ClientControlService:
             fixture=fixture,
             binary_path=self._live_wire_binary_path,
             fixture_path=fixture_path,
-            ied_name=self._candidate.ied_name,
+            ied_name=process_ied_name,
             bind_address=self._live_wire_service_host,
             port=self._live_wire_data_port,
             native_wire_client_start=True,
@@ -351,19 +401,19 @@ class Iec61850ClientControlService:
             process_handle = start_ied_simulator_process(spec)
             self._live_wire_process = process_handle
             self._live_wire_fixture_dir = fixture_dir
-            self._live_wire_endpoint = spec.endpoint
-            self._transcript_wire_endpoint_id = spec.endpoint.id
+            self._live_wire_endpoint = process_endpoint or spec.endpoint
+            self._transcript_wire_endpoint_id = self._live_wire_endpoint.id
             self._runtime._append_event(
                 kind="wire-session-open",
                 session_id=self._session_id,
-                endpoint_id=spec.endpoint.id,
+                endpoint_id=self._live_wire_endpoint.id,
                 client_id=self._client_id,
                 outcome="connected",
             )
             self._runtime._append_event(
                 kind="wire-associate",
                 session_id=self._session_id,
-                endpoint_id=spec.endpoint.id,
+                endpoint_id=self._live_wire_endpoint.id,
                 client_id=self._client_id,
                 outcome="associated",
             )
@@ -372,7 +422,7 @@ class Iec61850ClientControlService:
             self._runtime._append_event(
                 kind="wire-client-ready",
                 session_id=self._session_id,
-                endpoint_id=spec.endpoint.id,
+                endpoint_id=self._live_wire_endpoint.id,
                 client_id=self._client_id,
                 outcome="ready",
                 code=None,
@@ -415,10 +465,181 @@ class Iec61850ClientControlService:
             message=frame.hex(),
         )
 
-    def _drain_live_wire_process_stdout(self) -> None:
+    def _discover_external_mms_ied(self) -> None:
+        result = self._run_external_probe("metadata")
+        self._last_discovery = _build_wire_discovery_structure(self._endpoint, self._candidate, "metadata-probe")
+        self._runtime._append_event(
+            kind="external-ied-discover",
+            session_id=self._session_id,
+            endpoint_id=self._endpoint.id,
+            candidate_id=self._candidate.id,
+            report_control_name=self._candidate.report_control_name,
+            client_id=self._client_id,
+            outcome="accepted",
+            code=str(result.returncode),
+            message=_compact_probe_output(result),
+        )
+
+    def _enable_external_mms_reporting(self) -> None:
+        result = self._run_external_probe("metadata")
+        self._runtime._append_event(
+            kind="external-report-control-precheck",
+            session_id=self._session_id,
+            endpoint_id=self._endpoint.id,
+            candidate_id=self._candidate.id,
+            report_control_name=self._candidate.report_control_name,
+            client_id=self._client_id,
+            outcome="accepted",
+            code=str(result.returncode),
+            message=_compact_probe_output(result),
+        )
+
+    def _send_external_mms_general_interrogation(self) -> None:
+        result = self._run_external_probe("gi")
+        self._runtime._append_event(
+            kind="external-report-control-gi",
+            session_id=self._session_id,
+            endpoint_id=self._endpoint.id,
+            candidate_id=self._candidate.id,
+            report_control_name=self._candidate.report_control_name,
+            client_id=self._client_id,
+            outcome="accepted",
+            code=str(result.returncode),
+            message=_compact_probe_output(result),
+        )
+
+    def _disconnect_external_mms_ied(self) -> None:
+        self._runtime._append_event(
+            kind="external-ied-disconnect",
+            session_id=self._session_id,
+            endpoint_id=self._endpoint.id,
+            candidate_id=self._candidate.id,
+            report_control_name=self._candidate.report_control_name,
+            client_id=self._client_id,
+            outcome="not-persistent",
+            message="External MMS probe commands open and close their own client association.",
+        )
+
+    def _external_probe_binary_path(self) -> str:
+        preferred = Path("/workspace/iec61850_ied/build-libiec61850/unitlab-iec61850-ied-sim")
+        if preferred.is_file():
+            return str(preferred)
+        relative_preferred = Path("iec61850_ied/build-libiec61850/unitlab-iec61850-ied-sim")
+        if relative_preferred.is_file():
+            return str(relative_preferred)
+        if self._live_wire_binary_path is not None and self._live_wire_binary_path.strip():
+            return self._live_wire_binary_path
+        return str(relative_preferred)
+
+    def _run_external_probe(self, probe: str):
+        if self._endpoint.host is None or not self._endpoint.host.strip():
+            raise Iec61850ReportRuntimeError("EXTERNAL_MMS_HOST_REQUIRED", "IEC 61850 external MMS target host is required.")
+        if self._target_scl_path is None or not self._target_scl_path.strip():
+            raise Iec61850ReportRuntimeError("EXTERNAL_MMS_SCL_REQUIRED", "IEC 61850 external MMS target SCD path is required.")
+        binary_path = self._external_probe_binary_path()
+        command = [
+            binary_path,
+            "--scl",
+            self._target_scl_path,
+            "--ied",
+            self._endpoint.ied_name,
+            "--bind",
+            self._endpoint.host,
+            "--port",
+            str(self._endpoint.port),
+        ]
+        if probe == "metadata":
+            command.append("--metadata-probe")
+        elif probe == "gi":
+            command.append("--gi-probe")
+        else:
+            raise Iec61850ReportRuntimeError("EXTERNAL_MMS_PROBE_INVALID", "IEC 61850 external MMS probe kind is invalid.")
+        try:
+            return subprocess.run(command, capture_output=True, text=True, timeout=30, check=True)
+        except subprocess.TimeoutExpired as exc:
+            raise Iec61850ReportRuntimeError("EXTERNAL_MMS_PROBE_TIMEOUT", f"IEC 61850 external MMS {probe} probe timed out after 30s.") from exc
+        except subprocess.CalledProcessError as exc:
+            details = ((exc.stderr or "") + (exc.stdout or "")).strip()
+            raise Iec61850ReportRuntimeError("EXTERNAL_MMS_PROBE_FAILED", f"IEC 61850 external MMS {probe} probe failed with exit code {exc.returncode}: {details}") from exc
+
+    def _discover_live_wire_ied(self) -> None:
+        command = f"discover {self._candidate.ied_name}{self._candidate.logical_device_inst}"
+        self._write_live_wire_command(command)
+        self._drain_live_wire_process_stdout(timeout_seconds=2.0)
+        self._last_read = None
+        self._last_state = None
+        self._last_discovery = _build_wire_discovery_structure(self._endpoint, self._candidate, command)
+        self._runtime._append_event(
+            kind="wire-ied-discover",
+            session_id=self._session_id,
+            endpoint_id=self._wire_endpoint_id(),
+            candidate_id=self._candidate.id,
+            report_control_name=self._candidate.report_control_name,
+            client_id=self._client_id,
+            outcome="command-sent",
+            message=command,
+        )
+
+    def _enable_live_wire_reporting(self) -> None:
+        self._write_live_wire_command("rptena")
+        self._drain_live_wire_process_stdout(timeout_seconds=2.0)
+        self._runtime._append_event(
+            kind="wire-report-control-enable",
+            session_id=self._session_id,
+            endpoint_id=self._wire_endpoint_id(),
+            candidate_id=self._candidate.id,
+            report_control_name=self._candidate.report_control_name,
+            client_id=self._client_id,
+            outcome="command-sent",
+            message="rptena",
+        )
+
+    def _send_live_wire_general_interrogation(self) -> None:
+        self._write_live_wire_command("gi")
+        self._drain_live_wire_process_stdout(timeout_seconds=2.0)
+        self._runtime._append_event(
+            kind="wire-report-control-gi",
+            session_id=self._session_id,
+            endpoint_id=self._wire_endpoint_id(),
+            candidate_id=self._candidate.id,
+            report_control_name=self._candidate.report_control_name,
+            client_id=self._client_id,
+            outcome="command-sent",
+            message="gi",
+        )
+
+    def _disconnect_live_wire_ied(self) -> None:
+        self._write_live_wire_command("disconnect")
+        self._drain_live_wire_process_stdout(timeout_seconds=1.0)
+        self._runtime._append_event(
+            kind="wire-ied-disconnect",
+            session_id=self._session_id,
+            endpoint_id=self._wire_endpoint_id(),
+            candidate_id=self._candidate.id,
+            report_control_name=self._candidate.report_control_name,
+            client_id=self._client_id,
+            outcome="command-sent",
+            message="disconnect",
+        )
+
+    def _write_live_wire_command(self, command: str) -> None:
+        if self._live_wire_endpoint is None:
+            raise Iec61850ReportRuntimeError(
+                "LIVE_WIRE_SESSION_NOT_OPEN",
+                "IEC 61850 live wire transport is not open.",
+            )
+        if self._live_wire_process is None or self._live_wire_process.process.stdin is None:
+            raise Iec61850ReportRuntimeError(
+                "LIVE_WIRE_PROCESS_NOT_OPEN",
+                "IEC 61850 live wire transport process is not open.",
+            )
+        self._drain_live_wire_process_stdout(timeout_seconds=0.0)
+        write_ied_simulator_process_command(self._live_wire_process, command)
+
+    def _drain_live_wire_process_stdout(self, timeout_seconds: float = 0.0) -> None:
         if self._live_wire_process is None:
             return
-        deadline = time.monotonic()
+        deadline = time.monotonic() + max(timeout_seconds, 0.0)
         line_buffer = bytearray()
         while True:
             line = _read_process_stdout_line(self._live_wire_process.process, timeout_deadline=deadline, line_buffer=line_buffer)
@@ -452,6 +673,29 @@ class Iec61850ClientControlService:
             client_id=self._client_id,
             outcome="closed",
         )
+
+    def _uses_live_wire_client(self) -> bool:
+        return self._endpoint.mode == Iec61850RuntimeMode.MMS and self._live_wire_process is not None
+
+    def _wire_endpoint_id(self) -> str:
+        if self._live_wire_endpoint is not None:
+            return self._live_wire_endpoint.id
+        return self._endpoint.id
+
+    def _reset_runtime_state_for_target_change(self) -> None:
+        if self._live_wire_process is not None:
+            self._stop_live_wire_transport()
+        if self._session_open:
+            self._runtime.close_session(self._session_id)
+        self._session_open = False
+        self._last_read = None
+        self._last_discovery = None
+        self._last_state = None
+        self._last_report = None
+        self._last_plan = None
+        self._last_diagnostic = None
+        self._live_wire_last_frame = None
+        self._live_wire_last_diagnostic = None
 
     def _read_live_wire_process_frame_response(self, frame_kind: str, timeout_seconds: float = 5.0) -> bytes:
         if self._live_wire_process is None or self._live_wire_process.process.stdout is None:
@@ -645,6 +889,219 @@ def _build_discovery_structure(
     }
 
 
+def _build_target_endpoint_and_candidate(request: Iec61850ClientTargetRequest) -> tuple[Iec61850DeviceEndpoint, Iec61850ReportControlCandidate]:
+    mode = request.mode.strip().lower()
+    if mode == "simulator":
+        return _default_endpoint(), _default_candidate()
+    if mode not in {"mms", "external-mms"}:
+        raise Iec61850ReportRuntimeError("CLIENT_TARGET_MODE_INVALID", "IEC 61850 client target mode must be simulator or external-mms.")
+    host = request.host.strip()
+    ied_name = request.ied_name.strip()
+    if not host:
+        raise Iec61850ReportRuntimeError("CLIENT_TARGET_HOST_REQUIRED", "IEC 61850 external MMS target host is required.")
+    if request.port <= 0 or request.port > 65535:
+        raise Iec61850ReportRuntimeError("CLIENT_TARGET_PORT_INVALID", "IEC 61850 external MMS target port must be in range 1..65535.")
+    if not ied_name:
+        raise Iec61850ReportRuntimeError("CLIENT_TARGET_IED_REQUIRED", "IEC 61850 external MMS target IED name is required.")
+    if request.scl_path is None or not request.scl_path.strip():
+        raise Iec61850ReportRuntimeError("CLIENT_TARGET_SCL_REQUIRED", "IEC 61850 external MMS target requires an SCD/SCL path.")
+    scl_path = Path(request.scl_path.strip())
+    if not scl_path.is_file():
+        raise Iec61850ReportRuntimeError("CLIENT_TARGET_SCL_NOT_FOUND", f"IEC 61850 SCD/SCL file was not found: {scl_path}.")
+    candidate = _candidate_from_scd(scl_path, ied_name, request.access_point_name.strip() or "AP1")
+    endpoint = Iec61850DeviceEndpoint(
+        id=f"mms:{ied_name}@{host}:{request.port}",
+        mode=Iec61850RuntimeMode.MMS,
+        ied_name=ied_name,
+        access_point_name=candidate.access_point_name,
+        host=host,
+        port=request.port,
+    )
+    return endpoint, candidate
+
+
+def _candidate_from_scd(scl_path: Path, ied_name: str, fallback_access_point: str) -> Iec61850ReportControlCandidate:
+    try:
+        root = ET.parse(scl_path).getroot()
+    except ET.ParseError as exc:
+        raise Iec61850ReportRuntimeError("CLIENT_TARGET_SCL_PARSE_FAILED", f"IEC 61850 SCD/SCL parse failed: {exc}.") from exc
+
+    ied = _find_child_by_attr(root, "IED", "name", ied_name)
+    if ied is None:
+        raise Iec61850ReportRuntimeError("CLIENT_TARGET_IED_NOT_FOUND", f'IED "{ied_name}" was not found in {scl_path}.')
+
+    for access_point in _iter_children(ied, "AccessPoint"):
+        access_point_name = access_point.attrib.get("name") or fallback_access_point
+        server = _first_child(access_point, "Server")
+        if server is None:
+            continue
+        for ldevice in _iter_children(server, "LDevice"):
+            logical_device_inst = ldevice.attrib.get("inst", "").strip()
+            if not logical_device_inst:
+                continue
+            for logical_node in _iter_children(ldevice, None):
+                if _local_name(logical_node.tag) not in {"LN0", "LN"}:
+                    continue
+                logical_node_name = _logical_node_name(logical_node)
+                data_sets = {item.attrib.get("name"): item for item in _iter_children(logical_node, "DataSet") if item.attrib.get("name")}
+                for report in _iter_children(logical_node, "ReportControl"):
+                    report_name = report.attrib.get("name", "").strip()
+                    if not report_name:
+                        continue
+                    data_set_name = report.attrib.get("datSet", "").strip()
+                    data_set = data_sets.get(data_set_name)
+                    signals = _data_set_members(logical_device_inst, data_set) if data_set is not None else ()
+                    return Iec61850ReportControlCandidate(
+                        id=f"{ied_name}:{logical_device_inst}/{logical_node_name}.{report_name}",
+                        ied_name=ied_name,
+                        access_point_name=access_point_name,
+                        logical_device_inst=logical_device_inst,
+                        logical_node_name=logical_node_name,
+                        report_control_name=report_name,
+                        report_kind=Iec61850ReportKind.BUFFERED if _bool_attr(report, "buffered", False) else Iec61850ReportKind.UNBUFFERED,
+                        rpt_id=report.attrib.get("rptID"),
+                        data_set_ref=f"{ied_name}{logical_device_inst}/{logical_node_name}.{data_set_name}" if data_set_name else None,
+                        conf_rev=report.attrib.get("confRev"),
+                        indexed=_bool_attr(report, "indexed", True),
+                        buffer_time_ms=_int_attr(report, "bufTime"),
+                        integrity_period_ms=_int_attr(report, "intgPd"),
+                        trigger_options=_trigger_options(report),
+                        optional_fields=_optional_fields(report),
+                        signals=signals or (Iec61850DataSetMember(reference=f"{logical_device_inst}/{logical_node_name}", fc=None),),
+                    )
+    raise Iec61850ReportRuntimeError("CLIENT_TARGET_REPORT_CONTROL_NOT_FOUND", f'IED "{ied_name}" has no ReportControl in {scl_path}.')
+
+
+def _build_wire_discovery_structure(endpoint: Iec61850DeviceEndpoint, candidate: Iec61850ReportControlCandidate, command: str) -> dict:
+    signal_items = [{"reference": signal.reference, "fc": signal.fc} for signal in candidate.signals]
+    return {
+        "schema": "unitlab.iec61850.client.wire-discovery.v1",
+        "command": command,
+        "endpoint": {
+            "id": endpoint.id,
+            "mode": endpoint.mode.value,
+            "iedName": endpoint.ied_name,
+            "accessPointName": endpoint.access_point_name,
+            "host": endpoint.host,
+            "port": endpoint.port,
+        },
+        "logicalDevices": [{"iedName": candidate.ied_name, "inst": candidate.logical_device_inst, "reference": f"{candidate.ied_name}{candidate.logical_device_inst}"}],
+        "logicalNodes": [{"logicalDeviceInst": candidate.logical_device_inst, "name": candidate.logical_node_name, "reference": f"{candidate.ied_name}{candidate.logical_device_inst}/{candidate.logical_node_name}"}],
+        "dataSets": [{"reference": candidate.data_set_ref, "members": signal_items, "memberCount": len(signal_items)}],
+        "reportControls": [{"id": candidate.id, "name": candidate.report_control_name, "kind": candidate.report_kind.value, "rptId": candidate.rpt_id, "dataSetRef": candidate.data_set_ref, "confRev": candidate.conf_rev, "indexed": candidate.indexed, "bufferTimeMs": candidate.buffer_time_ms, "integrityPeriodMs": candidate.integrity_period_ms}],
+        "signals": signal_items,
+    }
+
+
+def _data_set_members(default_ld_inst: str, data_set: ET.Element | None) -> tuple[Iec61850DataSetMember, ...]:
+    if data_set is None:
+        return ()
+    members: list[Iec61850DataSetMember] = []
+    for fcda in _iter_children(data_set, "FCDA"):
+        ld_inst = fcda.attrib.get("ldInst") or default_ld_inst
+        ln_class = fcda.attrib.get("lnClass", "")
+        ln_inst = fcda.attrib.get("lnInst", "")
+        prefix = fcda.attrib.get("prefix", "")
+        ln_name = f"{prefix}{ln_class}{ln_inst}"
+        do_name = fcda.attrib.get("doName", "")
+        da_name = fcda.attrib.get("daName", "")
+        fc = fcda.attrib.get("fc")
+        object_name = do_name if not da_name else f"{do_name}.{da_name}"
+        reference = f"{ld_inst}/{ln_name}.{object_name}[{fc}]" if object_name and fc else f"{ld_inst}/{ln_name}"
+        members.append(Iec61850DataSetMember(reference=reference, fc=fc))
+    return tuple(members)
+
+
+def _trigger_options(report: ET.Element) -> Iec61850RuntimeTriggerOptions:
+    trg_ops = _first_child(report, "TrgOps")
+    return Iec61850RuntimeTriggerOptions(
+        data_change=_bool_attr(trg_ops, "dchg", None),
+        quality_change=_bool_attr(trg_ops, "qchg", None),
+        data_update=_bool_attr(trg_ops, "dupd", None),
+        periodic=_bool_attr(trg_ops, "period", None),
+        general_interrogation=_bool_attr(trg_ops, "gi", None),
+    )
+
+
+def _optional_fields(report: ET.Element) -> Iec61850OptionalFields:
+    opt_fields = _first_child(report, "OptFields")
+    return Iec61850OptionalFields(
+        sequence_number=_bool_attr(opt_fields, "seqNum", None),
+        timestamp=_bool_attr(opt_fields, "timeStamp", None),
+        reason_code=_bool_attr(opt_fields, "reasonCode", None),
+        data_set_name=_bool_attr(opt_fields, "dataSet", None),
+        data_reference=_bool_attr(opt_fields, "dataRef", None),
+        entry_id=_bool_attr(opt_fields, "entryID", None),
+        config_revision=_bool_attr(opt_fields, "configRef", None),
+        buffer_overflow=_bool_attr(opt_fields, "bufOvfl", None),
+    )
+
+
+def _selected_signal_address(candidate: Iec61850ReportControlCandidate) -> str:
+    first = candidate.signals[0].reference if candidate.signals else f"{candidate.logical_device_inst}/{candidate.logical_node_name}"
+    return f"{candidate.ied_name}{first}"
+
+
+def _logical_node_name(element: ET.Element) -> str:
+    if _local_name(element.tag) == "LN0":
+        return "LLN0"
+    return f"{element.attrib.get('prefix', '')}{element.attrib.get('lnClass', '')}{element.attrib.get('inst', '')}"
+
+
+def _bool_attr(element: ET.Element | None, name: str, default: bool | None) -> bool | None:
+    if element is None or name not in element.attrib:
+        return default
+    value = element.attrib[name].strip().lower()
+    if value in {"true", "1"}:
+        return True
+    if value in {"false", "0"}:
+        return False
+    return default
+
+
+def _int_attr(element: ET.Element, name: str) -> int | None:
+    value = element.attrib.get(name)
+    if value is None or not value.strip():
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
+def _find_child_by_attr(element: ET.Element, tag: str, attr: str, value: str) -> ET.Element | None:
+    for child in element.iter():
+        if _local_name(child.tag) == tag and child.attrib.get(attr) == value:
+            return child
+    return None
+
+
+def _first_child(element: ET.Element, tag: str) -> ET.Element | None:
+    for child in _iter_children(element, tag):
+        return child
+    return None
+
+
+def _iter_children(element: ET.Element, tag: str | None):
+    for child in list(element):
+        if tag is None or _local_name(child.tag) == tag:
+            yield child
+
+
+def _local_name(tag: str) -> str:
+    if "}" in tag:
+        return tag.rsplit("}", 1)[1]
+    return tag
+
+
+def _compact_probe_output(result) -> str:
+    output = ((result.stdout or "") + (result.stderr or "")).strip()
+    if not output:
+        return "probe completed"
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    return " | ".join(lines[:8])
+
+
 def _utc_now() -> datetime:
     return datetime.now(UTC)
 
@@ -715,8 +1172,8 @@ def _build_subscription_plan(candidate: Iec61850ReportControlCandidate) -> Iec61
                         candidate=candidate,
                         matched_signals=(
                             Iec61850ReportSubscriptionPlanSignal(
-                                selected_signal=Iec61850SelectedSignal(id="sig-1", address="IED1LD0/XCBR1/Pos/stVal[ST]"),
-                                model_reference="LD0/XCBR1.Pos.stVal[ST]",
+                                selected_signal=Iec61850SelectedSignal(id="sig-1", address=_selected_signal_address(candidate)),
+                                model_reference=candidate.signals[0].reference if candidate.signals else f"{candidate.logical_device_inst}/{candidate.logical_node_name}",
                                 ied_name=candidate.ied_name,
                                 match_kind="exact",
                             ),

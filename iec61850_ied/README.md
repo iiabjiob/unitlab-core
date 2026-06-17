@@ -137,25 +137,32 @@ For SCD-backed real-device debugging, start one selected IED model and probe it 
 iec61850_ied/build-libiec61850/unitlab-iec61850-ied-sim \
   --scl /workspace/.refs/sld-rev2.scd \
   --ied KINTE13LVC01 \
-  --bind 127.0.0.1 \
-  --port 12448
+  --bind 0.0.0.0 \
+  --port 12447
 
 iec61850_ied/build-libiec61850/unitlab-iec61850-ied-sim \
   --scl /workspace/.refs/sld-rev2.scd \
   --ied KINTE13LVC01 \
   --bind 127.0.0.1 \
-  --port 12448 \
+  --port 12447 \
   --discover-probe
 
 iec61850_ied/build-libiec61850/unitlab-iec61850-ied-sim \
   --scl /workspace/.refs/sld-rev2.scd \
   --ied KINTE13LVC01 \
   --bind 127.0.0.1 \
-  --port 12448 \
+  --port 12447 \
   --metadata-probe
 ```
 
-`--discover-probe`, `--metadata-probe`, and `--gi-probe` connect to an already running endpoint. They do not start an MMS server themselves. Capture filter: `tcp port 12448`.
+`--discover-probe`, `--metadata-probe`, and `--gi-probe` connect to an already running endpoint. They do not start an MMS server themselves. Capture filter: `tcp port 12447`.
+
+The debug client page can now target this external MMS endpoint before capture:
+
+1. Set host to `host.docker.internal`, port to `12447`, IED to `KINTE13LVC01`, and SCD path to `/workspace/.refs/sld-rev2.scd`.
+2. Click `Use external MMS`. The backend parses the SCD and selects the first ReportControl for the IED, currently `KINTE13LVC01CTRL/LLN0.brcbA` from DataSet `RCB1`.
+3. Run `Discover`, `RptEna`, `GI`, and `Disconnect`. In external mode `Discover` and `RptEna` launch the libIEC61850-backed metadata probe against the configured endpoint, while `GI` launches the GI probe. `Start wire` is for the UnitLab native wire server path and should stay disabled for external MMS targets.
+4. Save the Wireshark capture as the golden artifact for the SCD-backed client flow.
 
 Capture each run separately, then diff the pcaps only after confirming the same browse tree, datasets, report-control names, and NamPlt namespace fields are present on both wires.
 

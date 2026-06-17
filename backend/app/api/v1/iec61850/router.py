@@ -4,6 +4,7 @@ import asyncio
 import json
 import uuid
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from pydantic import BaseModel
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
@@ -33,7 +34,7 @@ from app.services.iec61850 import (
     Iec61850SqlAlchemySclImportRepository,
     create_scl_cli_compiler_from_settings,
 )
-from app.services.iec61850.client_control import get_iec61850_client_control_service
+from app.services.iec61850.client_control import Iec61850ClientTargetRequest, get_iec61850_client_control_service
 from app.services.iec61850.report_runtime import Iec61850ReportRuntimeError
 from app.services.iec61850.virtual_mms_server import get_virtual_mms_server_service
 
@@ -41,6 +42,15 @@ router = APIRouter(prefix="/api/v1/iec61850/client", tags=["IEC 61850 Client"])
 scl_router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/iec61850", tags=["IEC 61850 SCL"])
 logger = get_logger("api.iec61850")
 _scl_import_batch_jobs: dict[str, dict] = {}
+
+
+class Iec61850ClientTargetRequestSchema(BaseModel):
+    mode: str
+    host: str = "host.docker.internal"
+    port: int = 12447
+    ied_name: str = "KINTE13LVC01"
+    scl_path: str | None = "/workspace/.refs/sld-rev2.scd"
+    access_point_name: str = "AP1"
 
 
 @router.get("/state")
@@ -57,6 +67,19 @@ async def client_transcript() -> dict:
 @router.post("/transcript/clear")
 async def clear_client_transcript() -> dict:
     return jsonable_encoder(get_iec61850_client_control_service().clear_transcript())
+
+
+@router.post("/target")
+async def configure_client_target(payload: Iec61850ClientTargetRequestSchema) -> dict:
+    request = Iec61850ClientTargetRequest(
+        mode=payload.mode,
+        host=payload.host,
+        port=payload.port,
+        ied_name=payload.ied_name,
+        scl_path=payload.scl_path,
+        access_point_name=payload.access_point_name,
+    )
+    return _run_action("configure-target", lambda: get_iec61850_client_control_service().configure_target(request))
 
 
 @router.post("/session/open")

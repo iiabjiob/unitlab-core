@@ -165,6 +165,15 @@ export type Iec61850ClientEvent = {
   message: string | null
 }
 
+export type Iec61850ClientTargetPayload = {
+  mode: "simulator" | "external-mms"
+  host?: string
+  port?: number
+  ied_name?: string
+  scl_path?: string | null
+  access_point_name?: string
+}
+
 export type Iec61850ClientState = {
   session_id: string
   client_id: string
@@ -200,6 +209,7 @@ export type Iec61850ClientState = {
   transcript: Iec61850ClientEvent[]
   last_diagnostic: Iec61850ClientDiagnostic | null
   live_wire_open: boolean
+  live_wire_control_open: boolean
   live_wire_endpoint: {
     id: string
     mode: string
@@ -305,6 +315,10 @@ export const Iec61850ClientAPI = {
 
   clearTranscript() {
     return httpData.post<Iec61850ClientState>(`${API_V1}/iec61850/client/transcript/clear`)
+  },
+
+  configureTarget(payload: Iec61850ClientTargetPayload) {
+    return httpData.post<Iec61850ClientState>(`${API_V1}/iec61850/client/target`, payload)
   },
 
   openSession() {

@@ -121,7 +121,7 @@ Validation:
 
 ## Slice 3: Full Logical Model Discovery
 
-Status: in progress.
+Status: complete.
 
 Closed in current slice:
 
@@ -139,10 +139,15 @@ Closed in current slice:
 - Session tests cover dynamic growth and reset for logical devices, logical nodes, data names, leaf references, and mapped report entries.
 - Real TCP GI smoke now also exercises the fixture-backed discovery/report path with deterministic model ordering checks.
 - Fixture-backed discover smoke now snapshots deterministic logical-device, dataset, and BRCB ordering.
+- SCD-backed external MMS capture was recorded for `/workspace/.refs/sld-rev2.scd`, IED `KINTE13LVC01`, endpoint `host.docker.internal:12447`, ReportControl `KINTE13LVC01CTRL/LLN0.brcbA`, DataSet `KINTE13LVC01CTRL/LLN0.RCB1`, with 9 DataSet members.
+- UnitLab client golden capture artifact: `iec61850_ied/artifacts/mms-client-discover-rptEna-GI.pcapng` (`SHA256 ae86f17253fffb06158080cca09e2605627c8945476e11bdc49ddfb18b008984`, 4472 packets, 30.329 s).
+- IEDScout baseline capture artifact for the same libIEC61850 server/SCD target: `iec61850_ied/artifacts/iedScout-discover-rptEna-GI.pcapng` (`SHA256 0e5acecbfd6e0479839ec40e0675cb4710fbf8ae872cf81ec89e2a773b36f007`, 408 packets, 16.434 s).
+- Local `tshark -d tcp.port==12447,tpkt` validation sees COTP connect, MMS initiate, GetNameList/attributes requests, ReportControl reads, writes, and GI/report traffic in the UnitLab capture.
+- IEDScout capture confirms the same MMS association path and model namespace, including `KINTE13LVC01CTRL`, `LLN0$RCB1`, `LLN0$RCB2`, `LLN0$BR`, and repeated `LLN0$BR$brcbA` access. IEDScout is not byte/sequence-identical to the UnitLab probe because it performs a broader full-model browse before RCB/GI operations; the current comparison is behavior-level only.
 
-Remaining:
+Remaining follow-up:
 
-- External vendor golden-frame validation from saved IEDScout/Wireshark captures is not automated yet.
+- Automate behavior-level validation for saved pcapng artifacts; current golden-frame validation is manual/CLI-assisted.
 
 Goal: build a useful IEC 61850 model, not just enough state to subscribe to one report.
 

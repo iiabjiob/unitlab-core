@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import subprocess
 
 import pytest
 
@@ -299,3 +300,110 @@ def test_debug_connect_disconnect_are_idempotent_for_debug_view():
     assert disconnected.session_open is False
     assert disconnected_again.session_open is False
     assert disconnected_again.transcript[-1].outcome == "already-disconnected"
+
+
+
+def test_client_control_configures_external_mms_target_from_scd(tmp_path) -> None:
+    scl_path = tmp_path / "target.scd"
+    scl_path.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<SCL xmlns="http://www.iec.ch/61850/2003/SCL">
+  <IED name="KINTE13LVC01">
+    <AccessPoint name="AP1">
+      <Server>
+        <LDevice inst="CTRL">
+          <LN0 lnClass="LLN0" inst="" lnType="T_CTRL">
+            <DataSet name="RCB1">
+              <FCDA ldInst="CTRL" lnClass="XCBR" lnInst="1" doName="Pos" daName="stVal" fc="ST" />
+            </DataSet>
+            <ReportControl name="brcbA" datSet="RCB1" buffered="true" indexed="true" rptID="KINTE13LVC01CTRL/LLN0.brcbA" confRev="10000" bufTime="500" intgPd="0">
+              <TrgOps dchg="true" qchg="true" gi="true" />
+              <OptFields seqNum="true" timeStamp="true" reasonCode="true" dataSet="true" dataRef="true" entryID="true" configRef="true" bufOvfl="true" />
+            </ReportControl>
+          </LN0>
+        </LDevice>
+      </Server>
+    </AccessPoint>
+  </IED>
+</SCL>
+""",
+        encoding="utf-8",
+    )
+    service = Iec61850ClientControlService()
+
+    snapshot = service.configure_target(
+        client_control_module.Iec61850ClientTargetRequest(
+            mode="external-mms",
+            host="host.docker.internal",
+            port=12447,
+            ied_name="KINTE13LVC01",
+            scl_path=str(scl_path),
+        )
+    )
+
+    assert snapshot.endpoint.id == "mms:KINTE13LVC01@host.docker.internal:12447"
+    assert snapshot.endpoint.mode.value == "mms"
+    assert snapshot.candidate.logical_device_inst == "CTRL"
+    assert snapshot.candidate.logical_node_name == "LLN0"
+    assert snapshot.candidate.report_control_name == "brcbA"
+    assert snapshot.candidate.data_set_ref == "KINTE13LVC01CTRL/LLN0.RCB1"
+    assert snapshot.candidate.signals[0].reference == "CTRL/XCBR1.Pos.stVal[ST]"
+    assert snapshot.transcript[-1].kind == "target-configured"
+
+
+def test_external_mms_target_routes_discover_rptena_gi_to_external_probes(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    scl_path = tmp_path / "target.scd"
+    scl_path.write_text(
+        """<SCL xmlns="http://www.iec.ch/61850/2003/SCL">
+  <IED name="KINTE13LVC01"><AccessPoint name="AP1"><Server><LDevice inst="CTRL"><LN0 lnClass="LLN0" inst="" lnType="T_CTRL">
+    <DataSet name="RCB1"><FCDA ldInst="CTRL" lnClass="XCBR" lnInst="1" doName="Pos" daName="stVal" fc="ST" /></DataSet>
+    <ReportControl name="brcbA" datSet="RCB1" buffered="true" indexed="true" rptID="KINTE13LVC01CTRL/LLN0.brcbA" confRev="10000" />
+  </LN0></LDevice></Server></AccessPoint></IED>
+</SCL>""",
+        encoding="utf-8",
+    )
+    service = Iec61850ClientControlService(
+        live_wire_binary_path="/bin/true",
+        live_wire_service_host="host.docker.internal",
+        live_wire_data_port=12447,
+    )
+    service.configure_target(
+        client_control_module.Iec61850ClientTargetRequest(
+            mode="external-mms",
+            host="host.docker.internal",
+            port=12447,
+            ied_name="KINTE13LVC01",
+            scl_path=str(scl_path),
+        )
+    )
+
+    commands: list[tuple[str, ...]] = []
+
+    def fake_run(command, **_kwargs):
+        commands.append(tuple(command))
+        return subprocess.CompletedProcess(command, 0, stdout="unitlab-iec61850-ied-sim: probe accepted\n", stderr="")
+
+    monkeypatch.setattr(client_control_module.subprocess, "run", fake_run)
+
+    service.discover_ied()
+    service.enable_reporting()
+    service.send_general_interrogation()
+    service.disconnect_ied()
+
+    assert [command[-1] for command in commands] == ["--metadata-probe", "--metadata-probe", "--gi-probe"]
+    assert commands[0][:7] == (
+        "/workspace/iec61850_ied/build-libiec61850/unitlab-iec61850-ied-sim",
+        "--scl",
+        str(scl_path),
+        "--ied",
+        "KINTE13LVC01",
+        "--bind",
+        "host.docker.internal",
+    )
+    assert commands[0][7:9] == ("--port", "12447")
+    assert [event.kind for event in service.snapshot().transcript[-4:]] == [
+        "external-ied-discover",
+        "external-report-control-precheck",
+        "external-report-control-gi",
+        "external-ied-disconnect",
+    ]
