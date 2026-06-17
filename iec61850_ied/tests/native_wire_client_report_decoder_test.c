@@ -122,7 +122,7 @@ static int append_test_ber(uint8_t* buffer, size_t buffer_length, size_t* offset
     return 1;
 }
 
-static int build_synthetic_report_frame(size_t value_count, size_t reason_count, uint8_t* buffer, size_t buffer_length, size_t* encoded_length)
+static int build_synthetic_report_frame_ex(size_t value_count, size_t reason_count, size_t unsupported_value_index, uint8_t* buffer, size_t buffer_length, size_t* encoded_length)
 {
     UnitLabMmsDiagnostic diagnostic;
     UnitLabMmsPdu report_pdu;
@@ -143,6 +143,7 @@ static int build_synthetic_report_frame(size_t value_count, size_t reason_count,
     const uint8_t conf_rev[1U] = { 0x07U };
     const uint8_t inclusion[2U] = { 0x06U, 0xc0U };
     const uint8_t zero_value[1U] = { 0x00U };
+    const uint8_t unsupported_value[1U] = { 0xffU };
     const uint8_t reason_gi[2U] = { 0x02U, 0x04U };
 
     unitlab_mms_diagnostic_clear(&diagnostic);
@@ -170,7 +171,11 @@ static int build_synthetic_report_frame(size_t value_count, size_t reason_count,
     }
 
     for (size_t index = 0U; index < value_count; index++) {
-        if (!append_test_ber(report_values, sizeof(report_values), &report_values_length, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 5U, zero_value, sizeof(zero_value), &diagnostic)) {
+        if (index == unsupported_value_index) {
+            if (!append_test_ber(report_values, sizeof(report_values), &report_values_length, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 13U, unsupported_value, sizeof(unsupported_value), &diagnostic)) {
+                return 0;
+            }
+        } else if (!append_test_ber(report_values, sizeof(report_values), &report_values_length, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 5U, zero_value, sizeof(zero_value), &diagnostic)) {
             return 0;
         }
     }
@@ -193,6 +198,11 @@ static int build_synthetic_report_frame(size_t value_count, size_t reason_count,
     return unitlab_mms_build_wire_frame_from_pdu(&report_pdu, scratch, sizeof(scratch), buffer, buffer_length, encoded_length, &diagnostic);
 }
 
+static int build_synthetic_report_frame(size_t value_count, size_t reason_count, uint8_t* buffer, size_t buffer_length, size_t* encoded_length)
+{
+    return build_synthetic_report_frame_ex(value_count, reason_count, (size_t)-1, buffer, buffer_length, encoded_length);
+}
+
 static void assert_synthetic_report_counts(size_t value_count, size_t reason_count, size_t missing_values, size_t extra_values, size_t missing_reasons, size_t extra_reasons)
 {
     UnitLabNativeClientSessionState session;
@@ -211,6 +221,32 @@ static void assert_synthetic_report_counts(size_t value_count, size_t reason_cou
     assert(session.discovered_model.last_report_extra_value_count == extra_values);
     assert(session.discovered_model.last_report_missing_reason_count == missing_reasons);
     assert(session.discovered_model.last_report_extra_reason_count == extra_reasons);
+    assert(session.discovered_model.last_report_dataset_mismatch_count == 0U);
+    assert(session.discovered_model.last_report_unsupported_value_count == 0U);
+    unitlab_native_client_session_reset(&session);
+}
+
+static void assert_synthetic_report_unsupported_value(void)
+{
+    UnitLabNativeClientSessionState session;
+    uint8_t report_bytes[4096U];
+    size_t report_length = 0U;
+
+    assert(build_synthetic_report_frame_ex(2U, 2U, 1U, report_bytes, sizeof(report_bytes), &report_length) == 1);
+    memset(&session, 0, sizeof(session));
+    prepare_discovered_report_model(&session);
+    assert(unitlab_native_wire_client_decode_frame_summary(&session, report_bytes, report_length) == 1);
+    assert(session.discovered_model.last_report_data_ref_count == 2U);
+    assert(session.last_report_entry_count == 2U);
+    assert(session.discovered_model.last_report_value_count == 2U);
+    assert(session.discovered_model.last_report_reason_count == 2U);
+    assert(session.discovered_model.last_report_unsupported_value_count == 1U);
+    assert(session.last_report_entries[0].value_kind == UNITLAB_NATIVE_REPORT_VALUE_INTEGER);
+    assert(session.last_report_entries[1].value_kind == UNITLAB_NATIVE_REPORT_VALUE_UNSUPPORTED);
+    assert(session.discovered_model.last_report_missing_value_count == 0U);
+    assert(session.discovered_model.last_report_extra_value_count == 0U);
+    assert(session.discovered_model.last_report_missing_reason_count == 0U);
+    assert(session.discovered_model.last_report_extra_reason_count == 0U);
     assert(session.discovered_model.last_report_dataset_mismatch_count == 0U);
     unitlab_native_client_session_reset(&session);
 }
@@ -307,6 +343,7 @@ int main(void)
     assert_synthetic_report_counts(3U, 2U, 0U, 1U, 0U, 0U);
     assert_synthetic_report_counts(2U, 1U, 0U, 0U, 1U, 0U);
     assert_synthetic_report_counts(2U, 3U, 0U, 0U, 0U, 1U);
+    assert_synthetic_report_unsupported_value();
 
     unitlab_free_ied_model_plan(&plan);
     return 0;
