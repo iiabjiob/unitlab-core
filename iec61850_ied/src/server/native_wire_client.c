@@ -1350,6 +1350,18 @@ static void emit_mms_frame_summary(UnitLabNativeClientSessionState* session, con
     }
 }
 
+int unitlab_native_wire_client_decode_frame_summary(
+    UnitLabNativeClientSessionState* session,
+    const uint8_t* frame,
+    size_t frame_length)
+{
+    if (session == NULL || frame == NULL || frame_length == 0U) {
+        return 0;
+    }
+    emit_mms_frame_summary(session, frame, frame_length);
+    return session->subscription_model.last_report_received ? 1 : 0;
+}
+
 static int format_hex_response(const uint8_t* frame, size_t frame_length, char* response, size_t response_length)
 {
     static const char hex_digits[] = "0123456789abcdef";

@@ -734,6 +734,7 @@ UnitLabNativeDiscoveredDataSet* unitlab_native_client_session_append_data_set(Un
     snprintf(data_set->reference, sizeof(data_set->reference), "%s", data_set_reference);
     data_set->member_start = session->discovered_data_set_member_count;
     session->discovered_data_set_count++;
+    session->discovered_model.data_set_count = session->discovered_data_set_count;
     return data_set;
 }
 

@@ -1,16 +1,23 @@
 #ifndef UNITLAB_IEC61850_IED_NATIVE_WIRE_CLIENT_H
 #define UNITLAB_IEC61850_IED_NATIVE_WIRE_CLIENT_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 #include "model/model_loader.h"
 #include "server/unitlab_mms_server_runtime.h"
+#include "server/native_wire_client_session.h"
 
 typedef struct UnitLabNativeWireClientOptions {
     const char* initial_read_domain;
     const char* initial_read_item;
     uint32_t initial_read_invoke_id;
 } UnitLabNativeWireClientOptions;
+
+int unitlab_native_wire_client_decode_frame_summary(
+    UnitLabNativeClientSessionState* session,
+    const uint8_t* frame,
+    size_t frame_length);
 
 int unitlab_run_native_wire_client_with_options(
     const UnitLabIedServerConfig* config,
