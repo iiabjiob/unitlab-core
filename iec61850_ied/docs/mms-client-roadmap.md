@@ -177,6 +177,8 @@ Validation:
 
 ## Slice 4: RCB Lifecycle
 
+Status: complete.
+
 Goal: support real BRCB/URCB subscription flows, not only the simple local-server path.
 
 Closed in current slice:
@@ -216,6 +218,8 @@ Validation:
 
 ## Slice 5: Report Decoder Hardening
 
+Status: in progress.
+
 Goal: decode real vendor reports into stable signal updates.
 
 Change boundary:
@@ -233,6 +237,12 @@ Change boundary:
   - structured values and arrays.
 - Preserve raw bytes when typed decoding is incomplete.
 - Detect dataset/report mismatch using `DatSet`, `ConfRev`, inclusion bitstring, and `dataRef`.
+
+Closed in current slice:
+
+- Native report summaries now expose explicit diagnostic counters for Dataset member mismatches, missing/extra values, and missing/extra reason codes.
+- `mms-summary` emits named diagnostic lines for `DATASET_NOT_DISCOVERED`, `DATASET_MEMBER_MISMATCH`, `MISSING_REPORT_VALUES`, `EXTRA_REPORT_VALUES`, `MISSING_REPORT_REASONS`, and `EXTRA_REPORT_REASONS`.
+- Session reset clears report diagnostic counters so stale report mismatch state cannot leak into the next report.
 
 Acceptance criteria:
 

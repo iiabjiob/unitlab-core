@@ -514,6 +514,20 @@ int main(void)
         if (!expect_true(report_entry->quality_code == 0x0000U && strcmp(report_entry->quality_validity, "good") == 0, "expected report entry quality metadata")) {
             return 1;
         }
+        session.discovered_model.last_report_dataset_mismatch_count = 2U;
+        session.discovered_model.last_report_missing_value_count = 1U;
+        session.discovered_model.last_report_extra_value_count = 3U;
+        session.discovered_model.last_report_missing_reason_count = 4U;
+        session.discovered_model.last_report_extra_reason_count = 5U;
+        if (!expect_true(
+                session.discovered_model.last_report_dataset_mismatch_count == 2U
+                && session.discovered_model.last_report_missing_value_count == 1U
+                && session.discovered_model.last_report_extra_value_count == 3U
+                && session.discovered_model.last_report_missing_reason_count == 4U
+                && session.discovered_model.last_report_extra_reason_count == 5U,
+                "expected report diagnostic counters to be retained")) {
+            return 1;
+        }
         report_entry->value_kind = UNITLAB_NATIVE_REPORT_VALUE_FLOAT;
         report_entry->floating_value = 12.5;
         report_entry->raw_tag_number = 7U;
@@ -526,6 +540,15 @@ int main(void)
         }
         unitlab_native_client_session_reset_last_report(&session);
         if (!expect_true(session.last_report_entry_count == 0U && session.discovered_model.last_report_value_count == 0U, "expected last report reset to clear mapped entries")) {
+            return 1;
+        }
+        if (!expect_true(
+                session.discovered_model.last_report_dataset_mismatch_count == 0U
+                && session.discovered_model.last_report_missing_value_count == 0U
+                && session.discovered_model.last_report_extra_value_count == 0U
+                && session.discovered_model.last_report_missing_reason_count == 0U
+                && session.discovered_model.last_report_extra_reason_count == 0U,
+                "expected last report reset to clear diagnostic counters")) {
             return 1;
         }
     }

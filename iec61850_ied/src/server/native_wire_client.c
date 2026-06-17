@@ -96,7 +96,7 @@ static void emit_subscription_summary(const UnitLabNativeClientSessionState* ses
         return;
     }
     printf(
-        "native-wire-client: subscription-summary phase=%s rcb=%s/%s rcb-index=%zu rptEna=%s rptEna-invoke=%u giRequested=%s gi-invoke=%u lastReportReceived=%s asyncReports=%zu lastReportValues=%zu lastReportDataRefs=%zu lastReportMatchedDataRefs=%zu lastReportReasons=%zu\n",
+        "native-wire-client: subscription-summary phase=%s rcb=%s/%s rcb-index=%zu rptEna=%s rptEna-invoke=%u giRequested=%s gi-invoke=%u lastReportReceived=%s asyncReports=%zu lastReportValues=%zu lastReportDataRefs=%zu lastReportMatchedDataRefs=%zu lastReportReasons=%zu lastReportDatasetMismatches=%zu lastReportMissingValues=%zu lastReportExtraValues=%zu lastReportMissingReasons=%zu lastReportExtraReasons=%zu\n",
         phase != NULL ? phase : "snapshot",
         session->subscription_model.rcb_domain[0] != '\0' ? session->subscription_model.rcb_domain : "<none>",
         session->subscription_model.rcb_item[0] != '\0' ? session->subscription_model.rcb_item : "<none>",
@@ -110,7 +110,12 @@ static void emit_subscription_summary(const UnitLabNativeClientSessionState* ses
         session->discovered_model.last_report_value_count,
         session->discovered_model.last_report_data_ref_count,
         session->discovered_model.last_report_matched_data_ref_count,
-        session->discovered_model.last_report_reason_count);
+        session->discovered_model.last_report_reason_count,
+        session->discovered_model.last_report_dataset_mismatch_count,
+        session->discovered_model.last_report_missing_value_count,
+        session->discovered_model.last_report_extra_value_count,
+        session->discovered_model.last_report_missing_reason_count,
+        session->discovered_model.last_report_extra_reason_count);
     fflush(stdout);
 }
 
@@ -133,7 +138,7 @@ static void emit_discovered_model_summary(const UnitLabNativeClientSessionState*
         }
     }
     printf(
-        "native-wire-client: model-summary phase=%s domain=%s logical-devices=%zu logical-nodes=%zu data-names=%zu typed-data-names=%zu data-components=%zu typed-data-components=%zu typed-data-nodes=%zu leaf-refs=%zu datasets=%zu dataset-members=%zu brcbs=%zu last-report-entries=%zu last-report-dataRefs=%zu last-report-values=%zu last-report-reasons=%zu last-report-matched-dataRefs=%zu last-report-rptId=%s last-report-datSet=%s\n",
+        "native-wire-client: model-summary phase=%s domain=%s logical-devices=%zu logical-nodes=%zu data-names=%zu typed-data-names=%zu data-components=%zu typed-data-components=%zu typed-data-nodes=%zu leaf-refs=%zu datasets=%zu dataset-members=%zu brcbs=%zu last-report-entries=%zu last-report-dataRefs=%zu last-report-values=%zu last-report-reasons=%zu last-report-matched-dataRefs=%zu last-report-dataset-mismatches=%zu last-report-missing-values=%zu last-report-extra-values=%zu last-report-missing-reasons=%zu last-report-extra-reasons=%zu last-report-rptId=%s last-report-datSet=%s\n",
         phase != NULL ? phase : "snapshot",
         session->discovered_model.domain[0] != '\0' ? session->discovered_model.domain : "<none>",
         session->discovered_model.logical_device_count,
@@ -152,6 +157,11 @@ static void emit_discovered_model_summary(const UnitLabNativeClientSessionState*
         session->discovered_model.last_report_value_count,
         session->discovered_model.last_report_reason_count,
         session->discovered_model.last_report_matched_data_ref_count,
+        session->discovered_model.last_report_dataset_mismatch_count,
+        session->discovered_model.last_report_missing_value_count,
+        session->discovered_model.last_report_extra_value_count,
+        session->discovered_model.last_report_missing_reason_count,
+        session->discovered_model.last_report_extra_reason_count,
         session->discovered_model.last_report_rpt_id[0] != '\0' ? session->discovered_model.last_report_rpt_id : "<none>",
         session->discovered_model.last_report_data_set[0] != '\0' ? session->discovered_model.last_report_data_set : "<none>");
     fflush(stdout);
@@ -1035,6 +1045,11 @@ static void emit_information_report_summary(UnitLabNativeClientSessionState* ses
     size_t value_count = 0U;
     size_t reason_count = 0U;
     size_t matched_data_ref_count = 0U;
+    size_t dataset_mismatch_count = 0U;
+    size_t missing_value_count = 0U;
+    size_t extra_value_count = 0U;
+    size_t missing_reason_count = 0U;
+    size_t extra_reason_count = 0U;
     const uint8_t* opt_flds = NULL;
     size_t opt_flds_length = 0U;
     int has_data_reference = 0;
@@ -1173,6 +1188,8 @@ static void emit_information_report_summary(UnitLabNativeClientSessionState* ses
                 UnitLabNativeLastReportEntry* entry = NULL;
                 if (data_set_matched) {
                     matched_data_ref_count++;
+                } else if (copied) {
+                    dataset_mismatch_count++;
                 }
                 if (copied) {
                     entry = unitlab_native_client_session_append_last_report_entry(session, reference, data_set_matched, data_ref_count);
@@ -1237,12 +1254,39 @@ static void emit_information_report_summary(UnitLabNativeClientSessionState* ses
             reason_count++;
         }
     }
+    if (!has_data_reference && !report_data_set_discovered) {
+        printf("mms-summary: report.diagnostic code=DATASET_NOT_DISCOVERED datSet=%s message=report cannot be mapped without dataRef or discovered DatSet\n", session->discovered_model.last_report_data_set[0] != '\0' ? session->discovered_model.last_report_data_set : "<none>");
+    }
+    if (session->last_report_entry_count > value_count) {
+        missing_value_count = session->last_report_entry_count - value_count;
+        printf("mms-summary: report.diagnostic code=MISSING_REPORT_VALUES mapped-entry-count=%zu value-count=%zu missing=%zu\n", session->last_report_entry_count, value_count, missing_value_count);
+    } else if (value_count > session->last_report_entry_count) {
+        extra_value_count = value_count - session->last_report_entry_count;
+        printf("mms-summary: report.diagnostic code=EXTRA_REPORT_VALUES mapped-entry-count=%zu value-count=%zu extra=%zu\n", session->last_report_entry_count, value_count, extra_value_count);
+    }
+    if (has_reason) {
+        if (session->last_report_entry_count > reason_count) {
+            missing_reason_count = session->last_report_entry_count - reason_count;
+            printf("mms-summary: report.diagnostic code=MISSING_REPORT_REASONS mapped-entry-count=%zu reason-count=%zu missing=%zu\n", session->last_report_entry_count, reason_count, missing_reason_count);
+        } else if (reason_count > session->last_report_entry_count) {
+            extra_reason_count = reason_count - session->last_report_entry_count;
+            printf("mms-summary: report.diagnostic code=EXTRA_REPORT_REASONS mapped-entry-count=%zu reason-count=%zu extra=%zu\n", session->last_report_entry_count, reason_count, extra_reason_count);
+        }
+    }
+    if (dataset_mismatch_count > 0U) {
+        printf("mms-summary: report.diagnostic code=DATASET_MEMBER_MISMATCH datSet=%s mismatches=%zu dataRef-count=%zu\n", session->discovered_model.last_report_data_set[0] != '\0' ? session->discovered_model.last_report_data_set : "<none>", dataset_mismatch_count, data_ref_count);
+    }
     session->discovered_model.last_report_data_ref_count = data_ref_count;
     session->discovered_model.last_report_value_count = value_count;
     session->discovered_model.last_report_reason_count = reason_count;
     session->discovered_model.last_report_matched_data_ref_count = matched_data_ref_count;
+    session->discovered_model.last_report_dataset_mismatch_count = dataset_mismatch_count;
+    session->discovered_model.last_report_missing_value_count = missing_value_count;
+    session->discovered_model.last_report_extra_value_count = extra_value_count;
+    session->discovered_model.last_report_missing_reason_count = missing_reason_count;
+    session->discovered_model.last_report_extra_reason_count = extra_reason_count;
     session->subscription_model.last_report_received = 1;
-    printf("mms-summary: report.dataRef-count=%zu value-count=%zu reason-count=%zu mapped-entry-count=%zu\n", data_ref_count, value_count, reason_count, session->last_report_entry_count);
+    printf("mms-summary: report.dataRef-count=%zu value-count=%zu reason-count=%zu mapped-entry-count=%zu dataset-mismatch-count=%zu missing-value-count=%zu extra-value-count=%zu missing-reason-count=%zu extra-reason-count=%zu\n", data_ref_count, value_count, reason_count, session->last_report_entry_count, dataset_mismatch_count, missing_value_count, extra_value_count, missing_reason_count, extra_reason_count);
     emit_discovered_model_summary(session, "report");
     emit_subscription_summary(session, "report");
     fflush(stdout);
@@ -1836,7 +1880,7 @@ static int native_wire_client_preflight_selected_rcb(
     size_t text_buffer_length,
     UnitLabMmsDiagnostic* diagnostic)
 {
-    if (domain_id == NULL || domain_id[0] == ' ' || rcb_item == NULL || rcb_item[0] == ' ') {
+    if (domain_id == NULL || domain_id[0] == '\0' || rcb_item == NULL || rcb_item[0] == '\0') {
         if (diagnostic != NULL) {
             diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT;
             snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Native wire client RCB preflight requires domain and item.");
@@ -1844,8 +1888,7 @@ static int native_wire_client_preflight_selected_rcb(
         return 0;
     }
     printf(
-        "native-wire-client: %s invoke=%u domain=%s item=%s
-",
+        "native-wire-client: %s invoke=%u domain=%s item=%s\n",
         label != NULL ? label : "rcb-preflight",
         (unsigned)invoke_id,
         domain_id,
@@ -1895,7 +1938,7 @@ static int emit_discovered_rcb_unsigned_step(
     size_t encoded_value_length = 0U;
     int written;
 
-    if (domain_id == NULL || domain_id[0] == ' ' || rcb_item == NULL || rcb_item[0] == ' ' || field_name == NULL || field_name[0] == ' ') {
+    if (domain_id == NULL || domain_id[0] == '\0' || rcb_item == NULL || rcb_item[0] == '\0' || field_name == NULL || field_name[0] == '\0') {
         if (diagnostic != NULL) {
             diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT;
             snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Native wire client discovered RCB write requires domain, RCB item, and field.");
@@ -1919,8 +1962,7 @@ static int emit_discovered_rcb_unsigned_step(
         return 0;
     }
     printf(
-        "native-wire-client: %s invoke=%u domain=%s item=%s value=%u
-",
+        "native-wire-client: %s invoke=%u domain=%s item=%s value=%u\n",
         label != NULL ? label : "rcb-write",
         (unsigned)invoke_id,
         domain_id,
@@ -1951,14 +1993,14 @@ static int emit_discovered_rcb_unsigned_step(
 static int native_wire_client_subscription_is_buffered_rcb(const UnitLabNativeClientSessionState* session)
 {
     return session != NULL
-        && session->subscription_model.rcb_item[0] != ' '
+        && session->subscription_model.rcb_item[0] != '\0'
         && strstr(session->subscription_model.rcb_item, "$BR$") != NULL;
 }
 
 static int native_wire_client_subscription_is_unbuffered_rcb(const UnitLabNativeClientSessionState* session)
 {
     return session != NULL
-        && session->subscription_model.rcb_item[0] != ' '
+        && session->subscription_model.rcb_item[0] != '\0'
         && strstr(session->subscription_model.rcb_item, "$RP$") != NULL;
 }
 
@@ -1986,7 +2028,7 @@ static int native_wire_client_cleanup_selected_subscription(
     }
     domain_id = session->subscription_model.rcb_domain;
     rcb_item = session->subscription_model.rcb_item;
-    if (domain_id[0] == ' ' || rcb_item[0] == ' ') {
+    if (domain_id[0] == '\0' || rcb_item[0] == '\0') {
         return 1;
     }
     if (session->subscription_model.rpt_enabled) {
@@ -2011,8 +2053,8 @@ static int native_wire_client_cleanup_selected_subscription(
     session->subscription_model.selected_rcb_index = 0U;
     session->subscription_model.last_rptena_invoke_id = 0U;
     session->subscription_model.last_gi_invoke_id = 0U;
-    session->subscription_model.rcb_domain[0] = ' ';
-    session->subscription_model.rcb_item[0] = ' ';
+    session->subscription_model.rcb_domain[0] = '\0';
+    session->subscription_model.rcb_item[0] = '\0';
     return 1;
 }
 
@@ -2939,7 +2981,7 @@ int unitlab_run_native_wire_client_with_options(
             continue;
         }
         if (strcmp(command, "close-ied") == 0) {
-            if (!native_wire_client_cleanup_selected_subscription(&session, data_fd, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
+            if (!native_wire_client_cleanup_selected_subscription(&session, data_fd, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &next_invoke_id, &diagnostic)) {
                 state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
                 set_result(result, "NATIVE_WIRE_CLIENT_CLOSE_IED_FAILED", diagnostic.message);
                 goto fail;
@@ -3344,7 +3386,7 @@ int unitlab_run_native_wire_client_with_options(
             continue;
         }
         if (strcmp(command, "disconnect") == 0) {
-            if (!native_wire_client_cleanup_selected_subscription(&session, data_fd, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
+            if (!native_wire_client_cleanup_selected_subscription(&session, data_fd, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &next_invoke_id, &diagnostic)) {
                 state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
                 set_result(result, "NATIVE_WIRE_CLIENT_DISCONNECT_FAILED", diagnostic.message);
                 goto fail;
