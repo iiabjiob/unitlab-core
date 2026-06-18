@@ -59,6 +59,11 @@ type LabelDragState = {
   startX: number
   startY: number
 }
+type ContextMenuState = {
+  x: number
+  y: number
+  kind: "edge" | "static" | "text"
+}
 
 const props = defineProps<{
   model: SwitchgearSldPackageSceneModel
@@ -77,6 +82,7 @@ const draggedEdge = ref<EdgeDragState | null>(null)
 const labelDrag = ref<LabelDragState | null>(null)
 const lineKind = ref<EdgeStyle>("line")
 const lineWeight = ref<EdgeWeight>("normal")
+const contextMenu = ref<ContextMenuState | null>(null)
 
 const diagram = useDiagramEngine(props.model.scene)
 const viewport = useDiagramViewport(diagram, { element: stageRef })
@@ -145,6 +151,8 @@ const selectedStaticSize = computed<DiagramStaticSize | "mixed" | null>(() => {
   }
   return sizes.size === 1 ? [...sizes][0] : "mixed"
 })
+const canShrinkSelectedStatic = computed(() => selectedStaticSize.value === "md" || selectedStaticSize.value === "lg")
+const canGrowSelectedStatic = computed(() => selectedStaticSize.value === "sm" || selectedStaticSize.value === "md")
 const selectedEdgeKind = computed<EdgeStyle | "mixed" | null>(() => {
   if (selectedEdgeIds.value.length === 0) {
     return null
@@ -369,6 +377,7 @@ function setTool(tool: PackageTool) {
   draftLine.value = null
   draggedEdge.value = null
   labelDrag.value = null
+  closeContextMenu()
   if (tool === "line") {
     pointer.setTool("select")
     return
@@ -420,10 +429,6 @@ function autoArrange() {
   fitScene()
 }
 
-function clearSelection() {
-  selection.clearSelection()
-}
-
 function undo() {
   diagram.dispatch({ type: "undo" })
 }
@@ -433,7 +438,65 @@ function redo() {
 }
 
 function deleteSelection() {
+  closeContextMenu()
   diagram.engine.dispatchKeyboardCommand("delete")
+}
+
+function clearSelection() {
+  closeContextMenu()
+  selection.clearSelection()
+}
+
+function closeContextMenu() {
+  contextMenu.value = null
+}
+
+function openContextMenu(event: MouseEvent, kind: ContextMenuState["kind"]) {
+  const stage = stageRef.value
+  if (!stage) {
+    return
+  }
+  const rect = stage.getBoundingClientRect()
+  contextMenu.value = {
+    x: Math.max(12, Math.min(rect.width - 188, event.clientX - rect.left)),
+    y: Math.max(12, Math.min(rect.height - 176, event.clientY - rect.top)),
+    kind,
+  }
+}
+
+function openEdgeContextMenu(event: MouseEvent, edgeId: string) {
+  event.preventDefault()
+  event.stopPropagation()
+  if (!selectedEdgeIds.value.includes(edgeId)) {
+    selection.setSelection([edgeId], edgeId)
+  }
+  closeTextEditorIfNeeded()
+  openContextMenu(event, "edge")
+}
+
+function openStaticContextMenu(event: MouseEvent, shapeId: string) {
+  event.preventDefault()
+  event.stopPropagation()
+  if (!selectedShapeIds.value.includes(shapeId)) {
+    selection.setSelection([shapeId], shapeId)
+  }
+  closeTextEditorIfNeeded()
+  openContextMenu(event, "static")
+}
+
+function openTextContextMenu(event: MouseEvent, textId: string) {
+  event.preventDefault()
+  event.stopPropagation()
+  if (!selectedTextIds.value.includes(textId)) {
+    selection.setSelection([textId], textId)
+  }
+  openContextMenu(event, "text")
+}
+
+function closeTextEditorIfNeeded() {
+  if (textEditor.activeEditor.value) {
+    textEditor.cancelTextEdit()
+  }
 }
 
 function addText() {
@@ -699,6 +762,10 @@ function onStageKeydown(event: KeyboardEvent) {
   }
   if (event.key === "Escape") {
     event.preventDefault()
+    if (contextMenu.value) {
+      closeContextMenu()
+      return
+    }
     if (textEditor.activeEditor.value) {
       textEditor.cancelTextEdit()
       return
@@ -711,6 +778,7 @@ function onStageKeydown(event: KeyboardEvent) {
 }
 
 function beginTextEdit(id: string) {
+  closeContextMenu()
   if (!diagram.engine.canEditText(id)) {
     return
   }
@@ -718,14 +786,17 @@ function beginTextEdit(id: string) {
 }
 
 function commitTextEdit() {
+  closeContextMenu()
   textEditor.commitTextEdit(editableText.value)
 }
 
 function cancelTextEdit() {
+  closeContextMenu()
   textEditor.cancelTextEdit()
 }
 
 function onSvgClick(event: MouseEvent) {
+  closeContextMenu()
   if (activeTool.value !== "line") {
     return
   }
@@ -1181,6 +1252,7 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
         @click="onSvgClick"
         @pointermove="onSvgPointerMove"
         @pointerup="onSvgPointerUp"
+        @contextmenu.prevent="closeContextMenu"
       >
         <defs>
           <pattern id="switchgear-sld-package-grid" :width="24" :height="24" patternUnits="userSpaceOnUse">
@@ -1210,6 +1282,7 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
           :opacity="edgePreview?.edgeId === edge.id ? 0.2 : edge.selected ? 1 : 0.92"
           :marker-end="resolveEdgeKind(edge.id) === 'arrow' ? 'url(#switchgear-sld-package-arrow)' : undefined"
           :style="resolveEdgeKind(edge.id) === 'arrow' ? { color: resolveEdgeStroke(edge.id) } : undefined"
+          @contextmenu.stop.prevent="openEdgeContextMenu($event, edge.id)"
         />
 
         <polyline
@@ -1238,6 +1311,7 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
         <g v-for="shape in visible.projection.value.shapes" :key="shape.id">
           <g
             v-if="resolveStaticMeta(shape.id).kind === 'transformer'"
+            @contextmenu.stop.prevent="openStaticContextMenu($event, shape.id)"
             :transform="`translate(${shape.geometry.bounds.x + shape.geometry.bounds.width / 2} ${shape.geometry.bounds.y + shape.geometry.bounds.height / 2}) rotate(${resolveStaticMeta(shape.id).rotation})`"
           >
             <ellipse
@@ -1261,6 +1335,7 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
           </g>
           <g
             v-else
+            @contextmenu.stop.prevent="openStaticContextMenu($event, shape.id)"
             :transform="`translate(${shape.geometry.bounds.x + shape.geometry.bounds.width / 2} ${shape.geometry.bounds.y + shape.geometry.bounds.height / 2}) rotate(${resolveStaticMeta(shape.id).rotation})`"
           >
             <line x1="0" :y1="-shape.geometry.bounds.height * 0.5" x2="0" y2="0" stroke="var(--color-neutral-700)" stroke-width="2" />
@@ -1315,6 +1390,7 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
           text-anchor="middle"
           dominant-baseline="middle"
           @dblclick.stop="beginTextEdit(text.id)"
+          @contextmenu.stop.prevent="openTextContextMenu($event, text.id)"
         >
           {{ diagram.scene.value.entities.textsById.get(text.id)?.text }}
         </text>
@@ -1343,6 +1419,44 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
           stroke-width="1.5"
         />
       </svg>
+
+      <div
+        v-if="contextMenu"
+        class="switchgear-sld-package-canvas__context-menu"
+        :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
+        @pointerdown.stop
+      >
+        <template v-if="contextMenu.kind === 'edge'">
+          <button type="button" class="switchgear-sld-package-canvas__context-item" @click="rotateSelectedEdges90(); closeContextMenu()">
+            Rotate selected lines 90deg
+          </button>
+          <button type="button" class="switchgear-sld-package-canvas__context-item switchgear-sld-package-canvas__context-item--danger" @click="deleteSelection()">
+            Remove selected lines
+          </button>
+        </template>
+        <template v-else-if="contextMenu.kind === 'static'">
+          <button type="button" class="switchgear-sld-package-canvas__context-item" :disabled="!canShrinkSelectedStatic" @click="setSelectedStaticSize(selectedStaticSize === 'lg' ? 'md' : 'sm'); closeContextMenu()">
+            Shrink selected symbols
+          </button>
+          <button type="button" class="switchgear-sld-package-canvas__context-item" :disabled="!canGrowSelectedStatic" @click="setSelectedStaticSize(selectedStaticSize === 'sm' ? 'md' : 'lg'); closeContextMenu()">
+            Grow selected symbols
+          </button>
+          <button type="button" class="switchgear-sld-package-canvas__context-item" @click="rotateSelectedStatic(); closeContextMenu()">
+            Rotate selected symbols 90deg
+          </button>
+          <button type="button" class="switchgear-sld-package-canvas__context-item switchgear-sld-package-canvas__context-item--danger" @click="deleteSelection()">
+            Remove selected symbols
+          </button>
+        </template>
+        <template v-else>
+          <button type="button" class="switchgear-sld-package-canvas__context-item" @click="selectedTextIds[0] && beginTextEdit(selectedTextIds[0]); closeContextMenu()">
+            Edit text
+          </button>
+          <button type="button" class="switchgear-sld-package-canvas__context-item switchgear-sld-package-canvas__context-item--danger" @click="deleteSelection()">
+            Remove selected text
+          </button>
+        </template>
+      </div>
 
       <textarea
         v-if="textEditor.activeEditor.value"
@@ -1526,6 +1640,43 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
   font-weight: 500;
 }
 
+.switchgear-sld-package-canvas__context-menu {
+  position: absolute;
+  z-index: 3;
+  display: grid;
+  min-width: 13rem;
+  gap: 0.125rem;
+  padding: 0.35rem;
+  border: 1px solid color-mix(in srgb, var(--color-neutral-300) 82%, transparent);
+  border-radius: 0.625rem;
+  background: color-mix(in srgb, var(--color-white) 94%, transparent);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(12px);
+}
+
+.switchgear-sld-package-canvas__context-item {
+  padding: 0.55rem 0.7rem;
+  border: 0;
+  border-radius: 0.45rem;
+  background: transparent;
+  color: var(--color-neutral-700);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+}
+
+.switchgear-sld-package-canvas__context-item:hover:not(:disabled) {
+  background: var(--color-neutral-100);
+}
+
+.switchgear-sld-package-canvas__context-item:disabled {
+  opacity: 0.45;
+}
+
+.switchgear-sld-package-canvas__context-item--danger {
+  color: var(--color-rose-600);
+}
+
 .switchgear-sld-package-canvas__minimap {
   position: absolute;
   right: 1rem;
@@ -1587,6 +1738,23 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
 :global(.dark .switchgear-sld-package-canvas__generated-label),
 :global(.dark .switchgear-sld-package-canvas__text) {
   fill: var(--color-neutral-300);
+}
+
+:global(.dark .switchgear-sld-package-canvas__context-menu) {
+  border-color: color-mix(in srgb, var(--color-neutral-700) 88%, transparent);
+  background: color-mix(in srgb, var(--color-neutral-950) 90%, transparent);
+}
+
+:global(.dark .switchgear-sld-package-canvas__context-item) {
+  color: var(--color-neutral-200);
+}
+
+:global(.dark .switchgear-sld-package-canvas__context-item:hover:not(:disabled)) {
+  background: color-mix(in srgb, var(--color-neutral-800) 82%, transparent);
+}
+
+:global(.dark .switchgear-sld-package-canvas__context-item--danger) {
+  color: var(--color-rose-300);
 }
 
 :global(.dark .switchgear-sld-package-canvas__minimap) {
