@@ -1389,7 +1389,8 @@ typedef enum UnitLabNativeWireClientReadStatus {
     UNITLAB_NATIVE_WIRE_CLIENT_READ_EOF = 0,
     UNITLAB_NATIVE_WIRE_CLIENT_READ_TIMEOUT = -1,
     UNITLAB_NATIVE_WIRE_CLIENT_READ_MALFORMED = -2,
-    UNITLAB_NATIVE_WIRE_CLIENT_READ_SYSTEM_ERROR = -3
+    UNITLAB_NATIVE_WIRE_CLIENT_READ_OVERSIZED = -3,
+    UNITLAB_NATIVE_WIRE_CLIENT_READ_SYSTEM_ERROR = -4
 } UnitLabNativeWireClientReadStatus;
 
 static UnitLabNativeWireClientReadStatus read_tpkt_frame_status(int fd, uint8_t* frame, size_t frame_length, size_t* encoded_length)
@@ -1419,8 +1420,11 @@ static UnitLabNativeWireClientReadStatus read_tpkt_frame_status(int fd, uint8_t*
     }
 
     total_length = (uint16_t)(((uint16_t)header[2] << 8U) | (uint16_t)header[3]);
-    if (total_length < 4U || total_length > frame_length) {
+    if (total_length < 4U) {
         return UNITLAB_NATIVE_WIRE_CLIENT_READ_MALFORMED;
+    }
+    if (total_length > frame_length) {
+        return UNITLAB_NATIVE_WIRE_CLIENT_READ_OVERSIZED;
     }
 
     memcpy(frame, header, sizeof(header));
@@ -1492,6 +1496,9 @@ static void set_association_read_failure_result(UnitLabIedModelLoadResult* resul
         case UNITLAB_NATIVE_WIRE_CLIENT_READ_MALFORMED:
             set_result(result, "NATIVE_WIRE_CLIENT_ASSOCIATION_MALFORMED_FRAME", "Native wire client received a malformed association response frame.");
             break;
+        case UNITLAB_NATIVE_WIRE_CLIENT_READ_OVERSIZED:
+            set_result(result, "NATIVE_WIRE_CLIENT_ASSOCIATION_OVERSIZED_FRAME", "Native wire client received an oversized association response frame.");
+            break;
         case UNITLAB_NATIVE_WIRE_CLIENT_READ_SYSTEM_ERROR:
         default:
             set_result(result, "NATIVE_WIRE_CLIENT_ASSOCIATION_READ_FAILED", "Native wire client could not read the association response frame.");
@@ -1502,6 +1509,7 @@ static void set_association_read_failure_result(UnitLabIedModelLoadResult* resul
 static int validate_association_response_frame(const uint8_t* frame, size_t frame_length, UnitLabIedModelLoadResult* result)
 {
     UnitLabMmsAssociationFrame association_frame;
+    UnitLabMmsTransportFrame transport_frame;
     UnitLabMmsPdu pdu;
     UnitLabMmsAcseApdu acse_apdu;
     UnitLabMmsDiagnostic diagnostic;
@@ -1513,6 +1521,14 @@ static int validate_association_response_frame(const uint8_t* frame, size_t fram
     }
 
     unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_transport_frame_init(&transport_frame);
+    if (unitlab_mms_transport_frame_decode(&transport_frame, frame, frame_length, &consumed_length, &diagnostic)
+        && transport_frame.cotp.kind == UNITLAB_MMS_COTP_TPDU_DT
+        && !transport_frame.cotp.eot) {
+        set_result(result, "NATIVE_WIRE_CLIENT_ASSOCIATION_SEGMENTED_RESPONSE", "Native wire client does not support segmented association responses.");
+        return 0;
+    }
+
     unitlab_mms_association_frame_init(&association_frame);
     if (!unitlab_mms_association_frame_decode(&association_frame, frame, frame_length, &consumed_length, &diagnostic)) {
         set_result(result, "NATIVE_WIRE_CLIENT_ASSOCIATION_MALFORMED_FRAME", diagnostic.message[0] != '\0' ? diagnostic.message : "Native wire client received a malformed association response frame.");
