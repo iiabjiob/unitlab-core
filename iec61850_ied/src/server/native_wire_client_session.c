@@ -410,6 +410,39 @@ void unitlab_native_client_session_reset(UnitLabNativeClientSessionState* sessio
     memset(session, 0, sizeof(*session));
 }
 
+void unitlab_native_client_session_set_next_invoke_id(UnitLabNativeClientSessionState* session, uint32_t next_invoke_id)
+{
+    if (session == NULL) {
+        return;
+    }
+    session->next_invoke_id = next_invoke_id != 0U ? next_invoke_id : 1U;
+}
+
+uint32_t unitlab_native_client_session_reserve_invoke_id(UnitLabNativeClientSessionState* session)
+{
+    uint32_t invoke_id;
+
+    if (session == NULL) {
+        return 0U;
+    }
+    if (session->next_invoke_id == 0U) {
+        session->next_invoke_id = 1U;
+    }
+    invoke_id = session->next_invoke_id;
+    session->next_invoke_id = invoke_id == UINT32_MAX ? 1U : invoke_id + 1U;
+    return invoke_id;
+}
+
+void unitlab_native_client_session_observe_invoke_id(UnitLabNativeClientSessionState* session, uint32_t invoke_id)
+{
+    if (session == NULL || invoke_id == 0U) {
+        return;
+    }
+    if (session->next_invoke_id == 0U || invoke_id >= session->next_invoke_id) {
+        session->next_invoke_id = invoke_id == UINT32_MAX ? 1U : invoke_id + 1U;
+    }
+}
+
 UnitLabNativeDiscoveredLogicalDevice* unitlab_native_client_session_append_logical_device(UnitLabNativeClientSessionState* session, const char* name)
 {
     UnitLabNativeDiscoveredLogicalDevice* logical_device;

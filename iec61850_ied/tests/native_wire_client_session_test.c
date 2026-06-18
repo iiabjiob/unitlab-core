@@ -218,6 +218,7 @@ static int test_fixture_backed_discover_sequence_normalizes_mx_fc_tree(void)
 
     g_discovery_harness = &harness;
     passed &= expect_true(unitlab_native_client_run_discover_sequence(&session, &io, "LD0", 100U, &next_invoke_id) == 1, "expected fixture-backed discovery sequence to succeed");
+    passed &= expect_true(next_invoke_id == 108U, "expected fixture-backed discovery to advance invoke allocator through all request steps");
     g_discovery_harness = NULL;
 
     passed &= expect_true(session.discovered_logical_device_count == 1U, "expected one logical device in discovery harness");
@@ -256,6 +257,26 @@ int main(void)
     size_t index = 99U;
 
     unitlab_native_client_session_reset(&session);
+    unitlab_native_client_session_set_next_invoke_id(&session, 100U);
+    if (!expect_true(unitlab_native_client_session_reserve_invoke_id(&session) == 100U, "expected invoke allocator to return configured base")) {
+        return 1;
+    }
+    if (!expect_true(unitlab_native_client_session_reserve_invoke_id(&session) == 101U, "expected invoke allocator to advance sequentially")) {
+        return 1;
+    }
+    unitlab_native_client_session_observe_invoke_id(&session, 250U);
+    if (!expect_true(session.next_invoke_id == 251U, "expected observed explicit invoke id to advance allocator")) {
+        return 1;
+    }
+    unitlab_native_client_session_observe_invoke_id(&session, 200U);
+    if (!expect_true(session.next_invoke_id == 251U, "expected stale observed invoke id to preserve allocator")) {
+        return 1;
+    }
+    unitlab_native_client_session_set_next_invoke_id(&session, UINT32_MAX);
+    if (!expect_true(unitlab_native_client_session_reserve_invoke_id(&session) == UINT32_MAX && session.next_invoke_id == 1U, "expected invoke allocator to wrap without zero")) {
+        return 1;
+    }
+
     first = unitlab_native_client_session_append_data_set(&session, "IED1LD0/GGIO1$dsWire");
     if (!expect_true(first != NULL, "expected first DataSet append to succeed")) {
         return 1;

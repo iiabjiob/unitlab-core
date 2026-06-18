@@ -206,9 +206,13 @@ typedef struct {
     UnitLabNativeDiscoveredRcb* discovered_rcbs;
     size_t discovered_rcb_count;
     size_t discovered_rcb_capacity;
+    uint32_t next_invoke_id;
 } UnitLabNativeClientSessionState;
 
 void unitlab_native_client_session_reset(UnitLabNativeClientSessionState* session);
+void unitlab_native_client_session_set_next_invoke_id(UnitLabNativeClientSessionState* session, uint32_t next_invoke_id);
+uint32_t unitlab_native_client_session_reserve_invoke_id(UnitLabNativeClientSessionState* session);
+void unitlab_native_client_session_observe_invoke_id(UnitLabNativeClientSessionState* session, uint32_t invoke_id);
 UnitLabNativeDiscoveredLogicalDevice* unitlab_native_client_session_append_logical_device(UnitLabNativeClientSessionState* session, const char* name);
 UnitLabNativeDiscoveredLogicalNode* unitlab_native_client_session_append_logical_node(UnitLabNativeClientSessionState* session, const char* logical_device, const char* name);
 UnitLabNativeDiscoveredDataName* unitlab_native_client_session_append_data_name(UnitLabNativeClientSessionState* session, const char* logical_device, const char* logical_node, const char* name);

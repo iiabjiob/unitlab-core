@@ -664,7 +664,6 @@ int unitlab_native_client_run_discover_sequence(
     UnitLabNativeIdentifierList data_set_items = {0};
     UnitLabNativeIdentifierList brcb_names = {0};
     UnitLabNativeIdentifierList brcb_logical_nodes = {0};
-    uint32_t followup_invoke_id = invoke_id + 2U;
     int more_follows = 0;
     char last_identifier[128U];
     int ok = 0;
@@ -676,8 +675,9 @@ int unitlab_native_client_run_discover_sequence(
 
     unitlab_native_client_session_reset(session);
     snprintf(session->discovered_model.domain, sizeof(session->discovered_model.domain), "%s", domain_id);
+    unitlab_native_client_session_set_next_invoke_id(session, invoke_id);
 
-    if (!io->get_name_list_step(session, io, "vmd-logical-devices", 9U, 0U, NULL, NULL, NULL, invoke_id)) {
+    if (!io->get_name_list_step(session, io, "vmd-logical-devices", 9U, 0U, NULL, NULL, NULL, unitlab_native_client_session_reserve_invoke_id(session))) {
         goto cleanup;
     }
     if (!extract_get_name_list_identifiers(io->response, *io->encoded_response_length, &logical_device_names, &more_follows, last_identifier, sizeof(last_identifier))) {
@@ -686,7 +686,7 @@ int unitlab_native_client_run_discover_sequence(
     }
     while (more_follows && last_identifier[0] != '\0') {
         size_t before_count = logical_device_names.count;
-        if (!io->get_name_list_step(session, io, "vmd-logical-devices-page", 9U, 0U, NULL, NULL, last_identifier, followup_invoke_id++)) {
+        if (!io->get_name_list_step(session, io, "vmd-logical-devices-page", 9U, 0U, NULL, NULL, last_identifier, unitlab_native_client_session_reserve_invoke_id(session))) {
             goto cleanup;
         }
         if (!extract_get_name_list_identifiers(io->response, *io->encoded_response_length, &logical_device_names, &more_follows, last_identifier, sizeof(last_identifier))) {
@@ -705,7 +705,7 @@ int unitlab_native_client_run_discover_sequence(
         }
     }
 
-    if (!io->get_name_list_step(session, io, "domain-logical-nodes", 1U, 1U, domain_id, NULL, NULL, invoke_id + 1U)) {
+    if (!io->get_name_list_step(session, io, "domain-logical-nodes", 1U, 1U, domain_id, NULL, NULL, unitlab_native_client_session_reserve_invoke_id(session))) {
         goto cleanup;
     }
     if (!extract_get_name_list_identifiers(io->response, *io->encoded_response_length, &logical_node_names, &more_follows, last_identifier, sizeof(last_identifier))) {
@@ -714,7 +714,7 @@ int unitlab_native_client_run_discover_sequence(
     }
     while (more_follows && last_identifier[0] != '\0') {
         size_t before_count = logical_node_names.count;
-        if (!io->get_name_list_step(session, io, "domain-logical-nodes-page", 1U, 1U, domain_id, NULL, last_identifier, followup_invoke_id++)) {
+        if (!io->get_name_list_step(session, io, "domain-logical-nodes-page", 1U, 1U, domain_id, NULL, last_identifier, unitlab_native_client_session_reserve_invoke_id(session))) {
             goto cleanup;
         }
         if (!extract_get_name_list_identifiers(io->response, *io->encoded_response_length, &logical_node_names, &more_follows, last_identifier, sizeof(last_identifier))) {
@@ -727,7 +727,7 @@ int unitlab_native_client_run_discover_sequence(
         }
     }
 
-    if (!io->get_name_list_step(session, io, "domain-datasets", 2U, 1U, domain_id, NULL, NULL, followup_invoke_id++)) {
+    if (!io->get_name_list_step(session, io, "domain-datasets", 2U, 1U, domain_id, NULL, NULL, unitlab_native_client_session_reserve_invoke_id(session))) {
         goto cleanup;
     }
     if (!extract_get_name_list_identifiers(io->response, *io->encoded_response_length, &data_set_items, &more_follows, last_identifier, sizeof(last_identifier))) {
@@ -736,7 +736,7 @@ int unitlab_native_client_run_discover_sequence(
     }
     while (more_follows && last_identifier[0] != '\0') {
         size_t before_count = data_set_items.count;
-        if (!io->get_name_list_step(session, io, "domain-datasets-page", 2U, 1U, domain_id, NULL, last_identifier, followup_invoke_id++)) {
+        if (!io->get_name_list_step(session, io, "domain-datasets-page", 2U, 1U, domain_id, NULL, last_identifier, unitlab_native_client_session_reserve_invoke_id(session))) {
             goto cleanup;
         }
         if (!extract_get_name_list_identifiers(io->response, *io->encoded_response_length, &data_set_items, &more_follows, last_identifier, sizeof(last_identifier))) {
@@ -771,7 +771,7 @@ int unitlab_native_client_run_discover_sequence(
         UnitLabNativeIdentifierList ln_brcb_names = {0};
 
         snprintf(step_label, sizeof(step_label), "ln-data-attributes:%s", logical_node_names.items[ln_index]);
-        if (!io->get_name_list_step(session, io, step_label, 3U, 1U, domain_id, logical_node_names.items[ln_index], NULL, followup_invoke_id++)) {
+        if (!io->get_name_list_step(session, io, step_label, 3U, 1U, domain_id, logical_node_names.items[ln_index], NULL, unitlab_native_client_session_reserve_invoke_id(session))) {
             identifier_list_reset(&ln_data_names);
             identifier_list_reset(&ln_brcb_names);
             goto cleanup;
@@ -785,7 +785,7 @@ int unitlab_native_client_run_discover_sequence(
         while (more_follows && last_identifier[0] != '\0') {
             size_t before_count = ln_data_names.count;
             snprintf(step_label, sizeof(step_label), "ln-data-attributes-page:%s", logical_node_names.items[ln_index]);
-            if (!io->get_name_list_step(session, io, step_label, 3U, 1U, domain_id, logical_node_names.items[ln_index], last_identifier, followup_invoke_id++)) {
+            if (!io->get_name_list_step(session, io, step_label, 3U, 1U, domain_id, logical_node_names.items[ln_index], last_identifier, unitlab_native_client_session_reserve_invoke_id(session))) {
                 identifier_list_reset(&ln_data_names);
                 identifier_list_reset(&ln_brcb_names);
                 goto cleanup;
@@ -813,7 +813,7 @@ int unitlab_native_client_run_discover_sequence(
                 goto cleanup;
             }
             snprintf(data_item, sizeof(data_item), "%s$%s", logical_node_names.items[ln_index], ln_data_names.items[data_index]);
-            if (!io->attributes_step(session, io, "ln-data-components", domain_id, data_item, followup_invoke_id++, 0)) {
+            if (!io->attributes_step(session, io, "ln-data-components", domain_id, data_item, unitlab_native_client_session_reserve_invoke_id(session), 0)) {
                 identifier_list_reset(&ln_data_names);
                 identifier_list_reset(&ln_brcb_names);
                 goto cleanup;
@@ -827,7 +827,7 @@ int unitlab_native_client_run_discover_sequence(
         }
         identifier_list_reset(&ln_data_names);
         snprintf(step_label, sizeof(step_label), "ln-brcbs:%s", logical_node_names.items[ln_index]);
-        if (!io->get_name_list_step(session, io, step_label, 4U, 1U, domain_id, logical_node_names.items[ln_index], NULL, followup_invoke_id++)) {
+        if (!io->get_name_list_step(session, io, step_label, 4U, 1U, domain_id, logical_node_names.items[ln_index], NULL, unitlab_native_client_session_reserve_invoke_id(session))) {
             identifier_list_reset(&ln_brcb_names);
             goto cleanup;
         }
@@ -839,7 +839,7 @@ int unitlab_native_client_run_discover_sequence(
         while (more_follows && last_identifier[0] != '\0') {
             size_t before_count = ln_brcb_names.count;
             snprintf(step_label, sizeof(step_label), "ln-brcbs-page:%s", logical_node_names.items[ln_index]);
-            if (!io->get_name_list_step(session, io, step_label, 4U, 1U, domain_id, logical_node_names.items[ln_index], last_identifier, followup_invoke_id++)) {
+            if (!io->get_name_list_step(session, io, step_label, 4U, 1U, domain_id, logical_node_names.items[ln_index], last_identifier, unitlab_native_client_session_reserve_invoke_id(session))) {
                 identifier_list_reset(&ln_brcb_names);
                 goto cleanup;
             }
@@ -864,7 +864,7 @@ int unitlab_native_client_run_discover_sequence(
         identifier_list_reset(&ln_brcb_names);
 
         snprintf(step_label, sizeof(step_label), "ln-urcbs:%s", logical_node_names.items[ln_index]);
-        if (!io->get_name_list_step(session, io, step_label, 5U, 1U, domain_id, logical_node_names.items[ln_index], NULL, followup_invoke_id++)) {
+        if (!io->get_name_list_step(session, io, step_label, 5U, 1U, domain_id, logical_node_names.items[ln_index], NULL, unitlab_native_client_session_reserve_invoke_id(session))) {
             identifier_list_reset(&ln_brcb_names);
             goto cleanup;
         }
@@ -876,7 +876,7 @@ int unitlab_native_client_run_discover_sequence(
         while (more_follows && last_identifier[0] != '\0') {
             size_t before_count = ln_brcb_names.count;
             snprintf(step_label, sizeof(step_label), "ln-urcbs-page:%s", logical_node_names.items[ln_index]);
-            if (!io->get_name_list_step(session, io, step_label, 5U, 1U, domain_id, logical_node_names.items[ln_index], last_identifier, followup_invoke_id++)) {
+            if (!io->get_name_list_step(session, io, step_label, 5U, 1U, domain_id, logical_node_names.items[ln_index], last_identifier, unitlab_native_client_session_reserve_invoke_id(session))) {
                 identifier_list_reset(&ln_brcb_names);
                 goto cleanup;
             }
@@ -902,7 +902,7 @@ int unitlab_native_client_run_discover_sequence(
         char brcb_item[320U];
         char brcb_read_item[320U];
         snprintf(brcb_item, sizeof(brcb_item), "%s$BR$%s$RptEna", brcb_logical_nodes.items[index], brcb_names.items[index]);
-        if (!io->attributes_step(session, io, "brcb-attrs", domain_id, brcb_item, followup_invoke_id++, 0)) {
+        if (!io->attributes_step(session, io, "brcb-attrs", domain_id, brcb_item, unitlab_native_client_session_reserve_invoke_id(session), 0)) {
             goto cleanup;
         }
         snprintf(brcb_read_item, sizeof(brcb_read_item), "%s$BR$%s", brcb_logical_nodes.items[index], brcb_names.items[index]);
@@ -912,7 +912,7 @@ int unitlab_native_client_run_discover_sequence(
         }
         printf("native-wire-client: discovered-brcb[%zu] domain=%s item=%s\n", session->discovered_rcb_count - 1U, domain_id, brcb_read_item);
         fflush(stdout);
-        if (!io->read_step(session, io, "brcb-values", domain_id, brcb_read_item, followup_invoke_id++)) {
+        if (!io->read_step(session, io, "brcb-values", domain_id, brcb_read_item, unitlab_native_client_session_reserve_invoke_id(session))) {
             goto cleanup;
         }
     }
@@ -923,14 +923,14 @@ int unitlab_native_client_run_discover_sequence(
     for (size_t index = 0U; index < data_set_items.count; index++) {
         char data_set_reference[384U];
         snprintf(data_set_reference, sizeof(data_set_reference), "%s/%s", domain_id, data_set_items.items[index]);
-        if (!io->attributes_step(session, io, "dataset-members", domain_id, data_set_items.items[index], followup_invoke_id++, 1)) {
+        if (!io->attributes_step(session, io, "dataset-members", domain_id, data_set_items.items[index], unitlab_native_client_session_reserve_invoke_id(session), 1)) {
             goto cleanup;
         }
         if (!collect_get_named_variable_list_members_from_frame(session, io, data_set_reference, io->response, *io->encoded_response_length)) {
             goto cleanup;
         }
     }
-    *next_invoke_id = followup_invoke_id;
+    *next_invoke_id = session->next_invoke_id;
     if (io->emit_model_summary != NULL) {
         io->emit_model_summary(session, "discover");
     }

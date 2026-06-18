@@ -287,6 +287,18 @@ Validation:
 - Replay/parse tests from `001_associate_libiec61850_new.pcapng`.
 - Real TCP reconnect smoke.
 
+Closed in current slice:
+
+- Native wire client discovery now allocates invoke IDs through `UnitLabNativeClientSessionState` instead of local `base + n` arithmetic.
+- The allocator wraps from `UINT32_MAX` to `1`, never emits invoke ID `0`, and can observe explicit operator-supplied invoke IDs so later automatic requests do not collide inside the same session flow.
+- Fixture-backed discovery validation now asserts the final `next_invoke_id` after all browse, GVA, BRCB, and DataSet member steps.
+
+Remaining Slice 6 work:
+
+- Association failure phase diagnostics still need explicit COTP, presentation, ACSE, MMS initiate, reject, abort, EOF, timeout, and malformed-frame coverage.
+- Oversized or segmented response handling still needs explicit accept/reject tests against saved association captures.
+
+
 ## Slice 7: Read/Write Data Access
 
 Goal: allow the debug UI and later runtime integration to read live values safely.
