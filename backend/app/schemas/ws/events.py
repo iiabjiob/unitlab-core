@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
 from app.infrastructure.protocol.modes import State
 from app.infrastructure.protocol.packet_structures import RespStatus, RespError
 from app.schemas.device_schema import DeviceSchema
@@ -62,12 +62,9 @@ class DeviceRespEvent(BaseModel):
     error: RespError
     timestamp: int
 
-    model_config = {
-        "json_encoders": {
-            RespStatus: lambda v: v.name,
-            RespError: lambda v: v.name,
-        }
-    }
+    ("status", "error")
+    def _serialize_resp_enum(self, value: RespStatus | RespError) -> str:
+        return value.name
 
 # ---------------------------------------------------------------------
 # Heartbeat

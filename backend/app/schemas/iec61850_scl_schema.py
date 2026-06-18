@@ -28,7 +28,7 @@ class Iec61850SclIedSummarySchema(BaseModel):
 
 
 class Iec61850SclIedDiscoveryResponseSchema(BaseModel):
-    schema: str
+    schema_: str = Field(alias="schema")
     source_size: int = Field(alias="sourceSize")
     ieds: list[Iec61850SclIedSummarySchema]
     diagnostics: list[Iec61850SclDiagnosticSchema]
