@@ -308,7 +308,7 @@ Deferred to Slice 8:
 
 ## Slice 7: Read/Write Data Access
 
-Status: in progress.
+Status: complete.
 
 Closed in current slice:
 
@@ -316,6 +316,7 @@ Closed in current slice:
 - Synthetic native client tests cover latest-read bool, signed/unsigned integer, MMS float32, string, octets, bit-string, structure, and access-failure decode paths.
 - Native client supports `read-ref <discoveredReference|leafIndex> [invokeId]`, resolving discovered leaf indexes, MMS references, display references, and typed-node display references to raw MMS `domain/item` reads.
 - Native client supports guarded `write-ref <discoveredReference|leafIndex> <bool|uint|int|string|hex:tag> <value> [invokeId]`, requiring a discovered reference plus explicit value type while leaving raw debug write commands available.
+- Linked TCP smoke reads an ST data attribute, writes and reads back an explicit SP data attribute, and verifies a type-mismatched write fails visibly against the local libIEC61850 server.
 
 Goal: allow the debug UI and later runtime integration to read live values safely.
 

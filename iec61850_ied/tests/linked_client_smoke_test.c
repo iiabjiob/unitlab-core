@@ -96,6 +96,14 @@ static UnitLabIedFixtureModel valid_fixture(
         .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER,
         .initial_value = "3",
     };
+    signals[3] = (UnitLabIedFixtureSignal){
+        .data_set_index = 0U,
+        .reference = "IED1LD0/SPGGIO1.Set1.setVal[SP]",
+        .kind = "FCDA",
+        .fc = "SP",
+        .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER,
+        .initial_value = "10",
+    };
     data_sets[0] = (UnitLabIedFixtureDataSet){
         .reference = "IED1/AP1/LD0/LLN0.dsEvents",
         .signal_count = 2U,
@@ -105,6 +113,11 @@ static UnitLabIedFixtureModel valid_fixture(
         .reference = "IED1/AP1/LD0/LLN0.dsUpdates",
         .signal_count = 1U,
         .signals = &signals[2],
+    };
+    data_sets[2] = (UnitLabIedFixtureDataSet){
+        .reference = "IED1/AP1/LD0/LLN0.dsSetpoints",
+        .signal_count = 1U,
+        .signals = &signals[3],
     };
     reports[0] = (UnitLabIedFixtureReport){
         .key = "IED1/AP1/LD0/LLN0/brcbEvents/buffered",
@@ -176,11 +189,11 @@ static UnitLabIedFixtureModel valid_fixture(
         .device_count = 1U,
         .ied_name = "IED1",
         .access_point_name = "AP1",
-        .data_set_count = 2U,
+        .data_set_count = 3U,
         .data_sets = data_sets,
         .report_count = 2U,
         .reports = reports,
-        .signal_count = 3U,
+        .signal_count = 4U,
     };
 }
 
@@ -397,9 +410,10 @@ static int verify_server_metadata(IedConnection connection)
     passed &= expect_true(error == IED_ERROR_OK, "DataSet directory read should succeed");
     passed &= expect_true(data_sets != NULL, "DataSet directory should be present");
     if (data_sets != NULL) {
-        passed &= expect_true(LinkedList_size(data_sets) == 2, "snapshot should expose two DataSets");
+        passed &= expect_true(LinkedList_size(data_sets) == 3, "snapshot should expose three DataSets");
         passed &= expect_true(strcmp(list_nth_item(data_sets, 0U), "dsEvents") == 0, "snapshot should preserve first DataSet order");
-        passed &= expect_true(strcmp(list_nth_item(data_sets, 1U), "dsUpdates") == 0, "snapshot should preserve second DataSet order");
+        passed &= expect_true(strcmp(list_nth_item(data_sets, 1U), "dsSetpoints") == 0, "snapshot should preserve second DataSet order");
+        passed &= expect_true(strcmp(list_nth_item(data_sets, 2U), "dsUpdates") == 0, "snapshot should preserve third DataSet order");
         LinkedList_destroy(data_sets);
     }
 
@@ -442,10 +456,40 @@ static int verify_server_metadata(IedConnection connection)
     return passed;
 }
 
+static int verify_data_access(IedConnection connection)
+{
+    int passed = 1;
+    IedClientError error = IED_ERROR_OK;
+
+    int32_t status_value = IedConnection_readInt32Value(connection, &error, "IED1LD0/XCBR1.Pos.stVal", IEC61850_FC_ST);
+    passed &= expect_true(error == IED_ERROR_OK, "ST data attribute read should succeed");
+    passed &= expect_true(status_value == 1, "ST data attribute read should return fixture initialValue");
+
+    error = IED_ERROR_OK;
+    int32_t setpoint_value = IedConnection_readInt32Value(connection, &error, "IED1LD0/SPGGIO1.Set1.setVal", IEC61850_FC_SP);
+    passed &= expect_true(error == IED_ERROR_OK, "SP data attribute read should succeed before write");
+    passed &= expect_true(setpoint_value == 10, "SP data attribute read should return fixture initialValue");
+
+    error = IED_ERROR_OK;
+    IedConnection_writeInt32Value(connection, &error, "IED1LD0/SPGGIO1.Set1.setVal", IEC61850_FC_SP, 42);
+    passed &= expect_true(error == IED_ERROR_OK, "SP data attribute write should succeed");
+
+    error = IED_ERROR_OK;
+    setpoint_value = IedConnection_readInt32Value(connection, &error, "IED1LD0/SPGGIO1.Set1.setVal", IEC61850_FC_SP);
+    passed &= expect_true(error == IED_ERROR_OK, "SP data attribute read should succeed after write");
+    passed &= expect_true(setpoint_value == 42, "SP data attribute read should return written value");
+
+    error = IED_ERROR_OK;
+    IedConnection_writeVisibleStringValue(connection, &error, "IED1LD0/SPGGIO1.Set1.setVal", IEC61850_FC_SP, (char*)"wrong-type");
+    passed &= expect_true(error != IED_ERROR_OK, "type-mismatched SP write should fail visibly");
+
+    return passed;
+}
+
 int main(void)
 {
-    UnitLabIedFixtureSignal signals[3];
-    UnitLabIedFixtureDataSet data_sets[2];
+    UnitLabIedFixtureSignal signals[4];
+    UnitLabIedFixtureDataSet data_sets[3];
     UnitLabIedFixtureReport reports[2];
     UnitLabIedFixtureModel fixture = valid_fixture(data_sets, reports, signals);
     UnitLabIedModelPlan plan;
@@ -481,6 +525,7 @@ int main(void)
 
     if (connection != NULL) {
         passed &= verify_server_metadata(connection);
+        passed &= verify_data_access(connection);
     }
 
     UnitLabIedModelLoadResult probe_result;
