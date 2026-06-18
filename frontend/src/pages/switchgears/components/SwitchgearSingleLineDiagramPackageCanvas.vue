@@ -128,9 +128,11 @@ const selectionLabel = computed(() => {
 const selectedShapeIds = computed(() => selection.selection.value.ids.filter(id => diagram.scene.value.entities.shapesById.has(id)))
 const selectedEdgeIds = computed(() => selection.selection.value.ids.filter(id => diagram.scene.value.entities.edgesById.has(id)))
 const selectedNodeIds = computed(() => selection.selection.value.ids.filter(id => diagram.scene.value.entities.nodesById.has(id)))
+const selectedTextIds = computed(() => selection.selection.value.ids.filter(id => diagram.scene.value.entities.textsById.has(id)))
 const selectedStaticCount = computed(() => selectedShapeIds.value.length)
 const selectedEdgeCount = computed(() => selectedEdgeIds.value.length)
 const selectedNodeCount = computed(() => selectedNodeIds.value.length)
+const selectedTextCount = computed(() => selectedTextIds.value.length)
 const selectedStaticSize = computed<DiagramStaticSize | "mixed" | null>(() => {
   if (selectedShapeIds.value.length === 0) {
     return null
@@ -453,6 +455,38 @@ function setSelectedEdgesWeight(weight: EdgeWeight) {
   }))
 }
 
+function rotateSelectedEdges90() {
+  if (selectedEdgeIds.value.length === 0) {
+    return
+  }
+  updateSelectedEdges((edge) => {
+    const source = resolveEdgeEndpointPosition(edge.source)
+    const target = resolveEdgeEndpointPosition(edge.target)
+    const centerX = (source.x + target.x) / 2
+    const centerY = (source.y + target.y) / 2
+    const deltaX = (target.x - source.x) / 2
+    const deltaY = (target.y - source.y) / 2
+    const nextSource = {
+      x: Math.round(centerX + deltaY),
+      y: Math.round(centerY - deltaX),
+    }
+    const nextTarget = {
+      x: Math.round(centerX - deltaY),
+      y: Math.round(centerY + deltaX),
+    }
+    return {
+      ...edge,
+      source: { kind: "point", point: nextSource },
+      target: { kind: "point", point: nextTarget },
+      metadata: {
+        ...edge.metadata,
+        startBinding: null,
+        endBinding: null,
+      },
+    }
+  })
+}
+
 function alignSelectedNodesLeft() {
   if (selectedNodeIds.value.length < 2) {
     return
@@ -523,6 +557,14 @@ function onStageKeydown(event: KeyboardEvent) {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "y") {
     event.preventDefault()
     redo()
+    return
+  }
+  if (event.key === "Enter" && selectedTextCount.value === 1 && !textEditor.activeEditor.value) {
+    event.preventDefault()
+    const textId = selectedTextIds.value[0]
+    if (textId) {
+      beginTextEdit(textId)
+    }
     return
   }
   if (event.key === "Delete" || event.key === "Backspace") {
@@ -899,6 +941,9 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
           <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': (activeTool === 'line' ? lineWeight : selectedEdgeWeight) === 'bold' }" @click="activeTool === 'line' ? lineWeight = 'bold' : setSelectedEdgesWeight('bold')">
             Bold
           </button>
+          <UiButton v-if="selectedEdgeCount > 0" size="sm" variant="secondary" @click="rotateSelectedEdges90">
+            Rotate
+          </UiButton>
         </div>
         <UiButton size="sm" variant="secondary" @click="addStatic('transformer')">
           Add transformer
@@ -908,6 +953,9 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
         </UiButton>
         <UiButton size="sm" variant="secondary" @click="addText">
           Add text
+        </UiButton>
+        <UiButton v-if="selectedTextCount === 1" size="sm" variant="secondary" @click="beginTextEdit(selectedTextIds[0]!)">
+          Edit text
         </UiButton>
         <div v-if="selectedStaticCount > 0" class="switchgear-sld-package-canvas__tool-tabs">
           <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': selectedStaticSize === 'sm' }" @click="setSelectedStaticSize('sm')">
