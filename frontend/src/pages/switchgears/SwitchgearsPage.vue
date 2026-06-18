@@ -61,10 +61,31 @@
       </div>
 
       <div v-else class="switchgears-page__sld-view">
+        <div class="switchgears-page__editor-tabs">
+          <button
+            type="button"
+            class="switchgears-page__editor-tab"
+            :class="{ 'is-active': activeSldEditor === 'legacy' }"
+            @click="setActiveSldEditor('legacy')"
+          >
+            Legacy
+          </button>
+          <button
+            type="button"
+            class="switchgears-page__editor-tab"
+            :class="{ 'is-active': activeSldEditor === 'package' }"
+            @click="setActiveSldEditor('package')"
+          >
+            Package Diagram
+          </button>
+        </div>
+
         <SwitchgearSingleLineDiagram
+          v-if="activeSldEditor === 'legacy'"
           ref="sldDiagramRef"
           @edit-switchgear-bindings="openSwitchgearBindingsEditor"
         />
+        <SwitchgearSingleLineDiagramPackage v-else :active="activeView === 'sld'" />
       </div>
     </section>
 
@@ -89,23 +110,27 @@ import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 
 import ResizablePanel from "@/components/ui/ResizablePanel.vue"
-import DeviceListSidebar from "./components/SwitchgearListSidebar.vue"
 import SlideOver from "@/components/ui/SlideOver.vue"
 import UiButton from "@/components/ui/UiButton.vue"
-import SwitchgearSingleLineDiagram from "./components/SwitchgearSingleLineDiagram.vue"
 import { useViewport } from "@/composables/useViewport"
-import { useRealtimeScopeStore } from "@/stores/realtimeScopeStore"
 import { localSettingsKeys, readLocalSetting, writeLocalSetting } from "@/services/localSettingsStorage"
+import { useRealtimeScopeStore } from "@/stores/realtimeScopeStore"
+
+import SwitchgearSingleLineDiagram from "./components/SwitchgearSingleLineDiagram.vue"
+import SwitchgearSingleLineDiagramPackage from "./components/SwitchgearSingleLineDiagramPackage.vue"
+import DeviceListSidebar from "./components/SwitchgearListSidebar.vue"
 
 const { isDesktop } = useViewport()
 const sidebarOpen = ref(false)
 const activeView = ref<"manage" | "sld">("manage")
+const activeSldEditor = ref<"legacy" | "package">("legacy")
 const sldDiagramRef = ref<InstanceType<typeof SwitchgearSingleLineDiagram> | null>(null)
 const route = useRoute()
 const router = useRouter()
 const realtimeScopeStore = useRealtimeScopeStore()
 const scopeId = "switchgears:page"
 const LEGACY_ACTIVE_VIEW_STORAGE_KEY = "unitlab.switchgears.active-view"
+const SLD_EDITOR_STORAGE_KEY = "switchgears.sld.editor"
 
 onMounted(() => {
   realtimeScopeStore.setGlobalRealtimeScope(scopeId, true)
@@ -116,6 +141,13 @@ onMounted(() => {
       legacyKeys: [LEGACY_ACTIVE_VIEW_STORAGE_KEY],
       parseLegacy: raw => raw,
       validate: normalizeSwitchgearsActiveView,
+    },
+  )
+  activeSldEditor.value = readLocalSetting<"legacy" | "package">(
+    SLD_EDITOR_STORAGE_KEY,
+    "legacy",
+    {
+      validate: normalizeSldEditor,
     },
   )
 })
@@ -142,6 +174,11 @@ function setActiveView(view: "manage" | "sld") {
   })
 }
 
+function setActiveSldEditor(editor: "legacy" | "package") {
+  activeSldEditor.value = editor
+  writeLocalSetting(SLD_EDITOR_STORAGE_KEY, editor)
+}
+
 function openSwitchgearBindingsEditor(id: number) {
   setActiveView("manage")
   void router.push({
@@ -156,6 +193,7 @@ function openSwitchgearBindingsEditor(id: number) {
 
 async function requestScdImport() {
   setActiveView("sld")
+  setActiveSldEditor("legacy")
   sidebarOpen.value = false
   await nextTick()
   sldDiagramRef.value?.openScdFileDialog()
@@ -163,6 +201,10 @@ async function requestScdImport() {
 
 function normalizeSwitchgearsActiveView(value: unknown): "manage" | "sld" | null {
   return value === "manage" || value === "sld" ? value : null
+}
+
+function normalizeSldEditor(value: unknown): "legacy" | "package" | null {
+  return value === "legacy" || value === "package" ? value : null
 }
 </script>
 
@@ -209,10 +251,10 @@ function normalizeSwitchgearsActiveView(value: unknown): "manage" | "sld" | null
   padding: 0.75rem;
 }
 
-.switchgears-page__view-tabs {
+.switchgears-page__view-tabs,
+.switchgears-page__editor-tabs {
   display: inline-flex;
   width: fit-content;
-  margin-bottom: 0.75rem;
   padding: 0.25rem;
   border: 1px solid var(--color-neutral-200);
   border-radius: 0.75rem;
@@ -220,7 +262,12 @@ function normalizeSwitchgearsActiveView(value: unknown): "manage" | "sld" | null
   box-shadow: var(--shadow-sm);
 }
 
-.switchgears-page__view-tab {
+.switchgears-page__view-tabs {
+  margin-bottom: 0.75rem;
+}
+
+.switchgears-page__view-tab,
+.switchgears-page__editor-tab {
   padding: 0.5rem 0.75rem;
   border: 0;
   border-radius: 0.5rem;
@@ -232,11 +279,13 @@ function normalizeSwitchgearsActiveView(value: unknown): "manage" | "sld" | null
   transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.switchgears-page__view-tab:hover {
+.switchgears-page__view-tab:hover,
+.switchgears-page__editor-tab:hover {
   color: var(--color-neutral-900);
 }
 
-.switchgears-page__view-tab.is-active {
+.switchgears-page__view-tab.is-active,
+.switchgears-page__editor-tab.is-active {
   background: var(--color-neutral-100);
   color: var(--color-neutral-900);
   box-shadow: var(--shadow-sm);
@@ -261,6 +310,10 @@ function normalizeSwitchgearsActiveView(value: unknown): "manage" | "sld" | null
 }
 
 .switchgears-page__sld-view {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.75rem;
   overflow: hidden;
 }
 
@@ -295,21 +348,26 @@ function normalizeSwitchgearsActiveView(value: unknown): "manage" | "sld" | null
   background: var(--color-neutral-900);
 }
 
-:global(.dark .switchgears-page__view-tabs) {
+:global(.dark .switchgears-page__view-tabs),
+:global(.dark .switchgears-page__editor-tabs) {
   border-color: var(--color-neutral-800);
   background: color-mix(in srgb, var(--color-neutral-900) 80%, transparent);
 }
 
-:global(.dark .switchgears-page__view-tab) {
+:global(.dark .switchgears-page__view-tab),
+:global(.dark .switchgears-page__editor-tab) {
   color: var(--color-neutral-400);
 }
 
 :global(.dark .switchgears-page__view-tab:hover),
-:global(.dark .switchgears-page__view-tab.is-active) {
+:global(.dark .switchgears-page__view-tab.is-active),
+:global(.dark .switchgears-page__editor-tab:hover),
+:global(.dark .switchgears-page__editor-tab.is-active) {
   color: var(--color-neutral-100);
 }
 
-:global(.dark .switchgears-page__view-tab.is-active) {
+:global(.dark .switchgears-page__view-tab.is-active),
+:global(.dark .switchgears-page__editor-tab.is-active) {
   background: var(--color-neutral-800);
 }
 </style>

@@ -11,6 +11,12 @@ importers:
       '@affino/datagrid-vue-app':
         specifier: ^0.5.0
         version: 0.5.0(@affino/menu-core@1.1.0)(pinia@3.0.4(typescript@5.8.3)(vue@3.5.25(typescript@5.8.3)))(vue@3.5.25(typescript@5.8.3))
+      '@affino/diagram-core':
+        specifier: ^0.1.0
+        version: 0.1.0
+      '@affino/diagram-vue':
+        specifier: ^0.1.0
+        version: 0.1.0(vue@3.5.25(typescript@5.8.3))
       '@affino/dialog-vue':
         specifier: ^1.1.0
         version: 1.1.0(vue@3.5.25(typescript@5.8.3))
@@ -131,6 +137,14 @@ packages:
 
   '@affino/datagrid-worker@0.5.0':
     resolution: {integrity: sha512-dYFQaLu6OKmbtUpk8uKet5PfOZbN8KzvtDBC/pIktI/6O/SPHTRfiK3rFHFltoKoUsKcCatxK2qDbt9ZhpshOw==}
+
+  '@affino/diagram-core@0.1.0':
+    resolution: {integrity: sha512-bgt5yR4IvNFMidLxoCZ0yYRhrWc/G2HrnNXBuUDYCbSRLLM2oKXwLVJqOs5DNa+GxYBzKhMvZgHuYFyVQoIhaA==}
+
+  '@affino/diagram-vue@0.1.0':
+    resolution: {integrity: sha512-UypKPAZ+7lR+qP5iqFIBI8Ws0gnBkUIFiU0O/3JeBB764kYYvagAJZ4LI5ZOxnMj5+9l8cht1keXgwBTZClr3w==}
+    peerDependencies:
+      vue: ^3.3.0
 
   '@affino/dialog-core@1.1.0':
     resolution: {integrity: sha512-fmXJ2qN0q6A6kLszfEv55IKop+cVpAwf0kSjF1uBaxnDzLdhjzwtr56Q6sQJtXtujOdfiX/APKHU3oafo9cgnw==}
@@ -1567,6 +1581,13 @@ snapshots:
     dependencies:
       '@affino/datagrid-core': 0.5.0
       '@affino/datagrid-formula-engine': 0.1.2
+
+  '@affino/diagram-core@0.1.0': {}
+
+  '@affino/diagram-vue@0.1.0(vue@3.5.25(typescript@5.8.3))':
+    dependencies:
+      '@affino/diagram-core': 0.1.0
+      vue: 3.5.25(typescript@5.8.3)
 
   '@affino/dialog-core@1.1.0':
     dependencies:
