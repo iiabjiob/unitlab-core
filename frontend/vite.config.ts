@@ -5,11 +5,35 @@ import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 
 const affinoDataGridChunkRules: Array<[chunkName: string, packagePath: string]> = [
+  ['vendor-affino-datagrid-gantt-stage', '/node_modules/@affino/datagrid-vue-app/dist/chunks/DataGridGanttStageEntry-'],
+  ['vendor-affino-datagrid-row-model', '/node_modules/@affino/datagrid-vue-app/dist/chunks/useDataGridAppRowModel-'],
   ['vendor-affino-datagrid-app', '/node_modules/@affino/datagrid-vue-app/'],
   ['vendor-affino-datagrid-vue', '/node_modules/@affino/datagrid-vue/'],
+  ['vendor-affino-datagrid-core', '/node_modules/@affino/datagrid-core/'],
+  ['vendor-affino-datagrid-orchestration', '/node_modules/@affino/datagrid-orchestration/'],
+  ['vendor-affino-datagrid-formula', '/node_modules/@affino/datagrid-formula-engine/'],
+  ['vendor-affino-datagrid-pivot', '/node_modules/@affino/datagrid-pivot/'],
+  ['vendor-affino-datagrid-worker', '/node_modules/@affino/datagrid-worker/'],
+  ['vendor-affino-datagrid-server', '/node_modules/@affino/datagrid-server-adapters/'],
+  ['vendor-affino-datagrid-server', '/node_modules/@affino/datagrid-server-client/'],
+  ['vendor-affino-datagrid-format', '/node_modules/@affino/datagrid-format/'],
   ['vendor-affino-datagrid-chrome', '/node_modules/@affino/datagrid-chrome/'],
   ['vendor-affino-datagrid-theme', '/node_modules/@affino/datagrid-theme/'],
   ['vendor-affino-datagrid-gantt', '/node_modules/@affino/datagrid-gantt/'],
+]
+
+const affinoUiChunkRules: Array<[chunkName: string, packagePath: string]> = [
+  ['vendor-affino-dialog', '/node_modules/@affino/dialog-'],
+  ['vendor-affino-disclosure', '/node_modules/@affino/disclosure-'],
+  ['vendor-affino-listbox', '/node_modules/@affino/listbox-'],
+  ['vendor-affino-popover', '/node_modules/@affino/popover-'],
+  ['vendor-affino-tabs', '/node_modules/@affino/tabs-'],
+  ['vendor-affino-tooltip', '/node_modules/@affino/tooltip-'],
+  ['vendor-affino-treeview', '/node_modules/@affino/treeview-'],
+  ['vendor-affino-overlay', '/node_modules/@affino/overlay-'],
+  ['vendor-affino-surface', '/node_modules/@affino/surface-'],
+  ['vendor-affino-selection', '/node_modules/@affino/selection-'],
+  ['vendor-affino-focus', '/node_modules/@affino/focus-utils/'],
 ]
 
 function patchAffinoMenuPointerRelatedTarget(): Plugin {
@@ -103,6 +127,12 @@ export default defineConfig({
 
           if (id.includes('/node_modules/@affino/menu-')) {
             return 'vendor-affino-menu'
+          }
+
+          for (const [chunkName, packagePath] of affinoUiChunkRules) {
+            if (id.includes(packagePath)) {
+              return chunkName
+            }
           }
 
           if (id.includes('/node_modules/@affino/')) {
