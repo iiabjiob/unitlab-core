@@ -3385,6 +3385,30 @@ static void test_server_runtime_apply_association_request_bytes_rejects_non_init
 }
 
 
+static void test_server_runtime_apply_association_request_bytes_rejects_malformed_transport_frame(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
+    UnitLabIedServerConfig config = {
+        .bind_address = "127.0.0.1",
+        .port = 102,
+    };
+    const uint8_t malformed_frame[] = { 0x03U, 0x00U, 0x00U };
+    size_t consumed_length = 123U;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_association_request_bytes(&server_runtime, malformed_frame, sizeof(malformed_frame), &consumed_length, &operation_result) == 0);
+    assert(consumed_length == 0U);
+    assert(operation_result.ok == 0);
+    assert(operation_result.diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR || operation_result.diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL);
+    assert(strstr(operation_result.diagnostic.message, "association request transport decode failed") != NULL);
+}
+
 static void test_server_runtime_apply_association_request_bytes_rejects_acse_aare(void)
 {
     UnitLabMmsServerRuntime server_runtime;
@@ -6958,6 +6982,7 @@ int main(void)
     test_server_runtime_apply_association_then_confirmed_request_keeps_session_associated();
     test_server_runtime_apply_association_request_bytes_accepts_captured_iedscout_aarq();
     test_server_runtime_apply_association_request_bytes_rejects_non_initiate_request();
+    test_server_runtime_apply_association_request_bytes_rejects_malformed_transport_frame();
     test_server_runtime_apply_association_request_bytes_rejects_acse_aare();
     test_wire_builder_builds_confirmed_response_frame_roundtrips();
     test_server_runtime_build_confirmed_response_bytes_roundtrips();
