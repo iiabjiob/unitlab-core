@@ -225,6 +225,10 @@ typedef struct {
     UnitLabNativeLastReadResult last_read_result;
     int has_last_read_result;
     uint32_t last_read_invoke_id;
+    int has_pending_read;
+    uint32_t pending_read_invoke_id;
+    char pending_read_domain[128U];
+    char pending_read_item[320U];
     uint32_t next_invoke_id;
 } UnitLabNativeClientSessionState;
 

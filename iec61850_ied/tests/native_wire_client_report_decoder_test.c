@@ -203,6 +203,140 @@ static int build_synthetic_report_frame(size_t value_count, size_t reason_count,
     return build_synthetic_report_frame_ex(value_count, reason_count, (size_t)-1, buffer, buffer_length, encoded_length);
 }
 
+static int build_synthetic_read_response_frame(
+    uint32_t invoke_id,
+    UnitLabMmsBerTagClass tag_class,
+    int constructed,
+    uint32_t tag_number,
+    const uint8_t* value,
+    size_t value_length,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length)
+{
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsPdu response_pdu;
+    uint8_t scratch[1024U];
+    uint8_t invoke_bytes[8U];
+    uint8_t access_result_bytes[256U];
+    uint8_t access_list_bytes[384U];
+    uint8_t read_response_bytes[512U];
+    uint8_t pdu_bytes[640U];
+    size_t invoke_length = 0U;
+    size_t access_result_length = 0U;
+    size_t access_list_length = 0U;
+    size_t read_response_length = 0U;
+    size_t pdu_length = 0U;
+    uint8_t invoke_value[4U];
+    size_t invoke_value_length = 0U;
+    uint32_t value_copy = invoke_id;
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (buffer == NULL || encoded_length == NULL) {
+        return 0;
+    }
+    do {
+        invoke_value[sizeof(invoke_value) - 1U - invoke_value_length] = (uint8_t)(value_copy & 0xffU);
+        invoke_value_length++;
+        value_copy >>= 8U;
+    } while (value_copy != 0U && invoke_value_length < sizeof(invoke_value));
+
+    if (!append_test_ber(invoke_bytes, sizeof(invoke_bytes), &invoke_length, UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL, 0, 2U, &invoke_value[sizeof(invoke_value) - invoke_value_length], invoke_value_length, &diagnostic)
+        || !append_test_ber(access_result_bytes, sizeof(access_result_bytes), &access_result_length, tag_class, constructed, tag_number, value, value_length, &diagnostic)
+        || !append_test_ber(access_list_bytes, sizeof(access_list_bytes), &access_list_length, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 1U, access_result_bytes, access_result_length, &diagnostic)
+        || !append_test_ber(read_response_bytes, sizeof(read_response_bytes), &read_response_length, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 4U, access_list_bytes, access_list_length, &diagnostic)) {
+        return 0;
+    }
+    if (invoke_length + read_response_length > sizeof(pdu_bytes)) {
+        return 0;
+    }
+    memcpy(pdu_bytes, invoke_bytes, invoke_length);
+    memcpy(pdu_bytes + invoke_length, read_response_bytes, read_response_length);
+    pdu_length = invoke_length + read_response_length;
+
+    unitlab_mms_pdu_init(&response_pdu);
+    response_pdu.kind = UNITLAB_MMS_PDU_CONFIRMED_RESPONSE;
+    response_pdu.pdu_bytes = pdu_bytes;
+    response_pdu.pdu_length = pdu_length;
+    return unitlab_mms_build_wire_frame_from_pdu(&response_pdu, scratch, sizeof(scratch), buffer, buffer_length, encoded_length, &diagnostic);
+}
+
+static void prepare_pending_read(UnitLabNativeClientSessionState* session, uint32_t invoke_id)
+{
+    memset(session, 0, sizeof(*session));
+    session->has_pending_read = 1;
+    session->pending_read_invoke_id = invoke_id;
+    snprintf(session->pending_read_domain, sizeof(session->pending_read_domain), "%s", "IED1LD0");
+    snprintf(session->pending_read_item, sizeof(session->pending_read_item), "%s", "XCBR1$ST$Pos$stVal");
+    assert(unitlab_native_client_session_append_leaf_ref(session, "IED1LD0/XCBR1$ST$Pos$stVal") != NULL);
+}
+
+static void assert_synthetic_read_value(
+    UnitLabMmsBerTagClass tag_class,
+    int constructed,
+    uint32_t tag_number,
+    const uint8_t* value,
+    size_t value_length,
+    UnitLabNativeReportValueKind expected_kind)
+{
+    UnitLabNativeClientSessionState session;
+    uint8_t frame[2048U];
+    size_t frame_length = 0U;
+
+    prepare_pending_read(&session, 41U);
+    assert(build_synthetic_read_response_frame(41U, tag_class, constructed, tag_number, value, value_length, frame, sizeof(frame), &frame_length) == 1);
+    assert(unitlab_native_wire_client_decode_frame_summary(&session, frame, frame_length) == 0);
+    assert(session.has_last_read_result == 1);
+    assert(session.last_read_invoke_id == 41U);
+    assert(strcmp(session.last_read_result.object_reference, "IED1LD0/XCBR1$ST$Pos$stVal") == 0);
+    assert(strcmp(session.last_read_result.display_reference, "IED1LD0/XCBR1.ST.Pos.stVal") == 0);
+    assert(session.last_read_result.value_kind == expected_kind);
+    assert(session.last_read_result.access_failure == 0);
+    unitlab_native_client_session_reset(&session);
+}
+
+static void assert_synthetic_read_values(void)
+{
+    const uint8_t bool_true[1U] = { 0x01U };
+    const uint8_t int_negative[1U] = { 0xfbU };
+    const uint8_t uint_value[1U] = { 0x80U };
+    const uint8_t float_value[5U] = { 0x08U, 0x41U, 0x48U, 0x00U, 0x00U };
+    const uint8_t string_value[2U] = { 'O', 'K' };
+    const uint8_t octets[2U] = { 0x00U, 0xffU };
+    const uint8_t bit_string[2U] = { 0x02U, 0xc0U };
+    const uint8_t child_value[1U] = { 0x01U };
+    uint8_t structure_value[8U];
+    size_t structure_length = 0U;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabNativeClientSessionState session;
+    uint8_t frame[2048U];
+    size_t frame_length = 0U;
+    const uint8_t failure_code[1U] = { 0x02U };
+
+    assert_synthetic_read_value(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 3U, bool_true, sizeof(bool_true), UNITLAB_NATIVE_REPORT_VALUE_BOOL);
+    assert_synthetic_read_value(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 5U, int_negative, sizeof(int_negative), UNITLAB_NATIVE_REPORT_VALUE_INTEGER);
+    assert_synthetic_read_value(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 6U, uint_value, sizeof(uint_value), UNITLAB_NATIVE_REPORT_VALUE_UNSIGNED);
+    assert_synthetic_read_value(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 7U, float_value, sizeof(float_value), UNITLAB_NATIVE_REPORT_VALUE_FLOAT);
+    assert_synthetic_read_value(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 10U, string_value, sizeof(string_value), UNITLAB_NATIVE_REPORT_VALUE_STRING);
+    assert_synthetic_read_value(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 9U, octets, sizeof(octets), UNITLAB_NATIVE_REPORT_VALUE_OCTETS);
+    assert_synthetic_read_value(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 4U, bit_string, sizeof(bit_string), UNITLAB_NATIVE_REPORT_VALUE_BIT_STRING);
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(append_test_ber(structure_value, sizeof(structure_value), &structure_length, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 3U, child_value, sizeof(child_value), &diagnostic) == 1);
+    assert_synthetic_read_value(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 2U, structure_value, structure_length, UNITLAB_NATIVE_REPORT_VALUE_STRUCTURE);
+
+    prepare_pending_read(&session, 42U);
+    assert(build_synthetic_read_response_frame(42U, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 0U, failure_code, sizeof(failure_code), frame, sizeof(frame), &frame_length) == 1);
+    assert(unitlab_native_wire_client_decode_frame_summary(&session, frame, frame_length) == 0);
+    assert(session.has_last_read_result == 1);
+    assert(session.last_read_result.access_failure == 1);
+    assert(session.last_read_result.access_failure_code == 2U);
+    unitlab_native_client_session_reset(&session);
+}
+
 static void assert_synthetic_report_counts(size_t value_count, size_t reason_count, size_t missing_values, size_t extra_values, size_t missing_reasons, size_t extra_reasons)
 {
     UnitLabNativeClientSessionState session;
@@ -344,6 +478,7 @@ int main(void)
     assert_synthetic_report_counts(2U, 1U, 0U, 0U, 1U, 0U);
     assert_synthetic_report_counts(2U, 3U, 0U, 0U, 0U, 1U);
     assert_synthetic_report_unsupported_value();
+    assert_synthetic_read_values();
 
     unitlab_free_ied_model_plan(&plan);
     return 0;

@@ -888,6 +888,9 @@ static int store_latest_read_result(
         return 0;
     }
     if (result.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && result.tag.tag_number == 0U) {
+        session->last_read_result.raw_tag_class = (uint8_t)result.tag.tag_class;
+        session->last_read_result.raw_tag_number = (uint8_t)result.tag.tag_number;
+        session->last_read_result.raw_value_length = result.value_length;
         session->last_read_result.access_failure = 1;
         session->last_read_result.access_failure_code = decode_unsigned_bytes(result.value_bytes, result.value_length);
         snprintf(session->last_read_result.value_summary, sizeof(session->last_read_result.value_summary), "access-failure:%u", (unsigned)session->last_read_result.access_failure_code);
@@ -908,36 +911,6 @@ static int store_latest_read_result(
         session->last_read_result.value_summary[0] != '\0' ? session->last_read_result.value_summary : "<none>");
     fflush(stdout);
     return 1;
-}
-
-static int store_latest_read_result_from_frame(
-    UnitLabNativeClientSessionState* session,
-    const char* domain_id,
-    const char* item_id,
-    uint32_t invoke_id,
-    const uint8_t* frame,
-    size_t frame_length)
-{
-    UnitLabMmsAssociationFrame association_frame;
-    UnitLabMmsPdu pdu;
-    UnitLabMmsDiagnostic diagnostic;
-    size_t consumed = 0U;
-
-    if (session == NULL || frame == NULL || frame_length == 0U) {
-        return 0;
-    }
-    unitlab_mms_diagnostic_clear(&diagnostic);
-    unitlab_mms_association_frame_init(&association_frame);
-    if (!unitlab_mms_association_frame_decode(&association_frame, frame, frame_length, &consumed, &diagnostic)
-        || association_frame.presentation.payload_bytes == NULL
-        || association_frame.presentation.payload_length == 0U) {
-        return 0;
-    }
-    unitlab_mms_pdu_init(&pdu);
-    if (!unitlab_mms_pdu_decode(&pdu, association_frame.presentation.payload_bytes, association_frame.presentation.payload_length, &consumed, &diagnostic)) {
-        return 0;
-    }
-    return store_latest_read_result(session, domain_id, item_id, invoke_id, &pdu);
 }
 
 static int copy_printable_value(const UnitLabMmsBerElement* element, char* buffer, size_t buffer_size)
@@ -1492,6 +1465,13 @@ static void emit_mms_frame_summary(UnitLabNativeClientSessionState* session, con
         && (pdu.service_kind == UNITLAB_MMS_SERVICE_READ || pdu.service_kind == UNITLAB_MMS_SERVICE_WRITE)) {
         emit_service_access_results(&pdu);
     }
+    if (pdu.kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE
+        && pdu.service_kind == UNITLAB_MMS_SERVICE_READ
+        && pdu.has_invoke_id
+        && session->has_pending_read
+        && session->pending_read_invoke_id == pdu.invoke_id) {
+        (void)store_latest_read_result(session, session->pending_read_domain, session->pending_read_item, pdu.invoke_id, &pdu);
+    }
     if (pdu.kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE && pdu.service_kind == UNITLAB_MMS_SERVICE_GET_NAME_LIST) {
         emit_get_name_list_identifiers(&pdu);
     }
@@ -1872,6 +1852,10 @@ static int emit_read_response(
     if (!unitlab_mms_build_read_request_frame(domain_id, item_id, invoke_id, scratch, scratch_length, request, request_length, &encoded_request_length, diagnostic)) {
         return 0;
     }
+    session->has_pending_read = 1;
+    session->pending_read_invoke_id = invoke_id;
+    snprintf(session->pending_read_domain, sizeof(session->pending_read_domain), "%s", domain_id);
+    snprintf(session->pending_read_item, sizeof(session->pending_read_item), "%s", item_id);
     if (!emit_confirmed_response(
             session,
             data_fd,
@@ -1884,11 +1868,10 @@ static int emit_read_response(
             text_buffer_length,
             "Native wire client could not receive the confirmed-read response.",
             diagnostic)) {
+        session->has_pending_read = 0;
         return 0;
     }
-    if (encoded_response_length != NULL) {
-        (void)store_latest_read_result_from_frame(session, domain_id, item_id, invoke_id, response, *encoded_response_length);
-    }
+    session->has_pending_read = 0;
     return 1;
 }
 

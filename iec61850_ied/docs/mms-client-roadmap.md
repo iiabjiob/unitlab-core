@@ -313,6 +313,7 @@ Status: in progress.
 Closed in current slice:
 
 - Native wire client read responses now update session-owned latest-read state with typed value metadata and emit a compact `read-summary` for the requested object.
+- Synthetic native client tests cover latest-read bool, signed/unsigned integer, MMS float32, string, octets, bit-string, structure, and access-failure decode paths.
 
 Goal: allow the debug UI and later runtime integration to read live values safely.
 
