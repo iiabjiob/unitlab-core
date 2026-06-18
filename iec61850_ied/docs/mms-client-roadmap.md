@@ -294,11 +294,10 @@ Closed in current slice:
 - Fixture-backed discovery validation now asserts the final `next_invoke_id` after all browse, GVA, BRCB, and DataSet member steps.
 - Association frame decode diagnostics now prefix lower-layer and association semantic failures with the `transport`, `session`, or `presentation` phase without changing the decode API.
 - Server runtime association request diagnostics now prefix malformed transport frames, ACSE semantic rejection, and non-initiate MMS requests with `transport`, `acse`, or `mms-initiate` phases.
-- Native wire client association response handling now separates send failure, EOF, timeout, malformed frame, and read error result codes.
+- Native wire client association response handling now separates send failure, EOF, timeout, malformed frame, read error, MMS reject/initiate-error, and ACSE abort result codes.
 
 Remaining Slice 6 work:
 
-- Association failure phase diagnostics still need explicit reject and abort runtime coverage.
 - Oversized or segmented response handling still needs explicit accept/reject tests against saved association captures.
 
 

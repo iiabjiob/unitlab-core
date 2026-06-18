@@ -16,6 +16,8 @@
 #include <unistd.h>
 
 #include "wire/orchestration/unitlab_mms_association_frame.h"
+#include "wire/acse/unitlab_mms_acse.h"
+#include "wire/mms/unitlab_mms_pdu.h"
 #include "wire/orchestration/unitlab_mms_live_wire_probe.h"
 #include "wire/orchestration/unitlab_mms_wire_builder.h"
 
@@ -1497,6 +1499,60 @@ static void set_association_read_failure_result(UnitLabIedModelLoadResult* resul
     }
 }
 
+static int validate_association_response_frame(const uint8_t* frame, size_t frame_length, UnitLabIedModelLoadResult* result)
+{
+    UnitLabMmsAssociationFrame association_frame;
+    UnitLabMmsPdu pdu;
+    UnitLabMmsAcseApdu acse_apdu;
+    UnitLabMmsDiagnostic diagnostic;
+    size_t consumed_length = 0U;
+
+    if (frame == NULL || frame_length == 0U) {
+        set_result(result, "NATIVE_WIRE_CLIENT_ASSOCIATION_MALFORMED_FRAME", "Native wire client received an empty association response frame.");
+        return 0;
+    }
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_association_frame_init(&association_frame);
+    if (!unitlab_mms_association_frame_decode(&association_frame, frame, frame_length, &consumed_length, &diagnostic)) {
+        set_result(result, "NATIVE_WIRE_CLIENT_ASSOCIATION_MALFORMED_FRAME", diagnostic.message[0] != '\0' ? diagnostic.message : "Native wire client received a malformed association response frame.");
+        return 0;
+    }
+    if (association_frame.presentation.payload_bytes == NULL || association_frame.presentation.payload_length == 0U) {
+        set_result(result, "NATIVE_WIRE_CLIENT_ASSOCIATION_MALFORMED_FRAME", "Native wire client association response is missing presentation payload bytes.");
+        return 0;
+    }
+
+    unitlab_mms_pdu_init(&pdu);
+    if (unitlab_mms_pdu_decode(&pdu, association_frame.presentation.payload_bytes, association_frame.presentation.payload_length, &consumed_length, &diagnostic)) {
+        if (pdu.kind == UNITLAB_MMS_PDU_REJECT) {
+            set_result(result, "NATIVE_WIRE_CLIENT_ASSOCIATION_REJECTED", "Native wire client association was rejected by an MMS Reject PDU.");
+            return 0;
+        }
+        if (pdu.kind == UNITLAB_MMS_PDU_INITIATE_ERROR) {
+            set_result(result, "NATIVE_WIRE_CLIENT_ASSOCIATION_INITIATE_ERROR", "Native wire client association failed with an MMS InitiateError PDU.");
+            return 0;
+        }
+        if (pdu.kind == UNITLAB_MMS_PDU_INITIATE_RESPONSE) {
+            return 1;
+        }
+    }
+
+    unitlab_mms_acse_apdu_init(&acse_apdu);
+    if (unitlab_mms_acse_decode(&acse_apdu, association_frame.presentation.payload_bytes, association_frame.presentation.payload_length, &consumed_length, &diagnostic)) {
+        if (acse_apdu.kind == UNITLAB_MMS_ACSE_APDU_ABRT) {
+            set_result(result, "NATIVE_WIRE_CLIENT_ASSOCIATION_ABORTED", "Native wire client association was aborted by an ACSE ABRT APDU.");
+            return 0;
+        }
+        if (acse_apdu.kind == UNITLAB_MMS_ACSE_APDU_AARE) {
+            return 1;
+        }
+    }
+
+    set_result(result, "NATIVE_WIRE_CLIENT_ASSOCIATION_UNEXPECTED_RESPONSE", "Native wire client received an unexpected association response PDU.");
+    return 0;
+}
+
 static int read_tpkt_frame_if_available(int fd, uint8_t* frame, size_t frame_length, size_t* encoded_length, int timeout_ms)
 {
     fd_set read_set;
@@ -2747,6 +2803,10 @@ int unitlab_run_native_wire_client_with_options(
             set_association_read_failure_result(result, association_read_status);
             goto fail;
         }
+    }
+    if (!validate_association_response_frame(association_request, association_length, result)) {
+        state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
+        goto fail;
     }
     state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_ASSOCIATED;
     if (!emit_state_response(state)) {
