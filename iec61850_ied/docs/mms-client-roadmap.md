@@ -292,6 +292,7 @@ Closed in current slice:
 - Native wire client discovery now allocates invoke IDs through `UnitLabNativeClientSessionState` instead of local `base + n` arithmetic.
 - The allocator wraps from `UINT32_MAX` to `1`, never emits invoke ID `0`, and can observe explicit operator-supplied invoke IDs so later automatic requests do not collide inside the same session flow.
 - Fixture-backed discovery validation now asserts the final `next_invoke_id` after all browse, GVA, BRCB, and DataSet member steps.
+- Interactive native client reads, browses, attribute requests, RCB preflight/reserve/RptEna/GI, cleanup, and explicit write commands now reserve or observe invoke IDs through the session allocator instead of local post-increment state.
 - Association frame decode diagnostics now prefix lower-layer and association semantic failures with the `transport`, `session`, or `presentation` phase without changing the decode API.
 - Server runtime association request diagnostics now prefix malformed transport frames, ACSE semantic rejection, and non-initiate MMS requests with `transport`, `acse`, or `mms-initiate` phases.
 - Native wire client association response handling now separates send failure, EOF, timeout, malformed frame, oversized frame, read error, MMS reject/initiate-error, and ACSE abort result codes.
