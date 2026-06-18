@@ -99,6 +99,7 @@ const props = defineProps<{
   workspaceId: number
   storageKey: string
   initialStoredState: StoredDiagramState | null
+  fitRequestKey?: number
 }>()
 
 const emit = defineEmits<{
@@ -380,6 +381,13 @@ watch(() => textEditor.activeEditor.value, (next) => {
 
 watch(() => props.initialStoredState, (next) => {
   lastStoredState.value = next
+})
+
+watch(() => props.fitRequestKey, (next, previous) => {
+  if (next == null || next === previous) {
+    return
+  }
+  fitScene()
 })
 
 diagram.engine.subscribe((scene) => {
