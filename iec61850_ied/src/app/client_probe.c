@@ -854,10 +854,9 @@ static int verify_reports(
             set_probe_result(result, 0, "IEC61850_METADATA_PROBE_RCB_ENABLED", "IEC 61850 metadata probe expected ReportControl to be disabled.");
             passed = 0;
         }
-        if (passed && report->is_buffered && ClientReportControlBlock_hasResvTms(rcb) && ClientReportControlBlock_getResvTms(rcb) != 0) {
-            set_probe_result(result, 0, "IEC61850_METADATA_PROBE_RCB_RESERVED", "IEC 61850 metadata probe expected buffered ReportControl to be unreserved.");
-            passed = 0;
-        }
+        /* A stale buffered reservation is operational state, not metadata mismatch.
+         * GI probe still validates that this client can reserve/enable/cleanup the RCB.
+         */
         const UnitLabIedModelDataSet* data_set = &plan->data_sets[report->data_set_index];
         const char* data_set_ref = ClientReportControlBlock_getDataSetReference(rcb);
         if (passed && (data_set_ref == NULL || strstr(data_set_ref, data_set->name) == NULL)) {

@@ -178,6 +178,8 @@ iec61850_ied/scripts/check-external-mms-client-pcap.py \
 
 Capture each run separately, then diff the pcaps only after confirming the same browse tree, datasets, report-control names, and NamPlt namespace fields are present on both wires. The checker is behavior-level; it does not require byte-identical IEDScout parity.
 
+If a previous run left a buffered ReportControl reserved, metadata probing still accepts the model. `GI` remains the cleanup/ownership gate; if GI reservation fails, wait for `ResvTms` to expire or restart the libIEC61850 server before recapturing.
+
 ## Build
 
 Dry-run scaffold build without libIEC61850:

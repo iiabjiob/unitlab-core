@@ -218,7 +218,7 @@ Validation:
 
 ## Slice 5: Report Decoder Hardening
 
-Status: in progress.
+Status: in progress; current pcap comparison found an external GI scope mismatch.
 
 Goal: decode real vendor reports into stable signal updates.
 
@@ -244,7 +244,9 @@ Closed in current slice:
 - `mms-summary` emits named diagnostic lines for `DATASET_NOT_DISCOVERED`, `DATASET_MEMBER_MISMATCH`, `MISSING_REPORT_VALUES`, `EXTRA_REPORT_VALUES`, `MISSING_REPORT_REASONS`, and `EXTRA_REPORT_REASONS`, and `UNSUPPORTED_REPORT_VALUES`.
 - Session reset clears report diagnostic counters so stale report mismatch state cannot leak into the next report.
 - Fixture-based native report decoder test now builds model-backed and synthetic GI `InformationReport` frames and validates DataRef/value/reason mapping, zero-mismatch diagnostics, `DATASET_MEMBER_MISMATCH`, missing/extra value/reason diagnostics, and `UNSUPPORTED_REPORT_VALUES` without requiring a fresh pcap.
-- `scripts/check-external-mms-client-pcap.py` now provides a behavior-level gate for SCD-backed external MMS captures. Existing UnitLab and IEDScout `KINTE13LVC01` captures pass this gate on port `12447`.
+- `scripts/check-external-mms-client-pcap.py` now provides a behavior-level gate for SCD-backed external MMS captures, including exact InformationReport count checks when `--expected-reports` is provided.
+- Rejected UnitLab client capture artifact: `iec61850_ied/artifacts/mms-client-discover-rptEna-GI-02.pcapng` (`SHA256 34615d5f560bc9fc64f1175d5948d9c17353e65ffae3e021f8d7108bf74842bc`, 832 packets, 16.831 s, 36 MMS requests, 36 MMS responses, 4 InformationReports, 0 TCP resets). It proved the external GI probe was validating both `brcbA` and `brcbB` instead of only the selected candidate.
+- Current IEDScout baseline capture artifact for the same libIEC61850 server/SCD target: `iec61850_ied/artifacts/iedScout-discover-rptEna-GI-02.pcapng` (`SHA256 1bde9d699618ec7c505a2cecbce5e63d1ff82c9deb6158ca7fb754d68851a35b`, 401 packets, 20.130 s, 104 MMS requests, 101 MMS responses, 2 InformationReports, 0 TCP resets).
 
 Acceptance criteria:
 
@@ -259,6 +261,7 @@ Validation:
 - Golden report decoder tests from saved frames.
 - Real TCP GI report smoke.
 - Regression check that current `dataset-match=true` path still passes.
+- Saved pcap gate: run `scripts/check-external-mms-client-pcap.py <capture.pcapng> --port 12447 --expected-reports 2` against the final UnitLab client and IEDScout baseline captures. A final UnitLab recapture is required after the `--report-key` scoped GI fix.
 
 ## Slice 6: Association And Transport Interoperability
 

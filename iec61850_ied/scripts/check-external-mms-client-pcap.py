@@ -117,6 +117,7 @@ def main() -> int:
     parser.add_argument('--rcb', default='LLN0$BR$brcbA')
     parser.add_argument('--dataset', default='LLN0$RCB1')
     parser.add_argument('--min-reports', type=int, default=1)
+    parser.add_argument('--expected-reports', type=int)
     parser.add_argument('--allow-tcp-reset', action='store_true')
     args = parser.parse_args()
 
@@ -161,6 +162,8 @@ def main() -> int:
     report_count = sum(1 for row in rows if '0' in row.unconfirmed)
     if report_count < args.min_reports:
         failures.append(f'expected at least {args.min_reports} InformationReport frames, saw {report_count}')
+    if args.expected_reports is not None and report_count != args.expected_reports:
+        failures.append(f'expected exactly {args.expected_reports} InformationReport frames, saw {report_count}')
 
     request_count = sum(len(row.requests) for row in rows)
     response_count = sum(len(row.responses) for row in rows)

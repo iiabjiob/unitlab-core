@@ -390,7 +390,9 @@ def test_external_mms_target_routes_discover_rptena_gi_to_external_probes(monkey
     service.send_general_interrogation()
     service.disconnect_ied()
 
-    assert [command[-1] for command in commands] == ["--metadata-probe", "--metadata-probe", "--gi-probe"]
+    assert commands[0][-1] == "--metadata-probe"
+    assert commands[1][-1] == "--metadata-probe"
+    assert commands[2][-3:] == ("--gi-probe", "--report-key", "KINTE13LVC01:CTRL/LLN0.brcbA")
     assert commands[0][:7] == (
         "/workspace/iec61850_ied/build-libiec61850/unitlab-iec61850-ied-sim",
         "--scl",

@@ -552,6 +552,7 @@ class Iec61850ClientControlService:
             command.append("--metadata-probe")
         elif probe == "gi":
             command.append("--gi-probe")
+            command.extend(("--report-key", self._candidate.id))
         else:
             raise Iec61850ReportRuntimeError("EXTERNAL_MMS_PROBE_INVALID", "IEC 61850 external MMS probe kind is invalid.")
         try:
