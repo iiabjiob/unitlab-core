@@ -508,6 +508,7 @@ static void test_association_frame_decode_rejects_non_dt_cotp_frame(void)
     assert(association_frame.session.kind == UNITLAB_MMS_SESSION_SPDU_NONE);
     assert(association_frame.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_NONE);
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR);
+    assert(strstr(diagnostic.message, "association frame transport decode failed") != NULL);
 }
 static void test_association_frame_decode_rejects_malformed_transport_frame(void)
 {
