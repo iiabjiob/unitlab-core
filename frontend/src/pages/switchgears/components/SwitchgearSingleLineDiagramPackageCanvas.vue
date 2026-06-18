@@ -2,6 +2,7 @@
 import { computed, ref, watch } from "vue"
 import { useRoute } from "vue-router"
 import { getSvgEntityProps, useDiagramEngine, useDiagramPointerController, useDiagramSelection, useDiagramTextEditor, useDiagramViewport, useDiagramVisibleEntities } from "@affino/diagram-vue"
+import type { DiagramEdge } from "@affino/diagram-core"
 
 import UiButton from "@/components/ui/UiButton.vue"
 import { writeLocalSetting } from "@/services/localSettingsStorage"
@@ -14,6 +15,8 @@ import { serializeSwitchgearSldPackageScene } from "../utils/switchgearSldPackag
 const GRID_STEP = 24
 const DEFAULT_TEXT_LABEL = "TEXT"
 const EDGE_PORT_SNAP_RADIUS = 18
+const LABEL_MIN_OFFSET = -220
+const LABEL_MAX_OFFSET = 220
 const STATIC_DIMENSIONS: Record<DiagramStaticKind, Record<DiagramStaticSize, { width: number; height: number }>> = {
   transformer: {
     sm: { width: GRID_STEP * 3, height: GRID_STEP * 3 },
@@ -44,6 +47,16 @@ type EdgeDragState = {
   endpoint: "source" | "target"
   draft: DraftEndpoint
 }
+type LabelDragState = {
+  pointerId: number
+  nodeId: string
+  originX: number
+  originY: number
+  currentX: number
+  currentY: number
+  startX: number
+  startY: number
+}
 
 const props = defineProps<{
   model: SwitchgearSldPackageSceneModel
@@ -59,6 +72,7 @@ const editableText = ref("")
 const lastStoredState = ref<StoredDiagramState | null>(props.initialStoredState)
 const draftLine = ref<DraftLine | null>(null)
 const draggedEdge = ref<EdgeDragState | null>(null)
+const labelDrag = ref<LabelDragState | null>(null)
 const lineKind = ref<EdgeStyle>("line")
 const lineWeight = ref<EdgeWeight>("normal")
 
@@ -112,8 +126,10 @@ const selectionLabel = computed(() => {
 })
 const selectedShapeIds = computed(() => selection.selection.value.ids.filter(id => diagram.scene.value.entities.shapesById.has(id)))
 const selectedEdgeIds = computed(() => selection.selection.value.ids.filter(id => diagram.scene.value.entities.edgesById.has(id)))
+const selectedNodeIds = computed(() => selection.selection.value.ids.filter(id => diagram.scene.value.entities.nodesById.has(id)))
 const selectedStaticCount = computed(() => selectedShapeIds.value.length)
 const selectedEdgeCount = computed(() => selectedEdgeIds.value.length)
+const selectedNodeCount = computed(() => selectedNodeIds.value.length)
 const selectedStaticSize = computed<DiagramStaticSize | "mixed" | null>(() => {
   if (selectedShapeIds.value.length === 0) {
     return null
@@ -224,6 +240,7 @@ function setTool(tool: PackageTool) {
   activeTool.value = tool
   draftLine.value = null
   draggedEdge.value = null
+  labelDrag.value = null
   if (tool === "line") {
     pointer.setTool("select")
     return
@@ -361,6 +378,20 @@ function setSelectedStaticSize(size: DiagramStaticSize) {
   })
 }
 
+function updateSelectedEdges(update: (edge: DiagramEdge) => DiagramEdge) {
+  if (selectedEdgeIds.value.length === 0) {
+    return
+  }
+  const selectedIds = new Set(selectedEdgeIds.value)
+  diagram.engine.transact(() => {
+    const serialized = diagram.engine.serialize()
+    return {
+      ...serialized,
+      edges: serialized.edges.map(edge => (selectedIds.has(edge.id) ? update(edge) : edge)),
+    }
+  })
+}
+
 function setSelectedEdgesKind(kind: EdgeStyle) {
   updateSelectedEdges((edge) => ({
     ...edge,
@@ -381,17 +412,27 @@ function setSelectedEdgesWeight(weight: EdgeWeight) {
   }))
 }
 
-function updateSelectedEdges(mutator: (edge: NonNullable<ReturnType<typeof diagram.engine.serialize>["edges"]>[number]) => NonNullable<ReturnType<typeof diagram.engine.serialize>["edges"]>[number]) {
-  if (selectedEdgeIds.value.length === 0) {
+function alignSelectedNodesLeft() {
+  if (selectedNodeIds.value.length < 2) {
     return
   }
-  const edgeIds = new Set(selectedEdgeIds.value)
-  diagram.engine.transact((scene) => {
-    const serialized = diagram.engine.serialize()
-    return {
-      ...serialized,
-      edges: serialized.edges.map(edge => edgeIds.has(edge.id) ? mutator(edge) : edge),
-    }
+  diagram.dispatch({
+    type: "alignEntities",
+    ids: selectedNodeIds.value,
+    edge: "left",
+    historyKey: "align-nodes-left",
+  })
+}
+
+function alignSelectedNodesTop() {
+  if (selectedNodeIds.value.length < 2) {
+    return
+  }
+  diagram.dispatch({
+    type: "alignEntities",
+    ids: selectedNodeIds.value,
+    edge: "top",
+    historyKey: "align-nodes-top",
   })
 }
 
@@ -456,6 +497,7 @@ function onStageKeydown(event: KeyboardEvent) {
     }
     draftLine.value = null
     draggedEdge.value = null
+    labelDrag.value = null
     clearSelection()
   }
 }
@@ -531,6 +573,68 @@ function finishEdgeEndpointDrag(event: PointerEvent) {
   const target = event.currentTarget as Element | null
   target?.releasePointerCapture?.(event.pointerId)
   onSvgPointerUp(event)
+}
+
+function beginLabelDrag(event: PointerEvent, nodeId: string) {
+  if (activeTool.value !== "select") {
+    return
+  }
+  const node = diagram.scene.value.entities.nodesById.get(nodeId)
+  if (!node) {
+    return
+  }
+  event.stopPropagation()
+  selection.setSelection([nodeId], nodeId)
+  const target = event.currentTarget as Element | null
+  target?.setPointerCapture?.(event.pointerId)
+  labelDrag.value = {
+    pointerId: event.pointerId,
+    nodeId,
+    originX: Number(node.metadata?.labelOffsetX ?? 0),
+    originY: Number(node.metadata?.labelOffsetY ?? 22),
+    currentX: Number(node.metadata?.labelOffsetX ?? 0),
+    currentY: Number(node.metadata?.labelOffsetY ?? 22),
+    startX: event.clientX,
+    startY: event.clientY,
+  }
+}
+
+function onLabelPointerMove(event: PointerEvent) {
+  const drag = labelDrag.value
+  if (!drag || drag.pointerId !== event.pointerId) {
+    return
+  }
+  labelDrag.value = {
+    ...drag,
+    currentX: clampLabelOffset(drag.originX + event.clientX - drag.startX),
+    currentY: clampLabelOffset(drag.originY + event.clientY - drag.startY),
+  }
+}
+
+function finishLabelDrag(event: PointerEvent) {
+  const drag = labelDrag.value
+  const target = event.currentTarget as Element | null
+  target?.releasePointerCapture?.(event.pointerId)
+  if (!drag || drag.pointerId !== event.pointerId) {
+    return
+  }
+  diagram.engine.transact(() => {
+    const serialized = diagram.engine.serialize()
+    return {
+      ...serialized,
+      nodes: serialized.nodes.map((node) => node.id === drag.nodeId
+        ? {
+            ...node,
+            metadata: {
+              ...node.metadata,
+              labelOffsetX: clampLabelOffset(drag.currentX),
+              labelOffsetY: clampLabelOffset(drag.currentY),
+            },
+          }
+        : node),
+    }
+  })
+  labelDrag.value = null
 }
 
 function createLine(start: DraftEndpoint, end: DraftEndpoint) {
@@ -669,9 +773,12 @@ function resolveNodeLabelPosition(id: string) {
   if (!node) {
     return { x: 0, y: 0 }
   }
+  const drag = labelDrag.value
+  const offsetX = drag?.nodeId === id ? drag.currentX : Number(node.metadata?.labelOffsetX ?? 0)
+  const offsetY = drag?.nodeId === id ? drag.currentY : Number(node.metadata?.labelOffsetY ?? 22)
   return {
-    x: node.x + node.width / 2 + Number(node.metadata?.labelOffsetX ?? 0),
-    y: node.y + node.height / 2 + Number(node.metadata?.labelOffsetY ?? 22),
+    x: node.x + node.width / 2 + offsetX,
+    y: node.y + node.height / 2 + offsetY,
   }
 }
 
@@ -700,6 +807,10 @@ function resolveEdgeStroke(id: string) {
 
 function resolveEdgeWidth(id: string) {
   return resolveEdgeWeightValue(id) === "bold" ? 3 : 2
+}
+
+function clampLabelOffset(value: number) {
+  return Math.max(LABEL_MIN_OFFSET, Math.min(LABEL_MAX_OFFSET, Math.round(value)))
 }
 
 function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: number } {
@@ -769,6 +880,14 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
           </button>
           <UiButton size="sm" variant="secondary" @click="rotateSelectedStatic">
             Rotate
+          </UiButton>
+        </div>
+        <div v-if="selectedNodeCount > 1" class="switchgear-sld-package-canvas__tool-tabs">
+          <UiButton size="sm" variant="secondary" @click="alignSelectedNodesLeft">
+            Align left
+          </UiButton>
+          <UiButton size="sm" variant="secondary" @click="alignSelectedNodesTop">
+            Align top
           </UiButton>
         </div>
         <span class="switchgear-sld-package-canvas__selection">{{ selectionLabel }}</span>
@@ -923,7 +1042,9 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
           class="switchgear-sld-package-canvas__switchgear-label"
           text-anchor="middle"
           dominant-baseline="middle"
-          pointer-events="none"
+          @pointerdown="beginLabelDrag($event, node.id)"
+          @pointermove="onLabelPointerMove"
+          @pointerup="finishLabelDrag"
         >
           {{ resolveNodeLabel(node.id) }}
         </text>
