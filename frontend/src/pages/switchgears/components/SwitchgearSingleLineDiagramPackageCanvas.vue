@@ -7,9 +7,24 @@ import UiButton from "@/components/ui/UiButton.vue"
 import { writeLocalSetting } from "@/services/localSettingsStorage"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
 
-import type { StoredDiagramState } from "../utils/switchgearSldDiagramTypes"
+import type { DiagramStaticKind, DiagramStaticSize, StoredDiagramState } from "../utils/switchgearSldDiagramTypes"
 import type { SwitchgearSldPackageSceneModel } from "../utils/switchgearSldPackageScene"
 import { serializeSwitchgearSldPackageScene } from "../utils/switchgearSldPackageScene"
+
+const GRID_STEP = 24
+const DEFAULT_TEXT_LABEL = "TEXT"
+const STATIC_DIMENSIONS: Record<DiagramStaticKind, Record<DiagramStaticSize, { width: number; height: number }>> = {
+  transformer: {
+    sm: { width: GRID_STEP * 3, height: GRID_STEP * 3 },
+    md: { width: GRID_STEP * 4, height: GRID_STEP * 4 },
+    lg: { width: GRID_STEP * 6, height: GRID_STEP * 6 },
+  },
+  ground: {
+    sm: { width: GRID_STEP, height: GRID_STEP },
+    md: { width: GRID_STEP * 2, height: GRID_STEP * 2 },
+    lg: { width: GRID_STEP * 3, height: GRID_STEP * 3 },
+  },
+}
 
 const props = defineProps<{
   model: SwitchgearSldPackageSceneModel
@@ -52,6 +67,12 @@ const viewportBox = computed(() => {
     height: Math.max(1, value.height / zoom),
   }
 })
+const sceneCounts = computed(() => ({
+  nodes: diagram.scene.value.order.nodeIds.length,
+  edges: diagram.scene.value.order.edgeIds.length,
+  statics: diagram.scene.value.order.shapeIds.length,
+  texts: diagram.scene.value.order.textIds.length,
+}))
 const selectionLabel = computed(() => {
   const ids = selection.selection.value.ids
   if (ids.length === 0) {
@@ -65,6 +86,18 @@ const selectionLabel = computed(() => {
     return id
   }
   return `${ids.length} selected`
+})
+const selectedShapeIds = computed(() => selection.selection.value.ids.filter(id => diagram.scene.value.entities.shapesById.has(id)))
+const selectedStaticCount = computed(() => selectedShapeIds.value.length)
+const selectedStaticSize = computed<DiagramStaticSize | "mixed" | null>(() => {
+  if (selectedShapeIds.value.length === 0) {
+    return null
+  }
+  const sizes = new Set<DiagramStaticSize>()
+  for (const id of selectedShapeIds.value) {
+    sizes.add(inferStaticSize(id))
+  }
+  return sizes.size === 1 ? [...sizes][0] : "mixed"
 })
 const canUndo = computed(() => diagram.engine.canUndo())
 const canRedo = computed(() => diagram.engine.canRedo())
@@ -85,7 +118,7 @@ watch(() => props.initialStoredState, (next) => {
   lastStoredState.value = next
 })
 
-const subscription = diagram.engine.subscribe((scene) => {
+diagram.engine.subscribe((scene) => {
   if (scene.revision === 0) {
     return
   }
@@ -135,6 +168,116 @@ function redo() {
 
 function deleteSelection() {
   diagram.engine.dispatchKeyboardCommand("delete")
+}
+
+function addText() {
+  const center = getViewportCenter()
+  diagram.dispatch({
+    type: "pasteClipboard",
+    clipboard: {
+      nodes: [],
+      edges: [],
+      texts: [{
+        id: "text:new",
+        kind: "text",
+        x: center.x,
+        y: center.y,
+        text: DEFAULT_TEXT_LABEL,
+        width: 96,
+        height: 28,
+        fontSize: 12,
+        metadata: { entityType: "text" },
+      }],
+      shapes: [],
+      ports: [],
+      selection: { ids: ["text:new"], primaryId: "text:new" },
+      viewport: diagram.scene.value.viewport,
+    },
+    offset: { x: 0, y: 0 },
+    historyKey: "add-text",
+  })
+}
+
+function addStatic(kind: DiagramStaticKind) {
+  const center = getViewportCenter()
+  const dims = STATIC_DIMENSIONS[kind].md
+  const seed = `package-${kind}-${diagram.scene.value.revision}-${Math.round(center.x)}-${Math.round(center.y)}`
+  diagram.dispatch({
+    type: "pasteClipboard",
+    clipboard: {
+      nodes: [],
+      edges: [],
+      texts: [],
+      shapes: [{
+        id: `shape:${kind}`,
+        kind: "shape",
+        x: center.x - dims.width / 2,
+        y: center.y - dims.height / 2,
+        width: dims.width,
+        height: dims.height,
+        rotation: 0,
+        shape: kind,
+        metadata: {
+          entityType: "static",
+          staticId: seed,
+          staticKind: kind,
+          staticSize: "md",
+          rotation: 0,
+        },
+      }],
+      ports: [],
+      selection: { ids: [`shape:${kind}`], primaryId: `shape:${kind}` },
+      viewport: diagram.scene.value.viewport,
+    },
+    offset: { x: 0, y: 0 },
+    historyKey: `add-${kind}`,
+  })
+}
+
+function rotateSelectedStatic() {
+  if (selectedShapeIds.value.length === 0) {
+    return
+  }
+  diagram.dispatch({
+    type: "rotateEntities",
+    entries: selectedShapeIds.value.flatMap((id) => {
+      const shape = diagram.scene.value.entities.shapesById.get(id)
+      if (!shape) {
+        return []
+      }
+      const current = Number(shape.rotation ?? 0)
+      const next = (((current + 90) % 360) || 0) as 0 | 90 | 180 | 270
+      return [{ id, rotation: next }]
+    }),
+    historyKey: "rotate-static",
+  })
+}
+
+function setSelectedStaticSize(size: DiagramStaticSize) {
+  if (selectedShapeIds.value.length === 0) {
+    return
+  }
+  diagram.dispatch({
+    type: "resizeEntities",
+    entries: selectedShapeIds.value.flatMap((id) => {
+      const shape = diagram.scene.value.entities.shapesById.get(id)
+      const meta = resolveStaticMeta(id)
+      if (!shape) {
+        return []
+      }
+      const dims = STATIC_DIMENSIONS[meta.kind][size]
+      const centerX = shape.x + shape.width / 2
+      const centerY = shape.y + shape.height / 2
+      return [{
+        id,
+        x: Math.round(centerX - dims.width / 2),
+        y: Math.round(centerY - dims.height / 2),
+        width: dims.width,
+        height: dims.height,
+      }]
+    }),
+    historyKey: `resize-static-${size}`,
+  })
 }
 
 function onWheel(event: WheelEvent) {
@@ -234,6 +377,32 @@ function mapPointerToWorld(event: PointerEvent) {
   }
 }
 
+function getViewportCenter() {
+  const current = viewport.viewport.value
+  return {
+    x: current.x + current.width / current.zoom / 2,
+    y: current.y + current.height / current.zoom / 2,
+  }
+}
+
+function inferStaticSize(id: string): DiagramStaticSize {
+  const shape = diagram.scene.value.entities.shapesById.get(id)
+  const meta = resolveStaticMeta(id)
+  if (!shape) {
+    return "md"
+  }
+  const currentMax = Math.max(shape.width, shape.height)
+  let best: { size: DiagramStaticSize; distance: number } | null = null
+  for (const size of ["sm", "md", "lg"] as const) {
+    const dims = STATIC_DIMENSIONS[meta.kind][size]
+    const distance = Math.abs(currentMax - Math.max(dims.width, dims.height))
+    if (!best || distance < best.distance) {
+      best = { size, distance }
+    }
+  }
+  return best?.size ?? "md"
+}
+
 function resolveNodeFill(id: string) {
   const node = diagram.scene.value.entities.nodesById.get(id)
   const switchgearId = Number(node?.metadata?.switchgearId)
@@ -284,10 +453,10 @@ function resolveEdgeWidth(id: string) {
   return edge?.metadata?.edgeWeight === "bold" ? 3 : 2
 }
 
-function resolveStaticMeta(id: string) {
+function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: number } {
   const shape = diagram.scene.value.entities.shapesById.get(id)
-  const staticKind = shape?.metadata?.staticKind
-  const rotation = Number(shape?.metadata?.rotation ?? 0)
+  const staticKind: DiagramStaticKind = shape?.metadata?.staticKind === "ground" ? "ground" : "transformer"
+  const rotation = Number(shape?.rotation ?? shape?.metadata?.rotation ?? 0)
   return {
     kind: staticKind === "ground" ? "ground" : "transformer",
     rotation,
@@ -299,10 +468,10 @@ function resolveStaticMeta(id: string) {
   <section class="switchgear-sld-package-canvas">
     <div class="switchgear-sld-package-canvas__toolbar">
       <div class="switchgear-sld-package-canvas__status">
-        <span>{{ model.stats.nodes }} switchgears</span>
-        <span>{{ model.stats.edges }} lines</span>
-        <span>{{ model.stats.statics }} symbols</span>
-        <span>{{ model.stats.texts }} texts</span>
+        <span>{{ sceneCounts.nodes }} switchgears</span>
+        <span>{{ sceneCounts.edges }} lines</span>
+        <span>{{ sceneCounts.statics }} symbols</span>
+        <span>{{ sceneCounts.texts }} texts</span>
       </div>
       <div class="switchgear-sld-package-canvas__actions">
         <div class="switchgear-sld-package-canvas__tool-tabs">
@@ -312,6 +481,29 @@ function resolveStaticMeta(id: string) {
           <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': activeTool === 'pan' }" @click="setTool('pan')">
             Pan
           </button>
+        </div>
+        <UiButton size="sm" variant="secondary" @click="addStatic('transformer')">
+          Add transformer
+        </UiButton>
+        <UiButton size="sm" variant="secondary" @click="addStatic('ground')">
+          Add ground
+        </UiButton>
+        <UiButton size="sm" variant="secondary" @click="addText">
+          Add text
+        </UiButton>
+        <div v-if="selectedStaticCount > 0" class="switchgear-sld-package-canvas__tool-tabs">
+          <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': selectedStaticSize === 'sm' }" @click="setSelectedStaticSize('sm')">
+            S
+          </button>
+          <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': selectedStaticSize === 'md' }" @click="setSelectedStaticSize('md')">
+            M
+          </button>
+          <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': selectedStaticSize === 'lg' }" @click="setSelectedStaticSize('lg')">
+            L
+          </button>
+          <UiButton size="sm" variant="secondary" @click="rotateSelectedStatic">
+            Rotate
+          </UiButton>
         </div>
         <span class="switchgear-sld-package-canvas__selection">{{ selectionLabel }}</span>
         <UiButton size="sm" variant="secondary" :disabled="!canUndo" @click="undo">

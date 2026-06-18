@@ -202,18 +202,15 @@ export function serializeSwitchgearSldPackageScene(
     staticElements: scene.shapes.flatMap((shape) => {
       const staticId = typeof shape.metadata?.staticId === "string" ? shape.metadata.staticId : null
       const staticKind = normalizeStaticKind(shape.metadata?.staticKind)
-      const staticSize = normalizeStaticSize(shape.metadata?.staticSize)
       if (!staticId) {
         return []
       }
-      const width = Number(shape.width)
-      const height = Number(shape.height)
       return [{
         id: staticId,
         kind: staticKind,
-        size: staticSize,
-        x: Math.round(shape.x + width / 2),
-        y: Math.round(shape.y + height / 2),
+        size: inferStaticSize(staticKind, shape.width, shape.height),
+        x: Math.round(shape.x + shape.width / 2),
+        y: Math.round(shape.y + shape.height / 2),
         rotation: normalizeRotation(shape.rotation),
       } satisfies DiagramStaticElement]
     }),
@@ -442,6 +439,20 @@ function getStaticElementBounds(element: DiagramStaticElement) {
   }
 }
 
+function inferStaticSize(kind: DiagramStaticKind, width: number, height: number): DiagramStaticSize {
+  const currentMax = Math.max(width, height)
+  let best: { size: DiagramStaticSize; distance: number } | null = null
+  for (const size of ["sm", "md", "lg"] as const) {
+    const dims = STATIC_SIZE_DIMENSIONS[kind][size]
+    const targetMax = Math.max(dims.width, dims.height)
+    const distance = Math.abs(currentMax - targetMax)
+    if (!best || distance < best.distance) {
+      best = { size, distance }
+    }
+  }
+  return best?.size ?? "md"
+}
+
 function resolveLayout(
   layoutById: Record<string, DiagramNodeLayout>,
   id: number,
@@ -532,10 +543,6 @@ function normalizeTextElements(value: StoredDiagramState["textElements"] | undef
 
 function normalizeStaticKind(value: unknown): DiagramStaticKind {
   return value === "ground" ? "ground" : "transformer"
-}
-
-function normalizeStaticSize(value: unknown): DiagramStaticSize {
-  return value === "sm" || value === "lg" ? value : "md"
 }
 
 function normalizeRotation(value: unknown): 0 | 90 | 180 | 270 {
