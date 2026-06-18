@@ -373,38 +373,29 @@ function openInNewTab() {
   color: var(--color-neutral-200);
 }
 
-:global(.dark) .sequence-list-item.sidebar-list-item {
+:global(.dark .sequence-list-item.sidebar-list-item) {
   background: transparent;
   box-shadow: inset 0 0 0 1px transparent;
   color: var(--color-neutral-200);
 }
 
-:global(.dark) .sequence-list-item.sidebar-list-item:not(.is-active):hover {
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--color-neutral-800) 54%, var(--color-neutral-900)),
-      color-mix(in srgb, var(--color-neutral-900) 90%, var(--color-neutral-800))
-    );
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-blue-400) 20%, var(--color-neutral-700));
-  color: var(--color-neutral-50);
-}
-
-:global(.dark) .sequence-list-item.sidebar-list-item.is-active {
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--color-blue-500) 20%, var(--color-neutral-900)),
-      color-mix(in srgb, var(--color-blue-900) 18%, var(--color-neutral-950))
-    );
+:global(.dark .sequence-list-item.sidebar-list-item:not(.is-active):hover) {
+  background: color-mix(in srgb, var(--color-neutral-900) 12%, transparent);
+  box-shadow: inset 0 0 0 1px transparent;
   color: var(--color-white);
 }
 
-:global(.dark) .sequence-list-item.sidebar-list-item.is-active::after {
-  border-color: color-mix(in srgb, var(--color-blue-400) 40%, var(--color-neutral-700));
+:global(.dark .sequence-list-item.sidebar-list-item.is-active) {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px transparent;
+  color: var(--color-white);
 }
 
-:global(.dark) .sequence-list-item.sidebar-list-item:not(.is-active) :deep(.sidebar-list-item__indicator) {
+:global(.dark .sequence-list-item.sidebar-list-item.is-active::after) {
+  border-color: transparent;
+}
+
+:global(.dark .sequence-list-item.sidebar-list-item:not(.is-active) .sidebar-list-item__indicator) {
   background: color-mix(in srgb, var(--color-neutral-700) 78%, transparent);
 }
 

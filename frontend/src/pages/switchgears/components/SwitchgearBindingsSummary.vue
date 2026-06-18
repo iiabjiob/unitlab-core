@@ -328,7 +328,8 @@ watch(
   border: 1px dashed var(--color-neutral-300);
   border-radius: var(--radius-md);
   color: var(--color-neutral-500);
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
+  margin-bottom: 1rem;
 }
 
 .switchgear-bindings-summary__groups {
