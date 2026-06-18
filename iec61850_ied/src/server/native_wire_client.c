@@ -188,25 +188,6 @@ static int send_all(int fd, const uint8_t* buffer, size_t length)
     return 1;
 }
 
-static int read_exact(int fd, uint8_t* buffer, size_t length)
-{
-    size_t offset = 0U;
-    while (offset < length) {
-        ssize_t received = recv(fd, buffer + offset, length - offset, 0);
-        if (received < 0) {
-            if (errno == EINTR) {
-                continue;
-            }
-            return 0;
-        }
-        if (received == 0) {
-            return 0;
-        }
-        offset += (size_t)received;
-    }
-    return 1;
-}
-
 static int connect_socket(const char* host, int port)
 {
     struct addrinfo hints;
@@ -1401,34 +1382,119 @@ static int emit_wire_frame_response(UnitLabNativeClientSessionState* session, co
     return 1;
 }
 
-static int read_tpkt_frame(int fd, uint8_t* frame, size_t frame_length, size_t* encoded_length)
+typedef enum UnitLabNativeWireClientReadStatus {
+    UNITLAB_NATIVE_WIRE_CLIENT_READ_OK = 1,
+    UNITLAB_NATIVE_WIRE_CLIENT_READ_EOF = 0,
+    UNITLAB_NATIVE_WIRE_CLIENT_READ_TIMEOUT = -1,
+    UNITLAB_NATIVE_WIRE_CLIENT_READ_MALFORMED = -2,
+    UNITLAB_NATIVE_WIRE_CLIENT_READ_SYSTEM_ERROR = -3
+} UnitLabNativeWireClientReadStatus;
+
+static UnitLabNativeWireClientReadStatus read_tpkt_frame_status(int fd, uint8_t* frame, size_t frame_length, size_t* encoded_length)
 {
     uint8_t header[4U];
     uint16_t total_length;
+    size_t offset = 0U;
 
     if (encoded_length != NULL) {
         *encoded_length = 0U;
     }
-    if (!read_exact(fd, header, sizeof(header))) {
-        return 0;
+    while (offset < sizeof(header)) {
+        ssize_t received = recv(fd, &header[offset], sizeof(header) - offset, 0);
+        if (received < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return UNITLAB_NATIVE_WIRE_CLIENT_READ_SYSTEM_ERROR;
+        }
+        if (received == 0) {
+            return UNITLAB_NATIVE_WIRE_CLIENT_READ_EOF;
+        }
+        offset += (size_t)received;
     }
     if (header[0] != 3U || header[1] != 0U) {
-        return 0;
+        return UNITLAB_NATIVE_WIRE_CLIENT_READ_MALFORMED;
     }
 
     total_length = (uint16_t)(((uint16_t)header[2] << 8U) | (uint16_t)header[3]);
     if (total_length < 4U || total_length > frame_length) {
-        return 0;
+        return UNITLAB_NATIVE_WIRE_CLIENT_READ_MALFORMED;
     }
 
     memcpy(frame, header, sizeof(header));
-    if (!read_exact(fd, &frame[4], (size_t)total_length - 4U)) {
-        return 0;
+    offset = 4U;
+    while (offset < (size_t)total_length) {
+        ssize_t received = recv(fd, frame + offset, (size_t)total_length - offset, 0);
+        if (received < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return UNITLAB_NATIVE_WIRE_CLIENT_READ_SYSTEM_ERROR;
+        }
+        if (received == 0) {
+            return UNITLAB_NATIVE_WIRE_CLIENT_READ_EOF;
+        }
+        offset += (size_t)received;
     }
     if (encoded_length != NULL) {
         *encoded_length = (size_t)total_length;
     }
-    return 1;
+    return UNITLAB_NATIVE_WIRE_CLIENT_READ_OK;
+}
+
+static UnitLabNativeWireClientReadStatus read_tpkt_frame_status_with_timeout(int fd, uint8_t* frame, size_t frame_length, size_t* encoded_length, int timeout_ms)
+{
+    fd_set read_set;
+    struct timeval timeout;
+    int ready;
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (fd < 0 || frame == NULL || frame_length == 0U || timeout_ms < 0) {
+        return UNITLAB_NATIVE_WIRE_CLIENT_READ_SYSTEM_ERROR;
+    }
+
+    FD_ZERO(&read_set);
+    FD_SET(fd, &read_set);
+    timeout.tv_sec = timeout_ms / 1000;
+    timeout.tv_usec = (timeout_ms % 1000) * 1000;
+
+    do {
+        ready = select(fd + 1, &read_set, NULL, NULL, &timeout);
+    } while (ready < 0 && errno == EINTR);
+
+    if (ready < 0) {
+        return UNITLAB_NATIVE_WIRE_CLIENT_READ_SYSTEM_ERROR;
+    }
+    if (ready == 0) {
+        return UNITLAB_NATIVE_WIRE_CLIENT_READ_TIMEOUT;
+    }
+    return read_tpkt_frame_status(fd, frame, frame_length, encoded_length);
+}
+
+static int read_tpkt_frame(int fd, uint8_t* frame, size_t frame_length, size_t* encoded_length)
+{
+    return read_tpkt_frame_status(fd, frame, frame_length, encoded_length) == UNITLAB_NATIVE_WIRE_CLIENT_READ_OK;
+}
+
+static void set_association_read_failure_result(UnitLabIedModelLoadResult* result, UnitLabNativeWireClientReadStatus status)
+{
+    switch (status) {
+        case UNITLAB_NATIVE_WIRE_CLIENT_READ_TIMEOUT:
+            set_result(result, "NATIVE_WIRE_CLIENT_ASSOCIATION_TIMEOUT", "Native wire client timed out waiting for the association response.");
+            break;
+        case UNITLAB_NATIVE_WIRE_CLIENT_READ_EOF:
+            set_result(result, "NATIVE_WIRE_CLIENT_ASSOCIATION_EOF", "Native wire client reached EOF before the association response completed.");
+            break;
+        case UNITLAB_NATIVE_WIRE_CLIENT_READ_MALFORMED:
+            set_result(result, "NATIVE_WIRE_CLIENT_ASSOCIATION_MALFORMED_FRAME", "Native wire client received a malformed association response frame.");
+            break;
+        case UNITLAB_NATIVE_WIRE_CLIENT_READ_SYSTEM_ERROR:
+        default:
+            set_result(result, "NATIVE_WIRE_CLIENT_ASSOCIATION_READ_FAILED", "Native wire client could not read the association response frame.");
+            break;
+    }
 }
 
 static int read_tpkt_frame_if_available(int fd, uint8_t* frame, size_t frame_length, size_t* encoded_length, int timeout_ms)
@@ -2669,10 +2735,18 @@ int unitlab_run_native_wire_client_with_options(
         set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its associating state.");
         goto fail;
     }
-    if (!send_all(data_fd, association_request, association_length) || !read_tpkt_frame(data_fd, association_request, sizeof(association_request), &association_length)) {
+    if (!send_all(data_fd, association_request, association_length)) {
         state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
-        set_result(result, "NATIVE_WIRE_CLIENT_ASSOCIATION_FAILED", "Native wire client could not complete the association handshake.");
+        set_result(result, "NATIVE_WIRE_CLIENT_ASSOCIATION_SEND_FAILED", "Native wire client could not send the association request.");
         goto fail;
+    }
+    {
+        UnitLabNativeWireClientReadStatus association_read_status = read_tpkt_frame_status_with_timeout(data_fd, association_request, sizeof(association_request), &association_length, 5000);
+        if (association_read_status != UNITLAB_NATIVE_WIRE_CLIENT_READ_OK) {
+            state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
+            set_association_read_failure_result(result, association_read_status);
+            goto fail;
+        }
     }
     state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_ASSOCIATED;
     if (!emit_state_response(state)) {
