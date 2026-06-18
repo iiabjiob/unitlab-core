@@ -62,7 +62,7 @@ class DeviceRespEvent(BaseModel):
     error: RespError
     timestamp: int
 
-    ("status", "error")
+    @field_serializer("status", "error")
     def _serialize_resp_enum(self, value: RespStatus | RespError) -> str:
         return value.name
 
