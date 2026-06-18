@@ -1,27 +1,47 @@
 <script setup lang="ts">
-import { computed, ref } from "vue"
+import { computed, ref, watch } from "vue"
 import { useRoute } from "vue-router"
-import { getSvgEntityProps, useDiagramEngine, useDiagramSelection, useDiagramViewport, useDiagramVisibleEntities } from "@affino/diagram-vue"
+import { getSvgEntityProps, useDiagramEngine, useDiagramPointerController, useDiagramSelection, useDiagramTextEditor, useDiagramViewport, useDiagramVisibleEntities } from "@affino/diagram-vue"
 
 import UiButton from "@/components/ui/UiButton.vue"
+import { writeLocalSetting } from "@/services/localSettingsStorage"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
 
+import type { StoredDiagramState } from "../utils/switchgearSldDiagramTypes"
 import type { SwitchgearSldPackageSceneModel } from "../utils/switchgearSldPackageScene"
+import { serializeSwitchgearSldPackageScene } from "../utils/switchgearSldPackageScene"
 
 const props = defineProps<{
   model: SwitchgearSldPackageSceneModel
+  workspaceId: number
+  storageKey: string
+  initialStoredState: StoredDiagramState | null
 }>()
 
 const route = useRoute()
 const switchgearStore = useSwitchgearStore()
 const stageRef = ref<HTMLElement | null>(null)
-const panState = ref<{ pointerId: number; clientX: number; clientY: number; x: number; y: number } | null>(null)
+const editableText = ref("")
+const lastStoredState = ref<StoredDiagramState | null>(props.initialStoredState)
 
 const diagram = useDiagramEngine(props.model.scene)
 const viewport = useDiagramViewport(diagram, { element: stageRef })
 const visible = useDiagramVisibleEntities(diagram, { overscan: 240 })
 const selection = useDiagramSelection(diagram)
+const pointer = useDiagramPointerController(diagram, {
+  toWorldPoint: mapPointerToWorld,
+  setPointerCapture: (event) => {
+    const element = event.currentTarget as Element | null
+    element?.setPointerCapture?.(event.pointerId)
+  },
+  releasePointerCapture: (event) => {
+    const element = event.currentTarget as Element | null
+    element?.releasePointerCapture?.(event.pointerId)
+  },
+})
+const textEditor = useDiagramTextEditor(diagram, { viewport: viewport.viewport })
 
+const activeTool = ref<"select" | "pan">("select")
 const viewportBox = computed(() => {
   const value = viewport.viewport.value
   const zoom = value.zoom > 0 ? value.zoom : 1
@@ -37,10 +57,49 @@ const selectionLabel = computed(() => {
   if (ids.length === 0) {
     return "No selection"
   }
-  return ids.length === 1 ? ids[0] : `${ids.length} selected`
+  if (ids.length === 1) {
+    const id = ids[0]
+    if (id.startsWith("switchgear:")) {
+      return resolveNodeLabel(id) ?? id
+    }
+    return id
+  }
+  return `${ids.length} selected`
+})
+const canUndo = computed(() => diagram.engine.canUndo())
+const canRedo = computed(() => diagram.engine.canRedo())
+const canDelete = computed(() => diagram.engine.canDelete(selection.selection.value.ids))
+
+pointer.setTool("select")
+syncRouteSelection()
+
+watch(() => route.params.id, () => {
+  syncRouteSelection()
 })
 
-syncRouteSelection()
+watch(() => textEditor.activeEditor.value, (next) => {
+  editableText.value = next?.text ?? ""
+})
+
+watch(() => props.initialStoredState, (next) => {
+  lastStoredState.value = next
+})
+
+const subscription = diagram.engine.subscribe((scene) => {
+  if (scene.revision === 0) {
+    return
+  }
+  const nextState = serializeSwitchgearSldPackageScene(diagram.engine.serialize(), {
+    workspaceId: props.workspaceId,
+    snapEnabled: lastStoredState.value?.snapEnabled ?? true,
+    labelOffsetById: lastStoredState.value?.labelOffsetById,
+    baseState: lastStoredState.value,
+  })
+  lastStoredState.value = nextState
+  writeLocalSetting(props.storageKey, nextState, {
+    legacyKeys: [`unitlab.switchgears.sld.${props.workspaceId}`],
+  })
+})
 
 function syncRouteSelection() {
   const switchgearId = Number(route.params.id)
@@ -53,6 +112,11 @@ function syncRouteSelection() {
   }
 }
 
+function setTool(tool: "select" | "pan") {
+  activeTool.value = tool
+  pointer.setTool(tool)
+}
+
 function fitScene() {
   diagram.engine.fitScene(96)
 }
@@ -61,60 +125,27 @@ function clearSelection() {
   selection.clearSelection()
 }
 
-function selectEntity(id: string) {
-  selection.setSelection([id], id)
+function undo() {
+  diagram.dispatch({ type: "undo" })
 }
 
-function onViewportPointerDown(event: PointerEvent) {
-  if (event.button !== 0) {
-    return
-  }
-  const currentTarget = event.currentTarget as HTMLElement | null
-  currentTarget?.setPointerCapture?.(event.pointerId)
-  panState.value = {
-    pointerId: event.pointerId,
-    clientX: event.clientX,
-    clientY: event.clientY,
-    x: viewport.viewport.value.x,
-    y: viewport.viewport.value.y,
-  }
+function redo() {
+  diagram.dispatch({ type: "redo" })
 }
 
-function onViewportPointerMove(event: PointerEvent) {
-  const current = panState.value
-  if (!current || current.pointerId !== event.pointerId) {
-    return
-  }
-  const zoom = viewport.viewport.value.zoom > 0 ? viewport.viewport.value.zoom : 1
-  viewport.setViewport({
-    x: current.x - (event.clientX - current.clientX) / zoom,
-    y: current.y - (event.clientY - current.clientY) / zoom,
-  })
-}
-
-function finishPan(event: PointerEvent) {
-  const current = panState.value
-  if (!current || current.pointerId !== event.pointerId) {
-    return
-  }
-  const currentTarget = event.currentTarget as HTMLElement | null
-  currentTarget?.releasePointerCapture?.(event.pointerId)
-  panState.value = null
+function deleteSelection() {
+  diagram.engine.dispatchKeyboardCommand("delete")
 }
 
 function onWheel(event: WheelEvent) {
-  const stage = stageRef.value
-  if (!stage) {
-    return
-  }
-
   const current = viewport.viewport.value
-  const rect = stage.getBoundingClientRect()
-  const nextZoom = event.ctrlKey || event.metaKey
-    ? clampZoom(current.zoom * (event.deltaY < 0 ? 1.1 : 0.9))
-    : current.zoom
-
-  if (nextZoom !== current.zoom) {
+  if (event.ctrlKey || event.metaKey) {
+    const stage = stageRef.value
+    if (!stage) {
+      return
+    }
+    const rect = stage.getBoundingClientRect()
+    const nextZoom = clampZoom(current.zoom * (event.deltaY < 0 ? 1.1 : 0.9))
     const relativeX = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0.5
     const relativeY = rect.height > 0 ? (event.clientY - rect.top) / rect.height : 0.5
     const worldWidth = current.width / current.zoom
@@ -139,8 +170,68 @@ function onWheel(event: WheelEvent) {
   })
 }
 
+function onStageKeydown(event: KeyboardEvent) {
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
+    event.preventDefault()
+    if (event.shiftKey) {
+      redo()
+      return
+    }
+    undo()
+    return
+  }
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "y") {
+    event.preventDefault()
+    redo()
+    return
+  }
+  if (event.key === "Delete" || event.key === "Backspace") {
+    event.preventDefault()
+    deleteSelection()
+    return
+  }
+  if (event.key === "Escape") {
+    event.preventDefault()
+    if (textEditor.activeEditor.value) {
+      textEditor.cancelTextEdit()
+      return
+    }
+    clearSelection()
+  }
+}
+
+function beginTextEdit(id: string) {
+  if (!diagram.engine.canEditText(id)) {
+    return
+  }
+  textEditor.beginTextEdit(id)
+}
+
+function commitTextEdit() {
+  textEditor.commitTextEdit(editableText.value)
+}
+
+function cancelTextEdit() {
+  textEditor.cancelTextEdit()
+}
+
 function clampZoom(value: number) {
   return Math.max(0.05, Math.min(2.2, value))
+}
+
+function mapPointerToWorld(event: PointerEvent) {
+  const stage = stageRef.value
+  const current = viewport.viewport.value
+  if (!stage || current.width <= 0 || current.height <= 0) {
+    return { x: current.x, y: current.y }
+  }
+  const rect = stage.getBoundingClientRect()
+  const relativeX = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0
+  const relativeY = rect.height > 0 ? (event.clientY - rect.top) / rect.height : 0
+  return {
+    x: current.x + (current.width / current.zoom) * relativeX,
+    y: current.y + (current.height / current.zoom) * relativeY,
+  }
 }
 
 function resolveNodeFill(id: string) {
@@ -163,10 +254,21 @@ function resolveNodeLabel(id: string) {
   return diagram.scene.value.entities.nodesById.get(id)?.metadata?.name as string | undefined
 }
 
+function resolveNodeLabelPosition(id: string) {
+  const node = diagram.scene.value.entities.nodesById.get(id)
+  if (!node) {
+    return { x: 0, y: 0 }
+  }
+  return {
+    x: node.x + node.width / 2 + Number(node.metadata?.labelOffsetX ?? 0),
+    y: node.y + node.height / 2 + Number(node.metadata?.labelOffsetY ?? 22),
+  }
+}
+
 function resolveTextClass(id: string) {
   const text = diagram.scene.value.entities.textsById.get(id)
-  return text?.metadata?.entityType === "switchgear-label"
-    ? "switchgear-sld-package-canvas__switchgear-label"
+  return text?.metadata?.entityType === "generated-label"
+    ? "switchgear-sld-package-canvas__generated-label"
     : "switchgear-sld-package-canvas__text"
 }
 
@@ -200,15 +302,32 @@ function resolveStaticMeta(id: string) {
         <span>{{ model.stats.nodes }} switchgears</span>
         <span>{{ model.stats.edges }} lines</span>
         <span>{{ model.stats.statics }} symbols</span>
-        <span>{{ model.stats.texts }} labels</span>
+        <span>{{ model.stats.texts }} texts</span>
       </div>
       <div class="switchgear-sld-package-canvas__actions">
+        <div class="switchgear-sld-package-canvas__tool-tabs">
+          <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': activeTool === 'select' }" @click="setTool('select')">
+            Select
+          </button>
+          <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': activeTool === 'pan' }" @click="setTool('pan')">
+            Pan
+          </button>
+        </div>
         <span class="switchgear-sld-package-canvas__selection">{{ selectionLabel }}</span>
+        <UiButton size="sm" variant="secondary" :disabled="!canUndo" @click="undo">
+          Undo
+        </UiButton>
+        <UiButton size="sm" variant="secondary" :disabled="!canRedo" @click="redo">
+          Redo
+        </UiButton>
         <UiButton size="sm" variant="secondary" @click="fitScene">
           Fit
         </UiButton>
         <UiButton size="sm" variant="secondary" :disabled="selection.selection.value.ids.length === 0" @click="clearSelection">
           Clear
+        </UiButton>
+        <UiButton size="sm" variant="secondary" :disabled="!canDelete" @click="deleteSelection">
+          Delete
         </UiButton>
       </div>
     </div>
@@ -216,15 +335,14 @@ function resolveStaticMeta(id: string) {
     <div
       ref="stageRef"
       class="switchgear-sld-package-canvas__stage"
+      tabindex="0"
       @wheel.prevent="onWheel"
+      @keydown="onStageKeydown"
     >
       <svg
         class="switchgear-sld-package-canvas__svg"
         :viewBox="`${viewportBox.x} ${viewportBox.y} ${viewportBox.width} ${viewportBox.height}`"
-        @pointerdown="onViewportPointerDown"
-        @pointermove="onViewportPointerMove"
-        @pointerup="finishPan"
-        @pointercancel="finishPan"
+        v-bind="pointer.getSvgPointerProps()"
       >
         <defs>
           <pattern id="switchgear-sld-package-grid" :width="24" :height="24" patternUnits="userSpaceOnUse">
@@ -249,16 +367,9 @@ function resolveStaticMeta(id: string) {
           :stroke="resolveEdgeStroke(edge.id)"
           :stroke-width="resolveEdgeWidth(edge.id)"
           :opacity="edge.selected ? 1 : 0.92"
-          @pointerdown.stop
-          @click.stop="selectEntity(edge.id)"
         />
 
-        <g
-          v-for="shape in visible.projection.value.shapes"
-          :key="shape.id"
-          @pointerdown.stop
-          @click.stop="selectEntity(shape.id)"
-        >
+        <g v-for="shape in visible.projection.value.shapes" :key="shape.id">
           <g
             v-if="resolveStaticMeta(shape.id).kind === 'transformer'"
             :transform="`translate(${shape.geometry.bounds.x + shape.geometry.bounds.width / 2} ${shape.geometry.bounds.y + shape.geometry.bounds.height / 2}) rotate(${resolveStaticMeta(shape.id).rotation})`"
@@ -301,8 +412,6 @@ function resolveStaticMeta(id: string) {
           :fill="resolveNodeFill(node.id)"
           :stroke="resolveNodeStroke(node.id, node.selected)"
           :stroke-width="node.selected ? 2.5 : 1.5"
-          @pointerdown.stop
-          @click.stop="selectEntity(node.id)"
         />
 
         <text
@@ -312,8 +421,20 @@ function resolveStaticMeta(id: string) {
           :y="node.geometry.bounds.y + node.geometry.bounds.height / 2 + 4"
           class="switchgear-sld-package-canvas__node-text"
           text-anchor="middle"
-          @pointerdown.stop
-          @click.stop="selectEntity(node.id)"
+          pointer-events="none"
+        >
+          {{ resolveNodeLabel(node.id) }}
+        </text>
+
+        <text
+          v-for="node in visible.projection.value.nodes"
+          :key="`${node.id}:label`"
+          :x="resolveNodeLabelPosition(node.id).x"
+          :y="resolveNodeLabelPosition(node.id).y"
+          class="switchgear-sld-package-canvas__switchgear-label"
+          text-anchor="middle"
+          dominant-baseline="middle"
+          pointer-events="none"
         >
           {{ resolveNodeLabel(node.id) }}
         </text>
@@ -325,8 +446,7 @@ function resolveStaticMeta(id: string) {
           :class="resolveTextClass(text.id)"
           text-anchor="middle"
           dominant-baseline="middle"
-          @pointerdown.stop
-          @click.stop="selectEntity(text.id)"
+          @dblclick.stop="beginTextEdit(text.id)"
         >
           {{ diagram.scene.value.entities.textsById.get(text.id)?.text }}
         </text>
@@ -342,6 +462,16 @@ function resolveStaticMeta(id: string) {
           stroke-width="1.5"
         />
       </svg>
+
+      <textarea
+        v-if="textEditor.activeEditor.value"
+        v-model="editableText"
+        class="switchgear-sld-package-canvas__editor"
+        :style="textEditor.activeEditor.value.style"
+        @keydown.enter.exact.prevent="commitTextEdit"
+        @keydown.esc.prevent="cancelTextEdit"
+        @blur="commitTextEdit"
+      />
     </div>
   </section>
 </template>
@@ -364,7 +494,8 @@ function resolveStaticMeta(id: string) {
 }
 
 .switchgear-sld-package-canvas__status,
-.switchgear-sld-package-canvas__actions {
+.switchgear-sld-package-canvas__actions,
+.switchgear-sld-package-canvas__tool-tabs {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -382,32 +513,48 @@ function resolveStaticMeta(id: string) {
   font-weight: 500;
 }
 
+.switchgear-sld-package-canvas__tool-tab {
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--color-neutral-200);
+  border-radius: 0.5rem;
+  background: var(--color-white);
+  color: var(--color-neutral-600);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.switchgear-sld-package-canvas__tool-tab.is-active {
+  border-color: var(--color-blue-300);
+  background: var(--color-blue-50);
+  color: var(--color-blue-800);
+}
+
 .switchgear-sld-package-canvas__stage {
+  position: relative;
   min-height: 0;
   flex: 1 1 auto;
   border: 1px solid var(--color-neutral-200);
   border-radius: 0.5rem;
   background: linear-gradient(180deg, var(--color-white), color-mix(in srgb, var(--color-sky-50) 42%, var(--color-white)));
   overflow: hidden;
-  touch-action: none;
+  outline: none;
+}
+
+.switchgear-sld-package-canvas__stage:focus-visible {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-blue-500) 35%, transparent);
 }
 
 .switchgear-sld-package-canvas__svg {
   display: block;
   width: 100%;
   height: 100%;
-  cursor: grab;
-}
-
-.switchgear-sld-package-canvas__svg:active {
-  cursor: grabbing;
 }
 
 .switchgear-sld-package-canvas__node-text {
   fill: var(--color-neutral-800);
   font-size: 8px;
   font-weight: 600;
-  pointer-events: none;
 }
 
 .switchgear-sld-package-canvas__switchgear-label {
@@ -416,17 +563,39 @@ function resolveStaticMeta(id: string) {
   font-weight: 600;
 }
 
+.switchgear-sld-package-canvas__generated-label,
 .switchgear-sld-package-canvas__text {
   fill: var(--color-neutral-600);
   font-size: 12px;
   font-weight: 500;
 }
 
+.switchgear-sld-package-canvas__editor {
+  position: absolute;
+  padding: 0.25rem 0.375rem;
+  border: 1px solid var(--color-blue-400);
+  border-radius: 0.375rem;
+  background: var(--color-white);
+  color: var(--color-neutral-900);
+  font: inherit;
+  font-size: 12px;
+  resize: none;
+  outline: none;
+  box-shadow: var(--shadow-md);
+}
+
 :global(.dark .switchgear-sld-package-canvas__status span),
-:global(.dark .switchgear-sld-package-canvas__selection) {
+:global(.dark .switchgear-sld-package-canvas__selection),
+:global(.dark .switchgear-sld-package-canvas__tool-tab) {
   border-color: var(--color-neutral-700);
   background: var(--color-neutral-900);
   color: var(--color-neutral-300);
+}
+
+:global(.dark .switchgear-sld-package-canvas__tool-tab.is-active) {
+  border-color: var(--color-blue-500);
+  background: color-mix(in srgb, var(--color-blue-900) 75%, transparent);
+  color: var(--color-blue-100);
 }
 
 :global(.dark .switchgear-sld-package-canvas__stage) {
@@ -442,7 +611,13 @@ function resolveStaticMeta(id: string) {
   fill: var(--color-neutral-200);
 }
 
+:global(.dark .switchgear-sld-package-canvas__generated-label),
 :global(.dark .switchgear-sld-package-canvas__text) {
   fill: var(--color-neutral-300);
+}
+
+:global(.dark .switchgear-sld-package-canvas__editor) {
+  background: var(--color-neutral-950);
+  color: var(--color-neutral-100);
 }
 </style>

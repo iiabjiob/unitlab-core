@@ -5,12 +5,14 @@ import type {
   DiagramSceneInput,
   DiagramShape,
   DiagramText,
+  SerializedDiagramScene,
 } from "@affino/diagram-core"
 
 import type { Switchgear } from "@/types/switchgear"
 
 import type {
   DiagramBindablePortOwnerType,
+  DiagramEdge as LegacyDiagramEdge,
   DiagramNodeLayout,
   DiagramPortBinding,
   DiagramStaticElement,
@@ -54,12 +56,19 @@ const STATIC_SIZE_DIMENSIONS: Record<DiagramStaticKind, Record<DiagramStaticSize
 
 type DiagramPortOwnerType = DiagramBindablePortOwnerType | "line"
 
-type LegacyDiagramPort = {
+type LegacyPortPoint = {
   ownerType: DiagramPortOwnerType
   ownerId: number | string
   portId: string
   x: number
   y: number
+}
+
+type SerializeOptions = {
+  workspaceId?: number | null
+  snapEnabled?: boolean
+  labelOffsetById?: Record<string, { x: number; y: number }>
+  baseState?: StoredDiagramState | null
 }
 
 export type SwitchgearSldPackageSceneModel = Readonly<{
@@ -81,20 +90,19 @@ export function buildSwitchgearSldPackageSceneModel(
   const labelOffsetById = storedState?.labelOffsetById ?? {}
   const staticElements = normalizeStaticElements(storedState?.staticElements)
   const textElements = normalizeTextElements(storedState?.textElements)
-  const ports = [
-    ...switchgears.flatMap((switchgear, index) => buildNodePortsForLayout(
-      switchgear.id,
-      resolveLayout(layoutById, switchgear.id, index),
-    )),
-  ]
+  const ports = switchgears.flatMap((switchgear, index) => buildNodePortsForLayout(
+    switchgear.id,
+    resolveLayout(layoutById, switchgear.id, index),
+  ))
   const staticPorts = staticElements.flatMap(buildStaticPorts)
   const edgePorts = [...ports, ...staticPorts]
   const scene: DiagramSceneInput = {
     nodes: switchgears.map((switchgear, index) => {
       const layout = resolveLayout(layoutById, switchgear.id, index)
+      const labelOffset = labelOffsetById[String(switchgear.id)] ?? LABEL_DEFAULT_OFFSET
       return {
         id: toSwitchgearNodeId(switchgear.id),
-        kind: "node",
+        kind: "node" as const,
         x: layout.x + SWITCHGEAR_SLD_STAGE_PADDING,
         y: layout.y + SWITCHGEAR_SLD_STAGE_PADDING,
         width: SWITCHGEAR_SLD_NODE_WIDTH,
@@ -105,13 +113,15 @@ export function buildSwitchgearSldPackageSceneModel(
           switchgearId: switchgear.id,
           switchgearType: switchgear.switchgear_type,
           name: switchgear.name,
+          labelOffsetX: labelOffset.x,
+          labelOffsetY: labelOffset.y,
         },
       }
     }),
     ports: ports.map((port) => ({
       id: toPortId(port),
-      kind: "port",
-      nodeId: resolvePortNodeId(port),
+      kind: "port" as const,
+      nodeId: toSwitchgearNodeId(Number(port.ownerId)),
       x: port.x,
       y: port.y,
       radius: 4,
@@ -124,14 +134,7 @@ export function buildSwitchgearSldPackageSceneModel(
     })),
     edges: normalizeEdges(storedState).map((edge) => createDiagramEdge(edge, edgePorts)),
     shapes: staticElements.map((element) => createStaticShape(element)),
-    texts: [
-      ...switchgears.map((switchgear, index) => createSwitchgearLabelText(
-        switchgear,
-        resolveLayout(layoutById, switchgear.id, index),
-        labelOffsetById[String(switchgear.id)] ?? LABEL_DEFAULT_OFFSET,
-      )),
-      ...textElements.map(createLooseText),
-    ],
+    texts: textElements.map(createLooseText),
     viewport: {
       x: resolveViewportX(storedState),
       y: resolveViewportY(storedState),
@@ -163,34 +166,82 @@ export function buildSwitchgearSldPackageSceneModel(
   }
 }
 
+export function serializeSwitchgearSldPackageScene(
+  scene: SerializedDiagramScene,
+  options: SerializeOptions = {},
+): StoredDiagramState {
+  const portsById = new Map(scene.ports.map(port => [port.id, port]))
+  const labelOffsetById = { ...(options.baseState?.labelOffsetById ?? {}), ...(options.labelOffsetById ?? {}) }
+
+  for (const node of scene.nodes) {
+    const switchgearId = Number(node.metadata?.switchgearId)
+    if (!Number.isFinite(switchgearId)) {
+      continue
+    }
+    labelOffsetById[String(switchgearId)] = {
+      x: Number(node.metadata?.labelOffsetX ?? LABEL_DEFAULT_OFFSET.x),
+      y: Number(node.metadata?.labelOffsetY ?? LABEL_DEFAULT_OFFSET.y),
+    }
+  }
+
+  return {
+    workspaceId: options.workspaceId ?? options.baseState?.workspaceId,
+    layoutById: Object.fromEntries(scene.nodes.flatMap((node) => {
+      const switchgearId = Number(node.metadata?.switchgearId)
+      if (!Number.isFinite(switchgearId)) {
+        return []
+      }
+      return [[String(switchgearId), {
+        x: Math.round(node.x - SWITCHGEAR_SLD_STAGE_PADDING),
+        y: Math.round(node.y - SWITCHGEAR_SLD_STAGE_PADDING),
+      } satisfies DiagramNodeLayout]]
+    })),
+    labelOffsetById,
+    edges: scene.edges.map((edge) => serializeEdge(edge, portsById)),
+    lines: scene.edges.map((edge) => serializeEdge(edge, portsById)),
+    staticElements: scene.shapes.flatMap((shape) => {
+      const staticId = typeof shape.metadata?.staticId === "string" ? shape.metadata.staticId : null
+      const staticKind = normalizeStaticKind(shape.metadata?.staticKind)
+      const staticSize = normalizeStaticSize(shape.metadata?.staticSize)
+      if (!staticId) {
+        return []
+      }
+      const width = Number(shape.width)
+      const height = Number(shape.height)
+      return [{
+        id: staticId,
+        kind: staticKind,
+        size: staticSize,
+        x: Math.round(shape.x + width / 2),
+        y: Math.round(shape.y + height / 2),
+        rotation: normalizeRotation(shape.rotation),
+      } satisfies DiagramStaticElement]
+    }),
+    textElements: scene.texts.flatMap((text) => {
+      if (text.metadata?.entityType === "switchgear-label") {
+        return []
+      }
+      return [{
+        id: text.id,
+        text: typeof text.text === "string" && text.text.trim() ? text.text.trim().slice(0, 80) : DEFAULT_TEXT_LABEL,
+        size: "md",
+        x: Math.round(text.x),
+        y: Math.round(text.y),
+      } satisfies DiagramTextElement]
+    }),
+    snapEnabled: options.snapEnabled ?? options.baseState?.snapEnabled ?? true,
+    viewState: {
+      x: Math.round(-(scene.viewport.x * scene.viewport.zoom)),
+      y: Math.round(-(scene.viewport.y * scene.viewport.zoom)),
+      zoom: scene.viewport.zoom,
+    },
+  }
+}
+
 export function normalizeStoredDiagramState(value: unknown): StoredDiagramState | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as StoredDiagramState
     : null
-}
-
-function createSwitchgearLabelText(
-  switchgear: Switchgear,
-  layout: DiagramNodeLayout,
-  offset: { x: number; y: number },
-): DiagramText {
-  const nodeX = layout.x + SWITCHGEAR_SLD_STAGE_PADDING
-  const nodeY = layout.y + SWITCHGEAR_SLD_STAGE_PADDING
-
-  return {
-    id: toSwitchgearLabelId(switchgear.id),
-    kind: "text",
-    x: nodeX + SWITCHGEAR_SLD_NODE_WIDTH / 2 + offset.x,
-    y: nodeY + SWITCHGEAR_SLD_NODE_HEIGHT / 2 + offset.y,
-    text: switchgear.name,
-    width: Math.max(64, switchgear.name.length * 8 + 18),
-    height: 20,
-    fontSize: 10,
-    metadata: {
-      entityType: "switchgear-label",
-      switchgearId: switchgear.id,
-    },
-  }
 }
 
 function createLooseText(element: DiagramTextElement): DiagramText {
@@ -234,8 +285,8 @@ function createStaticShape(element: DiagramStaticElement): DiagramShape {
 }
 
 function createDiagramEdge(
-  edge: NonNullable<StoredDiagramState["edges"]>[number],
-  ports: ReadonlyArray<LegacyDiagramPort>,
+  edge: LegacyDiagramEdge,
+  ports: ReadonlyArray<LegacyPortPoint>,
 ): DiagramEdge {
   return {
     id: edge.id,
@@ -246,25 +297,80 @@ function createDiagramEdge(
       entityType: "edge",
       edgeKind: edge.kind,
       edgeWeight: edge.weight ?? "normal",
+      startBinding: edge.startBinding ?? null,
+      endBinding: edge.endBinding ?? null,
     },
+  }
+}
+
+function serializeEdge(
+  edge: DiagramEdge,
+  portsById: ReadonlyMap<string, DiagramPort>,
+): LegacyDiagramEdge {
+  const start = resolveSerializedEndpoint(edge.source, portsById)
+  const end = resolveSerializedEndpoint(edge.target, portsById)
+  return {
+    id: edge.id,
+    x1: Math.round(start.point.x),
+    y1: Math.round(start.point.y),
+    x2: Math.round(end.point.x),
+    y2: Math.round(end.point.y),
+    kind: edge.metadata?.edgeKind === "arrow" ? "arrow" : "line",
+    weight: edge.metadata?.edgeWeight === "bold" ? "bold" : "normal",
+    startBinding: start.binding,
+    endBinding: end.binding,
+  }
+}
+
+function resolveSerializedEndpoint(
+  endpoint: DiagramEdge["source"],
+  portsById: ReadonlyMap<string, DiagramPort>,
+): { point: DiagramPoint; binding: DiagramPortBinding | null } {
+  if (endpoint.kind === "point") {
+    return { point: endpoint.point, binding: null }
+  }
+  if (endpoint.kind === "port") {
+    const port = portsById.get(endpoint.portId)
+    const binding = port ? toBindingFromPort(port) : null
+    return {
+      point: port ? { x: port.x, y: port.y } : { x: 0, y: 0 },
+      binding,
+    }
+  }
+  return { point: { x: 0, y: 0 }, binding: null }
+}
+
+function toBindingFromPort(port: DiagramPort): DiagramPortBinding | null {
+  if (port.metadata?.ownerType !== "node") {
+    return null
+  }
+  const ownerId = Number(port.metadata?.ownerId)
+  const portId = typeof port.metadata?.portId === "string" ? port.metadata.portId : ""
+  if (!Number.isFinite(ownerId) || !portId) {
+    return null
+  }
+  return {
+    ownerType: "node",
+    ownerId,
+    portId,
   }
 }
 
 function resolveEdgeEndpoint(
   binding: DiagramPortBinding | null | undefined,
   point: DiagramPoint,
-  ports: ReadonlyArray<LegacyDiagramPort>,
+  ports: ReadonlyArray<LegacyPortPoint>,
 ) {
   const port = binding ? resolvePortBinding(binding, ports) : null
-  return port
+  return port && port.ownerType === "node"
     ? { kind: "port" as const, portId: toPortId(port) }
-    : { kind: "point" as const, point }
+    : { kind: "point" as const, point: port ? { x: port.x, y: port.y } : point }
 }
 
 function resolvePortBinding(
   binding: DiagramPortBinding,
-  ports: ReadonlyArray<LegacyDiagramPort>,
-): LegacyDiagramPort | null {
+  ports: ReadonlyArray<LegacyPortPoint>,
+): LegacyPortPoint | null {
   return ports.find((port) => (
     port.ownerType === binding.ownerType
     && String(port.ownerId) === String(binding.ownerId)
@@ -272,7 +378,7 @@ function resolvePortBinding(
   )) ?? null
 }
 
-function buildNodePortsForLayout(nodeId: number, layout: DiagramNodeLayout): LegacyDiagramPort[] {
+function buildNodePortsForLayout(nodeId: number, layout: DiagramNodeLayout): LegacyPortPoint[] {
   const worldX = layout.x + SWITCHGEAR_SLD_STAGE_PADDING
   const worldY = layout.y + SWITCHGEAR_SLD_STAGE_PADDING
   const halfWidth = SWITCHGEAR_SLD_NODE_WIDTH / 2
@@ -286,7 +392,7 @@ function buildNodePortsForLayout(nodeId: number, layout: DiagramNodeLayout): Leg
   ]
 }
 
-function buildStaticPorts(element: DiagramStaticElement): LegacyDiagramPort[] {
+function buildStaticPorts(element: DiagramStaticElement): LegacyPortPoint[] {
   const base = getStaticElementDimensions(element)
   const localPorts = element.kind === "transformer"
     ? [
@@ -390,7 +496,7 @@ function normalizeEdges(storedState: StoredDiagramState | null) {
       ? storedState?.edges
       : []
 
-  return source.filter((edge): edge is NonNullable<StoredDiagramState["edges"]>[number] => (
+  return source.filter((edge): edge is LegacyDiagramEdge => (
     typeof edge?.id === "string"
     && Number.isFinite(edge?.x1)
     && Number.isFinite(edge?.y1)
@@ -424,24 +530,26 @@ function normalizeTextElements(value: StoredDiagramState["textElements"] | undef
     : []
 }
 
-function toSwitchgearNodeId(id: number) {
-  return `switchgear:${id}`
+function normalizeStaticKind(value: unknown): DiagramStaticKind {
+  return value === "ground" ? "ground" : "transformer"
 }
 
-function toSwitchgearLabelId(id: number) {
-  return `switchgear-label:${id}`
+function normalizeStaticSize(value: unknown): DiagramStaticSize {
+  return value === "sm" || value === "lg" ? value : "md"
+}
+
+function normalizeRotation(value: unknown): 0 | 90 | 180 | 270 {
+  return value === 90 || value === 180 || value === 270 ? value : 0
+}
+
+function toSwitchgearNodeId(id: number) {
+  return `switchgear:${id}`
 }
 
 function toStaticShapeId(id: string) {
   return `static:${id}`
 }
 
-function toPortId(port: LegacyDiagramPort) {
+function toPortId(port: LegacyPortPoint) {
   return `${port.ownerType}:${String(port.ownerId)}:${port.portId}`
-}
-
-function resolvePortNodeId(port: LegacyDiagramPort) {
-  return port.ownerType === "node"
-    ? toSwitchgearNodeId(Number(port.ownerId))
-    : toStaticShapeId(String(port.ownerId))
 }

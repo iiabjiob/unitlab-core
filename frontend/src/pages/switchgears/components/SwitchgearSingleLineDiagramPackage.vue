@@ -19,6 +19,9 @@ const switchgearStore = useSwitchgearStore()
 const storedState = ref<StoredDiagramState | null>(null)
 
 const workspaceId = computed(() => workspaceStore.activeWorkspaceId)
+const storageKey = computed(() => (
+  workspaceId.value ? localSettingsKeys.switchgearDiagram(workspaceId.value) : null
+))
 const sceneModel = computed(() => buildSwitchgearSldPackageSceneModel(
   switchgearStore.switchgears,
   storedState.value,
@@ -42,13 +45,13 @@ watch(
 )
 
 function loadStoredState() {
-  if (!workspaceId.value) {
+  if (!workspaceId.value || !storageKey.value) {
     storedState.value = null
     return
   }
 
   storedState.value = readLocalSetting<StoredDiagramState | null>(
-    localSettingsKeys.switchgearDiagram(workspaceId.value),
+    storageKey.value,
     null,
     {
       legacyKeys: [`unitlab.switchgears.sld.${workspaceId.value}`],
@@ -64,18 +67,21 @@ function loadStoredState() {
       v-if="!workspaceId"
       tag="SLD"
       title="Select a workspace"
-      description="Choose a workspace to compare the package-based SLD projection."
+      description="Choose a workspace to compare and edit the package-based SLD projection."
     />
     <WorkspacePlaceholder
       v-else-if="!hasContent"
       tag="SLD"
       title="No SLD content"
-      description="Load or draw a single line diagram in the legacy editor, then reopen this tab for package comparison."
+      description="Load or draw a single line diagram in the legacy editor, then reopen this tab for package editing."
     />
     <SwitchgearSingleLineDiagramPackageCanvas
-      v-else
+      v-else-if="storageKey"
       :key="sceneModel.sceneKey"
       :model="sceneModel"
+      :workspace-id="workspaceId"
+      :storage-key="storageKey"
+      :initial-stored-state="storedState"
     />
   </section>
 </template>
