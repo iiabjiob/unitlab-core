@@ -633,6 +633,107 @@ const UnitLabNativeDiscoveredLeafRef* unitlab_native_client_session_find_leaf_re
     return NULL;
 }
 
+static int parse_leaf_ref_index(const char* reference, size_t* index)
+{
+    size_t value = 0U;
+
+    if (reference == NULL || reference[0] == '\0' || index == NULL) {
+        return 0;
+    }
+    for (const char* cursor = reference; *cursor != '\0'; cursor++) {
+        if (*cursor < '0' || *cursor > '9') {
+            return 0;
+        }
+        value = (value * 10U) + (size_t)(*cursor - '0');
+    }
+    *index = value;
+    return 1;
+}
+
+static int split_read_mms_reference(const char* mms_reference, char* domain, size_t domain_size, char* item, size_t item_size)
+{
+    const char* slash;
+    size_t domain_length;
+
+    if (mms_reference == NULL || domain == NULL || domain_size == 0U || item == NULL || item_size == 0U) {
+        return 0;
+    }
+    slash = strchr(mms_reference, '/');
+    if (slash == NULL || slash == mms_reference || slash[1] == '\0') {
+        return 0;
+    }
+    domain_length = (size_t)(slash - mms_reference);
+    if (domain_length >= domain_size || strlen(slash + 1) >= item_size) {
+        return 0;
+    }
+    snprintf(domain, domain_size, "%.*s", (int)domain_length, mms_reference);
+    snprintf(item, item_size, "%s", slash + 1);
+    return 1;
+}
+
+static int copy_resolved_read_reference(const char* mms_reference, const char* display_reference, char* domain, size_t domain_size, char* item, size_t item_size, char* display, size_t display_size)
+{
+    if (!split_read_mms_reference(mms_reference, domain, domain_size, item, item_size)) {
+        return 0;
+    }
+    if (display != NULL && display_size > 0U) {
+        snprintf(display, display_size, "%s", display_reference != NULL && display_reference[0] != '\0' ? display_reference : mms_reference);
+    }
+    return 1;
+}
+
+int unitlab_native_client_session_resolve_read_reference(const UnitLabNativeClientSessionState* session, const char* reference, char* domain, size_t domain_size, char* item, size_t item_size, char* display, size_t display_size)
+{
+    size_t leaf_index = 0U;
+
+    if (session == NULL || reference == NULL || reference[0] == '\0') {
+        return 0;
+    }
+    if (parse_leaf_ref_index(reference, &leaf_index)) {
+        if (leaf_index >= session->discovered_leaf_ref_count) {
+            return 0;
+        }
+        return copy_resolved_read_reference(
+            session->discovered_leaf_refs[leaf_index].mms_reference,
+            session->discovered_leaf_refs[leaf_index].display_reference,
+            domain,
+            domain_size,
+            item,
+            item_size,
+            display,
+            display_size);
+    }
+    for (size_t index = 0U; index < session->discovered_leaf_ref_count; index++) {
+        if (strcmp(session->discovered_leaf_refs[index].mms_reference, reference) == 0
+            || strcmp(session->discovered_leaf_refs[index].display_reference, reference) == 0) {
+            return copy_resolved_read_reference(
+                session->discovered_leaf_refs[index].mms_reference,
+                session->discovered_leaf_refs[index].display_reference,
+                domain,
+                domain_size,
+                item,
+                item_size,
+                display,
+                display_size);
+        }
+    }
+    for (size_t index = 0U; index < session->discovered_typed_data_node_count; index++) {
+        if (strcmp(session->discovered_typed_data_nodes[index].mms_reference, reference) == 0
+            || strcmp(session->discovered_typed_data_nodes[index].display_reference, reference) == 0) {
+            return copy_resolved_read_reference(
+                session->discovered_typed_data_nodes[index].mms_reference,
+                session->discovered_typed_data_nodes[index].display_reference,
+                domain,
+                domain_size,
+                item,
+                item_size,
+                display,
+                display_size);
+        }
+    }
+    return 0;
+}
+
 void unitlab_native_client_session_reset_last_report(UnitLabNativeClientSessionState* session)
 {
     if (session == NULL) {

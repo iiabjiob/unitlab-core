@@ -246,6 +246,7 @@ const UnitLabNativeDiscoveredTypedDataNode* unitlab_native_client_session_typed_
 UnitLabNativeDiscoveredLeafRef* unitlab_native_client_session_append_leaf_ref(UnitLabNativeClientSessionState* session, const char* mms_reference);
 int unitlab_native_client_session_leaf_ref_exists(const UnitLabNativeClientSessionState* session, const char* mms_reference);
 const UnitLabNativeDiscoveredLeafRef* unitlab_native_client_session_find_leaf_ref(const UnitLabNativeClientSessionState* session, const char* mms_reference);
+int unitlab_native_client_session_resolve_read_reference(const UnitLabNativeClientSessionState* session, const char* reference, char* domain, size_t domain_size, char* item, size_t item_size, char* display, size_t display_size);
 void unitlab_native_client_session_reset_last_report(UnitLabNativeClientSessionState* session);
 UnitLabNativeLastReportEntry* unitlab_native_client_session_append_last_report_entry(UnitLabNativeClientSessionState* session, const char* data_reference, int dataset_match, size_t inclusion_index);
 int unitlab_native_client_session_data_set_member_exists(const UnitLabNativeClientSessionState* session, const char* reference);

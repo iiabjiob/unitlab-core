@@ -3127,6 +3127,66 @@ int unitlab_run_native_wire_client_with_options(
             }
             continue;
         }
+        if (strncmp(command, "read-ref ", 9U) == 0) {
+            char* saveptr = NULL;
+            char* reference = strtok_r(command + 9U, " \t", &saveptr);
+            char* invoke_id_text = strtok_r(NULL, " \t", &saveptr);
+            char* extra = strtok_r(NULL, " \t", &saveptr);
+            char domain_id[128U];
+            char item_id[320U];
+            char display_reference[384U];
+            uint32_t invoke_id = unitlab_native_client_session_reserve_invoke_id(&session);
+
+            if (reference == NULL || extra != NULL) {
+                set_result(result, "NATIVE_WIRE_CLIENT_READ_REF_COMMAND_INVALID", "Usage: read-ref <discoveredReference|leafIndex> [invokeId].");
+                goto fail;
+            }
+            if (!unitlab_native_client_session_resolve_read_reference(&session, reference, domain_id, sizeof(domain_id), item_id, sizeof(item_id), display_reference, sizeof(display_reference))) {
+                set_result(result, "NATIVE_WIRE_CLIENT_READ_REF_NOT_FOUND", "Run discover first and use a discovered leaf index, MMS reference, or display reference.");
+                goto fail;
+            }
+            if (invoke_id_text != NULL) {
+                if (!parse_invoke_id_token(invoke_id_text, &invoke_id)) {
+                    set_result(result, "NATIVE_WIRE_CLIENT_READ_REF_INVOKE_INVALID", "Native wire client read-ref invokeId must be in range 1..4294967295.");
+                    goto fail;
+                }
+                unitlab_native_client_session_observe_invoke_id(&session, invoke_id);
+                next_invoke_id = session.next_invoke_id;
+            }
+            printf("native-wire-client: read-ref reference=%s domain=%s item=%s display=%s invoke=%u\n", reference, domain_id, item_id, display_reference, (unsigned)invoke_id);
+            fflush(stdout);
+            state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_READ_REQUESTED;
+            if (!emit_state_response(state)) {
+                set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its read-requested state.");
+                goto fail;
+            }
+            if (!emit_read_response(
+                    &session,
+                    data_fd,
+                    domain_id,
+                    item_id,
+                    invoke_id,
+                    scratch,
+                    sizeof(scratch),
+                    read_request,
+                    sizeof(read_request),
+                    report_frame,
+                    sizeof(report_frame),
+                    &report_length,
+                    frame,
+                    sizeof(frame),
+                    &diagnostic)) {
+                state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
+                set_result(result, "NATIVE_WIRE_CLIENT_READ_REF_FAILED", diagnostic.message);
+                goto fail;
+            }
+            state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_READY;
+            if (!emit_state_response(state)) {
+                set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its ready state after read-ref.");
+                goto fail;
+            }
+            continue;
+        }
         if (strncmp(command, "read ", 5U) == 0) {
             char* saveptr = NULL;
             char* domain_id = strtok_r(command + 5U, " \t", &saveptr);

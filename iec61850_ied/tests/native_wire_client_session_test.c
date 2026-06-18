@@ -578,6 +578,46 @@ int main(void)
     }
 
 
+    unitlab_native_client_session_reset(&session);
+    if (!expect_true(unitlab_native_client_session_append_leaf_ref(&session, "IED1LD0/XCBR1$ST$Pos$stVal") != NULL, "expected read leaf ref append")) {
+        return 1;
+    }
+    if (!expect_true(unitlab_native_client_session_append_typed_data_node(&session, "IED1LD0", "MMXU1", "MX", "A.phsA.cVal.mag.f", "IED1LD0/MMXU1$MX$A$phsA$cVal$mag$f", "IED1LD0/MMXU1.MX.A.phsA.cVal.mag.f", "float", "leaf", 0U, (size_t)-1) != NULL, "expected read typed node append")) {
+        return 1;
+    }
+    {
+        char domain[128U];
+        char item[320U];
+        char display[384U];
+        if (!expect_true(unitlab_native_client_session_resolve_read_reference(&session, "0", domain, sizeof(domain), item, sizeof(item), display, sizeof(display)) == 1, "expected leaf index read reference to resolve")) {
+            return 1;
+        }
+        if (!expect_true(strcmp(domain, "IED1LD0") == 0 && strcmp(item, "XCBR1$ST$Pos$stVal") == 0 && strcmp(display, "IED1LD0/XCBR1.ST.Pos.stVal") == 0, "expected leaf index read reference fields")) {
+            return 1;
+        }
+        if (!expect_true(unitlab_native_client_session_resolve_read_reference(&session, "IED1LD0/XCBR1$ST$Pos$stVal", domain, sizeof(domain), item, sizeof(item), display, sizeof(display)) == 1, "expected MMS read reference to resolve")) {
+            return 1;
+        }
+        if (!expect_true(strcmp(domain, "IED1LD0") == 0 && strcmp(item, "XCBR1$ST$Pos$stVal") == 0, "expected MMS read reference fields")) {
+            return 1;
+        }
+        if (!expect_true(unitlab_native_client_session_resolve_read_reference(&session, "IED1LD0/XCBR1.ST.Pos.stVal", domain, sizeof(domain), item, sizeof(item), display, sizeof(display)) == 1, "expected display read reference to resolve")) {
+            return 1;
+        }
+        if (!expect_true(strcmp(domain, "IED1LD0") == 0 && strcmp(item, "XCBR1$ST$Pos$stVal") == 0, "expected display read reference fields")) {
+            return 1;
+        }
+        if (!expect_true(unitlab_native_client_session_resolve_read_reference(&session, "IED1LD0/MMXU1.MX.A.phsA.cVal.mag.f", domain, sizeof(domain), item, sizeof(item), display, sizeof(display)) == 1, "expected typed-node display read reference to resolve")) {
+            return 1;
+        }
+        if (!expect_true(strcmp(domain, "IED1LD0") == 0 && strcmp(item, "MMXU1$MX$A$phsA$cVal$mag$f") == 0, "expected typed-node read reference fields")) {
+            return 1;
+        }
+        if (!expect_true(unitlab_native_client_session_resolve_read_reference(&session, "99", domain, sizeof(domain), item, sizeof(item), display, sizeof(display)) == 0, "expected missing read reference index to fail")) {
+            return 1;
+        }
+    }
+
     for (size_t rcb_index = 0U; rcb_index < 300U; rcb_index++) {
         char item[320U];
         const UnitLabNativeDiscoveredRcb* rcb;
