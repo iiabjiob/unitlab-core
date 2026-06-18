@@ -13,6 +13,7 @@ RELEASE_DIR="${RELEASE_DIR:-$ROOT_DIR/dist-release}"
 BUNDLE_OUT="${BUNDLE_OUT:-}"
 IMAGES_OUT="${IMAGES_OUT:-$RELEASE_DIR/release-images-${RELEASE_VERSION}.tar}"
 COMPRESS_EXPORT="${COMPRESS_EXPORT:-0}"
+SKIP_TESTS="${SKIP_TESTS:-0}"
 
 usage() {
   cat <<'EOF'
@@ -23,6 +24,7 @@ Options:
   --profile <min|service>        Runtime bundle profile (default: min)
   --offline-export <0|1>         Export docker images tarball for offline deploy (default: 1)
   --compress-export <0|1>        Gzip image archive when offline export is enabled (default: 0)
+  --skip-tests <0|1>              Skip backend/frontend preflight tests (default: 0)
   --push <0|1>                   Push images to registry instead of local-only load (default: 0)
   --platform <value>             Build target platform (default: linux/arm64)
   --release-version <value>      Unified release version (default: current datetime, e.g. 2026.02.24-1345)
@@ -62,6 +64,11 @@ while [[ $# -gt 0 ]]; do
     --compress-export)
       [[ $# -ge 2 ]] || { echo "[unitlab] ERROR: --compress-export requires a value" >&2; usage; exit 1; }
       COMPRESS_EXPORT="$2"
+      shift 2
+      ;;
+    --skip-tests)
+      [[ $# -ge 2 ]] || { echo "[unitlab] ERROR: --skip-tests requires a value" >&2; usage; exit 1; }
+      SKIP_TESTS="$2"
       shift 2
       ;;
     --push)
@@ -145,6 +152,11 @@ if [[ "$PUSH_IMAGE" != "0" && "$PUSH_IMAGE" != "1" ]]; then
   exit 1
 fi
 
+if [[ "$SKIP_TESTS" != "0" && "$SKIP_TESTS" != "1" ]]; then
+  echo "[unitlab] ERROR: --skip-tests must be 0 or 1" >&2
+  exit 1
+fi
+
 if [[ "$OFFLINE_EXPORT" == "0" && "$COMPRESS_EXPORT" == "1" ]]; then
   echo "[unitlab] WARN: --compress-export is ignored when --offline-export=0"
 fi
@@ -178,6 +190,17 @@ if git -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   if [[ -n "$(git -C "$ROOT_DIR" status --porcelain)" ]]; then
     echo "[unitlab] WARN: working tree is dirty (uncommitted changes present)"
   fi
+fi
+
+if [[ "$SKIP_TESTS" != "1" ]]; then
+  command -v uv >/dev/null 2>&1 || {
+    echo "[unitlab] ERROR: uv is required to run backend tests" >&2
+    exit 1
+  }
+  command -v pnpm >/dev/null 2>&1 || {
+    echo "[unitlab] ERROR: pnpm is required to run frontend tests" >&2
+    exit 1
+  }
 fi
 
 command -v docker >/dev/null 2>&1 || {
@@ -247,14 +270,23 @@ echo "[unitlab] RELEASE_VERSION=$RELEASE_VERSION"
 echo "[unitlab] TARGET_PLATFORM=$TARGET_PLATFORM"
 echo "[unitlab] PROFILE=$PROFILE"
 echo "[unitlab] OFFLINE_EXPORT=$OFFLINE_EXPORT"
-TOTAL_STEPS=4
+echo "[unitlab] SKIP_TESTS=$SKIP_TESTS"
+TOTAL_STEPS=5
 
-echo "[unitlab] Step 1/$TOTAL_STEPS: build backend image"
+if [[ "$SKIP_TESTS" == "1" ]]; then
+  echo "[unitlab] Step 1/$TOTAL_STEPS: preflight tests skipped"
+else
+  echo "[unitlab] Step 1/$TOTAL_STEPS: run backend and frontend tests"
+  (cd "$ROOT_DIR/backend" && uv sync --group dev && .venv/bin/python -m pytest -W error)
+  (cd "$ROOT_DIR/frontend" && pnpm test)
+fi
+
+echo "[unitlab] Step 2/$TOTAL_STEPS: build backend image"
 TARGET_PLATFORM="$TARGET_PLATFORM" PUSH_IMAGE="$PUSH_IMAGE" \
   BACKEND_IMAGE_TAG="$BACKEND_IMAGE_TAG" \
   "$ROOT_DIR/scripts/build-backend-image.sh" "$BACKEND_IMAGE_TAG"
 
-echo "[unitlab] Step 2/$TOTAL_STEPS: build web image"
+echo "[unitlab] Step 3/$TOTAL_STEPS: build web image"
 TARGET_PLATFORM="$TARGET_PLATFORM" PUSH_IMAGE="$PUSH_IMAGE" \
   WEB_IMAGE_TAG="$WEB_IMAGE_TAG" \
   "$ROOT_DIR/scripts/build-web-image.sh" "$WEB_IMAGE_TAG"
@@ -267,14 +299,14 @@ docker image inspect "$BACKEND_IMAGE_TAG" --format='[unitlab] backend={{.Id}}' 2
 docker image inspect "$WEB_IMAGE_TAG" --format='[unitlab] web={{.Id}}' 2>/dev/null || true
 
 if [[ "$OFFLINE_EXPORT" == "1" ]]; then
-  echo "[unitlab] Step 3/$TOTAL_STEPS: export offline image archive"
+  echo "[unitlab] Step 4/$TOTAL_STEPS: export offline image archive"
   BACKEND_IMAGE="$BACKEND_IMAGE_TAG" WEB_IMAGE="$WEB_IMAGE_TAG" COMPRESS_EXPORT="$COMPRESS_EXPORT" \
     "$ROOT_DIR/scripts/export-release-images.sh" "$EXPORT_IMAGES_OUT"
 else
-  echo "[unitlab] Step 3/$TOTAL_STEPS: offline export skipped (OFFLINE_EXPORT=$OFFLINE_EXPORT)"
+  echo "[unitlab] Step 4/$TOTAL_STEPS: offline export skipped (OFFLINE_EXPORT=$OFFLINE_EXPORT)"
 fi
 
-echo "[unitlab] Step 4/$TOTAL_STEPS: create runtime bundle"
+echo "[unitlab] Step 5/$TOTAL_STEPS: create runtime bundle"
 RELEASE_VERSION="$RELEASE_VERSION" \
 UNITLAB_BACKEND_IMAGE="$BACKEND_IMAGE_TAG" \
 UNITLAB_WEB_IMAGE="$WEB_IMAGE_TAG" \
