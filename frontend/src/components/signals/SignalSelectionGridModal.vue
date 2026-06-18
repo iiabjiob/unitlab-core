@@ -59,7 +59,7 @@
             :client-row-model-options="clientRowModelOptions"
             :virtualization="virtualizationOptions"
             :base-row-height="34"
-            :row-selection="true"
+            :row-selection="SIGNAL_GRID_ROW_SELECTION"
             column-menu
             column-layout
             render-mode="virtualization"
@@ -111,6 +111,7 @@ type GridRow = Record<string, unknown> & {
 type RowSelectionSnapshot = NonNullable<DataGridProps<GridRow>["rowSelectionState"]>
 
 const DataGrid = defineDataGridComponent<GridRow>()
+const SIGNAL_GRID_ROW_SELECTION = { enabled: true, columnWidth: 44 } satisfies NonNullable<DataGridProps<GridRow>["rowSelection"]>
 
 const props = withDefaults(defineProps<{
   open: boolean

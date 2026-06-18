@@ -100,7 +100,7 @@
           :toolbar-modules="toolbarModules"
           :column-layout="true"
           :advanced-filter="true"
-          :row-selection="true"
+          :row-selection="SIGNAL_GRID_ROW_SELECTION"
           render-mode="virtualization"
           layout-mode="fill"
           row-hover
@@ -263,6 +263,7 @@ type DataGridStateUpdate = NonNullable<DataGridProps<Record<string, unknown>>["s
 type GridCellInteractiveContext = DataGridAppCellRendererContext<GridRow>["interactive"]
 
 const DataGrid = defineDataGridComponent<GridRow>()
+const SIGNAL_GRID_ROW_SELECTION = { enabled: true, columnWidth: 44 } satisfies NonNullable<DataGridProps<GridRow>["rowSelection"]>
 
 const SIGNALS_GRID_LEGACY_STORAGE_KEY_PREFIX = "unitlab.signals-grid"
 const REMOVED_SIGNAL_GRID_COLUMN_KEYS = new Set(["allocation_status", "allocation_health"])
