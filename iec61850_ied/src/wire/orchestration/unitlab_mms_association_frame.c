@@ -1,5 +1,6 @@
 #include "unitlab_mms_association_frame.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -15,6 +16,28 @@ static void association_frame_set_diagnostic(UnitLabMmsDiagnostic* diagnostic, U
     }
     strncpy(diagnostic->message, message, sizeof(diagnostic->message) - 1U);
     diagnostic->message[sizeof(diagnostic->message) - 1U] = '\0';
+}
+
+static void association_frame_prefix_decode_diagnostic(UnitLabMmsDiagnostic* diagnostic, UnitLabMmsDiagnosticCode fallback_code, const char* phase)
+{
+    UnitLabMmsDiagnosticCode code;
+    char phase_label[32];
+    char previous_message[sizeof(((UnitLabMmsDiagnostic*)0)->message)];
+    char message[sizeof(((UnitLabMmsDiagnostic*)0)->message)];
+
+    if (diagnostic == NULL) {
+        return;
+    }
+    code = diagnostic->code != UNITLAB_MMS_DIAGNOSTIC_OK ? diagnostic->code : fallback_code;
+    snprintf(phase_label, sizeof(phase_label), "%s", phase != NULL ? phase : "unknown");
+    snprintf(previous_message, sizeof(previous_message), "%s", diagnostic->message);
+    if (previous_message[0] != '\0') {
+        snprintf(message, sizeof(message), "association frame %.31s decode failed: %.180s", phase_label, previous_message);
+    }
+    else {
+        snprintf(message, sizeof(message), "association frame %.31s decode failed.", phase_label);
+    }
+    association_frame_set_diagnostic(diagnostic, code, message);
 }
 
 void unitlab_mms_association_frame_init(UnitLabMmsAssociationFrame* frame)
@@ -126,6 +149,7 @@ int unitlab_mms_association_frame_decode(UnitLabMmsAssociationFrame* frame, cons
     }
     unitlab_mms_association_frame_init(frame);
     if (!unitlab_mms_transport_frame_decode(&frame->transport, buffer, buffer_length, &transport_consumed_length, diagnostic)) {
+        association_frame_prefix_decode_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "transport");
         unitlab_mms_association_frame_init(frame);
         return 0;
     }
@@ -140,6 +164,7 @@ int unitlab_mms_association_frame_decode(UnitLabMmsAssociationFrame* frame, cons
         return 0;
     }
     if (!unitlab_mms_session_spdu_decode(&frame->session, frame->transport.cotp.user_data, frame->transport.cotp.user_data_length, &session_consumed_length, diagnostic)) {
+        association_frame_prefix_decode_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "session");
         unitlab_mms_association_frame_init(frame);
         return 0;
     }
@@ -154,6 +179,7 @@ int unitlab_mms_association_frame_decode(UnitLabMmsAssociationFrame* frame, cons
         return 0;
     }
     if (!unitlab_mms_presentation_decode(&frame->presentation, frame->session.raw_parameter_bytes, frame->session.raw_parameter_length, &presentation_consumed_length, diagnostic)) {
+        association_frame_prefix_decode_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "presentation");
         unitlab_mms_association_frame_init(frame);
         return 0;
     }

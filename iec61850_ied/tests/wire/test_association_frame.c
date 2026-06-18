@@ -509,6 +509,27 @@ static void test_association_frame_decode_rejects_non_dt_cotp_frame(void)
     assert(association_frame.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_NONE);
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR);
 }
+static void test_association_frame_decode_rejects_malformed_transport_frame(void)
+{
+    UnitLabMmsAssociationFrame association_frame;
+    size_t consumed_length = 123U;
+    UnitLabMmsDiagnostic diagnostic;
+    const uint8_t malformed_transport_frame[] = { 0x03U, 0x00U, 0x00U };
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_association_frame_init(&association_frame);
+    association_frame.transport.cotp.kind = UNITLAB_MMS_COTP_TPDU_DT;
+    association_frame.session.kind = UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER;
+    association_frame.presentation.kind = UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED;
+    assert(unitlab_mms_association_frame_decode(&association_frame, malformed_transport_frame, sizeof(malformed_transport_frame), &consumed_length, &diagnostic) == 0);
+    assert(consumed_length == 0U);
+    assert(association_frame.transport.tpkt.length == 0U);
+    assert(association_frame.transport.cotp.kind == UNITLAB_MMS_COTP_TPDU_NONE);
+    assert(association_frame.session.kind == UNITLAB_MMS_SESSION_SPDU_NONE);
+    assert(association_frame.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_NONE);
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR || diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL);
+    assert(strstr(diagnostic.message, "association frame transport decode failed") != NULL);
+}
 static void test_association_frame_decode_rejects_malformed_session_payload(void)
 {
     uint8_t frame_buffer[64];
@@ -538,6 +559,7 @@ static void test_association_frame_decode_rejects_malformed_session_payload(void
     assert(association_frame.session.kind == UNITLAB_MMS_SESSION_SPDU_NONE);
     assert(association_frame.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_NONE);
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR);
+    assert(strstr(diagnostic.message, "association frame session decode failed") != NULL);
 }
 static void test_association_frame_decode_rejects_malformed_presentation_payload(void)
 {
@@ -577,6 +599,7 @@ static void test_association_frame_decode_rejects_malformed_presentation_payload
     assert(association_frame.session.kind == UNITLAB_MMS_SESSION_SPDU_NONE);
     assert(association_frame.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_NONE);
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL || diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR);
+    assert(strstr(diagnostic.message, "association frame presentation decode failed") != NULL);
 }
 static void test_association_frame_decode_resets_output_on_failure(void)
 {
@@ -641,6 +664,7 @@ int main(void)
     test_association_frame_fully_encoded_layers_roundtrip();
     test_association_frame_accept_layers_roundtrip();
     test_association_frame_decode_rejects_non_dt_cotp_frame();
+    test_association_frame_decode_rejects_malformed_transport_frame();
     test_association_frame_decode_rejects_malformed_session_payload();
     test_association_frame_decode_rejects_malformed_presentation_payload();
     test_association_frame_decode_resets_output_on_failure();
