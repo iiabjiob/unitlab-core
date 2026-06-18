@@ -87,6 +87,7 @@
         />
         <SwitchgearSingleLineDiagramPackage
           v-else
+          ref="packageDiagramRef"
           :active="activeView === 'sld'"
           @edit-switchgear-bindings="openSwitchgearBindingsEditor"
         />
@@ -129,6 +130,7 @@ const sidebarOpen = ref(false)
 const activeView = ref<"manage" | "sld">("manage")
 const activeSldEditor = ref<"legacy" | "package">("legacy")
 const sldDiagramRef = ref<InstanceType<typeof SwitchgearSingleLineDiagram> | null>(null)
+const packageDiagramRef = ref<InstanceType<typeof SwitchgearSingleLineDiagramPackage> | null>(null)
 const route = useRoute()
 const router = useRouter()
 const realtimeScopeStore = useRealtimeScopeStore()
@@ -197,10 +199,10 @@ function openSwitchgearBindingsEditor(id: number) {
 
 async function requestScdImport() {
   setActiveView("sld")
-  setActiveSldEditor("legacy")
+  setActiveSldEditor("package")
   sidebarOpen.value = false
   await nextTick()
-  sldDiagramRef.value?.openScdFileDialog()
+  packageDiagramRef.value?.openScdFileDialog()
 }
 
 function normalizeSwitchgearsActiveView(value: unknown): "manage" | "sld" | null {
