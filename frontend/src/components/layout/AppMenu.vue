@@ -141,19 +141,19 @@ const baseSections: MenuSection[] = [
       { to: "/sequences", label: "Sequences", icon: "sequences" },
     ],
   },
-  {
-    title: "DEBUG",
-    items: [
-      {
-        to: "/61850-debug",
-        label: "61850 Debug",
-        icon: "iec61850",
-        // children: [
-        //   { to: "/61850-debug/templates", label: "Bay Templates", icon: "iec61850" },
-        // ],
-      },
-    ],
-  },
+  // {
+  //   title: "DEBUG",
+  //   items: [
+  //     {
+  //       to: "/61850-debug",
+  //       label: "61850 Debug",
+  //       icon: "iec61850",
+  //       children: [
+  //         { to: "/61850-debug/templates", label: "Bay Templates", icon: "iec61850" },
+  //       ],
+  //     },
+  //   ],
+  // },
 ]
 
 const sections = computed<MenuSection[]>(() => {
@@ -459,16 +459,13 @@ function handleKeydown(event: KeyboardEvent) {
   border-color: color-mix(in srgb, var(--runtime-accent) 32%, var(--color-neutral-200));
   background:
     linear-gradient(90deg, color-mix(in srgb, var(--runtime-accent) 12%, transparent), color-mix(in srgb, var(--color-white) 92%, transparent));
-  box-shadow:
-    0 10px 22px color-mix(in srgb, var(--runtime-accent) 10%, transparent),
-    inset 0 1px 0 rgb(255 255 255 / 0.64);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.64);
   color: rgb(15 23 42);
   font-weight: 700;
 }
 
 .app-menu__entry.is-active::before {
   background: var(--runtime-accent);
-  box-shadow: 0 0 18px color-mix(in srgb, var(--runtime-accent) 42%, transparent);
 }
 
 .app-menu__entry:focus-visible {
@@ -503,9 +500,7 @@ function handleKeydown(event: KeyboardEvent) {
   border-color: color-mix(in srgb, var(--runtime-accent) 30%, var(--color-neutral-700));
   background:
     linear-gradient(90deg, color-mix(in srgb, var(--runtime-accent) 20%, transparent), color-mix(in srgb, var(--color-neutral-900) 78%, transparent));
-  box-shadow:
-    0 10px 26px color-mix(in srgb, var(--runtime-accent) 10%, transparent),
-    inset 0 1px 0 rgb(255 255 255 / 0.05);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05);
   color: rgb(219 234 254);
 }
 

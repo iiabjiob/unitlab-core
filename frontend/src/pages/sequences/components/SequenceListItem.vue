@@ -309,10 +309,16 @@ function openInNewTab() {
       color-mix(in srgb, var(--color-blue-100) 52%, var(--color-white)),
       color-mix(in srgb, var(--color-white) 84%, var(--color-blue-100))
     );
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--color-blue-500) 34%, var(--color-neutral-200)),
-    0 8px 18px color-mix(in srgb, var(--color-blue-500) 8%, transparent);
   color: var(--color-neutral-900);
+}
+
+.sequence-list-item.sidebar-list-item.is-active::after {
+  position: absolute;
+  inset: 0;
+  border: 1px solid color-mix(in srgb, var(--color-blue-500) 34%, var(--color-neutral-200));
+  border-radius: inherit;
+  content: "";
+  pointer-events: none;
 }
 
 .sequence-list-item__name {
@@ -391,10 +397,11 @@ function openInNewTab() {
       color-mix(in srgb, var(--color-blue-500) 20%, var(--color-neutral-900)),
       color-mix(in srgb, var(--color-blue-900) 18%, var(--color-neutral-950))
     );
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--color-blue-400) 40%, var(--color-neutral-700)),
-    0 10px 22px color-mix(in srgb, var(--color-blue-900) 20%, transparent);
   color: var(--color-white);
+}
+
+:global(.dark) .sequence-list-item.sidebar-list-item.is-active::after {
+  border-color: color-mix(in srgb, var(--color-blue-400) 40%, var(--color-neutral-700));
 }
 
 :global(.dark) .sequence-list-item.sidebar-list-item:not(.is-active) :deep(.sidebar-list-item__indicator) {

@@ -223,6 +223,8 @@ function handleItemClick(index: number, event: MouseEvent) {
 .ui-sidebar-listbox {
   border-radius: 0.5rem;
   overflow-y: auto;
+  padding-block: 1px;
+  scroll-padding-block: 1px;
 }
 
 .ui-sidebar-listbox:focus {

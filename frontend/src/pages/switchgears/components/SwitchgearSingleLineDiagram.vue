@@ -5391,6 +5391,7 @@ onBeforeUnmount(() => {
   box-shadow:
     inset 0 0 0 1px rgb(255 255 255 / 0.4),
     inset 0 18px 60px rgb(15 23 42 / 0.08);
+  touch-action: none;
 }
 
 .switchgear-sld__viewport:active {
