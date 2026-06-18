@@ -458,10 +458,10 @@ function resolveLayout(
   id: number,
   index: number,
 ): DiagramNodeLayout {
-  return layoutById[String(id)] ?? defaultLayout(index)
+  return layoutById[String(id)] ?? buildDefaultSwitchgearSldLayout(index)
 }
 
-function defaultLayout(index: number): DiagramNodeLayout {
+export function buildDefaultSwitchgearSldLayout(index: number): DiagramNodeLayout {
   const columns = 4
   return snapNodeCenterToGrid({
     x: 120 + (index % columns) * 320,

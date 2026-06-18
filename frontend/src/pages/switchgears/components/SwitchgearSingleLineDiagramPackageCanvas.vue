@@ -10,7 +10,7 @@ import { useSwitchgearStore } from "@/stores/switchgearStore"
 
 import type { DiagramStaticKind, DiagramStaticSize, StoredDiagramState } from "../utils/switchgearSldDiagramTypes"
 import type { SwitchgearSldPackageSceneModel } from "../utils/switchgearSldPackageScene"
-import { serializeSwitchgearSldPackageScene } from "../utils/switchgearSldPackageScene"
+import { buildDefaultSwitchgearSldLayout, serializeSwitchgearSldPackageScene } from "../utils/switchgearSldPackageScene"
 
 const GRID_STEP = 24
 const DEFAULT_TEXT_LABEL = "TEXT"
@@ -104,6 +104,7 @@ const viewportBox = computed(() => {
     height: Math.max(1, value.height / zoom),
   }
 })
+const zoomLabel = computed(() => `${Math.round((viewport.viewport.value.zoom > 0 ? viewport.viewport.value.zoom : 1) * 100)}%`)
 const sceneCounts = computed(() => ({
   nodes: diagram.scene.value.order.nodeIds.length,
   edges: diagram.scene.value.order.edgeIds.length,
@@ -250,6 +251,46 @@ function setTool(tool: PackageTool) {
 
 function fitScene() {
   diagram.engine.fitScene(96)
+}
+
+function zoomBy(delta: number) {
+  const current = viewport.viewport.value
+  const currentZoom = current.zoom > 0 ? current.zoom : 1
+  const nextZoom = clampZoom(currentZoom + delta)
+  const centerX = current.x + current.width / currentZoom / 2
+  const centerY = current.y + current.height / currentZoom / 2
+  viewport.setViewport({
+    x: centerX - current.width / nextZoom / 2,
+    y: centerY - current.height / nextZoom / 2,
+    zoom: nextZoom,
+  })
+}
+
+function autoArrange() {
+  const nodeIds = [...diagram.scene.value.order.nodeIds]
+  if (nodeIds.length === 0) {
+    return
+  }
+  diagram.engine.transact(() => {
+    const serialized = diagram.engine.serialize()
+    const indexById = new Map(nodeIds.map((id, index) => [id, index]))
+    return {
+      ...serialized,
+      nodes: serialized.nodes.map((node) => {
+        const index = indexById.get(node.id)
+        if (index == null) {
+          return node
+        }
+        const layout = buildDefaultSwitchgearSldLayout(index)
+        return {
+          ...node,
+          x: layout.x,
+          y: layout.y,
+        }
+      }),
+    }
+  })
+  fitScene()
 }
 
 function clearSelection() {
@@ -890,6 +931,24 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
             Align top
           </UiButton>
         </div>
+        <div class="switchgear-sld-package-canvas__tool-tabs">
+          <UiButton size="sm" variant="secondary" class="switchgear-sld-package-canvas__icon-action" title="Zoom out" aria-label="Zoom out" @click="zoomBy(-0.1)">
+            <svg viewBox="0 0 16 16" class="switchgear-sld-package-canvas__icon" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="7" cy="7" r="4.5" />
+              <path d="M10.5 10.5 14 14" />
+              <path d="M5 7h4" />
+            </svg>
+          </UiButton>
+          <span class="switchgear-sld-package-canvas__zoom-label">{{ zoomLabel }}</span>
+          <UiButton size="sm" variant="secondary" class="switchgear-sld-package-canvas__icon-action" title="Zoom in" aria-label="Zoom in" @click="zoomBy(0.1)">
+            <svg viewBox="0 0 16 16" class="switchgear-sld-package-canvas__icon" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="7" cy="7" r="4.5" />
+              <path d="M10.5 10.5 14 14" />
+              <path d="M7 5v4" />
+              <path d="M5 7h4" />
+            </svg>
+          </UiButton>
+        </div>
         <span class="switchgear-sld-package-canvas__selection">{{ selectionLabel }}</span>
         <UiButton size="sm" variant="secondary" :disabled="!canUndo" @click="undo">
           Undo
@@ -899,6 +958,9 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
         </UiButton>
         <UiButton size="sm" variant="secondary" @click="fitScene">
           Fit
+        </UiButton>
+        <UiButton size="sm" variant="secondary" @click="autoArrange">
+          Auto layout
         </UiButton>
         <UiButton size="sm" variant="secondary" :disabled="selection.selection.value.ids.length === 0" @click="clearSelection">
           Clear
@@ -1243,4 +1305,22 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
   background: var(--color-neutral-950);
   color: var(--color-neutral-100);
 }
+
+.switchgear-sld-package-canvas__icon-action {
+  min-width: 2rem;
+  padding-inline: 0.4rem;
+}
+
+.switchgear-sld-package-canvas__icon {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.switchgear-sld-package-canvas__zoom-label {
+  min-width: 3rem;
+  text-align: center;
+  font-size: var(--text-xs);
+  color: var(--color-neutral-600);
+}
+
 </style>
