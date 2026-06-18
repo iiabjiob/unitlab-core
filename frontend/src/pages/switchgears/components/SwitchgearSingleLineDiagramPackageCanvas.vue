@@ -5,6 +5,7 @@ import { getSvgEntityProps, useDiagramEngine, useDiagramPointerController, useDi
 import type { DiagramEdge } from "@affino/diagram-core"
 
 import UiButton from "@/components/ui/UiButton.vue"
+import { useToastStore } from "@/stores/toastStore"
 import { writeLocalSetting } from "@/services/localSettingsStorage"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
 
@@ -13,6 +14,8 @@ import type { SwitchgearSldPackageSceneModel } from "../utils/switchgearSldPacka
 import { buildDefaultSwitchgearSldLayout, serializeSwitchgearSldPackageScene } from "../utils/switchgearSldPackageScene"
 
 const GRID_STEP = 24
+const COPY_PASTE_OFFSET = GRID_STEP
+const DIAGRAM_CLIPBOARD_KIND = "unitlab.switchgear-sld-selection"
 const DEFAULT_TEXT_LABEL = "TEXT"
 const EDGE_PORT_SNAP_RADIUS = 18
 const MINIMAP_WIDTH = 180
@@ -65,6 +68,31 @@ type ContextMenuState = {
   kind: "edge" | "static" | "text" | "node"
   nodeId?: string
 }
+type DiagramClipboardEdge = {
+  x1: number
+  y1: number
+  x2: number
+  y2: number
+  kind: EdgeStyle
+  weight?: EdgeWeight
+}
+type DiagramClipboardStaticElement = {
+  kind: DiagramStaticKind
+  size: DiagramStaticSize
+  x: number
+  y: number
+  rotation: 0 | 90 | 180 | 270
+}
+type DiagramClipboardTextElement = {
+  text: string
+  x: number
+  y: number
+}
+type DiagramClipboardSelection = {
+  edges: DiagramClipboardEdge[]
+  staticElements: DiagramClipboardStaticElement[]
+  textElements: DiagramClipboardTextElement[]
+}
 
 const props = defineProps<{
   model: SwitchgearSldPackageSceneModel
@@ -80,6 +108,7 @@ const emit = defineEmits<{
 const route = useRoute()
 const router = useRouter()
 const switchgearStore = useSwitchgearStore()
+const toastStore = useToastStore()
 const stageRef = ref<HTMLElement | null>(null)
 const editableText = ref("")
 const lastStoredState = ref<StoredDiagramState | null>(props.initialStoredState)
@@ -89,6 +118,8 @@ const labelDrag = ref<LabelDragState | null>(null)
 const lineKind = ref<EdgeStyle>("line")
 const lineWeight = ref<EdgeWeight>("normal")
 const contextMenu = ref<ContextMenuState | null>(null)
+const localClipboardSelection = ref<DiagramClipboardSelection | null>(null)
+const clipboardPasteCount = ref(0)
 
 const diagram = useDiagramEngine(props.model.scene)
 const viewport = useDiagramViewport(diagram, { element: stageRef })
@@ -532,6 +563,258 @@ function closeTextEditorIfNeeded() {
   }
 }
 
+function buildDiagramClipboardPayload(selection: DiagramClipboardSelection) {
+  return JSON.stringify({
+    kind: DIAGRAM_CLIPBOARD_KIND,
+    version: 2,
+    edges: selection.edges,
+    staticElements: selection.staticElements,
+    textElements: selection.textElements,
+  }, null, 2)
+}
+
+function parseDiagramClipboardPayload(rawText: string): DiagramClipboardSelection | null {
+  try {
+    const parsed = JSON.parse(rawText) as {
+      kind?: unknown
+      version?: unknown
+      edges?: unknown
+      staticElements?: unknown
+      textElements?: unknown
+    }
+    if (parsed.kind !== DIAGRAM_CLIPBOARD_KIND || (parsed.version !== 1 && parsed.version !== 2)) {
+      return null
+    }
+
+    const edges = (Array.isArray(parsed.edges) ? parsed.edges : []).flatMap((value): DiagramClipboardEdge[] => {
+      if (!value || typeof value !== 'object') {
+        return []
+      }
+      const edge = value as Partial<DiagramClipboardEdge>
+      const x1 = Number(edge.x1)
+      const y1 = Number(edge.y1)
+      const x2 = Number(edge.x2)
+      const y2 = Number(edge.y2)
+      if (!Number.isFinite(x1) || !Number.isFinite(y1) || !Number.isFinite(x2) || !Number.isFinite(y2)) {
+        return []
+      }
+      return [{
+        x1,
+        y1,
+        x2,
+        y2,
+        kind: edge.kind === 'arrow' ? 'arrow' : 'line',
+        weight: edge.weight === 'bold' ? 'bold' : 'normal',
+      }]
+    })
+
+    const staticElements = (Array.isArray(parsed.staticElements) ? parsed.staticElements : []).flatMap((value): DiagramClipboardStaticElement[] => {
+      if (!value || typeof value !== 'object') {
+        return []
+      }
+      const item = value as Partial<DiagramClipboardStaticElement>
+      const x = Number(item.x)
+      const y = Number(item.y)
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        return []
+      }
+      return [{
+        kind: item.kind === 'ground' ? 'ground' : 'transformer',
+        size: item.size === 'sm' || item.size === 'lg' ? item.size : 'md',
+        x,
+        y,
+        rotation: normalizeRotation(item.rotation),
+      }]
+    })
+
+    const textElements = (Array.isArray(parsed.textElements) ? parsed.textElements : []).flatMap((value): DiagramClipboardTextElement[] => {
+      if (!value || typeof value !== 'object') {
+        return []
+      }
+      const item = value as Partial<DiagramClipboardTextElement>
+      const x = Number(item.x)
+      const y = Number(item.y)
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        return []
+      }
+      return [{
+        text: typeof item.text === 'string' && item.text.trim() ? item.text.trim().slice(0, 80) : DEFAULT_TEXT_LABEL,
+        x,
+        y,
+      }]
+    })
+
+    return edges.length > 0 || staticElements.length > 0 || textElements.length > 0
+      ? { edges, staticElements, textElements }
+      : null
+  } catch {
+    return null
+  }
+}
+
+function formatClipboardSelectionLabel(selection: DiagramClipboardSelection) {
+  const parts = [
+    selection.edges.length > 0 ? `${selection.edges.length} line${selection.edges.length > 1 ? 's' : ''}` : null,
+    selection.staticElements.length > 0 ? `${selection.staticElements.length} symbol${selection.staticElements.length > 1 ? 's' : ''}` : null,
+    selection.textElements.length > 0 ? `${selection.textElements.length} text` : null,
+  ].filter((value): value is string => Boolean(value))
+  return parts.join(', ')
+}
+
+async function handleCopySelection() {
+  const selectionData: DiagramClipboardSelection = {
+    edges: selectedEdgeIds.value.flatMap((id) => {
+      const edge = diagram.scene.value.entities.edgesById.get(id)
+      if (!edge) {
+        return []
+      }
+      const source = resolveEdgeEndpointPosition(edge.source)
+      const target = resolveEdgeEndpointPosition(edge.target)
+      return [{
+        x1: source.x,
+        y1: source.y,
+        x2: target.x,
+        y2: target.y,
+        kind: resolveEdgeKind(id),
+        weight: resolveEdgeWeightValue(id),
+      }]
+    }),
+    staticElements: selectedShapeIds.value.flatMap((id) => {
+      const shape = diagram.scene.value.entities.shapesById.get(id)
+      if (!shape) {
+        return []
+      }
+      return [{
+        kind: resolveStaticMeta(id).kind,
+        size: inferStaticSize(id),
+        x: shape.x + shape.width / 2,
+        y: shape.y + shape.height / 2,
+        rotation: normalizeRotation(shape.rotation),
+      }]
+    }),
+    textElements: selectedTextIds.value.flatMap((id) => {
+      const item = diagram.scene.value.entities.textsById.get(id)
+      if (!item) {
+        return []
+      }
+      return [{
+        text: item.text,
+        x: item.x,
+        y: item.y,
+      }]
+    }),
+  }
+
+  if (selectionData.edges.length === 0 && selectionData.staticElements.length === 0 && selectionData.textElements.length === 0) {
+    if (selectedNodeIds.value.length > 0) {
+      toastStore.info('Switchgear copy is not supported yet. Select lines, symbols, or text to copy.')
+      return
+    }
+    toastStore.info('Select at least one line, symbol, or text to copy')
+    return
+  }
+
+  localClipboardSelection.value = selectionData
+  clipboardPasteCount.value = 0
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(buildDiagramClipboardPayload(selectionData))
+    }
+    toastStore.success(`Copied ${formatClipboardSelectionLabel(selectionData)}`)
+  } catch {
+    toastStore.success(`Copied ${formatClipboardSelectionLabel(selectionData)}`)
+  }
+}
+
+async function resolveClipboardSelection() {
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.readText) {
+      const rawText = await navigator.clipboard.readText()
+      const parsed = parseDiagramClipboardPayload(rawText)
+      if (parsed) {
+        localClipboardSelection.value = parsed
+        return parsed
+      }
+    }
+  } catch {
+  }
+  return localClipboardSelection.value
+}
+
+async function handlePasteSelection() {
+  const source = await resolveClipboardSelection()
+  if (!source || (source.edges.length === 0 && source.staticElements.length === 0 && source.textElements.length === 0)) {
+    toastStore.info('Nothing to paste')
+    return
+  }
+  const offset = COPY_PASTE_OFFSET * (clipboardPasteCount.value + 1)
+  const edgeEntries = source.edges.map((edge, index) => ({
+    id: `edge:paste:${Date.now()}:${index}`,
+    kind: 'edge' as const,
+    source: { kind: 'point' as const, point: snapWorldPoint({ x: edge.x1 + offset, y: edge.y1 + offset }) },
+    target: { kind: 'point' as const, point: snapWorldPoint({ x: edge.x2 + offset, y: edge.y2 + offset }) },
+    metadata: {
+      entityType: 'edge',
+      edgeKind: edge.kind,
+      edgeWeight: edge.weight === 'bold' ? 'bold' : 'normal',
+      startBinding: null,
+      endBinding: null,
+    },
+  }))
+  const shapeEntries = source.staticElements.map((item, index) => {
+    const dims = STATIC_DIMENSIONS[item.kind][item.size]
+    const center = snapWorldPoint({ x: item.x + offset, y: item.y + offset })
+    return {
+      id: `shape:paste:${Date.now()}:${index}`,
+      kind: 'shape' as const,
+      x: Math.round(center.x - dims.width / 2),
+      y: Math.round(center.y - dims.height / 2),
+      width: dims.width,
+      height: dims.height,
+      rotation: normalizeRotation(item.rotation),
+      shape: item.kind,
+      metadata: {
+        entityType: 'static',
+        staticId: `paste-${item.kind}-${Date.now()}-${index}`,
+        staticKind: item.kind,
+        staticSize: item.size,
+        rotation: normalizeRotation(item.rotation),
+      },
+    }
+  })
+  const textEntries = source.textElements.map((item, index) => {
+    const point = snapWorldPoint({ x: item.x + offset, y: item.y + offset })
+    return {
+      id: `text:paste:${Date.now()}:${index}`,
+      kind: 'text' as const,
+      x: point.x,
+      y: point.y,
+      text: item.text,
+      width: Math.max(96, Math.min(288, item.text.length * 8 + 24)),
+      height: 28,
+      fontSize: 12,
+      metadata: { entityType: 'text' },
+    }
+  })
+  const selectionIds = [...edgeEntries.map(item => item.id), ...shapeEntries.map(item => item.id), ...textEntries.map(item => item.id)]
+  diagram.dispatch({
+    type: 'pasteClipboard',
+    clipboard: {
+      nodes: [],
+      edges: edgeEntries,
+      shapes: shapeEntries,
+      texts: textEntries,
+      ports: [],
+      selection: { ids: selectionIds, primaryId: selectionIds[0] ?? null },
+      viewport: diagram.scene.value.viewport,
+    },
+    offset: { x: 0, y: 0 },
+    historyKey: 'paste-selection',
+  })
+  clipboardPasteCount.value += 1
+  toastStore.success(`Pasted ${formatClipboardSelectionLabel(source)}`)
+}
+
 function addText() {
   const center = getViewportCenter()
   diagram.dispatch({
@@ -766,6 +1049,20 @@ function onWheel(event: WheelEvent) {
 }
 
 function onStageKeydown(event: KeyboardEvent) {
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "c") {
+    event.preventDefault()
+    if (!textEditor.activeEditor.value) {
+      void handleCopySelection()
+    }
+    return
+  }
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "v") {
+    event.preventDefault()
+    if (!textEditor.activeEditor.value) {
+      void handlePasteSelection()
+    }
+    return
+  }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
     event.preventDefault()
     if (event.shiftKey) {
@@ -1013,6 +1310,26 @@ function resolveEdgeEndpointPosition(endpoint: { kind: "point"; point: { x: numb
   }
   const node = diagram.scene.value.entities.nodesById.get(endpoint.nodeId)
   return node ? { x: node.x + node.width / 2, y: node.y + node.height / 2 } : { x: 0, y: 0 }
+}
+
+function snapWorldValue(value: number) {
+  const snapEnabled = lastStoredState.value?.snapEnabled !== false
+  return snapEnabled ? Math.round(value / GRID_STEP) * GRID_STEP : value
+}
+
+function snapWorldPoint(point: { x: number; y: number }) {
+  return {
+    x: snapWorldValue(point.x),
+    y: snapWorldValue(point.y),
+  }
+}
+
+function normalizeRotation(value: unknown): 0 | 90 | 180 | 270 {
+  const numeric = Number(value)
+  if (numeric === 90 || numeric === 180 || numeric === 270) {
+    return numeric
+  }
+  return 0
 }
 
 function clampZoom(value: number) {
