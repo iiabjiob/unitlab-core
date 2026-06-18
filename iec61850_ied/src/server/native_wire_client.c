@@ -642,6 +642,75 @@ static void copy_report_typed_value(const UnitLabMmsBerElement* value, UnitLabNa
     }
 }
 
+static void copy_read_typed_value(const UnitLabMmsBerElement* value, UnitLabNativeLastReadResult* result)
+{
+    if (result == NULL) {
+        return;
+    }
+    result->value_kind = UNITLAB_NATIVE_REPORT_VALUE_UNSUPPORTED;
+    result->raw_tag_class = 0U;
+    result->raw_tag_number = 0U;
+    result->raw_value_length = 0U;
+    result->unsigned_value = 0U;
+    result->integer_value = 0;
+    result->floating_value = 0.0;
+    result->bool_value = 0;
+    if (value == NULL) {
+        return;
+    }
+    result->raw_tag_class = (uint8_t)value->tag.tag_class;
+    result->raw_tag_number = (uint8_t)value->tag.tag_number;
+    result->raw_value_length = value->value_length;
+    if (value->value_bytes == NULL || value->value_length == 0U) {
+        result->value_kind = UNITLAB_NATIVE_REPORT_VALUE_EMPTY;
+    } else if (value->tag.constructed) {
+        result->value_kind = UNITLAB_NATIVE_REPORT_VALUE_STRUCTURE;
+    } else if (value->tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && value->tag.tag_number == 3U && value->value_length == 1U) {
+        result->value_kind = UNITLAB_NATIVE_REPORT_VALUE_BOOL;
+        result->bool_value = value->value_bytes[0] != 0U ? 1 : 0;
+    } else if (value->tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && value->tag.tag_number == 5U && value->value_length <= sizeof(uint64_t)) {
+        result->value_kind = UNITLAB_NATIVE_REPORT_VALUE_INTEGER;
+        result->integer_value = decode_signed_bytes(value->value_bytes, value->value_length);
+    } else if (value->tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && value->tag.tag_number == 6U && value->value_length <= sizeof(uint64_t)) {
+        result->value_kind = UNITLAB_NATIVE_REPORT_VALUE_UNSIGNED;
+        result->unsigned_value = decode_unsigned_bytes(value->value_bytes, value->value_length);
+    } else if (value->tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && value->tag.tag_number == 7U && decode_mms_float32_value(value->value_bytes, value->value_length, &result->floating_value)) {
+        result->value_kind = UNITLAB_NATIVE_REPORT_VALUE_FLOAT;
+    } else if (value->tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && value->tag.tag_number == 4U) {
+        result->value_kind = UNITLAB_NATIVE_REPORT_VALUE_BIT_STRING;
+    } else if (value->tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && value->tag.tag_number == 9U) {
+        result->value_kind = UNITLAB_NATIVE_REPORT_VALUE_OCTETS;
+    } else if (unitlab_native_client_bytes_are_printable_ascii(value->value_bytes, value->value_length)) {
+        result->value_kind = UNITLAB_NATIVE_REPORT_VALUE_STRING;
+    }
+}
+
+static void format_read_value_summary(const UnitLabMmsBerElement* value, UnitLabNativeLastReadResult* result)
+{
+    if (result == NULL) {
+        return;
+    }
+    result->value_summary[0] = '\0';
+    if (value == NULL || value->value_bytes == NULL || value->value_length == 0U) {
+        snprintf(result->value_summary, sizeof(result->value_summary), "%s", "<empty>");
+    } else if (result->value_kind == UNITLAB_NATIVE_REPORT_VALUE_BOOL) {
+        snprintf(result->value_summary, sizeof(result->value_summary), "%s", result->bool_value ? "true" : "false");
+    } else if (result->value_kind == UNITLAB_NATIVE_REPORT_VALUE_INTEGER) {
+        snprintf(result->value_summary, sizeof(result->value_summary), "%lld", (long long)result->integer_value);
+    } else if (result->value_kind == UNITLAB_NATIVE_REPORT_VALUE_UNSIGNED) {
+        snprintf(result->value_summary, sizeof(result->value_summary), "%llu", (unsigned long long)result->unsigned_value);
+    } else if (result->value_kind == UNITLAB_NATIVE_REPORT_VALUE_FLOAT) {
+        snprintf(result->value_summary, sizeof(result->value_summary), "%.9g", result->floating_value);
+    } else if (unitlab_native_client_bytes_are_printable_ascii(value->value_bytes, value->value_length)) {
+        size_t copy_length = value->value_length < sizeof(result->value_summary) - 1U ? value->value_length : sizeof(result->value_summary) - 1U;
+        memcpy(result->value_summary, value->value_bytes, copy_length);
+        result->value_summary[copy_length] = '\0';
+    } else {
+        snprintf(result->value_summary, sizeof(result->value_summary), "%s", "0x");
+        append_hex_summary(result->value_summary, sizeof(result->value_summary), value->value_bytes, value->value_length);
+    }
+}
+
 static void emit_structured_access_result_summary(size_t access_result_index, const UnitLabMmsBerElement* result)
 {
     UnitLabMmsDiagnostic diagnostic;
@@ -765,6 +834,110 @@ static void emit_service_access_results(const UnitLabMmsPdu* pdu)
     }
     printf("mms-summary: accessResult-count=%zu\n", index);
     fflush(stdout);
+}
+
+static int store_latest_read_result(
+    UnitLabNativeClientSessionState* session,
+    const char* domain_id,
+    const char* item_id,
+    uint32_t invoke_id,
+    const UnitLabMmsPdu* pdu)
+{
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsBerElement outer;
+    UnitLabMmsBerElement result;
+    const UnitLabNativeDiscoveredLeafRef* leaf_ref;
+    const uint8_t* list_bytes;
+    size_t list_length;
+    size_t consumed = 0U;
+    size_t result_consumed = 0U;
+
+    if (session == NULL || domain_id == NULL || item_id == NULL || pdu == NULL
+        || pdu->kind != UNITLAB_MMS_PDU_CONFIRMED_RESPONSE
+        || pdu->service_kind != UNITLAB_MMS_SERVICE_READ
+        || pdu->service_bytes == NULL
+        || pdu->service_length == 0U) {
+        return 0;
+    }
+
+    memset(&session->last_read_result, 0, sizeof(session->last_read_result));
+    session->has_last_read_result = 0;
+    session->last_read_invoke_id = invoke_id;
+    snprintf(session->last_read_result.object_reference, sizeof(session->last_read_result.object_reference), "%s/%s", domain_id, item_id);
+    snprintf(session->last_read_result.display_reference, sizeof(session->last_read_result.display_reference), "%s", session->last_read_result.object_reference);
+    leaf_ref = unitlab_native_client_session_find_leaf_ref(session, session->last_read_result.object_reference);
+    if (leaf_ref != NULL && leaf_ref->display_reference[0] != '\0') {
+        snprintf(session->last_read_result.display_reference, sizeof(session->last_read_result.display_reference), "%s", leaf_ref->display_reference);
+    }
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    list_bytes = pdu->service_bytes;
+    list_length = pdu->service_length;
+    unitlab_mms_ber_element_init(&outer);
+    if (unitlab_mms_ber_read(&outer, pdu->service_bytes, pdu->service_length, &consumed, &diagnostic)
+        && consumed == pdu->service_length
+        && outer.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC
+        && outer.tag.constructed
+        && outer.tag.tag_number == 1U) {
+        list_bytes = outer.value_bytes;
+        list_length = outer.value_length;
+    }
+
+    unitlab_mms_ber_element_init(&result);
+    if (!unitlab_mms_ber_read(&result, list_bytes, list_length, &result_consumed, &diagnostic) || result_consumed == 0U) {
+        return 0;
+    }
+    if (result.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && result.tag.tag_number == 0U) {
+        session->last_read_result.access_failure = 1;
+        session->last_read_result.access_failure_code = decode_unsigned_bytes(result.value_bytes, result.value_length);
+        snprintf(session->last_read_result.value_summary, sizeof(session->last_read_result.value_summary), "access-failure:%u", (unsigned)session->last_read_result.access_failure_code);
+    } else {
+        copy_read_typed_value(&result, &session->last_read_result);
+        format_read_value_summary(&result, &session->last_read_result);
+    }
+    session->has_last_read_result = 1;
+    printf(
+        "native-wire-client: read-summary invoke=%u object=%s display=%s status=%s kind=%s tag=%u length=%zu value=%s\n",
+        (unsigned)invoke_id,
+        session->last_read_result.object_reference,
+        session->last_read_result.display_reference,
+        session->last_read_result.access_failure ? "access-failure" : "success",
+        session->last_read_result.access_failure ? "failure" : report_value_kind_label(session->last_read_result.value_kind),
+        (unsigned)session->last_read_result.raw_tag_number,
+        session->last_read_result.raw_value_length,
+        session->last_read_result.value_summary[0] != '\0' ? session->last_read_result.value_summary : "<none>");
+    fflush(stdout);
+    return 1;
+}
+
+static int store_latest_read_result_from_frame(
+    UnitLabNativeClientSessionState* session,
+    const char* domain_id,
+    const char* item_id,
+    uint32_t invoke_id,
+    const uint8_t* frame,
+    size_t frame_length)
+{
+    UnitLabMmsAssociationFrame association_frame;
+    UnitLabMmsPdu pdu;
+    UnitLabMmsDiagnostic diagnostic;
+    size_t consumed = 0U;
+
+    if (session == NULL || frame == NULL || frame_length == 0U) {
+        return 0;
+    }
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_association_frame_init(&association_frame);
+    if (!unitlab_mms_association_frame_decode(&association_frame, frame, frame_length, &consumed, &diagnostic)
+        || association_frame.presentation.payload_bytes == NULL
+        || association_frame.presentation.payload_length == 0U) {
+        return 0;
+    }
+    unitlab_mms_pdu_init(&pdu);
+    if (!unitlab_mms_pdu_decode(&pdu, association_frame.presentation.payload_bytes, association_frame.presentation.payload_length, &consumed, &diagnostic)) {
+        return 0;
+    }
+    return store_latest_read_result(session, domain_id, item_id, invoke_id, &pdu);
 }
 
 static int copy_printable_value(const UnitLabMmsBerElement* element, char* buffer, size_t buffer_size)
@@ -1699,18 +1872,24 @@ static int emit_read_response(
     if (!unitlab_mms_build_read_request_frame(domain_id, item_id, invoke_id, scratch, scratch_length, request, request_length, &encoded_request_length, diagnostic)) {
         return 0;
     }
-    return emit_confirmed_response(
-        session,
-        data_fd,
-        request,
-        encoded_request_length,
-        response,
-        response_length,
-        encoded_response_length,
-        text_buffer,
-        text_buffer_length,
-        "Native wire client could not receive the confirmed-read response.",
-        diagnostic);
+    if (!emit_confirmed_response(
+            session,
+            data_fd,
+            request,
+            encoded_request_length,
+            response,
+            response_length,
+            encoded_response_length,
+            text_buffer,
+            text_buffer_length,
+            "Native wire client could not receive the confirmed-read response.",
+            diagnostic)) {
+        return 0;
+    }
+    if (encoded_response_length != NULL) {
+        (void)store_latest_read_result_from_frame(session, domain_id, item_id, invoke_id, response, *encoded_response_length);
+    }
+    return 1;
 }
 
 static int emit_write_bool_response(

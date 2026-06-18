@@ -265,6 +265,8 @@ Validation:
 
 ## Slice 6: Association And Transport Interoperability
 
+Status: complete.
+
 Goal: make connection setup robust across real IEDs.
 
 Change boundary:
@@ -299,12 +301,18 @@ Closed in current slice:
 - Native wire client now explicitly rejects segmented association responses with a dedicated unsupported result; post-association segmented data responses remain handled by the existing reassembly path.
 - `scripts/check-association-pcap.py` automates happy-path association replay gates for saved captures, checking COTP CR/CC, ACSE AARQ/AARE, MMS Initiate request/response, non-segmented association DT frames, and absence of reject/abort/error/reset traffic.
 
-Remaining Slice 6 work:
+Deferred to Slice 8:
 
 - Negative saved association capture replay still needs representative reject/abort/oversized/segmented artifacts when those captures are available.
 
 
 ## Slice 7: Read/Write Data Access
+
+Status: in progress.
+
+Closed in current slice:
+
+- Native wire client read responses now update session-owned latest-read state with typed value metadata and emit a compact `read-summary` for the requested object.
 
 Goal: allow the debug UI and later runtime integration to read live values safely.
 
@@ -348,6 +356,7 @@ Acceptance criteria:
   - information reports.
 - Each supported capture has a named expected behavior file.
 - Validation output names missing or unsupported protocol features explicitly.
+- Negative association replay covers reject, abort, oversized, and segmented association artifacts once representative captures are available.
 
 Validation:
 

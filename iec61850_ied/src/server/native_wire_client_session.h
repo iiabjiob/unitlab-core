@@ -136,6 +136,22 @@ typedef enum {
 } UnitLabNativeReportReasonFlag;
 
 typedef struct {
+    char object_reference[384U];
+    char display_reference[384U];
+    char value_summary[160U];
+    uint8_t raw_tag_class;
+    uint8_t raw_tag_number;
+    size_t raw_value_length;
+    UnitLabNativeReportValueKind value_kind;
+    uint64_t unsigned_value;
+    int64_t integer_value;
+    double floating_value;
+    int bool_value;
+    int access_failure;
+    uint32_t access_failure_code;
+} UnitLabNativeLastReadResult;
+
+typedef struct {
     char data_reference[384U];
     char display_reference[384U];
     char value_summary[160U];
@@ -206,6 +222,9 @@ typedef struct {
     UnitLabNativeDiscoveredRcb* discovered_rcbs;
     size_t discovered_rcb_count;
     size_t discovered_rcb_capacity;
+    UnitLabNativeLastReadResult last_read_result;
+    int has_last_read_result;
+    uint32_t last_read_invoke_id;
     uint32_t next_invoke_id;
 } UnitLabNativeClientSessionState;
 
