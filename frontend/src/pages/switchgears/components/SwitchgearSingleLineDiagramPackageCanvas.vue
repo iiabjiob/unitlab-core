@@ -15,6 +15,8 @@ import { buildDefaultSwitchgearSldLayout, serializeSwitchgearSldPackageScene } f
 const GRID_STEP = 24
 const DEFAULT_TEXT_LABEL = "TEXT"
 const EDGE_PORT_SNAP_RADIUS = 18
+const MINIMAP_WIDTH = 180
+const MINIMAP_HEIGHT = 124
 const LABEL_MIN_OFFSET = -220
 const LABEL_MAX_OFFSET = 220
 const STATIC_DIMENSIONS: Record<DiagramStaticKind, Record<DiagramStaticSize, { width: number; height: number }>> = {
@@ -194,6 +196,129 @@ const edgePreview = computed(() => {
     edgeId: drag.edgeId,
     source,
     target,
+  }
+})
+const minimapModel = computed(() => {
+  const current = viewport.viewport.value
+  const zoom = current.zoom > 0 ? current.zoom : 1
+  if (current.width <= 0 || current.height <= 0) {
+    return null
+  }
+
+  const worldViewportX = current.x
+  const worldViewportY = current.y
+  const worldViewportWidth = current.width / zoom
+  const worldViewportHeight = current.height / zoom
+
+  const nodeRects = [...diagram.scene.value.entities.nodesById.values()].map(node => ({
+    id: node.id,
+    x: node.x,
+    y: node.y,
+    width: node.width,
+    height: node.height,
+    active: selectedNodeIds.value.includes(node.id),
+  }))
+  const staticRects = [...diagram.scene.value.entities.shapesById.values()].map(shape => ({
+    id: shape.id,
+    x: shape.x,
+    y: shape.y,
+    width: Number(shape.width ?? 0),
+    height: Number(shape.height ?? 0),
+    active: selectedShapeIds.value.includes(shape.id),
+  }))
+  const textRects = [...diagram.scene.value.entities.textsById.values()].map(item => ({
+    id: item.id,
+    x: item.x - Number(item.width ?? 0) / 2,
+    y: item.y - Number(item.height ?? 0) / 2,
+    width: Number(item.width ?? 0),
+    height: Number(item.height ?? 0),
+    active: selectedTextIds.value.includes(item.id),
+  }))
+  const lineSegments = [...diagram.scene.value.entities.edgesById.values()].map(edge => {
+    const source = resolveEdgeEndpointPosition(edge.source)
+    const target = resolveEdgeEndpointPosition(edge.target)
+    return {
+      id: edge.id,
+      x1: source.x,
+      y1: source.y,
+      x2: target.x,
+      y2: target.y,
+      weight: resolveEdgeWeightValue(edge.id),
+      active: selectedEdgeIds.value.includes(edge.id),
+    }
+  })
+
+  const xs: number[] = [worldViewportX, worldViewportX + worldViewportWidth]
+  const ys: number[] = [worldViewportY, worldViewportY + worldViewportHeight]
+  for (const item of nodeRects) {
+    xs.push(item.x, item.x + item.width)
+    ys.push(item.y, item.y + item.height)
+  }
+  for (const item of staticRects) {
+    xs.push(item.x, item.x + item.width)
+    ys.push(item.y, item.y + item.height)
+  }
+  for (const item of textRects) {
+    xs.push(item.x, item.x + item.width)
+    ys.push(item.y, item.y + item.height)
+  }
+  for (const item of lineSegments) {
+    xs.push(item.x1, item.x2)
+    ys.push(item.y1, item.y2)
+  }
+
+  const contentMinX = Math.min(...xs) - 160
+  const contentMinY = Math.min(...ys) - 160
+  const contentMaxX = Math.max(...xs) + 160
+  const contentMaxY = Math.max(...ys) + 160
+  const contentWidth = Math.max(1, contentMaxX - contentMinX)
+  const contentHeight = Math.max(1, contentMaxY - contentMinY)
+  const scale = Math.min(MINIMAP_WIDTH / contentWidth, MINIMAP_HEIGHT / contentHeight)
+  const drawWidth = contentWidth * scale
+  const drawHeight = contentHeight * scale
+  const offsetX = (MINIMAP_WIDTH - drawWidth) / 2
+  const offsetY = (MINIMAP_HEIGHT - drawHeight) / 2
+
+  return {
+    contentMinX,
+    contentMinY,
+    scale,
+    offsetX,
+    offsetY,
+    nodes: nodeRects.map(item => ({
+      ...item,
+      x: offsetX + (item.x - contentMinX) * scale,
+      y: offsetY + (item.y - contentMinY) * scale,
+      width: Math.max(3, Number(item.width) * scale),
+      height: Math.max(3, Number(item.height) * scale),
+    })),
+    statics: staticRects.map(item => ({
+      ...item,
+      x: offsetX + (item.x - contentMinX) * scale,
+      y: offsetY + (item.y - contentMinY) * scale,
+      width: Math.max(3, Number(item.width) * scale),
+      height: Math.max(3, Number(item.height) * scale),
+    })),
+    texts: textRects.map(item => ({
+      ...item,
+      x: offsetX + (item.x - contentMinX) * scale,
+      y: offsetY + (item.y - contentMinY) * scale,
+      width: Math.max(5, Number(item.width) * scale),
+      height: Math.max(3, Number(item.height) * scale),
+    })),
+    lines: lineSegments.map(item => ({
+      ...item,
+      x1: offsetX + (item.x1 - contentMinX) * scale,
+      y1: offsetY + (item.y1 - contentMinY) * scale,
+      x2: offsetX + (item.x2 - contentMinX) * scale,
+      y2: offsetY + (item.y2 - contentMinY) * scale,
+    })),
+    viewport: {
+      x: offsetX + (worldViewportX - contentMinX) * scale,
+      y: offsetY + (worldViewportY - contentMinY) * scale,
+      width: Math.max(12, worldViewportWidth * scale),
+      height: Math.max(12, worldViewportHeight * scale),
+    },
   }
 })
 
@@ -805,6 +930,29 @@ function mapPointerToWorld(event: PointerEvent) {
   }
 }
 
+function centerViewportAtWorldPoint(worldX: number, worldY: number) {
+  const current = viewport.viewport.value
+  const zoom = current.zoom > 0 ? current.zoom : 1
+  viewport.setViewport({
+    x: worldX - current.width / zoom / 2,
+    y: worldY - current.height / zoom / 2,
+  })
+}
+
+function handleMinimapPointerDown(event: PointerEvent) {
+  const model = minimapModel.value
+  const target = event.currentTarget as SVGElement | null
+  if (!model || !target) {
+    return
+  }
+  const rect = target.getBoundingClientRect()
+  const localX = event.clientX - rect.left
+  const localY = event.clientY - rect.top
+  const worldX = model.contentMinX + (localX - model.offsetX) / model.scale
+  const worldY = model.contentMinY + (localY - model.offsetY) / model.scale
+  centerViewportAtWorldPoint(worldX, worldY)
+}
+
 function getViewportCenter() {
   const current = viewport.viewport.value
   return {
@@ -1205,6 +1353,81 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
         @keydown.esc.prevent="cancelTextEdit"
         @blur="commitTextEdit"
       />
+
+      <div v-if="minimapModel" class="switchgear-sld-package-canvas__minimap">
+        <svg
+          :width="MINIMAP_WIDTH"
+          :height="MINIMAP_HEIGHT"
+          class="switchgear-sld-package-canvas__minimap-svg"
+          @pointerdown.stop.prevent="handleMinimapPointerDown"
+        >
+          <rect
+            x="0"
+            y="0"
+            :width="MINIMAP_WIDTH"
+            :height="MINIMAP_HEIGHT"
+            rx="8"
+            fill="rgba(148,163,184,0.18)"
+          />
+          <g>
+            <line
+              v-for="line in minimapModel.lines"
+              :key="line.id"
+              :x1="line.x1"
+              :y1="line.y1"
+              :x2="line.x2"
+              :y2="line.y2"
+              :stroke="line.active ? '#38bdf8' : '#475569'"
+              :stroke-width="line.active ? (line.weight === 'bold' ? 2.4 : 1.8) : (line.weight === 'bold' ? 1.8 : 1.2)"
+              stroke-linecap="round"
+              :opacity="line.active ? 1 : 0.62"
+            />
+            <rect
+              v-for="item in minimapModel.statics"
+              :key="item.id"
+              :x="item.x"
+              :y="item.y"
+              :width="item.width"
+              :height="item.height"
+              rx="1.5"
+              :fill="item.active ? '#38bdf8' : '#64748b'"
+              :opacity="item.active ? 1 : 0.58"
+            />
+            <rect
+              v-for="item in minimapModel.texts"
+              :key="item.id"
+              :x="item.x"
+              :y="item.y"
+              :width="item.width"
+              :height="item.height"
+              rx="1.5"
+              :fill="item.active ? '#38bdf8' : '#64748b'"
+              :opacity="item.active ? 1 : 0.5"
+            />
+            <rect
+              v-for="item in minimapModel.nodes"
+              :key="item.id"
+              :x="item.x"
+              :y="item.y"
+              :width="item.width"
+              :height="item.height"
+              rx="1.5"
+              :fill="item.active ? '#38bdf8' : '#334155'"
+              :opacity="item.active ? 1 : 0.65"
+            />
+          </g>
+          <rect
+            :x="minimapModel.viewport.x"
+            :y="minimapModel.viewport.y"
+            :width="minimapModel.viewport.width"
+            :height="minimapModel.viewport.height"
+            rx="2"
+            fill="rgba(14,165,233,0.15)"
+            stroke="#0ea5e9"
+            stroke-width="1.4"
+          />
+        </svg>
+      </div>
     </div>
   </section>
 </template>
@@ -1303,6 +1526,23 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
   font-weight: 500;
 }
 
+.switchgear-sld-package-canvas__minimap {
+  position: absolute;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 2;
+  border: 1px solid color-mix(in srgb, var(--color-neutral-300) 78%, transparent);
+  border-radius: 0.625rem;
+  background: color-mix(in srgb, var(--color-white) 88%, transparent);
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(8px);
+}
+
+.switchgear-sld-package-canvas__minimap-svg {
+  display: block;
+  cursor: pointer;
+}
+
 .switchgear-sld-package-canvas__editor {
   position: absolute;
   padding: 0.25rem 0.375rem;
@@ -1347,6 +1587,11 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
 :global(.dark .switchgear-sld-package-canvas__generated-label),
 :global(.dark .switchgear-sld-package-canvas__text) {
   fill: var(--color-neutral-300);
+}
+
+:global(.dark .switchgear-sld-package-canvas__minimap) {
+  border-color: color-mix(in srgb, var(--color-neutral-700) 88%, transparent);
+  background: color-mix(in srgb, var(--color-neutral-950) 78%, transparent);
 }
 
 :global(.dark .switchgear-sld-package-canvas__editor) {
