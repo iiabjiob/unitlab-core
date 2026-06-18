@@ -42,6 +42,8 @@ from .report_runtime import (
     Iec61850RuntimeTriggerOptions,
     Iec61850SelectedSignal,
     create_iec61850_simulator_adapter,
+    report_control_key,
+    to_report_control_ref,
 )
 
 
@@ -552,7 +554,7 @@ class Iec61850ClientControlService:
             command.append("--metadata-probe")
         elif probe == "gi":
             command.append("--gi-probe")
-            command.extend(("--report-key", self._candidate.id))
+            command.extend(("--report-key", report_control_key(to_report_control_ref(self._candidate))))
         else:
             raise Iec61850ReportRuntimeError("EXTERNAL_MMS_PROBE_INVALID", "IEC 61850 external MMS probe kind is invalid.")
         try:

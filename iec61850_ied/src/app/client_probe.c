@@ -341,6 +341,17 @@ static void report_callback(void* parameter, ClientReport report)
 }
 
 
+static int wait_for_report_count(UnitLabGiProbeContext* context, int minimum_count, int max_attempts, int sleep_ms)
+{
+    if (context == NULL) {
+        return 0;
+    }
+    for (int attempt = 0; attempt < max_attempts && context->report_count < minimum_count; attempt++) {
+        Thread_sleep(sleep_ms);
+    }
+    return context->report_count >= minimum_count;
+}
+
 static int print_string_list_item(const char* prefix, const char* value)
 {
     if (value == NULL) {
@@ -945,6 +956,7 @@ static int probe_gi_report(
 
     IedClientError error = IED_ERROR_OK;
     ClientReportControlBlock rcb = NULL;
+    int report_count_before_gi = 0;
     UnitLabGiProbeContext context = {
         .plan = plan,
         .data_set = data_set,
@@ -983,7 +995,12 @@ static int probe_gi_report(
         }
     }
 
+    if (passed && report->is_buffered && context.report_count == 0) {
+        (void)wait_for_report_count(&context, 1, 5, 100);
+    }
+
     if (passed) {
+        report_count_before_gi = context.report_count;
         ClientReportControlBlock_setGI(rcb, true);
         IedConnection_setRCBValues(connection, &error, rcb, RCB_ELEMENT_GI, true);
         if (error != IED_ERROR_OK) {
@@ -995,10 +1012,7 @@ static int probe_gi_report(
     }
 
     if (passed) {
-        for (int attempt = 0; attempt < 30 && context.report_count == 0; attempt++) {
-            Thread_sleep(100);
-        }
-        if (context.report_count == 0) {
+        if (!wait_for_report_count(&context, report_count_before_gi + 1, 30, 100)) {
             set_probe_result(result, 0, "IEC61850_GI_PROBE_REPORT_TIMEOUT", "IEC 61850 GI probe did not receive a report after GI.");
             passed = 0;
         }
