@@ -151,6 +151,8 @@ const viewportBox = computed(() => {
   }
 })
 const zoomLabel = computed(() => `${Math.round((viewport.viewport.value.zoom > 0 ? viewport.viewport.value.zoom : 1) * 100)}%`)
+const snapEnabled = computed(() => lastStoredState.value?.snapEnabled !== false)
+const snapStateLabel = computed(() => snapEnabled.value ? "Snap on" : "Snap off")
 const sceneCounts = computed(() => ({
   nodes: diagram.scene.value.order.nodeIds.length,
   edges: diagram.scene.value.order.edgeIds.length,
@@ -432,6 +434,17 @@ function setTool(tool: PackageTool) {
 
 function fitScene() {
   diagram.engine.fitScene(96)
+}
+
+function toggleSnapEnabled() {
+  const nextState: StoredDiagramState = {
+    ...(lastStoredState.value ?? { workspaceId: props.workspaceId }),
+    snapEnabled: !snapEnabled.value,
+  }
+  lastStoredState.value = nextState
+  writeLocalSetting(props.storageKey, nextState, {
+    legacyKeys: [`unitlab.switchgears.sld.${props.workspaceId}`],
+  })
 }
 
 function zoomBy(delta: number) {
@@ -1562,6 +1575,16 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
           </UiButton>
         </div>
         <div class="switchgear-sld-package-canvas__tool-tabs">
+          <UiButton
+            size="sm"
+            variant="secondary"
+            :class="{ 'switchgear-sld-package-canvas__snap-toggle--active': snapEnabled }"
+            :title="snapEnabled ? 'Disable magnetic snap' : 'Enable magnetic snap'"
+            :aria-label="snapEnabled ? 'Disable magnetic snap' : 'Enable magnetic snap'"
+            @click="toggleSnapEnabled"
+          >
+            Snap
+          </UiButton>
           <UiButton size="sm" variant="secondary" class="switchgear-sld-package-canvas__icon-action" title="Zoom out" aria-label="Zoom out" @click="zoomBy(-0.1)">
             <svg viewBox="0 0 16 16" class="switchgear-sld-package-canvas__icon" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="7" cy="7" r="4.5" />
@@ -1579,6 +1602,7 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
             </svg>
           </UiButton>
         </div>
+        <span class="switchgear-sld-package-canvas__selection">{{ snapStateLabel }}</span>
         <span class="switchgear-sld-package-canvas__selection">{{ selectionLabel }}</span>
         <UiButton size="sm" variant="secondary" :disabled="!canUndo" @click="undo">
           Undo
@@ -2132,6 +2156,12 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
   color: var(--color-rose-300);
 }
 
+:global(.dark .switchgear-sld-package-canvas__snap-toggle--active) {
+  border-color: var(--color-blue-500);
+  background: color-mix(in srgb, var(--color-blue-900) 75%, transparent);
+  color: var(--color-blue-100);
+}
+
 :global(.dark .switchgear-sld-package-canvas__minimap) {
   border-color: color-mix(in srgb, var(--color-neutral-700) 88%, transparent);
   background: color-mix(in srgb, var(--color-neutral-950) 78%, transparent);
@@ -2140,6 +2170,12 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
 :global(.dark .switchgear-sld-package-canvas__editor) {
   background: var(--color-neutral-950);
   color: var(--color-neutral-100);
+}
+
+.switchgear-sld-package-canvas__snap-toggle--active {
+  border-color: var(--color-blue-300);
+  background: var(--color-blue-50);
+  color: var(--color-blue-800);
 }
 
 .switchgear-sld-package-canvas__icon-action {
