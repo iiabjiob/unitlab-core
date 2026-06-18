@@ -296,10 +296,11 @@ Closed in current slice:
 - Server runtime association request diagnostics now prefix malformed transport frames, ACSE semantic rejection, and non-initiate MMS requests with `transport`, `acse`, or `mms-initiate` phases.
 - Native wire client association response handling now separates send failure, EOF, timeout, malformed frame, oversized frame, read error, MMS reject/initiate-error, and ACSE abort result codes.
 - Native wire client now explicitly rejects segmented association responses with a dedicated unsupported result; post-association segmented data responses remain handled by the existing reassembly path.
+- `scripts/check-association-pcap.py` automates happy-path association replay gates for saved captures, checking COTP CR/CC, ACSE AARQ/AARE, MMS Initiate request/response, non-segmented association DT frames, and absence of reject/abort/error/reset traffic.
 
 Remaining Slice 6 work:
 
-- Saved association capture replay still needs automation when representative reject/abort/oversized/segmented captures are available.
+- Negative saved association capture replay still needs representative reject/abort/oversized/segmented artifacts when those captures are available.
 
 
 ## Slice 7: Read/Write Data Access
