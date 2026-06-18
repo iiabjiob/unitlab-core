@@ -22,7 +22,7 @@ export function buildIec61850DebugSimulatorPlan(
     candidates: document.reportCandidates,
     selectedSignals: mergeResult.matches.map((match): Iec61850SelectedSignal => ({
       id: String(match.signalId),
-      address: match.address,
+      address: match.modelReference || match.address,
       label: match.signalName || match.signalKey,
     })),
   })

@@ -24,10 +24,27 @@ const reportScd = `<?xml version="1.0" encoding="UTF-8"?>
               <OptFields seqNum="true" timeStamp="true" reasonCode="true" dataSet="true" dataRef="true" entryID="true" configRef="true" bufOvfl="true"/>
             </ReportControl>
           </LN0>
+          <LN lnClass="XCBR" inst="1" lnType="XCBR_TYPE"/>
+          <LN prefix="P" lnClass="GGIO" inst="1" lnType="GGIO_TYPE"/>
         </LDevice>
       </Server>
     </AccessPoint>
   </IED>
+  <DataTypeTemplates>
+    <LNodeType id="LLN0_TYPE" lnClass="LLN0"/>
+    <LNodeType id="XCBR_TYPE" lnClass="XCBR">
+      <DO name="Pos" type="DPC_TYPE"/>
+    </LNodeType>
+    <LNodeType id="GGIO_TYPE" lnClass="GGIO">
+      <DO name="Ind1" type="SPS_TYPE"/>
+    </LNodeType>
+    <DOType id="DPC_TYPE" cdc="DPC">
+      <DA name="stVal" bType="BOOLEAN" fc="ST"/>
+    </DOType>
+    <DOType id="SPS_TYPE" cdc="SPS">
+      <DA name="stVal" bType="BOOLEAN" fc="ST"/>
+    </DOType>
+  </DataTypeTemplates>
 </SCL>`
 
 describe("iec61850DebugSimulator", () => {
@@ -61,7 +78,7 @@ describe("iec61850DebugSimulator", () => {
     })
     expect(run.reports[0]?.event?.values.map(value => value.reference)).toEqual([
       "LD0/XCBR1.Pos.stVal[ST]",
-      "LD0/PGGIO1.Ind1[ST]",
+      "LD0/PGGIO1.Ind1.stVal[ST]",
     ])
     expect(run.eventLog.map(event => event.kind)).toEqual([
       "connect",
@@ -96,7 +113,14 @@ function mergeFixture(): Iec61850SignalListMergeResult {
     matchedRows: 2,
     unmatchedRows: 0,
     rowsWithoutAddress: 0,
-    matchedReports: [],
+    matchedReports: [
+      {
+        name: "brcbEvents",
+        kind: "BRCB",
+        dataSetRef: "IED1/AP1/LD0/LLN0.dsEvents",
+        iedName: "IED1",
+      },
+    ],
     matchedIeds: ["IED1"],
     matches: [
       {
@@ -106,7 +130,14 @@ function mergeFixture(): Iec61850SignalListMergeResult {
         address: "IED1LD0/XCBR1/Pos/stVal[ST]",
         modelReference: "LD0/XCBR1.Pos.stVal[ST]",
         dataSets: ["IED1/AP1/LD0/LLN0.dsEvents"],
-        reports: [],
+        reports: [
+          {
+            name: "brcbEvents",
+            kind: "BRCB",
+            dataSetRef: "IED1/AP1/LD0/LLN0.dsEvents",
+            iedName: "IED1",
+          },
+        ],
         ieds: ["IED1"],
       },
       {
@@ -114,9 +145,16 @@ function mergeFixture(): Iec61850SignalListMergeResult {
         signalKey: "sig-2",
         signalName: "Indication",
         address: "IED1LD0/PGGIO1/Ind1[ST]",
-        modelReference: "LD0/PGGIO1.Ind1[ST]",
+        modelReference: "LD0/PGGIO1.Ind1.stVal[ST]",
         dataSets: ["IED1/AP1/LD0/LLN0.dsEvents"],
-        reports: [],
+        reports: [
+          {
+            name: "brcbEvents",
+            kind: "BRCB",
+            dataSetRef: "IED1/AP1/LD0/LLN0.dsEvents",
+            iedName: "IED1",
+          },
+        ],
         ieds: ["IED1"],
       },
     ],
