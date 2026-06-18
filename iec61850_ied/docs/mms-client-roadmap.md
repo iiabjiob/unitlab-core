@@ -315,6 +315,7 @@ Closed in current slice:
 - Native wire client read responses now update session-owned latest-read state with typed value metadata and emit a compact `read-summary` for the requested object.
 - Synthetic native client tests cover latest-read bool, signed/unsigned integer, MMS float32, string, octets, bit-string, structure, and access-failure decode paths.
 - Native client supports `read-ref <discoveredReference|leafIndex> [invokeId]`, resolving discovered leaf indexes, MMS references, display references, and typed-node display references to raw MMS `domain/item` reads.
+- Native client supports guarded `write-ref <discoveredReference|leafIndex> <bool|uint|int|string|hex:tag> <value> [invokeId]`, requiring a discovered reference plus explicit value type while leaving raw debug write commands available.
 
 Goal: allow the debug UI and later runtime integration to read live values safely.
 

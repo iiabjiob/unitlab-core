@@ -2778,6 +2778,22 @@ static int parse_invoke_id_token(const char* text, uint32_t* value)
     return parse_uint32_token(text, value) && *value != 0U;
 }
 
+static int parse_int32_token(const char* text, int32_t* value)
+{
+    char* end = NULL;
+    long parsed;
+
+    if (text == NULL || value == NULL) {
+        return 0;
+    }
+    parsed = strtol(text, &end, 10);
+    if (text == end || end == NULL || *end != '\0' || parsed < INT32_MIN || parsed > INT32_MAX) {
+        return 0;
+    }
+    *value = (int32_t)parsed;
+    return 1;
+}
+
 static int encode_uint32_value(uint32_t value, uint8_t* buffer, size_t buffer_length, size_t* encoded_length)
 {
     uint8_t temp[4U];
@@ -2792,6 +2808,35 @@ static int encode_uint32_value(uint32_t value, uint8_t* buffer, size_t buffer_le
     temp[3] = (uint8_t)(value & 0xFFU);
     while (offset < sizeof(temp) - 1U && temp[offset] == 0U) {
         offset++;
+    }
+    if (sizeof(temp) - offset > buffer_length) {
+        return 0;
+    }
+    memcpy(buffer, &temp[offset], sizeof(temp) - offset);
+    *encoded_length = sizeof(temp) - offset;
+    return 1;
+}
+
+static int encode_int32_value(int32_t value, uint8_t* buffer, size_t buffer_length, size_t* encoded_length)
+{
+    uint8_t temp[4U];
+    size_t offset = 0U;
+
+    if (buffer == NULL || encoded_length == NULL || buffer_length == 0U) {
+        return 0;
+    }
+    temp[0] = (uint8_t)(((uint32_t)value >> 24U) & 0xFFU);
+    temp[1] = (uint8_t)(((uint32_t)value >> 16U) & 0xFFU);
+    temp[2] = (uint8_t)(((uint32_t)value >> 8U) & 0xFFU);
+    temp[3] = (uint8_t)((uint32_t)value & 0xFFU);
+    while (offset < sizeof(temp) - 1U) {
+        uint8_t current = temp[offset];
+        uint8_t next = temp[offset + 1U];
+        if ((current == 0x00U && (next & 0x80U) == 0U) || (current == 0xFFU && (next & 0x80U) != 0U)) {
+            offset++;
+        } else {
+            break;
+        }
     }
     if (sizeof(temp) - offset > buffer_length) {
         return 0;
@@ -3547,6 +3592,101 @@ int unitlab_run_native_wire_client_with_options(
             state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_READY;
             if (!emit_state_response(state)) {
                 set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its ready state after GI.");
+                goto fail;
+            }
+            continue;
+        }
+        if (strncmp(command, "write-ref ", 10U) == 0) {
+            char* saveptr = NULL;
+            char* reference = strtok_r(command + 10U, " \t", &saveptr);
+            char* type_text = strtok_r(NULL, " \t", &saveptr);
+            char* value_text = strtok_r(NULL, " \t", &saveptr);
+            char* invoke_id_text = strtok_r(NULL, " \t", &saveptr);
+            char* extra = strtok_r(NULL, " \t", &saveptr);
+            char domain_id[128U];
+            char item_id[320U];
+            char display_reference[384U];
+            uint8_t value_bytes[256U];
+            size_t value_length = 0U;
+            uint32_t tag_number = 0U;
+            uint32_t invoke_id = unitlab_native_client_session_reserve_invoke_id(&session);
+            uint8_t boolean_value = 0U;
+            int write_bool = 0;
+
+            if (reference == NULL || type_text == NULL || value_text == NULL || extra != NULL) {
+                set_result(result, "NATIVE_WIRE_CLIENT_WRITE_REF_COMMAND_INVALID", "Usage: write-ref <discoveredReference|leafIndex> <bool|uint|int|string|hex:tag> <value> [invokeId].");
+                goto fail;
+            }
+            if (!unitlab_native_client_session_resolve_read_reference(&session, reference, domain_id, sizeof(domain_id), item_id, sizeof(item_id), display_reference, sizeof(display_reference))) {
+                set_result(result, "NATIVE_WIRE_CLIENT_WRITE_REF_NOT_FOUND", "Run discover first and use a discovered leaf index, MMS reference, or display reference.");
+                goto fail;
+            }
+            if (strcmp(type_text, "bool") == 0) {
+                if (!parse_bool_token(value_text, &boolean_value)) {
+                    set_result(result, "NATIVE_WIRE_CLIENT_WRITE_REF_VALUE_INVALID", "write-ref bool value must be true, false, 1, or 0.");
+                    goto fail;
+                }
+                write_bool = 1;
+            } else if (strcmp(type_text, "uint") == 0) {
+                uint32_t value = 0U;
+                if (!parse_uint32_token(value_text, &value) || !encode_uint32_value(value, value_bytes, sizeof(value_bytes), &value_length)) {
+                    set_result(result, "NATIVE_WIRE_CLIENT_WRITE_REF_VALUE_INVALID", "write-ref uint value must be an unsigned integer.");
+                    goto fail;
+                }
+                tag_number = 6U;
+            } else if (strcmp(type_text, "int") == 0) {
+                int32_t value = 0;
+                if (!parse_int32_token(value_text, &value) || !encode_int32_value(value, value_bytes, sizeof(value_bytes), &value_length)) {
+                    set_result(result, "NATIVE_WIRE_CLIENT_WRITE_REF_VALUE_INVALID", "write-ref int value must be a signed 32-bit integer.");
+                    goto fail;
+                }
+                tag_number = 5U;
+            } else if (strcmp(type_text, "string") == 0) {
+                tag_number = 10U;
+                value_length = strlen(value_text);
+                if (value_length > sizeof(value_bytes)) {
+                    set_result(result, "NATIVE_WIRE_CLIENT_WRITE_REF_VALUE_INVALID", "write-ref string value is too large.");
+                    goto fail;
+                }
+                memcpy(value_bytes, value_text, value_length);
+            } else if (strncmp(type_text, "hex:", 4U) == 0) {
+                if (!parse_uint32_token(type_text + 4U, &tag_number) || !decode_hex_value(value_text, value_bytes, sizeof(value_bytes), &value_length)) {
+                    set_result(result, "NATIVE_WIRE_CLIENT_WRITE_REF_VALUE_INVALID", "write-ref hex type must be hex:<tag> with an even-length hex value.");
+                    goto fail;
+                }
+            } else {
+                set_result(result, "NATIVE_WIRE_CLIENT_WRITE_REF_TYPE_INVALID", "write-ref type must be bool, uint, int, string, or hex:<tag>.");
+                goto fail;
+            }
+            if (invoke_id_text != NULL) {
+                if (!parse_invoke_id_token(invoke_id_text, &invoke_id)) {
+                    set_result(result, "NATIVE_WIRE_CLIENT_WRITE_REF_INVOKE_INVALID", "Native wire client write-ref invokeId must be in range 1..4294967295.");
+                    goto fail;
+                }
+                unitlab_native_client_session_observe_invoke_id(&session, invoke_id);
+                next_invoke_id = session.next_invoke_id;
+            }
+            printf("native-wire-client: write-ref reference=%s domain=%s item=%s display=%s type=%s invoke=%u\n", reference, domain_id, item_id, display_reference, type_text, (unsigned)invoke_id);
+            fflush(stdout);
+            state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_WRITE_REQUESTED;
+            if (!emit_state_response(state)) {
+                set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its write-requested state.");
+                goto fail;
+            }
+            if (write_bool) {
+                if (!emit_write_bool_response(&session, data_fd, domain_id, item_id, boolean_value, invoke_id, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
+                    state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
+                    set_result(result, "NATIVE_WIRE_CLIENT_WRITE_REF_FAILED", diagnostic.message);
+                    goto fail;
+                }
+            } else if (!emit_write_element_response(&session, data_fd, domain_id, item_id, tag_number, value_bytes, value_length, invoke_id, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
+                state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
+                set_result(result, "NATIVE_WIRE_CLIENT_WRITE_REF_FAILED", diagnostic.message);
+                goto fail;
+            }
+            state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_READY;
+            if (!emit_state_response(state)) {
+                set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its ready state after write-ref.");
                 goto fail;
             }
             continue;
