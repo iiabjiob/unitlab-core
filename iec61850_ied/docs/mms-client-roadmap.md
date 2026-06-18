@@ -293,10 +293,11 @@ Closed in current slice:
 - The allocator wraps from `UINT32_MAX` to `1`, never emits invoke ID `0`, and can observe explicit operator-supplied invoke IDs so later automatic requests do not collide inside the same session flow.
 - Fixture-backed discovery validation now asserts the final `next_invoke_id` after all browse, GVA, BRCB, and DataSet member steps.
 - Association frame decode diagnostics now prefix lower-layer and association semantic failures with the `transport`, `session`, or `presentation` phase without changing the decode API.
+- Server runtime association request diagnostics now prefix ACSE semantic rejection and non-initiate MMS requests with `acse` or `mms-initiate` phases.
 
 Remaining Slice 6 work:
 
-- Association failure phase diagnostics still need explicit ACSE, MMS initiate, reject, abort, EOF, timeout, and malformed-frame runtime coverage.
+- Association failure phase diagnostics still need explicit reject, abort, EOF, timeout, and malformed-frame runtime coverage.
 - Oversized or segmented response handling still needs explicit accept/reject tests against saved association captures.
 
 

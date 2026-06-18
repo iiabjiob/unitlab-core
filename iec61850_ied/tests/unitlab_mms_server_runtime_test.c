@@ -3381,8 +3381,34 @@ static void test_server_runtime_apply_association_request_bytes_rejects_non_init
     unitlab_mms_operation_result_init(&operation_result);
     assert(unitlab_mms_server_runtime_apply_association_request_bytes(&server_runtime, wire_bytes, wire_length, &consumed_length, &operation_result) == 0);
     assert(operation_result.diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED);
+    assert(strstr(operation_result.diagnostic.message, "association request mms-initiate decode failed") != NULL);
 }
 
+
+static void test_server_runtime_apply_association_request_bytes_rejects_acse_aare(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
+    UnitLabIedServerConfig config = {
+        .bind_address = "127.0.0.1",
+        .port = 102,
+    };
+    uint8_t wire_bytes[256];
+    size_t wire_length = 0U;
+    size_t consumed_length = 0U;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+
+    assert(unitlab_mms_build_association_response_frame_with_profile(&server_runtime.initiate_response_profile, wire_bytes, sizeof(wire_bytes), &wire_length, &diagnostic));
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_association_request_bytes(&server_runtime, wire_bytes, wire_length, &consumed_length, &operation_result) == 0);
+    assert(consumed_length == 0U);
+    assert(operation_result.diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED);
+    assert(strstr(operation_result.diagnostic.message, "association request acse decode failed") != NULL);
+}
 
 static void test_server_runtime_apply_model_plan_sets_active_model(void)
 {
@@ -6932,6 +6958,7 @@ int main(void)
     test_server_runtime_apply_association_then_confirmed_request_keeps_session_associated();
     test_server_runtime_apply_association_request_bytes_accepts_captured_iedscout_aarq();
     test_server_runtime_apply_association_request_bytes_rejects_non_initiate_request();
+    test_server_runtime_apply_association_request_bytes_rejects_acse_aare();
     test_wire_builder_builds_confirmed_response_frame_roundtrips();
     test_server_runtime_build_confirmed_response_bytes_roundtrips();
     test_server_runtime_confirmed_response_fails_after_timeout();
