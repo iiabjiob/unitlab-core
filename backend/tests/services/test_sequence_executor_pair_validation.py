@@ -33,36 +33,32 @@ async def _noop_probe() -> None:
     return None
 
 
-@pytest.mark.asyncio
-async def test_do_pair_rejects_duplicate_channel_ids() -> None:
+def test_do_pair_rejects_duplicate_channel_ids() -> None:
     executor = SequenceExecutor()
     channel = ChannelInfo(id=10, device_id=1, unit_id="DO-001", channel_index=2)
     ctx = _pair_context(first=channel, second=channel)
 
     with pytest.raises(SequenceNotApplicableError, match="different channels"):
-        await executor._execute_step(ctx, asyncio.Event(), _noop_probe)
+        asyncio.run(executor._execute_step(ctx, asyncio.Event(), _noop_probe))
 
 
-@pytest.mark.asyncio
-async def test_do_pair_rejects_non_integer_state() -> None:
+def test_do_pair_rejects_non_integer_state() -> None:
     executor = SequenceExecutor()
     ctx = _pair_context(state2b="bad-value")
 
     with pytest.raises(SequenceNotApplicableError, match="integer in range 0..3"):
-        await executor._execute_step(ctx, asyncio.Event(), _noop_probe)
+        asyncio.run(executor._execute_step(ctx, asyncio.Event(), _noop_probe))
 
 
-@pytest.mark.asyncio
-async def test_do_pair_rejects_out_of_range_state() -> None:
+def test_do_pair_rejects_out_of_range_state() -> None:
     executor = SequenceExecutor()
     ctx = _pair_context(state2b=4)
 
     with pytest.raises(SequenceNotApplicableError, match="range 0..3"):
-        await executor._execute_step(ctx, asyncio.Event(), _noop_probe)
+        asyncio.run(executor._execute_step(ctx, asyncio.Event(), _noop_probe))
 
 
-@pytest.mark.asyncio
-async def test_do_pair_enqueues_pair_command(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_do_pair_enqueues_pair_command(monkeypatch: pytest.MonkeyPatch) -> None:
     executor = SequenceExecutor()
     ctx = _pair_context(state2b=2)
     captured: dict[str, object] = {}
@@ -72,7 +68,7 @@ async def test_do_pair_enqueues_pair_command(monkeypatch: pytest.MonkeyPatch) ->
 
     monkeypatch.setattr("app.services.sequence_executor.enqueue_do_command", _fake_enqueue_do_command)
 
-    await executor._execute_step(ctx, asyncio.Event(), _noop_probe)
+    asyncio.run(executor._execute_step(ctx, asyncio.Event(), _noop_probe))
 
     assert captured == {
         "unit_id": "DO-001",

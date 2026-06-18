@@ -995,6 +995,7 @@ def test_backend_runtime_starts_and_stops_external_ied_simulator_process(tmp_pat
             "stdout": subprocess.PIPE,
             "stderr": subprocess.PIPE,
             "text": True,
+            "bufsize": 1,
         }
         return process
 

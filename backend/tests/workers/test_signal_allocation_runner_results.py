@@ -65,6 +65,9 @@ class FakeRedis:
     async def get(self, key: str):
         return "0"
 
+    async def expire(self, key: str, ttl: int) -> None:
+        return None
+
 
 def build_allocation_row(signal_id: int, **overrides) -> SignalAllocationRowSchema:
     data = {
@@ -180,7 +183,7 @@ def test_signal_test_run_skips_missing_signal_without_sheet_revision_metadata(mo
         "signal_interval_ms": 100,
         "toggle_mode": "single",
     }
-    monkeypatch.setattr(signal_test_run_runner.RedisManager, "get_instance", lambda: object())
+    monkeypatch.setattr(signal_test_run_runner.RedisManager, "get_instance", lambda: FakeRedis())
     monkeypatch.setattr(signal_test_run_runner.WsEventPublisher, "publish", publish_noop)
 
     job_state = {
