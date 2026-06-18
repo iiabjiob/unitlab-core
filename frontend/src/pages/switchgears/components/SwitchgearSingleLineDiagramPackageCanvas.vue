@@ -42,7 +42,7 @@ type EdgeDragState = {
   pointerId: number
   edgeId: string
   endpoint: "source" | "target"
-  point: { x: number; y: number }
+  draft: DraftEndpoint
 }
 
 const props = defineProps<{
@@ -124,6 +124,26 @@ const selectedStaticSize = computed<DiagramStaticSize | "mixed" | null>(() => {
   }
   return sizes.size === 1 ? [...sizes][0] : "mixed"
 })
+const selectedEdgeKind = computed<EdgeStyle | "mixed" | null>(() => {
+  if (selectedEdgeIds.value.length === 0) {
+    return null
+  }
+  const kinds = new Set<EdgeStyle>()
+  for (const id of selectedEdgeIds.value) {
+    kinds.add(resolveEdgeKind(id))
+  }
+  return kinds.size === 1 ? [...kinds][0] : "mixed"
+})
+const selectedEdgeWeight = computed<EdgeWeight | "mixed" | null>(() => {
+  if (selectedEdgeIds.value.length === 0) {
+    return null
+  }
+  const weights = new Set<EdgeWeight>()
+  for (const id of selectedEdgeIds.value) {
+    weights.add(resolveEdgeWeightValue(id))
+  }
+  return weights.size === 1 ? [...weights][0] : "mixed"
+})
 const canUndo = computed(() => diagram.engine.canUndo())
 const canRedo = computed(() => diagram.engine.canRedo())
 const canDelete = computed(() => diagram.engine.canDelete(selection.selection.value.ids))
@@ -149,8 +169,8 @@ const edgePreview = computed(() => {
   if (!edge) {
     return null
   }
-  const source = drag.endpoint === "source" ? drag.point : resolveEdgeEndpointPosition(edge.source)
-  const target = drag.endpoint === "target" ? drag.point : resolveEdgeEndpointPosition(edge.target)
+  const source = drag.endpoint === "source" ? drag.draft.point : resolveEdgeEndpointPosition(edge.source)
+  const target = drag.endpoint === "target" ? drag.draft.point : resolveEdgeEndpointPosition(edge.target)
   return {
     edgeId: drag.edgeId,
     source,
@@ -341,6 +361,40 @@ function setSelectedStaticSize(size: DiagramStaticSize) {
   })
 }
 
+function setSelectedEdgesKind(kind: EdgeStyle) {
+  updateSelectedEdges((edge) => ({
+    ...edge,
+    metadata: {
+      ...edge.metadata,
+      edgeKind: kind,
+    },
+  }))
+}
+
+function setSelectedEdgesWeight(weight: EdgeWeight) {
+  updateSelectedEdges((edge) => ({
+    ...edge,
+    metadata: {
+      ...edge.metadata,
+      edgeWeight: weight,
+    },
+  }))
+}
+
+function updateSelectedEdges(mutator: (edge: NonNullable<ReturnType<typeof diagram.engine.serialize>["edges"]>[number]) => NonNullable<ReturnType<typeof diagram.engine.serialize>["edges"]>[number]) {
+  if (selectedEdgeIds.value.length === 0) {
+    return
+  }
+  const edgeIds = new Set(selectedEdgeIds.value)
+  diagram.engine.transact((scene) => {
+    const serialized = diagram.engine.serialize()
+    return {
+      ...serialized,
+      edges: serialized.edges.map(edge => edgeIds.has(edge.id) ? mutator(edge) : edge),
+    }
+  })
+}
+
 function onWheel(event: WheelEvent) {
   const current = viewport.viewport.value
   if (event.ctrlKey || event.metaKey) {
@@ -448,7 +502,7 @@ function onSvgPointerMove(event: PointerEvent) {
   }
   draggedEdge.value = {
     ...drag,
-    point: snapDraftEndpoint(mapPointerToWorld(event)).point,
+    draft: snapDraftEndpoint(mapPointerToWorld(event)),
   }
 }
 
@@ -457,13 +511,7 @@ function onSvgPointerUp(event: PointerEvent) {
   if (!drag || drag.pointerId !== event.pointerId) {
     return
   }
-  diagram.dispatch({
-    type: "moveEdgeEndpoint",
-    id: drag.edgeId,
-    endpoint: drag.endpoint,
-    point: drag.point,
-    historyKey: `edge-endpoint:${drag.edgeId}:${drag.endpoint}`,
-  })
+  updateEdgeEndpoint(drag.edgeId, drag.endpoint, drag.draft)
   draggedEdge.value = null
 }
 
@@ -475,7 +523,7 @@ function startEdgeEndpointDrag(event: PointerEvent, edgeId: string, endpoint: "s
     pointerId: event.pointerId,
     edgeId,
     endpoint,
-    point: snapDraftEndpoint(mapPointerToWorld(event)).point,
+    draft: snapDraftEndpoint(mapPointerToWorld(event)),
   }
 }
 
@@ -492,8 +540,8 @@ function createLine(start: DraftEndpoint, end: DraftEndpoint) {
     edge: {
       id: seed,
       kind: "edge",
-      source: start.portId ? { kind: "port", portId: start.portId } : { kind: "point", point: start.point },
-      target: end.portId ? { kind: "port", portId: end.portId } : { kind: "point", point: end.point },
+      source: toEdgeEndpoint(start),
+      target: toEdgeEndpoint(end),
       metadata: {
         entityType: "edge",
         edgeKind: lineKind.value,
@@ -502,6 +550,30 @@ function createLine(start: DraftEndpoint, end: DraftEndpoint) {
     },
     historyKey: "create-edge",
   })
+}
+
+function updateEdgeEndpoint(edgeId: string, endpoint: "source" | "target", draft: DraftEndpoint) {
+  diagram.engine.transact(() => {
+    const serialized = diagram.engine.serialize()
+    return {
+      ...serialized,
+      edges: serialized.edges.map((edge) => {
+        if (edge.id !== edgeId) {
+          return edge
+        }
+        return {
+          ...edge,
+          [endpoint]: toEdgeEndpoint(draft),
+        }
+      }),
+    }
+  })
+}
+
+function toEdgeEndpoint(draft: DraftEndpoint) {
+  return draft.portId
+    ? { kind: "port" as const, portId: draft.portId }
+    : { kind: "point" as const, point: draft.point }
 }
 
 function snapDraftEndpoint(point: { x: number; y: number }): DraftEndpoint {
@@ -610,16 +682,24 @@ function resolveTextClass(id: string) {
     : "switchgear-sld-package-canvas__text"
 }
 
-function resolveEdgeStroke(id: string) {
+function resolveEdgeKind(id: string): EdgeStyle {
   const edge = diagram.scene.value.entities.edgesById.get(id)
-  return edge?.metadata?.edgeKind === "arrow"
+  return edge?.metadata?.edgeKind === "arrow" ? "arrow" : "line"
+}
+
+function resolveEdgeWeightValue(id: string): EdgeWeight {
+  const edge = diagram.scene.value.entities.edgesById.get(id)
+  return edge?.metadata?.edgeWeight === "bold" ? "bold" : "normal"
+}
+
+function resolveEdgeStroke(id: string) {
+  return resolveEdgeKind(id) === "arrow"
     ? "var(--color-blue-700)"
     : "var(--color-neutral-700)"
 }
 
 function resolveEdgeWidth(id: string) {
-  const edge = diagram.scene.value.entities.edgesById.get(id)
-  return edge?.metadata?.edgeWeight === "bold" ? 3 : 2
+  return resolveEdgeWeightValue(id) === "bold" ? 3 : 2
 }
 
 function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: number } {
@@ -654,17 +734,17 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
             Line
           </button>
         </div>
-        <div v-if="activeTool === 'line'" class="switchgear-sld-package-canvas__tool-tabs">
-          <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': lineKind === 'line' }" @click="lineKind = 'line'">
+        <div v-if="activeTool === 'line' || selectedEdgeCount > 0" class="switchgear-sld-package-canvas__tool-tabs">
+          <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': (activeTool === 'line' ? lineKind : selectedEdgeKind) === 'line' }" @click="activeTool === 'line' ? lineKind = 'line' : setSelectedEdgesKind('line')">
             Plain
           </button>
-          <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': lineKind === 'arrow' }" @click="lineKind = 'arrow'">
+          <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': (activeTool === 'line' ? lineKind : selectedEdgeKind) === 'arrow' }" @click="activeTool === 'line' ? lineKind = 'arrow' : setSelectedEdgesKind('arrow')">
             Arrow
           </button>
-          <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': lineWeight === 'normal' }" @click="lineWeight = 'normal'">
+          <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': (activeTool === 'line' ? lineWeight : selectedEdgeWeight) === 'normal' }" @click="activeTool === 'line' ? lineWeight = 'normal' : setSelectedEdgesWeight('normal')">
             Normal
           </button>
-          <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': lineWeight === 'bold' }" @click="lineWeight = 'bold'">
+          <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': (activeTool === 'line' ? lineWeight : selectedEdgeWeight) === 'bold' }" @click="activeTool === 'line' ? lineWeight = 'bold' : setSelectedEdgesWeight('bold')">
             Bold
           </button>
         </div>
@@ -751,8 +831,8 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
           :stroke="resolveEdgeStroke(edge.id)"
           :stroke-width="resolveEdgeWidth(edge.id)"
           :opacity="edgePreview?.edgeId === edge.id ? 0.2 : edge.selected ? 1 : 0.92"
-          :marker-end="diagram.scene.value.entities.edgesById.get(edge.id)?.metadata?.edgeKind === 'arrow' ? 'url(#switchgear-sld-package-arrow)' : undefined"
-          :style="diagram.scene.value.entities.edgesById.get(edge.id)?.metadata?.edgeKind === 'arrow' ? { color: resolveEdgeStroke(edge.id) } : undefined"
+          :marker-end="resolveEdgeKind(edge.id) === 'arrow' ? 'url(#switchgear-sld-package-arrow)' : undefined"
+          :style="resolveEdgeKind(edge.id) === 'arrow' ? { color: resolveEdgeStroke(edge.id) } : undefined"
         />
 
         <polyline
