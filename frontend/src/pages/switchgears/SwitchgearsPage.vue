@@ -85,7 +85,11 @@
           ref="sldDiagramRef"
           @edit-switchgear-bindings="openSwitchgearBindingsEditor"
         />
-        <SwitchgearSingleLineDiagramPackage v-else :active="activeView === 'sld'" />
+        <SwitchgearSingleLineDiagramPackage
+          v-else
+          :active="activeView === 'sld'"
+          @edit-switchgear-bindings="openSwitchgearBindingsEditor"
+        />
       </div>
     </section>
 

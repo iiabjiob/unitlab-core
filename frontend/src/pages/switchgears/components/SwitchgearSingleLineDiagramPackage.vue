@@ -14,6 +14,10 @@ const props = defineProps<{
   active?: boolean
 }>()
 
+const emit = defineEmits<{
+  (event: "editSwitchgearBindings", id: number): void
+}>()
+
 const workspaceStore = useWorkspaceStore()
 const switchgearStore = useSwitchgearStore()
 const storedState = ref<StoredDiagramState | null>(null)
@@ -82,6 +86,7 @@ function loadStoredState() {
       :workspace-id="workspaceId"
       :storage-key="storageKey"
       :initial-stored-state="storedState"
+      @edit-switchgear-bindings="emit('editSwitchgearBindings', $event)"
     />
   </section>
 </template>

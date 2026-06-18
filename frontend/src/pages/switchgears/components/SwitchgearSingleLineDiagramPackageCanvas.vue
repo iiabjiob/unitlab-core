@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue"
-import { useRoute } from "vue-router"
+import { useRoute, useRouter } from "vue-router"
 import { getSvgEntityProps, useDiagramEngine, useDiagramPointerController, useDiagramSelection, useDiagramTextEditor, useDiagramViewport, useDiagramVisibleEntities } from "@affino/diagram-vue"
 import type { DiagramEdge } from "@affino/diagram-core"
 
@@ -62,7 +62,8 @@ type LabelDragState = {
 type ContextMenuState = {
   x: number
   y: number
-  kind: "edge" | "static" | "text"
+  kind: "edge" | "static" | "text" | "node"
+  nodeId?: string
 }
 
 const props = defineProps<{
@@ -72,7 +73,12 @@ const props = defineProps<{
   initialStoredState: StoredDiagramState | null
 }>()
 
+const emit = defineEmits<{
+  (event: "editSwitchgearBindings", id: number): void
+}>()
+
 const route = useRoute()
+const router = useRouter()
 const switchgearStore = useSwitchgearStore()
 const stageRef = ref<HTMLElement | null>(null)
 const editableText = ref("")
@@ -451,7 +457,7 @@ function closeContextMenu() {
   contextMenu.value = null
 }
 
-function openContextMenu(event: MouseEvent, kind: ContextMenuState["kind"]) {
+function openContextMenu(event: MouseEvent, kind: ContextMenuState["kind"], nodeId?: string) {
   const stage = stageRef.value
   if (!stage) {
     return
@@ -461,6 +467,7 @@ function openContextMenu(event: MouseEvent, kind: ContextMenuState["kind"]) {
     x: Math.max(12, Math.min(rect.width - 188, event.clientX - rect.left)),
     y: Math.max(12, Math.min(rect.height - 176, event.clientY - rect.top)),
     kind,
+    nodeId,
   }
 }
 
@@ -491,6 +498,32 @@ function openTextContextMenu(event: MouseEvent, textId: string) {
     selection.setSelection([textId], textId)
   }
   openContextMenu(event, "text")
+}
+
+function openNodeContextMenu(event: MouseEvent, nodeId: string) {
+  event.preventDefault()
+  event.stopPropagation()
+  selection.setSelection([nodeId], nodeId)
+  closeTextEditorIfNeeded()
+  openContextMenu(event, "node", nodeId)
+}
+
+function openNodeDetail(nodeId: string) {
+  const switchgearId = resolveSwitchgearId(nodeId)
+  closeContextMenu()
+  if (switchgearId == null) {
+    return
+  }
+  void router.push({ name: "switchgears.detail", params: { id: switchgearId } })
+}
+
+function requestSwitchgearBindingsEdit(nodeId: string) {
+  const switchgearId = resolveSwitchgearId(nodeId)
+  closeContextMenu()
+  if (switchgearId == null) {
+    return
+  }
+  emit("editSwitchgearBindings", switchgearId)
 }
 
 function closeTextEditorIfNeeded() {
@@ -1070,6 +1103,11 @@ function resolveNodeLabel(id: string) {
   return diagram.scene.value.entities.nodesById.get(id)?.metadata?.name as string | undefined
 }
 
+function resolveSwitchgearId(id: string) {
+  const value = Number(diagram.scene.value.entities.nodesById.get(id)?.metadata?.switchgearId)
+  return Number.isFinite(value) ? value : null
+}
+
 function resolveNodeLabelPosition(id: string) {
   const node = diagram.scene.value.entities.nodesById.get(id)
   if (!node) {
@@ -1353,6 +1391,8 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
           :fill="resolveNodeFill(node.id)"
           :stroke="resolveNodeStroke(node.id, node.selected)"
           :stroke-width="node.selected ? 2.5 : 1.5"
+          @dblclick.stop="openNodeDetail(node.id)"
+          @contextmenu.stop.prevent="openNodeContextMenu($event, node.id)"
         />
 
         <text
@@ -1378,6 +1418,8 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
           @pointerdown="beginLabelDrag($event, node.id)"
           @pointermove="onLabelPointerMove"
           @pointerup="finishLabelDrag"
+          @dblclick.stop="openNodeDetail(node.id)"
+          @contextmenu.stop.prevent="openNodeContextMenu($event, node.id)"
         >
           {{ resolveNodeLabel(node.id) }}
         </text>
@@ -1448,12 +1490,20 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
             Remove selected symbols
           </button>
         </template>
-        <template v-else>
+        <template v-else-if="contextMenu.kind === 'text'">
           <button type="button" class="switchgear-sld-package-canvas__context-item" @click="selectedTextIds[0] && beginTextEdit(selectedTextIds[0]); closeContextMenu()">
             Edit text
           </button>
           <button type="button" class="switchgear-sld-package-canvas__context-item switchgear-sld-package-canvas__context-item--danger" @click="deleteSelection()">
             Remove selected text
+          </button>
+        </template>
+        <template v-else>
+          <button type="button" class="switchgear-sld-package-canvas__context-item" @click="contextMenu.nodeId && requestSwitchgearBindingsEdit(contextMenu.nodeId)">
+            Edit bindings
+          </button>
+          <button type="button" class="switchgear-sld-package-canvas__context-item" @click="contextMenu.nodeId && openNodeDetail(contextMenu.nodeId)">
+            Open detail
           </button>
         </template>
       </div>
