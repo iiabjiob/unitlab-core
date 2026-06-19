@@ -1061,6 +1061,30 @@ function alignSelectedNodesTop() {
   })
 }
 
+function alignSelectedNodesRight() {
+  if (selectedNodeIds.value.length < 2) {
+    return
+  }
+  diagram.dispatch({
+    type: "alignEntities",
+    ids: selectedNodeIds.value,
+    edge: "right",
+    historyKey: "align-nodes-right",
+  })
+}
+
+function alignSelectedNodesBottom() {
+  if (selectedNodeIds.value.length < 2) {
+    return
+  }
+  diagram.dispatch({
+    type: "alignEntities",
+    ids: selectedNodeIds.value,
+    edge: "bottom",
+    historyKey: "align-nodes-bottom",
+  })
+}
+
 function onWheel(event: WheelEvent) {
   const current = viewport.viewport.value
   if (event.ctrlKey || event.metaKey) {
@@ -1597,6 +1621,12 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
           </UiButton>
           <UiButton size="sm" variant="secondary" @click="alignSelectedNodesTop">
             Align top
+          </UiButton>
+          <UiButton size="sm" variant="secondary" @click="alignSelectedNodesRight">
+            Align right
+          </UiButton>
+          <UiButton size="sm" variant="secondary" @click="alignSelectedNodesBottom">
+            Align bottom
           </UiButton>
         </div>
         <div class="switchgear-sld-package-canvas__tool-tabs">
