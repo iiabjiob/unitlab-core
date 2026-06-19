@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue"
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { getSvgEntityProps, useDiagramEngine, useDiagramPointerController, useDiagramSelection, useDiagramTextEditor, useDiagramViewport, useDiagramVisibleEntities } from "@affino/diagram-vue"
 import type { DiagramEdge } from "@affino/diagram-core"
@@ -16,6 +16,8 @@ import { buildDefaultSwitchgearSldLayout, serializeSwitchgearSldPackageScene } f
 
 const GRID_STEP = 24
 const COPY_PASTE_OFFSET = GRID_STEP
+const NUDGE_FINE_STEP = 1
+const NUDGE_LARGE_STEP = GRID_STEP * 4
 const DIAGRAM_CLIPBOARD_KIND = "unitlab.switchgear-sld-selection"
 const DEFAULT_TEXT_LABEL = "TEXT"
 const EDGE_PORT_SNAP_RADIUS = 18
@@ -184,7 +186,7 @@ const selectedStaticCount = computed(() => selectedShapeIds.value.length)
 const selectedEdgeCount = computed(() => selectedEdgeIds.value.length)
 const selectedNodeCount = computed(() => selectedNodeIds.value.length)
 const selectedTextCount = computed(() => selectedTextIds.value.length)
-const singleSelectedSwitchgear = computed(() => {
+const singleSelectedSwitchgearId = computed(() => {
   if (selectedNodeIds.value.length !== 1 || selectedEdgeIds.value.length > 0 || selectedShapeIds.value.length > 0 || selectedTextIds.value.length > 0) {
     return null
   }
@@ -192,7 +194,10 @@ const singleSelectedSwitchgear = computed(() => {
   if (!nodeId) {
     return null
   }
-  const switchgearId = resolveSwitchgearId(nodeId)
+  return resolveSwitchgearId(nodeId)
+})
+const singleSelectedSwitchgear = computed(() => {
+  const switchgearId = singleSelectedSwitchgearId.value
   return switchgearId == null ? null : switchgearStore.getById(switchgearId)
 })
 const selectedStaticSize = computed<DiagramStaticSize | "mixed" | null>(() => {
@@ -230,7 +235,30 @@ const selectedEdgeWeight = computed<EdgeWeight | "mixed" | null>(() => {
 const canUndo = computed(() => diagram.engine.canUndo())
 const canRedo = computed(() => diagram.engine.canRedo())
 const canDelete = computed(() => diagram.engine.canDelete(selection.selection.value.ids))
+const canDuplicateSelection = computed(() => selectedNodeIds.value.length === 0 && (selectedEdgeIds.value.length > 0 || selectedShapeIds.value.length > 0 || selectedTextIds.value.length > 0))
 const svgPointerProps = computed(() => activeTool.value === "line" ? {} : pointer.getSvgPointerProps())
+const marqueeRect = computed(() => {
+  const rect = pointer.state.value.marquee
+  if (!rect) {
+    return null
+  }
+  return {
+    x: rect.x,
+    y: rect.y,
+    width: rect.width,
+    height: rect.height,
+  }
+})
+const selectionPreviewDelta = computed(() => {
+  const snapshot = pointer.state.value
+  if (snapshot.tool !== "drag-selection" || !snapshot.active || !snapshot.previewDelta) {
+    return null
+  }
+  return snapshot.previewDelta
+})
+const edgeContextLabel = computed(() => selectedEdgeIds.value.length > 1 ? "selected lines" : "line")
+const staticContextLabel = computed(() => selectedShapeIds.value.length > 1 ? "selected symbols" : "symbol")
+const textContextLabel = computed(() => selectedTextIds.value.length > 1 ? "selected text" : "text")
 const selectedEdgeHandles = computed(() => selectedEdgeIds.value.flatMap((id) => {
   const edge = diagram.scene.value.entities.edgesById.get(id)
   if (!edge) {
@@ -406,6 +434,14 @@ watch(() => props.fitRequestKey, (next, previous) => {
   fitScene()
 })
 
+onMounted(() => {
+  window.addEventListener("keydown", handleWindowKeydown)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener("keydown", handleWindowKeydown)
+})
+
 watch(() => props.selectionRequestKey, (next, previous) => {
   if (next == null || next === previous) {
     return
@@ -416,6 +452,23 @@ watch(() => props.selectionRequestKey, (next, previous) => {
   }
   selection.setSelection(nodeIds, nodeIds[0] ?? null)
 })
+
+watch(
+  () => [singleSelectedSwitchgearId.value, selectedNodeIds.value.length, selectedEdgeIds.value.length, selectedShapeIds.value.length, selectedTextIds.value.length] as const,
+  ([switchgearId, selectedNodeCountValue, selectedEdgeCountValue, selectedShapeCountValue, selectedTextCountValue]) => {
+    if (switchgearId != null) {
+      if (route.name !== "switchgears.detail" || Number(route.params.id) !== switchgearId) {
+        void router.push({ name: "switchgears.detail", params: { id: switchgearId } })
+      }
+      return
+    }
+    if (selectedNodeCountValue !== 1 || selectedEdgeCountValue > 0 || selectedShapeCountValue > 0 || selectedTextCountValue > 0) {
+      if (route.name === "switchgears.detail") {
+        void router.push({ name: "switchgears.list" })
+      }
+    }
+  },
+)
 
 diagram.engine.subscribe((scene) => {
   if (scene.revision === 0) {
@@ -452,16 +505,21 @@ function setTool(tool: PackageTool) {
   closeContextMenu()
   if (tool === "line") {
     pointer.setTool("select")
+    focusStage()
     return
   }
   pointer.setTool(tool)
+  focusStage()
 }
 
 function fitScene() {
+  closeContextMenu()
   diagram.engine.fitScene(96)
+  focusStage()
 }
 
 function toggleSnapEnabled() {
+  closeContextMenu()
   const nextState: StoredDiagramState = {
     ...(lastStoredState.value ?? { workspaceId: props.workspaceId }),
     snapEnabled: !snapEnabled.value,
@@ -470,9 +528,11 @@ function toggleSnapEnabled() {
   writeLocalSetting(props.storageKey, nextState, {
     legacyKeys: [`unitlab.switchgears.sld.${props.workspaceId}`],
   })
+  focusStage()
 }
 
 function zoomBy(delta: number) {
+  closeContextMenu()
   const current = viewport.viewport.value
   const currentZoom = current.zoom > 0 ? current.zoom : 1
   const nextZoom = clampZoom(currentZoom + delta)
@@ -483,9 +543,11 @@ function zoomBy(delta: number) {
     y: centerY - current.height / nextZoom / 2,
     zoom: nextZoom,
   })
+  focusStage()
 }
 
 function autoArrange() {
+  closeContextMenu()
   const nodeIds = [...diagram.scene.value.order.nodeIds]
   if (nodeIds.length === 0) {
     return
@@ -513,21 +575,45 @@ function autoArrange() {
 }
 
 function undo() {
+  closeContextMenu()
   diagram.dispatch({ type: "undo" })
+  focusStage()
 }
 
 function redo() {
+  closeContextMenu()
   diagram.dispatch({ type: "redo" })
+  focusStage()
 }
 
 function deleteSelection() {
   closeContextMenu()
   diagram.engine.dispatchKeyboardCommand("delete")
+  focusStage()
+}
+
+function duplicateSelection() {
+  closeContextMenu()
+  if (!canDuplicateSelection.value) {
+    if (selectedNodeIds.value.length > 0) {
+      toastStore.info('Switchgear duplicate is not supported yet. Select lines, symbols, or text to duplicate.')
+      return
+    }
+    toastStore.info('Select at least one line, symbol, or text to duplicate')
+    return
+  }
+  diagram.dispatch({
+    type: "duplicateSelection",
+    offset: { x: COPY_PASTE_OFFSET, y: COPY_PASTE_OFFSET },
+    historyKey: "duplicate-selection",
+  })
+  focusStage()
 }
 
 function clearSelection() {
   closeContextMenu()
   selection.clearSelection()
+  focusStage()
 }
 
 function closeContextMenu() {
@@ -545,6 +631,16 @@ function openContextMenu(event: MouseEvent, kind: ContextMenuState["kind"], node
     y: Math.max(12, Math.min(rect.height - 176, event.clientY - rect.top)),
     kind,
     nodeId,
+  }
+}
+
+function handleStagePointerDownCapture(event: PointerEvent) {
+  const target = event.target as HTMLElement | null
+  if (target?.closest(".switchgear-sld-package-canvas__context-menu")) {
+    return
+  }
+  if (contextMenu.value) {
+    closeContextMenu()
   }
 }
 
@@ -574,13 +670,16 @@ function openTextContextMenu(event: MouseEvent, textId: string) {
   if (!selectedTextIds.value.includes(textId)) {
     selection.setSelection([textId], textId)
   }
+  closeTextEditorIfNeeded()
   openContextMenu(event, "text")
 }
 
 function openNodeContextMenu(event: MouseEvent, nodeId: string) {
   event.preventDefault()
   event.stopPropagation()
-  selection.setSelection([nodeId], nodeId)
+  if (!selectedNodeIds.value.includes(nodeId)) {
+    selection.setSelection([nodeId], nodeId)
+  }
   closeTextEditorIfNeeded()
   openContextMenu(event, "node", nodeId)
 }
@@ -859,6 +958,7 @@ async function handlePasteSelection() {
   })
   clipboardPasteCount.value += 1
   toastStore.success(`Pasted ${formatClipboardSelectionLabel(source)}`)
+  focusStage()
 }
 
 function addText() {
@@ -887,6 +987,7 @@ function addText() {
     offset: { x: 0, y: 0 },
     historyKey: "add-text",
   })
+  focusStage()
 }
 
 function addStatic(kind: DiagramStaticKind) {
@@ -923,6 +1024,7 @@ function addStatic(kind: DiagramStaticKind) {
     offset: { x: 0, y: 0 },
     historyKey: `add-${kind}`,
   })
+  focusStage()
 }
 
 function rotateSelectedStatic() {
@@ -942,6 +1044,7 @@ function rotateSelectedStatic() {
     }),
     historyKey: "rotate-static",
   })
+  focusStage()
 }
 
 function setSelectedStaticSize(size: DiagramStaticSize) {
@@ -969,6 +1072,7 @@ function setSelectedStaticSize(size: DiagramStaticSize) {
     }),
     historyKey: `resize-static-${size}`,
   })
+  focusStage()
 }
 
 function updateSelectedEdges(update: (edge: DiagramEdge) => DiagramEdge) {
@@ -993,6 +1097,7 @@ function setSelectedEdgesKind(kind: EdgeStyle) {
       edgeKind: kind,
     },
   }))
+  focusStage()
 }
 
 function setSelectedEdgesWeight(weight: EdgeWeight) {
@@ -1003,6 +1108,7 @@ function setSelectedEdgesWeight(weight: EdgeWeight) {
       edgeWeight: weight,
     },
   }))
+  focusStage()
 }
 
 function rotateSelectedEdges90() {
@@ -1035,6 +1141,7 @@ function rotateSelectedEdges90() {
       },
     }
   })
+  focusStage()
 }
 
 function alignSelectedNodesLeft() {
@@ -1047,6 +1154,7 @@ function alignSelectedNodesLeft() {
     edge: "left",
     historyKey: "align-nodes-left",
   })
+  focusStage()
 }
 
 function alignSelectedNodesTop() {
@@ -1059,6 +1167,7 @@ function alignSelectedNodesTop() {
     edge: "top",
     historyKey: "align-nodes-top",
   })
+  focusStage()
 }
 
 function alignSelectedNodesRight() {
@@ -1071,6 +1180,7 @@ function alignSelectedNodesRight() {
     edge: "right",
     historyKey: "align-nodes-right",
   })
+  focusStage()
 }
 
 function alignSelectedNodesBottom() {
@@ -1083,9 +1193,11 @@ function alignSelectedNodesBottom() {
     edge: "bottom",
     historyKey: "align-nodes-bottom",
   })
+  focusStage()
 }
 
 function onWheel(event: WheelEvent) {
+  closeContextMenu()
   const current = viewport.viewport.value
   if (event.ctrlKey || event.metaKey) {
     const stage = stageRef.value
@@ -1118,6 +1230,58 @@ function onWheel(event: WheelEvent) {
   })
 }
 
+function keyboardNudgeDelta(event: KeyboardEvent): { dx: number; dy: number } | null {
+  if (event.ctrlKey || event.metaKey) {
+    return null
+  }
+
+  const step = event.altKey
+    ? NUDGE_FINE_STEP
+    : event.shiftKey
+      ? NUDGE_LARGE_STEP
+      : GRID_STEP
+
+  switch (event.key) {
+    case "ArrowLeft":
+      return { dx: -step, dy: 0 }
+    case "ArrowRight":
+      return { dx: step, dy: 0 }
+    case "ArrowUp":
+      return { dx: 0, dy: -step }
+    case "ArrowDown":
+      return { dx: 0, dy: step }
+    default:
+      return null
+  }
+}
+
+function nudgeSelection(dx: number, dy: number): boolean {
+  const ids = selection.selection.value.ids
+  if (ids.length === 0) {
+    return false
+  }
+  diagram.dispatch({
+    type: "moveEntities",
+    ids,
+    delta: { x: dx, y: dy },
+    historyKey: "nudge-selection",
+  })
+  return true
+}
+
+function shouldIgnoreWindowKeydown() {
+  const active = document.activeElement as HTMLElement | null
+  const tagName = active?.tagName?.toLowerCase() ?? ""
+  return active?.isContentEditable || ["input", "textarea", "select"].includes(tagName)
+}
+
+function handleWindowKeydown(event: KeyboardEvent) {
+  if (shouldIgnoreWindowKeydown()) {
+    return
+  }
+  onStageKeydown(event)
+}
+
 function onStageKeydown(event: KeyboardEvent) {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "c") {
     event.preventDefault()
@@ -1130,6 +1294,13 @@ function onStageKeydown(event: KeyboardEvent) {
     event.preventDefault()
     if (!textEditor.activeEditor.value) {
       void handlePasteSelection()
+    }
+    return
+  }
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "d") {
+    event.preventDefault()
+    if (!textEditor.activeEditor.value) {
+      duplicateSelection()
     }
     return
   }
@@ -1147,6 +1318,14 @@ function onStageKeydown(event: KeyboardEvent) {
     redo()
     return
   }
+  const nudgeDelta = keyboardNudgeDelta(event)
+  if (nudgeDelta && !textEditor.activeEditor.value) {
+    if (nudgeSelection(nudgeDelta.dx, nudgeDelta.dy)) {
+      event.preventDefault()
+    }
+    return
+  }
+
   if (event.key === "Enter" && selectedTextCount.value === 1 && !textEditor.activeEditor.value) {
     event.preventDefault()
     const textId = selectedTextIds.value[0]
@@ -1170,11 +1349,24 @@ function onStageKeydown(event: KeyboardEvent) {
       textEditor.cancelTextEdit()
       return
     }
+    if (draggedEdge.value || labelDrag.value) {
+      draftLine.value = null
+      draggedEdge.value = null
+      labelDrag.value = null
+      return
+    }
+    if (activeTool.value === "line") {
+      draftLine.value = null
+      activeTool.value = "select"
+      return
+    }
     draftLine.value = null
-    draggedEdge.value = null
-    labelDrag.value = null
     clearSelection()
   }
+}
+
+function focusStage() {
+  stageRef.value?.focus({ preventScroll: true })
 }
 
 function beginTextEdit(id: string) {
@@ -1188,11 +1380,13 @@ function beginTextEdit(id: string) {
 function commitTextEdit() {
   closeContextMenu()
   textEditor.commitTextEdit(editableText.value)
+  focusStage()
 }
 
 function cancelTextEdit() {
   closeContextMenu()
   textEditor.cancelTextEdit()
+  focusStage()
 }
 
 function onSvgClick(event: MouseEvent) {
@@ -1200,7 +1394,10 @@ function onSvgClick(event: MouseEvent) {
   if (activeTool.value !== "line") {
     return
   }
-  const endpoint = snapDraftEndpoint(mapPointerToWorld(event as unknown as PointerEvent))
+  const pointerPoint = mapPointerToWorld(event as unknown as PointerEvent)
+  const endpoint = !draftLine.value
+    ? snapDraftEndpoint(pointerPoint)
+    : snapDraftEndpoint(resolveConstrainedLinePoint(draftLine.value.start.point, pointerPoint, event.shiftKey))
   if (!draftLine.value) {
     draftLine.value = { start: endpoint, current: endpoint }
     return
@@ -1213,7 +1410,7 @@ function onSvgPointerMove(event: PointerEvent) {
   if (activeTool.value === "line" && draftLine.value) {
     draftLine.value = {
       ...draftLine.value,
-      current: snapDraftEndpoint(mapPointerToWorld(event)),
+      current: snapDraftEndpoint(resolveConstrainedLinePoint(draftLine.value.start.point, mapPointerToWorld(event), event.shiftKey)),
     }
   }
 
@@ -1221,9 +1418,16 @@ function onSvgPointerMove(event: PointerEvent) {
   if (!drag || drag.pointerId !== event.pointerId) {
     return
   }
+  const edge = diagram.scene.value.entities.edgesById.get(drag.edgeId)
+  const anchor = edge
+    ? resolveEdgeEndpointPosition(drag.endpoint === "source" ? edge.target : edge.source)
+    : null
+  const nextPoint = anchor
+    ? resolveConstrainedLinePoint(anchor, mapPointerToWorld(event), event.shiftKey)
+    : mapPointerToWorld(event)
   draggedEdge.value = {
     ...drag,
-    draft: snapDraftEndpoint(mapPointerToWorld(event)),
+    draft: snapDraftEndpoint(nextPoint),
   }
 }
 
@@ -1370,6 +1574,31 @@ function snapDraftEndpoint(point: { x: number; y: number }): DraftEndpoint {
     : { point, portId: null }
 }
 
+function resolveConstrainedLinePoint(anchor: { x: number; y: number }, point: { x: number; y: number }, constrain: boolean) {
+  if (!constrain) {
+    return point
+  }
+  return snapToEightDirections(anchor.x, anchor.y, point.x, point.y)
+}
+
+function snapToEightDirections(anchorX: number, anchorY: number, targetX: number, targetY: number) {
+  const dx = targetX - anchorX
+  const dy = targetY - anchorY
+  const length = Math.hypot(dx, dy)
+  if (length < 0.0001) {
+    return { x: targetX, y: targetY }
+  }
+
+  const step = Math.PI / 4
+  const angle = Math.atan2(dy, dx)
+  const snappedAngle = Math.round(angle / step) * step
+
+  return {
+    x: Math.round(anchorX + Math.cos(snappedAngle) * length),
+    y: Math.round(anchorY + Math.sin(snappedAngle) * length),
+  }
+}
+
 function resolveEdgeEndpointPosition(endpoint: { kind: "point"; point: { x: number; y: number } } | { kind: "node"; nodeId: string } | { kind: "port"; portId: string }) {
   if (endpoint.kind === "point") {
     return endpoint.point
@@ -1442,6 +1671,7 @@ function handleMinimapPointerDown(event: PointerEvent) {
   const worldX = model.contentMinX + (localX - model.offsetX) / model.scale
   const worldY = model.contentMinY + (localY - model.offsetY) / model.scale
   centerViewportAtWorldPoint(worldX, worldY)
+  focusStage()
 }
 
 function getViewportCenter() {
@@ -1468,6 +1698,14 @@ function inferStaticSize(id: string): DiagramStaticSize {
     }
   }
   return best?.size ?? "md"
+}
+
+function resolveSelectionPreviewTransform(id: string) {
+  const delta = selectionPreviewDelta.value
+  if (!delta || !selection.isSelected(id)) {
+    return undefined
+  }
+  return `translate(${delta.x} ${delta.y})`
 }
 
 function resolveNodeFill(id: string) {
@@ -1674,6 +1912,9 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
         <UiButton size="sm" variant="secondary" :disabled="selection.selection.value.ids.length === 0" @click="clearSelection">
           Clear
         </UiButton>
+        <UiButton size="sm" variant="secondary" :disabled="!canDuplicateSelection" @click="duplicateSelection">
+          Duplicate
+        </UiButton>
         <UiButton size="sm" variant="secondary" :disabled="!canDelete" @click="deleteSelection">
           Delete
         </UiButton>
@@ -1684,8 +1925,8 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
       ref="stageRef"
       class="switchgear-sld-package-canvas__stage"
       tabindex="0"
+      @pointerdown.capture="handleStagePointerDownCapture"
       @wheel.prevent="onWheel"
-      @keydown="onStageKeydown"
     >
       <div
         v-if="singleSelectedSwitchgear"
@@ -1727,6 +1968,7 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
           v-for="edge in visible.projection.value.edges"
           :key="edge.id"
           v-bind="getSvgEntityProps(edge)"
+          :transform="resolveSelectionPreviewTransform(edge.id)"
           fill="none"
           stroke-linecap="round"
           stroke-linejoin="round"
@@ -1761,7 +2003,7 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
           style="color: var(--color-blue-500)"
         />
 
-        <g v-for="shape in visible.projection.value.shapes" :key="shape.id">
+        <g v-for="shape in visible.projection.value.shapes" :key="shape.id" :transform="resolveSelectionPreviewTransform(shape.id)">
           <g
             v-if="resolveStaticMeta(shape.id).kind === 'transformer'"
             @contextmenu.stop.prevent="openStaticContextMenu($event, shape.id)"
@@ -1802,6 +2044,7 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
           v-for="node in visible.projection.value.nodes"
           :key="node.id"
           v-bind="getSvgEntityProps(node)"
+          :transform="resolveSelectionPreviewTransform(node.id)"
           rx="8"
           :fill="resolveNodeFill(node.id)"
           :stroke="resolveNodeStroke(node.id, node.selected)"
@@ -1814,6 +2057,7 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
           v-for="node in visible.projection.value.nodes"
           :key="`${node.id}:caption`"
           :x="node.geometry.bounds.x + node.geometry.bounds.width / 2"
+          :transform="resolveSelectionPreviewTransform(node.id)"
           :y="node.geometry.bounds.y + node.geometry.bounds.height / 2 + 4"
           class="switchgear-sld-package-canvas__node-text"
           text-anchor="middle"
@@ -1826,6 +2070,7 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
           v-for="node in visible.projection.value.nodes"
           :key="`${node.id}:label`"
           :x="resolveNodeLabelPosition(node.id).x"
+          :transform="resolveSelectionPreviewTransform(node.id)"
           :y="resolveNodeLabelPosition(node.id).y"
           class="switchgear-sld-package-canvas__switchgear-label"
           text-anchor="middle"
@@ -1843,6 +2088,7 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
           v-for="text in visible.projection.value.texts"
           :key="text.id"
           v-bind="getSvgEntityProps(text)"
+          :transform="resolveSelectionPreviewTransform(text.id)"
           :class="resolveTextClass(text.id)"
           text-anchor="middle"
           dominant-baseline="middle"
@@ -1856,6 +2102,7 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
           v-for="handle in selectedEdgeHandles"
           :key="handle.id"
           :cx="handle.point.x"
+          :transform="resolveSelectionPreviewTransform(handle.edgeId)"
           :cy="handle.point.y"
           r="6"
           fill="var(--color-white)"
@@ -1865,11 +2112,25 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
           @pointerup="finishEdgeEndpointDrag"
         />
 
+        <rect
+          v-if="marqueeRect"
+          :x="marqueeRect.x"
+          :y="marqueeRect.y"
+          :width="marqueeRect.width"
+          :height="marqueeRect.height"
+          fill="color-mix(in srgb, var(--color-blue-400) 16%, transparent)"
+          stroke="var(--color-blue-500)"
+          stroke-width="1.5"
+          stroke-dasharray="6 4"
+          pointer-events="none"
+        />
+
         <circle
           v-for="handle in visible.projection.value.activeHandles"
           :key="handle.id"
           :cx="handle.point.x"
           :cy="handle.point.y"
+          :transform="resolveSelectionPreviewTransform(handle.id.split(':')[0] ?? '')"
           r="4"
           fill="var(--color-blue-500)"
           stroke="var(--color-white)"
@@ -1880,40 +2141,70 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
       <div
         v-if="contextMenu"
         class="switchgear-sld-package-canvas__context-menu"
+        :class="{ 'switchgear-sld-package-canvas__context-menu--wide': contextMenu.kind === 'static' }"
         :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
         @pointerdown.stop
       >
         <template v-if="contextMenu.kind === 'edge'">
           <button type="button" class="switchgear-sld-package-canvas__context-item" @click="rotateSelectedEdges90(); closeContextMenu()">
-            Rotate selected lines 90deg
+            <span>Rotate {{ edgeContextLabel }} 90°</span>
+            <span class="switchgear-sld-package-canvas__context-shortcut">R</span>
+          </button>
+          <button type="button" class="switchgear-sld-package-canvas__context-item" @click="duplicateSelection()">
+            Duplicate {{ edgeContextLabel }}
           </button>
           <button type="button" class="switchgear-sld-package-canvas__context-item switchgear-sld-package-canvas__context-item--danger" @click="deleteSelection()">
-            Remove selected lines
+            <span>Remove {{ edgeContextLabel }}</span>
+            <span class="switchgear-sld-package-canvas__context-shortcut">Del</span>
           </button>
         </template>
         <template v-else-if="contextMenu.kind === 'static'">
           <button type="button" class="switchgear-sld-package-canvas__context-item" :disabled="!canShrinkSelectedStatic" @click="setSelectedStaticSize(selectedStaticSize === 'lg' ? 'md' : 'sm'); closeContextMenu()">
-            Shrink selected symbols
+            <span>Shrink {{ staticContextLabel }}</span>
+            <span class="switchgear-sld-package-canvas__context-shortcut">S</span>
           </button>
           <button type="button" class="switchgear-sld-package-canvas__context-item" :disabled="!canGrowSelectedStatic" @click="setSelectedStaticSize(selectedStaticSize === 'sm' ? 'md' : 'lg'); closeContextMenu()">
-            Grow selected symbols
+            <span>Grow {{ staticContextLabel }}</span>
+            <span class="switchgear-sld-package-canvas__context-shortcut">L</span>
           </button>
           <button type="button" class="switchgear-sld-package-canvas__context-item" @click="rotateSelectedStatic(); closeContextMenu()">
-            Rotate selected symbols 90deg
+            <span>Rotate {{ staticContextLabel }} 90°</span>
+            <span class="switchgear-sld-package-canvas__context-shortcut">R</span>
+          </button>
+          <button type="button" class="switchgear-sld-package-canvas__context-item" @click="duplicateSelection()">
+            Duplicate {{ staticContextLabel }}
           </button>
           <button type="button" class="switchgear-sld-package-canvas__context-item switchgear-sld-package-canvas__context-item--danger" @click="deleteSelection()">
-            Remove selected symbols
+            <span>Remove {{ staticContextLabel }}</span>
+            <span class="switchgear-sld-package-canvas__context-shortcut">Del</span>
           </button>
         </template>
         <template v-else-if="contextMenu.kind === 'text'">
           <button type="button" class="switchgear-sld-package-canvas__context-item" @click="selectedTextIds[0] && beginTextEdit(selectedTextIds[0]); closeContextMenu()">
-            Edit text
+            <span>Edit text</span>
+            <span class="switchgear-sld-package-canvas__context-shortcut">Enter</span>
+          </button>
+          <button type="button" class="switchgear-sld-package-canvas__context-item" @click="duplicateSelection()">
+            Duplicate {{ textContextLabel }}
           </button>
           <button type="button" class="switchgear-sld-package-canvas__context-item switchgear-sld-package-canvas__context-item--danger" @click="deleteSelection()">
-            Remove selected text
+            <span>Remove {{ textContextLabel }}</span>
+            <span class="switchgear-sld-package-canvas__context-shortcut">Del</span>
           </button>
         </template>
         <template v-else>
+          <button v-if="selectedNodeCount > 1" type="button" class="switchgear-sld-package-canvas__context-item" @click="alignSelectedNodesLeft(); closeContextMenu()">
+            Align selected left
+          </button>
+          <button v-if="selectedNodeCount > 1" type="button" class="switchgear-sld-package-canvas__context-item" @click="alignSelectedNodesTop(); closeContextMenu()">
+            Align selected top
+          </button>
+          <button v-if="selectedNodeCount > 1" type="button" class="switchgear-sld-package-canvas__context-item" @click="alignSelectedNodesRight(); closeContextMenu()">
+            Align selected right
+          </button>
+          <button v-if="selectedNodeCount > 1" type="button" class="switchgear-sld-package-canvas__context-item" @click="alignSelectedNodesBottom(); closeContextMenu()">
+            Align selected bottom
+          </button>
           <button type="button" class="switchgear-sld-package-canvas__context-item" @click="contextMenu.nodeId && requestSwitchgearBindingsEdit(contextMenu.nodeId)">
             Edit bindings
           </button>
@@ -2158,7 +2449,15 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
   backdrop-filter: blur(12px);
 }
 
+.switchgear-sld-package-canvas__context-menu--wide {
+  min-width: 15rem;
+}
+
 .switchgear-sld-package-canvas__context-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
   padding: 0.55rem 0.7rem;
   border: 0;
   border-radius: 0.45rem;
@@ -2167,6 +2466,11 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
   font: inherit;
   font-size: var(--text-sm);
   text-align: left;
+}
+
+.switchgear-sld-package-canvas__context-shortcut {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
 }
 
 .switchgear-sld-package-canvas__context-item:hover:not(:disabled) {
