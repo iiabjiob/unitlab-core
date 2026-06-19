@@ -78,9 +78,9 @@ static void print_usage(const char* program_name)
     printf("  --native-wire-start  Start a native wire server that can emit live reports over TCP.\n");
     printf("  --native-wire-client-start  Start a native wire client that connects and emits wire frames.\n");
     printf("  --mms-client-start  Start a persistent native wire MMS client controlled by stdin.\n");
-    printf("  --native-client-read-domain DOMAIN  Initial native wire client Read domain. Default: XCBR1.\n");
-    printf("  --native-client-read-item ITEM      Initial native wire client Read item. Default: ST$Pos$stVal.\n");
-    printf("  --native-client-read-invoke-id ID   Initial native wire client Read invokeId. Default: 3.\n");
+    printf("  --native-client-read-domain DOMAIN  Optional startup native wire client Read domain.\n");
+    printf("  --native-client-read-item ITEM      Optional startup native wire client Read item.\n");
+    printf("  --native-client-read-invoke-id ID   Optional startup native wire client Read invokeId. Default when enabled: 3.\n");
     printf("  --discover-probe Connect to the endpoint and print the LD/LN/DataSet/ReportControl browse tree, then exit.\n");
     printf("  --metadata-probe Connect to the endpoint and verify DataSet/BRCB metadata, then exit.\n");
     printf("  --gi-probe       Connect to the endpoint, enable report(s), request GI, verify fixture values, then exit.\n");
@@ -276,6 +276,14 @@ static int parse_args(int argc, char** argv, SimulatorOptions* options)
         fprintf(stderr, "INVALID_ARGUMENT: native client Read options require --native-wire-client-start or --mms-client-start.\n");
         return -1;
     }
+    if ((options->native_client_read_domain != NULL) != (options->native_client_read_item != NULL)) {
+        fprintf(stderr, "INVALID_ARGUMENT: startup native client Read requires both --native-client-read-domain and --native-client-read-item.\n");
+        return -1;
+    }
+    if (options->native_client_read_invoke_id != 0U && (options->native_client_read_domain == NULL || options->native_client_read_item == NULL)) {
+        fprintf(stderr, "INVALID_ARGUMENT: --native-client-read-invoke-id requires startup native client Read domain and item.\n");
+        return -1;
+    }
 
     return 0;
 }
@@ -403,6 +411,7 @@ static int run_scl_native_wire_mode(const SimulatorOptions* options)
         wire_client_options.initial_read_domain = options->native_client_read_domain;
         wire_client_options.initial_read_item = options->native_client_read_item;
         wire_client_options.initial_read_invoke_id = options->native_client_read_invoke_id;
+        wire_client_options.initial_read_enabled = options->native_client_read_domain != NULL && options->native_client_read_item != NULL;
 
         client_config = server_config;
         client_config.control_port = 0;
@@ -734,6 +743,7 @@ int main(int argc, char** argv)
         wire_client_options.initial_read_domain = options.native_client_read_domain;
         wire_client_options.initial_read_item = options.native_client_read_item;
         wire_client_options.initial_read_invoke_id = options.native_client_read_invoke_id;
+        wire_client_options.initial_read_enabled = options.native_client_read_domain != NULL && options.native_client_read_item != NULL;
 
         client_config = server_config;
         client_config.control_port = 0;
@@ -882,6 +892,7 @@ int main(int argc, char** argv)
         wire_client_options.initial_read_domain = options.native_client_read_domain;
         wire_client_options.initial_read_item = options.native_client_read_item;
         wire_client_options.initial_read_invoke_id = options.native_client_read_invoke_id;
+        wire_client_options.initial_read_enabled = options.native_client_read_domain != NULL && options.native_client_read_item != NULL;
 
         unitlab_mms_diagnostic_clear(&wire_diagnostic);
         if (!unitlab_run_native_wire_client_with_options(&server_config, &wire_client_options, &wire_result, signal_stop_requested, NULL)) {

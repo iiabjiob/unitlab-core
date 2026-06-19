@@ -2970,8 +2970,8 @@ int unitlab_run_native_wire_client_with_options(
     const UnitLabNativeDiscoveredRcb* selected_rcb = NULL;
     UnitLabMmsDiagnostic diagnostic;
     UnitLabNativeClientSessionState session = {0};
-    const char* initial_read_domain = "XCBR1";
-    const char* initial_read_item = "ST$Pos$stVal";
+    const char* initial_read_domain = NULL;
+    const char* initial_read_item = NULL;
     uint32_t initial_read_invoke_id = 3U;
     uint32_t next_invoke_id = 4U;
     UnitLabNativeWireClientState state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_INIT;
@@ -2992,7 +2992,7 @@ int unitlab_run_native_wire_client_with_options(
         set_result(result, "NATIVE_WIRE_CLIENT_PORT_INVALID", "Native wire client target ports are invalid.");
         return 0;
     }
-    if (options != NULL) {
+    if (options != NULL && options->initial_read_enabled) {
         if (options->initial_read_domain != NULL && options->initial_read_domain[0] != '\0') {
             initial_read_domain = options->initial_read_domain;
         }
@@ -3003,7 +3003,9 @@ int unitlab_run_native_wire_client_with_options(
             initial_read_invoke_id = options->initial_read_invoke_id;
         }
     }
-    unitlab_native_client_session_observe_invoke_id(&session, initial_read_invoke_id);
+    if (initial_read_domain != NULL && initial_read_item != NULL) {
+        unitlab_native_client_session_observe_invoke_id(&session, initial_read_invoke_id);
+    }
     next_invoke_id = session.next_invoke_id;
 
     if (!emit_state_response(state)) {
@@ -3084,30 +3086,32 @@ int unitlab_run_native_wire_client_with_options(
         goto fail;
     }
 
-    state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_READ_REQUESTED;
-    if (!emit_state_response(state)) {
-        set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its read-requested state.");
-        goto fail;
-    }
-    if (!emit_read_response(
-            &session,
-            data_fd,
-            initial_read_domain,
-            initial_read_item,
-            initial_read_invoke_id,
-            scratch,
-            sizeof(scratch),
-            read_request,
-            sizeof(read_request),
-            report_frame,
-            sizeof(report_frame),
-            &report_length,
-            frame,
-            sizeof(frame),
-            &diagnostic)) {
-        state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
-        set_result(result, "NATIVE_WIRE_CLIENT_READ_FAILED", diagnostic.message);
-        goto fail;
+    if (initial_read_domain != NULL && initial_read_item != NULL) {
+        state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_READ_REQUESTED;
+        if (!emit_state_response(state)) {
+            set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its read-requested state.");
+            goto fail;
+        }
+        if (!emit_read_response(
+                &session,
+                data_fd,
+                initial_read_domain,
+                initial_read_item,
+                initial_read_invoke_id,
+                scratch,
+                sizeof(scratch),
+                read_request,
+                sizeof(read_request),
+                report_frame,
+                sizeof(report_frame),
+                &report_length,
+                frame,
+                sizeof(frame),
+                &diagnostic)) {
+            state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
+            set_result(result, "NATIVE_WIRE_CLIENT_READ_FAILED", diagnostic.message);
+            goto fail;
+        }
     }
 
     state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_READY;

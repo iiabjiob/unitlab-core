@@ -12,6 +12,7 @@ typedef struct UnitLabNativeWireClientOptions {
     const char* initial_read_domain;
     const char* initial_read_item;
     uint32_t initial_read_invoke_id;
+    int initial_read_enabled;
 } UnitLabNativeWireClientOptions;
 
 int unitlab_native_wire_client_decode_frame_summary(
