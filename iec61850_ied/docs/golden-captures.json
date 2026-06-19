@@ -3,35 +3,91 @@
   "cases": [
     {
       "name": "association-libiec61850-happy-path",
-      "covers": ["association", "cotp", "acse", "mms-initiate"],
+      "covers": [
+        "association",
+        "cotp",
+        "acse",
+        "mms-initiate"
+      ],
       "pcap": "artifacts/golden/association/libiec61850-association-happy.pcapng",
       "sha256": "25968e9a26390a1b07c230d2dd2f542181350aec19df475fb9067234455ee5d6",
       "checker": "scripts/check-association-pcap.py",
-      "args": ["--port", "12448"]
+      "args": [
+        "--port",
+        "12448"
+      ]
     },
     {
       "name": "online-libiec61850-happy-path",
-      "covers": ["online", "association", "cotp", "acse", "mms-initiate"],
+      "covers": [
+        "online",
+        "association",
+        "cotp",
+        "acse",
+        "mms-initiate"
+      ],
       "pcap": "artifacts/golden/association/libiec61850-online-association.pcapng",
       "sha256": "e0ca5c7167948064b80ca94d397bdd035c081ad52f34775b9ae75e26d287918a",
       "checker": "scripts/check-association-pcap.py",
-      "args": ["--port", "12448"]
+      "args": [
+        "--port",
+        "12448"
+      ]
     },
     {
       "name": "unitlab-scd-discover-rptena-gi-reports",
-      "covers": ["sld-discovery", "rptena", "gi", "information-reports"],
+      "covers": [
+        "sld-discovery",
+        "rptena",
+        "gi",
+        "information-reports"
+      ],
       "pcap": "artifacts/golden/scd/unitlab-scd-discover-rptena-gi-reports.pcapng",
       "sha256": "7ba9b52635b0780eedf1630fea174ad265685fdf0fd8de86bd0f367fd32c40ea",
       "checker": "scripts/check-external-mms-client-pcap.py",
-      "args": ["--port", "12447", "--expected-reports", "2"]
+      "args": [
+        "--port",
+        "12447",
+        "--expected-reports",
+        "2"
+      ]
     },
     {
       "name": "iedscout-scd-discover-rptena-gi-reports",
-      "covers": ["iedscout-baseline", "sld-discovery", "rptena", "gi", "information-reports"],
+      "covers": [
+        "iedscout-baseline",
+        "sld-discovery",
+        "rptena",
+        "gi",
+        "information-reports"
+      ],
       "pcap": "artifacts/golden/scd/iedscout-scd-discover-rptena-gi-reports.pcapng",
       "sha256": "1bde9d699618ec7c505a2cecbce5e63d1ff82c9deb6158ca7fb754d68851a35b",
       "checker": "scripts/check-external-mms-client-pcap.py",
-      "args": ["--port", "12447", "--expected-reports", "2"]
+      "args": [
+        "--port",
+        "12447",
+        "--expected-reports",
+        "2"
+      ]
+    },
+    {
+      "name": "sld-discovery-full-model",
+      "covers": [
+        "sld-discovery",
+        "full-model-discovery",
+        "datasets",
+        "report-controls"
+      ],
+      "pcap": "artifacts/golden/discovery/sld-discovery-full-model.pcapng",
+      "sha256": "9b7ace26c63ce7133f769e42d358e109e0808e44de1c02fa0b4da1ea51d7d7ec",
+      "checker": "scripts/check-scd-discovery-pcap.py",
+      "args": [
+        "--port",
+        "12447",
+        "--min-requests",
+        "20"
+      ]
     }
   ],
   "deferred": [

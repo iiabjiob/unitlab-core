@@ -350,6 +350,7 @@ Closed in current slice:
 - CTest now exposes `unitlab-iec61850-golden-capture-gates` when a Python interpreter is available.
 - Unsupported/deferred captures are named in the manifest instead of being treated as passing gates.
 - Validation-grade pcaps now live under tracked `artifacts/golden/<scope>/` paths with canonical names; exploratory and failed captures are staged under ignored `artifacts/raw/legacy/`.
+- SCD full-model discovery-only capture is now validated through `scripts/check-scd-discovery-pcap.py` without requiring RptEna/GI report traffic.
 - `docs/golden-capture-workflow.md` documents naming, promotion rules, and deferred capture handling.
 
 Goal: prevent protocol regressions while aligning with IEDScout/Wireshark behavior.

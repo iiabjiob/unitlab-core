@@ -6,6 +6,7 @@ This package keeps ad hoc packet dumps separate from validation-grade golden cap
 
 - `artifacts/golden/association/` contains association and connection-state captures that are stable enough for automated gates.
 - `artifacts/golden/scd/` contains SCD-backed discovery, RptEna, GI, and report-flow captures used for UnitLab-vs-IEDScout behavior checks.
+- `artifacts/golden/discovery/` contains discovery-only captures, including full-model browse traffic without report subscription.
 - `artifacts/raw/legacy/` contains old exploratory captures, failed attempts, and dumps that are not currently accepted as golden gates.
 
 `artifacts/golden/**/*.pcapng` is tracked in git so a fresh checkout can run the golden gates without private local files. Raw captures under `artifacts/raw/` remain ignored. The manifest plus SHA256 values in `docs/golden-captures.json` is the validation index for those tracked pcaps.
