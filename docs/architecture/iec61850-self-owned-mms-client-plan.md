@@ -1,6 +1,6 @@
 # IEC 61850 Self-Owned MMS Client Plan
 
-Status: decision record and implementation roadmap. A first single-device native MMS client path exists for association, discovery, RptEna, GI, and normalized report-value ingestion; it is still pre-production and not yet a multi-device client.
+Status: decision record and implementation roadmap. A first single-device native MMS client path exists for association, discovery, RptEna, GI, and normalized report-value ingestion; it is still pre-production and not yet a multi-device client. Live-discover flows use the MMS RCB instance names returned by discovery, including indexed report controls such as `brcbA01`, and confirmed Write responses with access-result failures are treated as command failures rather than optimistic success.
 
 This plan records the project decision that UnitLab will implement its own IEC 61850 MMS client and simulator flow. Open-source stacks remain useful as reference implementations and interoperability oracles, but UnitLab core, simulator, and report workflow must not become dependent on a single third-party MMS runtime.
 

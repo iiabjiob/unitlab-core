@@ -58,6 +58,13 @@ class Iec61850ClientControlDiagnostic:
 
 
 @dataclass(frozen=True, slots=True)
+class _ExternalDiscoveredReportControl:
+    index: int
+    domain: str
+    item: str
+
+
+@dataclass(frozen=True, slots=True)
 class Iec61850ClientTargetRequest:
     mode: str
     host: str
@@ -142,6 +149,7 @@ class Iec61850ClientControlService:
         self._live_wire_last_diagnostic: Iec61850ClientControlDiagnostic | None = None
         self._external_mms_process: subprocess.Popen[str] | None = None
         self._external_mms_stdout_buffer = bytearray()
+        self._external_discovered_rcbs: list[_ExternalDiscoveredReportControl] = []
         self._pending_external_report_entries: list[dict[str, str]] = []
         self._current_external_report_values: dict[str, Iec61850ReportEventValue] = {}
         self._lock = RLock()
@@ -242,6 +250,7 @@ class Iec61850ClientControlService:
             self._candidate = selected
             self._last_read = None
             self._last_discovery = None
+            self._external_discovered_rcbs.clear()
             self._last_state = None
             self._last_report = None
             self._last_plan = None
@@ -551,6 +560,7 @@ class Iec61850ClientControlService:
 
     def _discover_external_mms_ied(self) -> None:
         self._ensure_external_mms_client_started()
+        self._external_discovered_rcbs.clear()
         self._write_external_mms_command(self._build_external_discover_command())
         self._drain_external_mms_process_stdout(timeout_seconds=3.0, stop_on="native-wire-client: state=ready")
         self._last_discovery = _build_wire_discovery_structure(self._endpoint, self._candidate, "persistent-discover")
@@ -567,7 +577,7 @@ class Iec61850ClientControlService:
 
     def _enable_external_mms_reporting(self) -> None:
         self._ensure_external_mms_client_started()
-        self._write_external_mms_command(_external_rcb_bool_command(self._candidate, "RptEna", True))
+        self._write_external_mms_command(self._external_rptena_command(True))
         self._drain_external_mms_process_stdout(timeout_seconds=3.0, stop_on="native-wire-client: state=ready")
         self._last_state = self._external_state(Iec61850RuntimeStatus.ENABLED, enabled=True)
         self._runtime._append_event(
@@ -583,7 +593,7 @@ class Iec61850ClientControlService:
 
     def _send_external_mms_general_interrogation(self) -> None:
         self._ensure_external_mms_client_started()
-        self._write_external_mms_command(_external_rcb_bool_command(self._candidate, "GI", True))
+        self._write_external_mms_command(self._external_gi_command())
         self._drain_external_mms_process_stdout(timeout_seconds=3.0, stop_on="native-wire-client: state=ready")
         if self._last_report is None:
             self._last_state = self._external_state(Iec61850RuntimeStatus.GI_PENDING, enabled=True, gi_in_progress=True)
@@ -602,8 +612,9 @@ class Iec61850ClientControlService:
     def _disconnect_external_mms_ied(self) -> None:
         if self._external_mms_process is not None:
             if self._last_state is not None and self._last_state.enabled:
-                self._write_external_mms_command(_external_rcb_bool_command(self._candidate, "RptEna", False))
-                self._drain_external_mms_process_stdout(timeout_seconds=2.0, stop_on="native-wire-client: state=ready")
+                if self._selected_external_discovered_rcb_index() is None:
+                    self._write_external_mms_command(self._external_rptena_command(False))
+                    self._drain_external_mms_process_stdout(timeout_seconds=2.0, stop_on="native-wire-client: state=ready")
             self._write_external_mms_command("disconnect")
             self._drain_external_mms_process_stdout(timeout_seconds=2.0, stop_on="native-wire-client: state=stopped")
             self._stop_external_mms_client_process()
@@ -625,6 +636,34 @@ class Iec61850ClientControlService:
         if domain:
             return f"discover {self._candidate.ied_name}{domain}"
         return "discover"
+
+    def _external_rptena_command(self, value: bool) -> str:
+        selected_index = self._selected_external_discovered_rcb_index()
+        if value and selected_index is not None:
+            return f"rptena {selected_index}"
+        return _external_rcb_bool_command(self._candidate, "RptEna", value)
+
+    def _external_gi_command(self) -> str:
+        selected_index = self._selected_external_discovered_rcb_index()
+        if selected_index is not None:
+            return f"gi {selected_index}"
+        return _external_rcb_bool_command(self._candidate, "GI", True)
+
+    def _selected_external_discovered_rcb_index(self) -> int | None:
+        expected_domain = f"{self._candidate.ied_name}{self._candidate.logical_device_inst}"
+        report_folder = "BR" if self._candidate.report_kind == Iec61850ReportKind.BUFFERED else "RP"
+        expected_prefix = f"{self._candidate.logical_node_name}${report_folder}$"
+        expected_name = self._candidate.report_control_name
+        for discovered in self._external_discovered_rcbs:
+            if discovered.domain != expected_domain or not discovered.item.startswith(expected_prefix):
+                continue
+            discovered_name = discovered.item[len(expected_prefix):]
+            if discovered_name == expected_name:
+                return discovered.index
+            suffix = discovered_name[len(expected_name):]
+            if discovered_name.startswith(expected_name) and suffix.isdigit():
+                return discovered.index
+        return None
 
     def _ensure_external_mms_client_started(self) -> None:
         if self._external_mms_process is not None and self._external_mms_process.poll() is None:
@@ -652,6 +691,7 @@ class Iec61850ClientControlService:
             raise Iec61850ReportRuntimeError("EXTERNAL_MMS_CLIENT_START_FAILED", f"IEC 61850 external MMS client could not be started: {exc}") from exc
         self._external_mms_process = process
         self._external_mms_stdout_buffer.clear()
+        self._external_discovered_rcbs.clear()
         try:
             self._drain_external_mms_process_stdout(timeout_seconds=5.0, stop_on="native-wire-client: state=ready")
         except Exception:
@@ -748,6 +788,8 @@ class Iec61850ClientControlService:
                 self._last_state = self._external_state(Iec61850RuntimeStatus.REPORTING, enabled=True, gi_in_progress=False)
         elif line.startswith("native-wire-client: report-entry "):
             self._pending_external_report_entries.append(_parse_space_kv_line(line.removeprefix("native-wire-client: report-entry ")))
+        elif line.startswith("native-wire-client: discovered-brcb["):
+            self._apply_external_discovered_rcb_line(line)
         elif line.startswith("native-wire-client: async-report"):
             self._last_report = self._external_report_event({})
             self._last_state = self._external_state(Iec61850RuntimeStatus.REPORTING, enabled=True, gi_in_progress=False)
@@ -757,6 +799,24 @@ class Iec61850ClientControlService:
         elif line.startswith("native-wire-client: disconnected"):
             self._session_open = False
             self._last_state = self._external_state(Iec61850RuntimeStatus.DISCONNECTED, enabled=False)
+
+    def _apply_external_discovered_rcb_line(self, line: str) -> None:
+        payload = line.removeprefix("native-wire-client: discovered-brcb[")
+        index_text, separator, fields_text = payload.partition("] ")
+        if separator != "] ":
+            return
+        try:
+            index = int(index_text)
+        except ValueError:
+            return
+        fields = _parse_space_kv_line(fields_text)
+        domain = fields.get("domain")
+        item = fields.get("item")
+        if not domain or not item:
+            return
+        discovered = _ExternalDiscoveredReportControl(index=index, domain=domain, item=item)
+        self._external_discovered_rcbs = [rcb for rcb in self._external_discovered_rcbs if rcb.index != index]
+        self._external_discovered_rcbs.append(discovered)
 
     def _external_state(self, runtime_status: Iec61850RuntimeStatus, *, enabled: bool, gi_in_progress: bool = False) -> Iec61850ReportControlState:
         return Iec61850ReportControlState(
@@ -999,6 +1059,7 @@ class Iec61850ClientControlService:
         self._session_open = False
         self._last_read = None
         self._last_discovery = None
+        self._external_discovered_rcbs.clear()
         self._last_state = None
         self._last_report = None
         self._last_plan = None

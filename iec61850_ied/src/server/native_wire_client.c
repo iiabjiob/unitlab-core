@@ -297,6 +297,77 @@ static uint32_t decode_unsigned_bytes(const uint8_t* bytes, size_t length)
     return value;
 }
 
+static int validate_confirmed_write_response(
+    const uint8_t* response,
+    size_t response_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    UnitLabMmsAssociationFrame association_frame;
+    UnitLabMmsPdu pdu;
+    UnitLabMmsBerElement result;
+    size_t consumed = 0U;
+    size_t offset = 0U;
+
+    if (response == NULL || response_length == 0U) {
+        if (diagnostic != NULL) {
+            diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR;
+            snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Native wire client received an empty confirmed-write response.");
+        }
+        return 0;
+    }
+
+    unitlab_mms_association_frame_init(&association_frame);
+    if (!unitlab_mms_association_frame_decode(&association_frame, response, response_length, &consumed, diagnostic)
+        || association_frame.presentation.payload_bytes == NULL
+        || association_frame.presentation.payload_length == 0U) {
+        if (diagnostic != NULL && diagnostic->message[0] == '\0') {
+            diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR;
+            snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Native wire client could not decode the confirmed-write response frame.");
+        }
+        return 0;
+    }
+
+    unitlab_mms_pdu_init(&pdu);
+    if (!unitlab_mms_pdu_decode(&pdu, association_frame.presentation.payload_bytes, association_frame.presentation.payload_length, &consumed, diagnostic)
+        || pdu.kind != UNITLAB_MMS_PDU_CONFIRMED_RESPONSE
+        || pdu.service_kind != UNITLAB_MMS_SERVICE_WRITE
+        || pdu.service_bytes == NULL
+        || pdu.service_length == 0U) {
+        if (diagnostic != NULL) {
+            diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR;
+            snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Native wire client received an invalid confirmed-write response.");
+        }
+        return 0;
+    }
+
+    while (offset < pdu.service_length) {
+        size_t result_consumed = 0U;
+        unitlab_mms_ber_element_init(&result);
+        if (!unitlab_mms_ber_read(&result, &pdu.service_bytes[offset], pdu.service_length - offset, &result_consumed, diagnostic)
+            || result_consumed == 0U) {
+            if (diagnostic != NULL) {
+                diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR;
+                snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Native wire client could not decode the confirmed-write access result.");
+            }
+            return 0;
+        }
+        if (result.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && result.tag.tag_number == 0U) {
+            unsigned code = (unsigned)decode_unsigned_bytes(result.value_bytes, result.value_length);
+            if (diagnostic != NULL) {
+                diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR;
+                snprintf(diagnostic->message, sizeof(diagnostic->message), "Native wire client confirmed-write failed with access-result code=%u.", code);
+            }
+            return 0;
+        }
+        offset += result_consumed;
+    }
+
+    if (diagnostic != NULL) {
+        unitlab_mms_diagnostic_clear(diagnostic);
+    }
+    return 1;
+}
+
 static const char* brcb_field_name(size_t index)
 {
     static const char* fields[] = {
@@ -2707,6 +2778,9 @@ static int emit_write_bool_response(
             diagnostic)) {
         return 0;
     }
+    if (!validate_confirmed_write_response(response, *encoded_response_length, diagnostic)) {
+        return 0;
+    }
 
     if (!emit_immediate_post_write_frame_if_available(
             session,
@@ -2785,6 +2859,9 @@ static int emit_write_element_response(
             text_buffer_length,
             "Native wire client could not receive the confirmed-write response.",
             diagnostic)) {
+        return 0;
+    }
+    if (!validate_confirmed_write_response(response, *encoded_response_length, diagnostic)) {
         return 0;
     }
 
