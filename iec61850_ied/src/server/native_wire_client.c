@@ -2959,13 +2959,13 @@ int unitlab_run_native_wire_client_with_options(
 {
     int data_fd = -1;
     int control_fd = -1;
-    uint8_t frame[2048U];
-    uint8_t scratch[2048U];
+    uint8_t frame[65535U];
+    uint8_t scratch[65535U];
     size_t encoded_length = 0U;
-    uint8_t association_request[2048U];
+    uint8_t association_request[65535U];
     size_t association_length = 0U;
-    uint8_t read_request[2048U];
-    uint8_t report_frame[2048U];
+    uint8_t read_request[65535U];
+    uint8_t report_frame[65535U];
     size_t report_length = 0U;
     const UnitLabNativeDiscoveredRcb* selected_rcb = NULL;
     UnitLabMmsDiagnostic diagnostic;
