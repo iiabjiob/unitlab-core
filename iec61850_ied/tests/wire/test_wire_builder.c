@@ -5,6 +5,7 @@
 #include "../src/wire/transport/unitlab_mms_transport_frame.h"
 #include "../src/wire/orchestration/unitlab_mms_association_frame.h"
 #include "../src/wire/orchestration/unitlab_mms_wire_builder.h"
+#include "../src/wire/orchestration/unitlab_mms_live_wire_probe.h"
 #include "../src/wire/mms/unitlab_mms_pdu.h"
 #include "../src/wire/iso/unitlab_mms_cotp.h"
 #include "../src/wire/iso/unitlab_mms_tpkt.h"
@@ -652,11 +653,55 @@ static void test_mms_get_name_list_request_wire_frame_builder_roundtrip(void)
     assert(semantic_result.pdu.object_scope == 1U);
     assert(strcmp(semantic_result.pdu.domain_id, "LD0") == 0);
 }
+static void test_live_wire_association_request_uses_connect_cp_type(void)
+{
+    uint8_t frame[256];
+    UnitLabMmsAssociationFrame association_frame;
+    UnitLabMmsAcseApdu acse_apdu;
+    UnitLabMmsDiagnostic diagnostic;
+    size_t frame_length = 0U;
+    size_t consumed_length = 0U;
+    size_t acse_consumed_length = 0U;
+    int found_user_information = 0;
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_association_frame_init(&association_frame);
+    assert(unitlab_mms_build_live_wire_association_request_frame(frame, sizeof(frame), &frame_length, &diagnostic) == 1);
+    assert(frame_length == 211U);
+    assert(frame[0] == 0x03U);
+    assert(frame[4] == 0x02U);
+    assert(frame[5] == 0xF0U);
+    assert(frame[6] == 0x80U);
+
+    assert(unitlab_mms_association_frame_decode(&association_frame, frame, frame_length, &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == frame_length);
+    assert(association_frame.session.kind == UNITLAB_MMS_SESSION_SPDU_CONNECT);
+    assert(association_frame.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED);
+    assert(association_frame.presentation.context_identifier == 1U);
+    assert(association_frame.presentation.payload_length > 0U);
+    assert(association_frame.presentation.payload_bytes[0] == 0x60U);
+
+    unitlab_mms_acse_apdu_init(&acse_apdu);
+    assert(unitlab_mms_acse_decode(&acse_apdu, association_frame.presentation.payload_bytes, association_frame.presentation.payload_length, &acse_consumed_length, &diagnostic) == 1);
+    assert(acse_consumed_length == association_frame.presentation.payload_length);
+    assert(acse_apdu.kind == UNITLAB_MMS_ACSE_APDU_AARQ);
+    assert(acse_apdu.field_count > 0U);
+    for (size_t index = 0U; index < acse_apdu.field_count; index++) {
+        if (acse_apdu.fields[index].tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC
+            && acse_apdu.fields[index].tag.constructed
+            && acse_apdu.fields[index].tag.tag_number == 30U) {
+            found_user_information = 1;
+            break;
+        }
+    }
+    assert(found_user_information == 1);
+}
 int main(void)
 {
     test_wire_frame_builder_information_report_roundtrip();
     test_association_response_frame_smoke();
     test_wire_frame_builder_aarq_association_roundtrip();
+    test_live_wire_association_request_uses_connect_cp_type();
     test_mms_confirmed_request_roundtrip_with_allocated_invoke_id();
     test_mms_read_request_wire_frame_builder_roundtrip();
     test_mms_write_request_wire_frame_builder_roundtrip();
