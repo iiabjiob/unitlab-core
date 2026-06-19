@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "association-libiec61850-happy-path",
+      "covers": ["association", "cotp", "acse", "mms-initiate"],
+      "pcap": "artifacts/001_associate_libiec61850_new.pcapng",
+      "sha256": "25968e9a26390a1b07c230d2dd2f542181350aec19df475fb9067234455ee5d6",
+      "checker": "scripts/check-association-pcap.py",
+      "args": ["--port", "12448"]
+    },
+    {
+      "name": "online-libiec61850-happy-path",
+      "covers": ["online", "association", "cotp", "acse", "mms-initiate"],
+      "pcap": "artifacts/003_online_libiec61850.pcapng",
+      "sha256": "e0ca5c7167948064b80ca94d397bdd035c081ad52f34775b9ae75e26d287918a",
+      "checker": "scripts/check-association-pcap.py",
+      "args": ["--port", "12448"]
+    },
+    {
+      "name": "unitlab-scd-discover-rptena-gi-reports",
+      "covers": ["sld-discovery", "rptena", "gi", "information-reports"],
+      "pcap": "artifacts/mms-client-discover-rptEna-GI-05.pcapng",
+      "sha256": "7ba9b52635b0780eedf1630fea174ad265685fdf0fd8de86bd0f367fd32c40ea",
+      "checker": "scripts/check-external-mms-client-pcap.py",
+      "args": ["--port", "12447", "--expected-reports", "2"]
+    },
+    {
+      "name": "iedscout-scd-discover-rptena-gi-reports",
+      "covers": ["iedscout-baseline", "sld-discovery", "rptena", "gi", "information-reports"],
+      "pcap": "artifacts/iedScout-discover-rptEna-GI-02.pcapng",
+      "sha256": "1bde9d699618ec7c505a2cecbce5e63d1ff82c9deb6158ca7fb754d68851a35b",
+      "checker": "scripts/check-external-mms-client-pcap.py",
+      "args": ["--port", "12447", "--expected-reports", "2"]
+    }
+  ],
+  "deferred": [
+    {
+      "name": "offline-libiec61850",
+      "pcap": "artifacts/002_offline_libiec61850.pcapng",
+      "reason": "capture starts after connection establishment and is not an association/protocol behavior gate"
+    },
+    {
+      "name": "native-wire-discover-rptena-gi",
+      "pcap": "artifacts/native-wire-discover-rptEna-GI-04.pcapng",
+      "reason": "existing native-wire checker expects brcbEvents while this capture uses a different report-control namespace"
+    },
+    {
+      "name": "negative-association-replay",
+      "reason": "representative reject/abort/oversized/segmented association captures are not available yet"
+    }
+  ]
+}

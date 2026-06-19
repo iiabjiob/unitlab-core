@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.16)
 project(unitlab_iec61850_ied_sim C CXX)
 
 find_package(Threads REQUIRED)
+find_package(Python3 COMPONENTS Interpreter QUIET)
 
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -341,6 +342,14 @@ add_test(
   NAME unitlab-iec61850-mms-server-runtime
   COMMAND unitlab-iec61850-mms-server-runtime-test
 )
+
+
+if(Python3_Interpreter_FOUND)
+  add_test(
+    NAME unitlab-iec61850-golden-capture-gates
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run-golden-capture-gates.py
+  )
+endif()
 
 if(UNITLAB_IEC61850_SIM_WITH_LIBIEC61850)
   add_executable(unitlab-iec61850-ied-linked-client-smoke-test

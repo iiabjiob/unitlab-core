@@ -341,6 +341,15 @@ Validation:
 
 ## Slice 8: Golden Capture Validation
 
+Status: in progress.
+
+Closed in current slice:
+
+- `docs/golden-captures.json` defines named behavior-level golden gates with SHA256 checks for association, online association, UnitLab SCD discovery/RptEna/GI/report traffic, and IEDScout SCD baseline traffic.
+- `scripts/run-golden-capture-gates.py` runs the manifest, verifies artifact hashes, delegates to the existing focused pcap checkers, and skips cleanly when `tshark` is unavailable unless `--require-tools` is requested.
+- CTest now exposes `unitlab-iec61850-golden-capture-gates` when a Python interpreter is available.
+- Unsupported/deferred captures are named in the manifest instead of being treated as passing gates.
+
 Goal: prevent protocol regressions while aligning with IEDScout/Wireshark behavior.
 
 Change boundary:
@@ -358,14 +367,15 @@ Acceptance criteria:
   - RptEna;
   - GI;
   - information reports.
-- Each supported capture has a named expected behavior file.
+- Each supported capture has a named expected behavior manifest entry.
 - Validation output names missing or unsupported protocol features explicitly.
 - Negative association replay covers reject, abort, oversized, and segmented association artifacts once representative captures are available.
 
 Validation:
 
-- CI/local test target for golden capture parsing where dependencies are available.
-- Manual Wireshark check remains accepted until automation covers the frame class.
+- `scripts/run-golden-capture-gates.py --require-tools`.
+- `ctest -R unitlab-iec61850-golden-capture-gates` where Python/tshark are available.
+- Manual Wireshark check remains accepted for deferred frame classes and new captures until automation covers them.
 
 ## Slice 9: Debug UI State Contract
 

@@ -164,19 +164,13 @@ The debug client page can now target this external MMS endpoint before capture:
 3. Run `Discover`, `RptEna`, `GI`, and `Disconnect`. In external mode `Discover` and `RptEna` launch the libIEC61850-backed metadata probe against the configured endpoint, while `GI` launches the GI probe with the compiler report key, for example `KINTE13LVC01/P1/CTRL/LLN0/brcbA/buffered` for the selected `brcbA` control, and waits for the buffered enable report before requesting the GI report. `Start wire` is for the UnitLab native wire server path and should stay disabled for external MMS targets.
 4. Save the Wireshark capture as the golden artifact for the SCD-backed client flow.
 
-Validate the UnitLab and IEDScout captures with the behavior-level gate:
+Validate the saved golden captures with the manifest runner:
 
 ```bash
-iec61850_ied/scripts/check-external-mms-client-pcap.py \
-  iec61850_ied/artifacts/mms-client-discover-rptEna-GI.pcapng \
-  --port 12447
-
-iec61850_ied/scripts/check-external-mms-client-pcap.py \
-  iec61850_ied/artifacts/iedScout-discover-rptEna-GI.pcapng \
-  --port 12447
+iec61850_ied/scripts/run-golden-capture-gates.py --require-tools
 ```
 
-Capture each run separately, then diff the pcaps only after confirming the same browse tree, datasets, report-control names, and NamPlt namespace fields are present on both wires. The checker is behavior-level; it does not require byte-identical IEDScout parity.
+The manifest lives at `docs/golden-captures.json` and records the supported capture gates, expected SHA256 values, and checker arguments. Capture each run separately, then diff the pcaps only after confirming the same browse tree, datasets, report-control names, and NamPlt namespace fields are present on both wires. The checker is behavior-level; it does not require byte-identical IEDScout parity.
 
 If a previous run left a buffered ReportControl reserved, metadata probing still accepts the model. `GI` remains the cleanup/ownership gate; if GI reservation fails, wait for `ResvTms` to expire or restart the libIEC61850 server before recapturing.
 
