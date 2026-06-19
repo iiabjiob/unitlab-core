@@ -246,7 +246,7 @@ Closed in current slice:
 - Fixture-based native report decoder test now builds model-backed and synthetic GI `InformationReport` frames and validates DataRef/value/reason mapping, zero-mismatch diagnostics, `DATASET_MEMBER_MISMATCH`, missing/extra value/reason diagnostics, and `UNSUPPORTED_REPORT_VALUES` without requiring a fresh pcap.
 - `scripts/check-external-mms-client-pcap.py` now provides a behavior-level gate for SCD-backed external MMS captures, including exact InformationReport count checks when `--expected-reports` is provided.
 - Rejected UnitLab client capture artifact: `iec61850_ied/artifacts/mms-client-discover-rptEna-GI-02.pcapng` (`SHA256 34615d5f560bc9fc64f1175d5948d9c17353e65ffae3e021f8d7108bf74842bc`, 832 packets, 16.831 s, 36 MMS requests, 36 MMS responses, 4 InformationReports, 0 TCP resets). It proved the external GI probe was validating both `brcbA` and `brcbB` instead of only the selected candidate.
-- Current IEDScout baseline capture artifact for the same libIEC61850 server/SCD target: `iec61850_ied/artifacts/iedScout-discover-rptEna-GI-02.pcapng` (`SHA256 1bde9d699618ec7c505a2cecbce5e63d1ff82c9deb6158ca7fb754d68851a35b`, 401 packets, 20.130 s, 104 MMS requests, 101 MMS responses, 2 InformationReports, 0 TCP resets).
+- Current IEDScout baseline capture artifact for the same libIEC61850 server/SCD target: `iec61850_ied/artifacts/golden/scd/iedscout-scd-discover-rptena-gi-reports.pcapng` (`SHA256 1bde9d699618ec7c505a2cecbce5e63d1ff82c9deb6158ca7fb754d68851a35b`, 401 packets, 20.130 s, 104 MMS requests, 101 MMS responses, 2 InformationReports, 0 TCP resets).
 
 Acceptance criteria:
 
@@ -349,6 +349,8 @@ Closed in current slice:
 - `scripts/run-golden-capture-gates.py` runs the manifest, verifies artifact hashes, delegates to the existing focused pcap checkers, and skips cleanly when `tshark` is unavailable unless `--require-tools` is requested.
 - CTest now exposes `unitlab-iec61850-golden-capture-gates` when a Python interpreter is available.
 - Unsupported/deferred captures are named in the manifest instead of being treated as passing gates.
+- Validation-grade pcaps now live under tracked `artifacts/golden/<scope>/` paths with canonical names; exploratory and failed captures are staged under ignored `artifacts/raw/legacy/`.
+- `docs/golden-capture-workflow.md` documents naming, promotion rules, and deferred capture handling.
 
 Goal: prevent protocol regressions while aligning with IEDScout/Wireshark behavior.
 
