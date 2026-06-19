@@ -71,12 +71,6 @@ const sceneModel = computed(() => buildSwitchgearSldPackageSceneModel(
   switchgearStore.switchgears,
   storedState.value,
 ))
-const hasContent = computed(() => (
-  sceneModel.value.stats.nodes > 0
-  || sceneModel.value.stats.edges > 0
-  || sceneModel.value.stats.statics > 0
-  || sceneModel.value.stats.texts > 0
-))
 const scdImportModalOpen = computed(() => (
   scdImportBusy.value
   || scdImportApplyBusy.value
@@ -330,12 +324,6 @@ function loadStoredState() {
       tag="SLD"
       title="Select a workspace"
       description="Choose a workspace to compare and edit the package-based SLD projection."
-    />
-    <WorkspacePlaceholder
-      v-else-if="!hasContent"
-      tag="SLD"
-      title="No SLD content"
-      description="Load or draw a single line diagram in the legacy editor, then reopen this tab for package editing."
     />
     <SwitchgearSingleLineDiagramPackageCanvas
       v-else-if="storageKey"
