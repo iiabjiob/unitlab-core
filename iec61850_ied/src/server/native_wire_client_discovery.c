@@ -926,9 +926,6 @@ int unitlab_native_client_run_discover_sequence(
         }
         printf("native-wire-client: discovered-brcb[%zu] domain=%s item=%s\n", session->discovered_rcb_count - 1U, domain_id, brcb_read_item);
         fflush(stdout);
-        if (!io->read_step(session, io, "brcb-values", domain_id, brcb_read_item, unitlab_native_client_session_reserve_invoke_id(session))) {
-            goto cleanup;
-        }
     }
     if (data_set_items.count == 0U) {
         printf("native-wire-client: discover-skip=dataset-members reason=no-dataset\n");

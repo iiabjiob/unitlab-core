@@ -243,6 +243,7 @@ Exit criteria:
 - `Connect` and `Discover` are separate operations. `Connect` opens the persistent MMS association using the SCD/in-memory model only. `Discover` remains an explicit advanced live model verification step. `RptEna` and `GI` can run from the loaded SCD model without implicit live discovery.
 - The persistent native MMS client does not send an implicit startup `Read`. After association it emits `ready` and waits for explicit stdin commands (`discover`, direct RCB writes, or an opt-in startup read configured by CLI flags). This keeps IEDScout and real-device discovery from being aborted by a fixture-specific legacy read.
 - Native client receive buffers cover the full TPKT length range for persistent client operations. Live `GetNameList` responses from IEDScout and real devices can exceed small simulator-sized frames, especially when `moreFollows=true` and many domain variables are returned.
+- Native discovery does not read whole ReportControl structures. It discovers BRCB objects from the domain variable list and validates attribute access through concrete RCB attributes such as `RptEna`; report-control operations continue to use explicit attribute reads/writes.
 - In SCD-only mode, backend writes RCB attributes by explicit MMS object path derived from the selected candidate: `<IED><LD> / <LN>$BR|RP$<ReportControl>$RptEna` and `<LN>$BR|RP$<ReportControl>$GI`. It must not use the native `rptena`/`gi` discovered-index commands unless live discovery selected an RCB.
 
 Exit criteria:
