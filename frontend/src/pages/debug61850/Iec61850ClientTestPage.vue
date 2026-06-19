@@ -16,18 +16,31 @@ const targetSclPath = ref("/workspace/.refs/sld-rev2.scd")
 const targetIedName = ref("KINTE13LVC01")
 
 const transcript = computed(() => state.value?.transcript ?? [])
-const lastDiagnostic = computed(() => state.value?.last_diagnostic ?? null)
-const sessionStatus = computed(() => state.value?.session_open ? "Connected" : "Disconnected")
-const discoveryStatus = computed(() => state.value?.last_discovery ? "Structure loaded" : "Not discovered")
-const liveWireStatus = computed(() => state.value?.live_wire_open ? "Wire connected" : "Wire closed")
+const uiState = computed(() => state.value?.ui_state ?? null)
+const lastDiagnostic = computed(() => uiState.value?.diagnostic.active ? uiState.value.diagnostic : state.value?.last_diagnostic ?? null)
+const sessionStatus = computed(() => uiState.value?.session.phase ?? "not-loaded")
+const discoveryStatus = computed(() => uiState.value?.discovery.discovered ? "Structure loaded" : "Not discovered")
+const liveWireStatus = computed(() => uiState.value?.wire.open ? "Wire connected" : "Wire closed")
 const isExternalTarget = computed(() => state.value?.endpoint.mode === "mms")
 const externalActionDisabled = computed(() => busyAction.value !== null)
 const wireStartDisabled = computed(() => busyAction.value !== null || isExternalTarget.value)
-const reportStatus = computed(() => state.value?.last_report ? "Report received" : "Waiting for report")
-const wireFrameStatus = computed(() => state.value?.live_wire_last_frame_length ? `${state.value.live_wire_last_frame_length} bytes` : "No frame yet")
+const reportStatus = computed(() => uiState.value?.report.received ? "Report received" : "Waiting for report")
+const wireFrameStatus = computed(() => uiState.value?.wire.last_frame_length ? `${uiState.value.wire.last_frame_length} bytes` : "No frame yet")
+const selectedReportStatus = computed(() => uiState.value?.discovery.selected_rcb_ref ?? state.value?.candidate.report_control_name ?? "None")
+const selectedDatasetStatus = computed(() => uiState.value?.discovery.selected_dataset_ref ?? state.value?.candidate.data_set_ref ?? "None")
+const subscriptionCommandStatus = computed(() => {
+  const subscription = uiState.value?.subscription
+  if (!subscription?.last_command) return "None"
+  return subscription.command_accepted ? `${subscription.last_command} accepted` : subscription.last_command
+})
+const reportValues = computed(() => uiState.value?.report.values ?? [])
 const stateSummary = computed(() => {
   if (!state.value) return "No client session loaded"
   return `${state.value.endpoint.ied_name}/${state.value.endpoint.access_point_name} · ${state.value.candidate.report_control_name}`
+})
+const phaseClass = computed(() => {
+  const phase = uiState.value?.session.phase ?? "idle"
+  return `iec61850-client-page__phase--${phase}`
 })
 
 onMounted(async () => {
@@ -156,11 +169,19 @@ function formatJson(value: unknown): string {
     <section class="iec61850-client-page__summary">
       <div class="iec61850-client-page__metric">
         <span class="iec61850-client-page__metric-label">Session</span>
-        <span class="iec61850-client-page__metric-value">{{ sessionStatus }}</span>
+        <span class="iec61850-client-page__metric-value"><span class="iec61850-client-page__phase" :class="phaseClass">{{ sessionStatus }}</span></span>
       </div>
       <div class="iec61850-client-page__metric">
         <span class="iec61850-client-page__metric-label">Discovery</span>
         <span class="iec61850-client-page__metric-value">{{ discoveryStatus }}</span>
+      </div>
+      <div class="iec61850-client-page__metric">
+        <span class="iec61850-client-page__metric-label">Selected RCB</span>
+        <span class="iec61850-client-page__metric-value">{{ selectedReportStatus }}</span>
+      </div>
+      <div class="iec61850-client-page__metric">
+        <span class="iec61850-client-page__metric-label">Selected DataSet</span>
+        <span class="iec61850-client-page__metric-value">{{ selectedDatasetStatus }}</span>
       </div>
       <div class="iec61850-client-page__metric">
         <span class="iec61850-client-page__metric-label">Transcript</span>
@@ -187,10 +208,79 @@ function formatJson(value: unknown): string {
     <main class="iec61850-client-page__workspace">
       <section class="iec61850-client-page__panel iec61850-client-page__panel--state">
         <div class="iec61850-client-page__panel-header">
-          <h2>Current state</h2>
+          <h2>Runtime state contract</h2>
         </div>
-        <div class="iec61850-client-page__panel-body">
-          <pre class="iec61850-client-page__json">{{ state ? formatJson(state) : 'No state loaded' }}</pre>
+        <div class="iec61850-client-page__panel-body iec61850-client-page__panel-body--scroll">
+          <div v-if="uiState" class="iec61850-client-page__contract">
+            <section class="iec61850-client-page__contract-section">
+              <h3>Session</h3>
+              <dl class="iec61850-client-page__state-list">
+                <div><dt>Phase</dt><dd><span class="iec61850-client-page__phase" :class="phaseClass">{{ uiState.session.phase }}</span></dd></div>
+                <div><dt>Endpoint</dt><dd>{{ uiState.session.endpoint_label }}</dd></div>
+                <div><dt>Associated</dt><dd>{{ uiState.session.associated ? 'yes' : 'no' }}</dd></div>
+                <div><dt>Last event</dt><dd>{{ uiState.session.last_event_kind ?? 'none' }}</dd></div>
+              </dl>
+            </section>
+
+            <section class="iec61850-client-page__contract-section">
+              <h3>Discovery</h3>
+              <dl class="iec61850-client-page__state-list iec61850-client-page__state-list--grid">
+                <div><dt>Logical devices</dt><dd>{{ uiState.discovery.logical_devices }}</dd></div>
+                <div><dt>Logical nodes</dt><dd>{{ uiState.discovery.logical_nodes }}</dd></div>
+                <div><dt>DataSets</dt><dd>{{ uiState.discovery.data_sets }}</dd></div>
+                <div><dt>Members</dt><dd>{{ uiState.discovery.data_set_members }}</dd></div>
+                <div><dt>Reports</dt><dd>{{ uiState.discovery.report_controls }}</dd></div>
+                <div><dt>Signals</dt><dd>{{ uiState.discovery.signals }}</dd></div>
+              </dl>
+              <dl class="iec61850-client-page__state-list">
+                <div><dt>Selected RCB</dt><dd>{{ uiState.discovery.selected_rcb_ref }}</dd></div>
+                <div><dt>Selected DataSet</dt><dd>{{ uiState.discovery.selected_dataset_ref ?? 'none' }}</dd></div>
+              </dl>
+            </section>
+
+            <section class="iec61850-client-page__contract-section">
+              <h3>Subscription</h3>
+              <dl class="iec61850-client-page__state-list">
+                <div><dt>Status</dt><dd>{{ uiState.subscription.runtime_status }}</dd></div>
+                <div><dt>Last command</dt><dd>{{ subscriptionCommandStatus }}</dd></div>
+                <div><dt>Probe accepted</dt><dd>{{ uiState.subscription.command_accepted ? 'yes' : 'no' }}</dd></div>
+                <div><dt>RptEna</dt><dd>{{ uiState.subscription.rptena_enabled ? 'enabled' : 'disabled' }}</dd></div>
+                <div><dt>Owner</dt><dd>{{ uiState.subscription.owner ?? 'none' }}</dd></div>
+                <div><dt>Reserved by</dt><dd>{{ uiState.subscription.reserved_by ?? 'none' }}</dd></div>
+              </dl>
+            </section>
+
+            <section class="iec61850-client-page__contract-section">
+              <h3>Last report</h3>
+              <dl class="iec61850-client-page__state-list">
+                <div><dt>RptID</dt><dd>{{ uiState.report.rpt_id ?? 'none' }}</dd></div>
+                <div><dt>DataSet</dt><dd>{{ uiState.report.data_set_ref ?? 'none' }}</dd></div>
+                <div><dt>Reason</dt><dd>{{ uiState.report.reason ?? 'none' }}</dd></div>
+                <div><dt>Values</dt><dd>{{ uiState.report.matched_value_count }} matched / {{ uiState.report.unmatched_value_count }} unmatched</dd></div>
+              </dl>
+              <div v-if="reportValues.length" class="iec61850-client-page__report-values">
+                <article v-for="value in reportValues" :key="`${value.index}-${value.reference}`" class="iec61850-client-page__report-value">
+                  <strong>{{ value.reference }}</strong>
+                  <span>{{ value.value ?? 'null' }} · {{ value.reason }}</span>
+                </article>
+              </div>
+            </section>
+
+            <section v-if="uiState.diagnostic.active" class="iec61850-client-page__contract-section iec61850-client-page__contract-section--diagnostic">
+              <h3>Diagnostic</h3>
+              <dl class="iec61850-client-page__state-list">
+                <div><dt>Action</dt><dd>{{ uiState.diagnostic.action }}</dd></div>
+                <div><dt>Code</dt><dd>{{ uiState.diagnostic.code }}</dd></div>
+                <div><dt>Message</dt><dd>{{ uiState.diagnostic.message }}</dd></div>
+              </dl>
+            </section>
+          </div>
+          <p v-else class="iec61850-client-page__empty">No state loaded.</p>
+
+          <details class="iec61850-client-page__raw-state">
+            <summary>Raw snapshot JSON</summary>
+            <pre class="iec61850-client-page__json">{{ state ? formatJson(state) : 'No state loaded' }}</pre>
+          </details>
         </div>
       </section>
 
@@ -395,6 +485,154 @@ function formatJson(value: unknown): string {
   overflow-wrap: anywhere;
 }
 
+.iec61850-client-page__phase {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.45rem;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-neutral-300);
+  background: var(--color-neutral-100);
+  color: var(--color-neutral-800);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.iec61850-client-page__phase--associated,
+.iec61850-client-page__phase--discovered {
+  border-color: color-mix(in srgb, #2563eb 35%, var(--color-neutral-200));
+  background: color-mix(in srgb, #2563eb 10%, var(--color-white));
+  color: #1d4ed8;
+}
+
+.iec61850-client-page__phase--subscribed,
+.iec61850-client-page__phase--rptena-accepted,
+.iec61850-client-page__phase--gi-accepted,
+.iec61850-client-page__phase--reporting {
+  border-color: color-mix(in srgb, #16a34a 35%, var(--color-neutral-200));
+  background: color-mix(in srgb, #16a34a 10%, var(--color-white));
+  color: #15803d;
+}
+
+.iec61850-client-page__phase--failed {
+  border-color: var(--color-red-200);
+  background: var(--color-red-50);
+  color: var(--color-red-800);
+}
+
+.iec61850-client-page__contract {
+  display: grid;
+  gap: 0.9rem;
+  min-width: 0;
+}
+
+.iec61850-client-page__contract-section {
+  display: grid;
+  gap: 0.55rem;
+  min-width: 0;
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid var(--color-neutral-200);
+}
+
+.iec61850-client-page__contract-section:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.iec61850-client-page__contract-section h3 {
+  margin: 0;
+  color: var(--color-neutral-600);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.iec61850-client-page__contract-section--diagnostic {
+  border-color: var(--color-red-200);
+}
+
+.iec61850-client-page__state-list {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  min-width: 0;
+}
+
+.iec61850-client-page__state-list--grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.iec61850-client-page__state-list div {
+  display: grid;
+  grid-template-columns: minmax(7.5rem, 0.45fr) minmax(0, 1fr);
+  gap: 0.55rem;
+  align-items: start;
+  min-width: 0;
+}
+
+.iec61850-client-page__state-list--grid div {
+  grid-template-columns: 1fr;
+  gap: 0.12rem;
+}
+
+.iec61850-client-page__state-list dt {
+  color: var(--color-neutral-500);
+  font-size: 0.72rem;
+}
+
+.iec61850-client-page__state-list dd {
+  margin: 0;
+  min-width: 0;
+  color: var(--color-neutral-900);
+  font-size: 0.82rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.iec61850-client-page__report-values {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.iec61850-client-page__report-value {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+  padding: 0.35rem 0;
+  border-top: 1px solid var(--color-neutral-100);
+}
+
+.iec61850-client-page__report-value strong,
+.iec61850-client-page__report-value span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.78rem;
+}
+
+.iec61850-client-page__report-value span {
+  color: var(--color-neutral-600);
+}
+
+.iec61850-client-page__raw-state {
+  margin-top: 1rem;
+  min-width: 0;
+}
+
+.iec61850-client-page__raw-state summary {
+  cursor: pointer;
+  color: var(--color-neutral-600);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.iec61850-client-page__raw-state .iec61850-client-page__json {
+  margin-top: 0.65rem;
+}
+
 .iec61850-client-page__workspace {
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
@@ -546,6 +784,14 @@ function formatJson(value: unknown): string {
   .iec61850-client-page__panel-body--scroll {
     overflow: visible;
   }
+
+  .iec61850-client-page__state-list--grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .iec61850-client-page__state-list div {
+    grid-template-columns: 1fr;
+  }
 }
 
 :global(.dark .iec61850-client-page) {
@@ -586,6 +832,32 @@ function formatJson(value: unknown): string {
 
 :global(.dark .iec61850-client-page__metric) {
   background: var(--color-neutral-950);
+  border-color: var(--color-neutral-800);
+}
+
+:global(.dark .iec61850-client-page__phase) {
+  border-color: var(--color-neutral-700);
+  background: var(--color-neutral-800);
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .iec61850-client-page__contract-section) {
+  border-color: var(--color-neutral-800);
+}
+
+:global(.dark .iec61850-client-page__contract-section h3),
+:global(.dark .iec61850-client-page__state-list dt),
+:global(.dark .iec61850-client-page__report-value span),
+:global(.dark .iec61850-client-page__raw-state summary) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .iec61850-client-page__state-list dd),
+:global(.dark .iec61850-client-page__report-value strong) {
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .iec61850-client-page__report-value) {
   border-color: var(--color-neutral-800);
 }
 

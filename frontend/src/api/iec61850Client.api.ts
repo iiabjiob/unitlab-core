@@ -174,6 +174,88 @@ export type Iec61850ClientTargetPayload = {
   access_point_name?: string
 }
 
+export type Iec61850ClientUiState = {
+  schema: "unitlab.iec61850.client.ui-state.v1" | string
+  session: {
+    id: string
+    client_id: string
+    phase: string
+    connected: boolean
+    associated: boolean
+    mode: string
+    endpoint_id: string
+    endpoint_label: string
+    last_event_kind: string | null
+    last_event_outcome: string | null
+  }
+  discovery: {
+    discovered: boolean
+    logical_devices: number
+    logical_nodes: number
+    data_sets: number
+    data_set_members: number
+    report_controls: number
+    signals: number
+    selected_dataset_ref: string | null
+    selected_rcb_ref: string
+  }
+  subscription: {
+    subscribed: boolean
+    runtime_status: string
+    rptena_enabled: boolean
+    reserved_by: string | null
+    owner: string | null
+    gi_in_progress: boolean
+    sequence_number: number | null
+    last_command: string | null
+    command_accepted: boolean
+    external_probe: boolean
+    selected_rcb_ref: string
+    selected_dataset_ref: string | null
+  }
+  report: {
+    received: boolean
+    rpt_id: string | null
+    data_set_ref: string | null
+    conf_rev: string | null
+    sequence_number: number | null
+    reason: string | null
+    value_count: number
+    matched_value_count: number
+    unmatched_value_count: number
+    values: Array<{
+      index: number
+      reference: string
+      data_reference: string | null
+      value: string | number | boolean | null
+      reason: string
+      timestamp: string
+      matched: boolean
+    }>
+  }
+  wire: {
+    open: boolean
+    control_open: boolean
+    endpoint_id: string | null
+    endpoint_label: string | null
+    last_frame_length: number | null
+  }
+  diagnostic: {
+    active: boolean
+    action: string | null
+    code: string | null
+    message: string | null
+  }
+  actions: {
+    can_connect: boolean
+    can_discover: boolean
+    can_rptena: boolean
+    can_gi: boolean
+    can_disconnect: boolean
+    can_close_ied: boolean
+  }
+}
+
 export type Iec61850ClientState = {
   session_id: string
   client_id: string
@@ -221,6 +303,7 @@ export type Iec61850ClientState = {
   live_wire_last_frame_length: number | null
   live_wire_last_frame_hex: string | null
   live_wire_last_diagnostic: Iec61850ClientDiagnostic | null
+  ui_state: Iec61850ClientUiState
 }
 
 export const Iec61850SclAPI = {

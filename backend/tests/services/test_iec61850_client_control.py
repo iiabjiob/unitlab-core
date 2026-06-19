@@ -442,10 +442,24 @@ def test_external_mms_target_routes_discover_rptena_gi_to_external_probes(monkey
 
     monkeypatch.setattr(client_control_module.subprocess, "run", fake_run)
 
-    service.discover_ied()
-    service.enable_reporting()
-    service.send_general_interrogation()
+    discover_snapshot = service.discover_ied()
+    rptena_snapshot = service.enable_reporting()
+    gi_snapshot = service.send_general_interrogation()
     service.disconnect_ied()
+
+    assert discover_snapshot.ui_state["session"]["phase"] == "discovered"
+    assert rptena_snapshot.ui_state["session"]["phase"] == "rptena-accepted"
+    assert rptena_snapshot.ui_state["subscription"]["runtime_status"] == "rptena-accepted"
+    assert rptena_snapshot.ui_state["subscription"]["last_command"] == "rptena"
+    assert rptena_snapshot.ui_state["subscription"]["command_accepted"] is True
+    assert rptena_snapshot.ui_state["subscription"]["rptena_enabled"] is False
+    assert gi_snapshot.ui_state["session"]["phase"] == "gi-accepted"
+    assert gi_snapshot.ui_state["subscription"]["runtime_status"] == "gi-accepted"
+    assert gi_snapshot.ui_state["subscription"]["last_command"] == "gi"
+    assert gi_snapshot.ui_state["subscription"]["command_accepted"] is True
+    assert gi_snapshot.ui_state["subscription"]["selected_rcb_ref"] == "KINTE13LVC01/AP1/CTRL/LLN0/brcbA/buffered"
+    assert gi_snapshot.ui_state["actions"]["can_rptena"] is True
+    assert gi_snapshot.ui_state["actions"]["can_gi"] is True
 
     assert commands[0][-1] == "--metadata-probe"
     assert commands[1][-1] == "--metadata-probe"

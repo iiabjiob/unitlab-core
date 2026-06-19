@@ -392,6 +392,7 @@ Closed in current slice:
 - `close-ied` projects an idle UI state with discovered/subscribed/report state cleared.
 - Active runtime diagnostics project a `failed` phase and explicit diagnostic action/code/message.
 - Existing `/61850-debug/client` page renders the structured state contract first and keeps raw snapshot JSON only as drill-down diagnostics.
+- External MMS `RptEna` precheck and `GI` probe acceptances project explicit `rptena-accepted`/`gi-accepted` phases, last-command fields, and selected RCB/DataSet summary values without claiming a persistent enabled subscription.
 
 Goal: make the UI useful for operator/developer verification without hiding protocol state.
 
@@ -410,7 +411,7 @@ Change boundary:
 Acceptance criteria:
 
 - UI shows connected/associated/discovered/subscribed state.
-- UI shows selected RCB and dataset.
+- UI shows selected RCB and dataset in the first summary band and in the structured discovery/subscription contract.
 - UI shows last report values and matched/unmatched dataRefs.
 - UI shows errors/timeouts/access-denied states.
 - Close IED clears in-memory model and subscription state visibly.

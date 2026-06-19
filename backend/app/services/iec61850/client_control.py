@@ -87,6 +87,14 @@ class Iec61850ClientControlSnapshot:
     ui_state: dict
 
 
+@dataclass(frozen=True, slots=True)
+class _ExternalProbeUiState:
+    phase: str
+    runtime_status: str
+    last_command: str
+    command_accepted: bool
+
+
 class Iec61850ClientControlService:
     def __init__(
         self,
@@ -826,19 +834,35 @@ def _build_ui_state(
     selected_rcb_ref = _candidate_rcb_reference(candidate)
     selected_dataset_ref = candidate.data_set_ref
     discovery_counts = _discovery_counts(last_discovery, candidate)
-    runtime_status = last_state.runtime_status.value if last_state is not None else "disconnected"
     rptena_enabled = bool(last_state.enabled) if last_state is not None else False
-    subscribed = rptena_enabled or runtime_status in {"enabled", "gi-pending", "reporting"}
     associated = session_open or live_wire_open
     last_event = transcript[-1] if transcript else None
+    external_probe = _external_probe_ui_state(endpoint=endpoint, last_event=last_event)
+    runtime_status = (
+        external_probe.runtime_status
+        if external_probe is not None
+        else last_state.runtime_status.value if last_state is not None else "disconnected"
+    )
+    subscribed = rptena_enabled or runtime_status in {"enabled", "gi-pending", "reporting"}
     active_diagnostic = last_diagnostic or live_wire_last_diagnostic
-    phase = _ui_phase(
-        session_open=session_open,
-        live_wire_open=live_wire_open,
-        discovered=last_discovery is not None,
-        subscribed=subscribed,
-        last_report=last_report,
-        diagnostic=active_diagnostic,
+    phase = (
+        external_probe.phase
+        if active_diagnostic is None and external_probe is not None
+        else _ui_phase(
+            session_open=session_open,
+            live_wire_open=live_wire_open,
+            discovered=last_discovery is not None,
+            subscribed=subscribed,
+            last_report=last_report,
+            diagnostic=active_diagnostic,
+        )
+    )
+    external_mms = endpoint.mode == Iec61850RuntimeMode.MMS
+    can_external_probe = external_mms and last_discovery is not None
+    can_external_gi = (
+        can_external_probe
+        and external_probe is not None
+        and external_probe.last_command in {"rptena", "gi"}
     )
     report_values = []
     if last_report is not None:
@@ -886,6 +910,9 @@ def _build_ui_state(
             "owner": last_state.owner if last_state is not None else None,
             "gi_in_progress": bool(last_state.gi_in_progress) if last_state is not None else False,
             "sequence_number": last_state.sequence_number if last_state is not None else None,
+            "last_command": external_probe.last_command if external_probe is not None else None,
+            "command_accepted": external_probe.command_accepted if external_probe is not None else False,
+            "external_probe": external_mms,
             "selected_rcb_ref": selected_rcb_ref,
             "selected_dataset_ref": selected_dataset_ref,
         },
@@ -916,13 +943,37 @@ def _build_ui_state(
         },
         "actions": {
             "can_connect": not session_open and not live_wire_open,
-            "can_discover": associated,
-            "can_rptena": associated and last_discovery is not None,
-            "can_gi": associated and subscribed,
+            "can_discover": associated or external_mms,
+            "can_rptena": (associated and last_discovery is not None) or can_external_probe,
+            "can_gi": (associated and subscribed) or can_external_gi,
             "can_disconnect": associated,
             "can_close_ied": session_open or live_wire_open or last_discovery is not None or last_report is not None,
         },
     }
+
+
+def _external_probe_ui_state(
+    *,
+    endpoint: Iec61850DeviceEndpoint,
+    last_event: Iec61850MmsClientEvent | None,
+) -> _ExternalProbeUiState | None:
+    if endpoint.mode != Iec61850RuntimeMode.MMS or last_event is None or last_event.outcome != "accepted":
+        return None
+    if last_event.kind == "external-report-control-precheck":
+        return _ExternalProbeUiState(
+            phase="rptena-accepted",
+            runtime_status="rptena-accepted",
+            last_command="rptena",
+            command_accepted=True,
+        )
+    if last_event.kind == "external-report-control-gi":
+        return _ExternalProbeUiState(
+            phase="gi-accepted",
+            runtime_status="gi-accepted",
+            last_command="gi",
+            command_accepted=True,
+        )
+    return None
 
 
 def _ui_phase(
