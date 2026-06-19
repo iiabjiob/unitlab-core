@@ -143,6 +143,7 @@ class Iec61850ClientControlService:
         self._external_mms_process: subprocess.Popen[str] | None = None
         self._external_mms_stdout_buffer = bytearray()
         self._pending_external_report_entries: list[dict[str, str]] = []
+        self._current_external_report_values: dict[str, Iec61850ReportEventValue] = {}
         self._lock = RLock()
 
     @property
@@ -171,6 +172,7 @@ class Iec61850ClientControlService:
                 last_discovery=self._last_discovery,
                 last_state=self._last_state,
                 last_report=self._last_report,
+                current_report_values=tuple(self._current_external_report_values.values()),
                 last_diagnostic=self._last_diagnostic,
                 live_wire_open=live_wire_open,
                 live_wire_control_open=live_wire_control_open,
@@ -323,6 +325,7 @@ class Iec61850ClientControlService:
             self._last_report = None
             self._last_plan = None
             self._last_diagnostic = None
+            self._current_external_report_values.clear()
             self._live_wire_last_frame = None
             self._live_wire_last_diagnostic = None
             self._runtime._append_event(
@@ -780,6 +783,8 @@ class Iec61850ClientControlService:
         sequence_number = _parse_int_or_none(fields.get("asyncReports") or fields.get("count"))
         reason = Iec61850ReportReason.GENERAL_INTERROGATION
         values = tuple(_external_report_values(self._candidate, self._pending_external_report_entries, now))
+        for value in values:
+            self._current_external_report_values[value.data_reference or value.reference] = value
         if not values and self._last_report is not None:
             values = self._last_report.values
         self._pending_external_report_entries.clear()
@@ -804,6 +809,7 @@ class Iec61850ClientControlService:
         self._external_mms_process = None
         self._external_mms_stdout_buffer.clear()
         self._pending_external_report_entries.clear()
+        self._current_external_report_values.clear()
         if process is None:
             return
         if process.poll() is None:
@@ -1092,6 +1098,7 @@ def _build_ui_state(
     last_discovery: dict | None,
     last_state: Iec61850ReportControlState | None,
     last_report: Iec61850ReportEvent | None,
+    current_report_values: tuple[Iec61850ReportEventValue, ...],
     last_diagnostic: Iec61850ClientControlDiagnostic | None,
     live_wire_open: bool,
     live_wire_control_open: bool,
@@ -1155,7 +1162,7 @@ def _build_ui_state(
                 "timestamp": value.timestamp,
                 "matched": matched,
             })
-    report_signal_states = _report_signal_states(candidate, last_report)
+    report_signal_states = _report_signal_states(candidate, last_report, current_report_values)
 
     return {
         "schema": "unitlab.iec61850.client.ui-state.v1",
@@ -1460,8 +1467,10 @@ def _signal_mms_prefix(ied_name: str, reference: str) -> str | None:
 def _report_signal_states(
     candidate: Iec61850ReportControlCandidate,
     report: Iec61850ReportEvent | None,
+    current_values: Sequence[Iec61850ReportEventValue] = (),
 ) -> list[dict]:
-    if report is None:
+    values = tuple(current_values) if current_values else report.values if report is not None else ()
+    if not values:
         return []
 
     states: list[dict] = []
@@ -1472,7 +1481,7 @@ def _report_signal_states(
 
         signal_values = [
             value
-            for value in report.values
+            for value in values
             if value.data_reference is not None
             and (value.data_reference == prefix or value.data_reference.startswith(prefix + "$"))
         ]

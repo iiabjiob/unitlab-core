@@ -651,17 +651,19 @@ def test_external_mms_target_routes_discover_rptena_gi_to_external_probes(monkey
 
     process_commands: list[tuple[str, ...]] = []
     stdin_commands: list[str] = []
+    processes: list[_ExternalMmsClientProcess] = []
 
     def fake_popen(command, **_kwargs):
         process_commands.append(tuple(command))
-        return _ExternalMmsClientProcess(command, stdin_commands)
+        process = _ExternalMmsClientProcess(command, stdin_commands)
+        processes.append(process)
+        return process
 
     monkeypatch.setattr(client_control_module.subprocess, "Popen", fake_popen)
 
     discover_snapshot = service.discover_ied()
     rptena_snapshot = service.enable_reporting()
     gi_snapshot = service.send_general_interrogation()
-    disconnect_snapshot = service.disconnect_ied()
 
     assert discover_snapshot.ui_state["session"]["phase"] == "discovered"
     assert discover_snapshot.ui_state["session"]["associated"] is True
@@ -686,6 +688,21 @@ def test_external_mms_target_routes_discover_rptena_gi_to_external_probes(monkey
     assert gi_snapshot.ui_state["report"]["values"][0]["reference"] == "CTRL/XCBR1.Pos[ST]"
     assert gi_snapshot.ui_state["report"]["values"][0]["data_reference"] == "KINTE13LVC01CTRL/XCBR1$ST$Pos$stVal"
     assert gi_snapshot.ui_state["report"]["values"][0]["value"] is True
+
+    processes[0].stdout.lines.extend([
+        "native-wire-client: report-entry index=0 reference=KINTE13LVC01CTRL/XCBR1$ST$Pos$stVal dataRef=KINTE13LVC01CTRL/XCBR1$ST$Pos$stVal value=false kind=bool reason=data-change datasetMatch=true discoveredMatch=true\n",
+        "native-wire-client: async-report\n",
+        "native-wire-client: subscription-summary phase=async-report rcb=KINTE13LVC01CTRL/LLN0.brcbA/buffered rcb-index=0 rptEna=true rptEna-invoke=4 giRequested=true gi-invoke=5 lastReportReceived=true asyncReports=2 lastReportValues=1 lastReportDataRefs=1 lastReportMatchedDataRefs=1 lastReportReasons=1 lastReportDatasetMismatches=0 lastReportMissingValues=0 lastReportExtraValues=0 lastReportMissingReasons=0 lastReportExtraReasons=0 lastReportUnsupportedValues=0\n",
+    ])
+    async_snapshot = service.snapshot()
+    assert async_snapshot.ui_state["report"]["value_count"] == 1
+    assert async_snapshot.ui_state["report"]["signal_state_count"] == 1
+    assert async_snapshot.ui_state["report"]["signal_states"][0]["value"] is False
+    assert async_snapshot.ui_state["report"]["signal_states"][0]["quality"] == 0
+    assert async_snapshot.ui_state["report"]["signal_states"][0]["source_timestamp"] == "<empty>"
+    assert async_snapshot.ui_state["report"]["signal_states"][0]["leaf_count"] == 3
+    assert async_snapshot.ui_state["report"]["signal_states"][0]["reason"] == "data-change"
+    disconnect_snapshot = service.disconnect_ied()
     assert gi_snapshot.ui_state["subscription"]["selected_rcb_ref"] == "KINTE13LVC01/AP1/CTRL/LLN0/brcbA/buffered"
     assert gi_snapshot.ui_state["actions"]["can_rptena"] is True
     assert gi_snapshot.ui_state["actions"]["can_gi"] is True
