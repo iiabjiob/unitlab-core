@@ -472,6 +472,10 @@ static void append_hex_summary(char* buffer, size_t buffer_size, const uint8_t* 
 
 static void copy_data_value_summary(const UnitLabMmsBerElement* value, char* buffer, size_t buffer_size)
 {
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsBerElement first_child;
+    size_t consumed = 0U;
+
     if (buffer == NULL || buffer_size == 0U) {
         return;
     }
@@ -479,6 +483,14 @@ static void copy_data_value_summary(const UnitLabMmsBerElement* value, char* buf
     if (value == NULL || value->value_bytes == NULL || value->value_length == 0U) {
         snprintf(buffer, buffer_size, "%s", "<empty>");
         return;
+    }
+    if (value->tag.constructed) {
+        unitlab_mms_diagnostic_clear(&diagnostic);
+        unitlab_mms_ber_element_init(&first_child);
+        if (unitlab_mms_ber_read(&first_child, value->value_bytes, value->value_length, &consumed, &diagnostic) && consumed != 0U) {
+            copy_data_value_summary(&first_child, buffer, buffer_size);
+            return;
+        }
     }
     if (value->tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && value->tag.tag_number == 3U && value->value_length == 1U) {
         snprintf(buffer, buffer_size, "%s", value->value_bytes[0] != 0U ? "true" : "false");
@@ -690,6 +702,10 @@ static void copy_report_quality_metadata(const UnitLabMmsBerElement* value, Unit
 
 static void copy_report_typed_value(const UnitLabMmsBerElement* value, UnitLabNativeLastReportEntry* entry)
 {
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsBerElement first_child;
+    size_t consumed = 0U;
+
     if (entry == NULL) {
         return;
     }
@@ -705,6 +721,14 @@ static void copy_report_typed_value(const UnitLabMmsBerElement* value, UnitLabNa
     entry->quality_validity[0] = '\0';
     if (value == NULL) {
         return;
+    }
+    if (value->tag.constructed && value->value_bytes != NULL && value->value_length != 0U) {
+        unitlab_mms_diagnostic_clear(&diagnostic);
+        unitlab_mms_ber_element_init(&first_child);
+        if (unitlab_mms_ber_read(&first_child, value->value_bytes, value->value_length, &consumed, &diagnostic) && consumed != 0U) {
+            copy_report_typed_value(&first_child, entry);
+            return;
+        }
     }
     entry->raw_tag_class = (uint8_t)value->tag.tag_class;
     entry->raw_tag_number = (uint8_t)value->tag.tag_number;
