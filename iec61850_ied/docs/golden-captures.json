@@ -88,6 +88,25 @@
         "--min-requests",
         "20"
       ]
+    },
+    {
+      "name": "native-wire-discover-rptena-gi-reports",
+      "covers": [
+        "native-wire",
+        "discovery",
+        "rptena",
+        "gi",
+        "information-report"
+      ],
+      "pcap": "artifacts/golden/native-wire/native-wire-discover-rptena-gi-reports.pcapng",
+      "sha256": "12814320b8723c25c55a0bcf2ba046a13909b829920cbea20e88707bc46a8f91",
+      "checker": "scripts/check-native-wire-pcap.py",
+      "args": [
+        "--port",
+        "12447",
+        "--min-reports",
+        "1"
+      ]
     }
   ],
   "deferred": [
@@ -95,11 +114,6 @@
       "name": "offline-libiec61850",
       "pcap": "artifacts/raw/legacy/002_offline_libiec61850.pcapng",
       "reason": "capture starts after connection establishment and is not an association/protocol behavior gate"
-    },
-    {
-      "name": "native-wire-discover-rptena-gi",
-      "pcap": "artifacts/raw/legacy/native-wire-discover-rptEna-GI-04.pcapng",
-      "reason": "existing native-wire checker expects brcbEvents while this capture uses a different report-control namespace"
     },
     {
       "name": "negative-association-replay",

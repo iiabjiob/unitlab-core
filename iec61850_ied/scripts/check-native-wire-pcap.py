@@ -79,20 +79,26 @@ def tcp_reset_count(pcap: Path) -> int:
     return len([line for line in result.stdout.splitlines() if line.strip()])
 
 
-def frame_verbose_text(pcap: Path, port: int, frame: str) -> str:
+def frame_tcp_payload_hex(pcap: Path, port: int, frame: str) -> str:
     result = run_tshark([
-        'tshark', '-r', str(pcap), '-d', f'tcp.port=={port},tpkt', '-Y', f'frame.number=={frame}', '-V'
+        'tshark', '-r', str(pcap), '-d', f'tcp.port=={port},tpkt', '-Y', f'frame.number=={frame}',
+        '-T', 'fields', '-e', 'tcp.payload'
     ])
     if result.returncode not in (0, 1):
-        raise RuntimeError(result.stderr.strip() or f'tshark verbose decode failed for frame {frame}')
-    return result.stdout
+        raise RuntimeError(result.stderr.strip() or f'tshark TCP payload extraction failed for frame {frame}')
+    return result.stdout.replace(':', '').replace('\n', '').lower()
+
+
+def pcap_contains_ascii(pcap: Path, token: str) -> bool:
+    return token.encode('ascii') in pcap.read_bytes()
 
 
 def find_request(rows: list[MmsRow], service: str, token: str, pcap: Path, port: int) -> str | None:
+    token_hex = token.encode('ascii').hex()
     for row in rows:
         if service not in row.requests or not row.invoke_ids:
             continue
-        if token in row.info or token in frame_verbose_text(pcap, port, row.frame):
+        if token in row.info or token_hex in frame_tcp_payload_hex(pcap, port, row.frame):
             return row.invoke_ids[0]
     return None
 
@@ -131,9 +137,6 @@ def main() -> int:
 
     required_reads = [
         'LLN0$BR$brcbEvents',
-        'XCBR1$ST',
-        'PGGIO1$ST',
-        'GGIO1$MX',
     ]
     for token in required_reads:
         invoke = find_request(rows, '4', token, args.pcap, args.port)
@@ -157,6 +160,16 @@ def main() -> int:
     report_count = sum(1 for row in rows if '0' in row.unconfirmed)
     if report_count < args.min_reports:
         failures.append(f'expected at least {args.min_reports} InformationReport frames, saw {report_count}')
+
+    required_report_tokens = [
+        'IED1LD0/LLN0.BR.Events',
+        'IED1LD0/LLN0$dsEvents',
+        'IED1LD0/XCBR1$ST$Pos$stVal',
+        'IED1LD0/PGGIO1$ST$Ind1$q',
+    ]
+    for token in required_report_tokens:
+        if not pcap_contains_ascii(args.pcap, token):
+            failures.append(f'missing report evidence token {token}')
 
     request_count = sum(len(row.requests) for row in rows)
     response_count = sum(len(row.responses) for row in rows)
