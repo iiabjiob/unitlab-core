@@ -459,6 +459,27 @@ static const char* report_value_kind_label(UnitLabNativeReportValueKind kind)
     }
 }
 
+static void emit_report_entry_contract(const UnitLabNativeClientSessionState* session)
+{
+    if (session == NULL) {
+        return;
+    }
+    for (size_t index = 0U; index < session->last_report_entry_count; index++) {
+        const UnitLabNativeLastReportEntry* entry = &session->last_report_entries[index];
+        printf(
+            "native-wire-client: report-entry index=%zu reference=%s dataRef=%s value=%s kind=%s reason=%s datasetMatch=%s discoveredMatch=%s\n",
+            entry->inclusion_index,
+            entry->display_reference[0] != '\0' ? entry->display_reference : entry->data_reference,
+            entry->data_reference[0] != '\0' ? entry->data_reference : "<none>",
+            entry->value_summary[0] != '\0' ? entry->value_summary : "<none>",
+            report_value_kind_label(entry->value_kind),
+            entry->reason_labels[0] != '\0' ? entry->reason_labels : "unknown",
+            entry->dataset_match ? "true" : "false",
+            entry->discovered_match ? "true" : "false");
+    }
+    fflush(stdout);
+}
+
 static int64_t decode_signed_bytes(const uint8_t* bytes, size_t length)
 {
     uint64_t unsigned_value = decode_unsigned_bytes(bytes, length);
@@ -1425,6 +1446,7 @@ static void emit_information_report_summary(UnitLabNativeClientSessionState* ses
     session->discovered_model.last_report_extra_reason_count = extra_reason_count;
     session->discovered_model.last_report_unsupported_value_count = unsupported_value_count;
     session->subscription_model.last_report_received = 1;
+    emit_report_entry_contract(session);
     printf("mms-summary: report.dataRef-count=%zu value-count=%zu reason-count=%zu mapped-entry-count=%zu dataset-mismatch-count=%zu missing-value-count=%zu extra-value-count=%zu missing-reason-count=%zu extra-reason-count=%zu unsupported-value-count=%zu\n", data_ref_count, value_count, reason_count, session->last_report_entry_count, dataset_mismatch_count, missing_value_count, extra_value_count, missing_reason_count, extra_reason_count, unsupported_value_count);
     emit_discovered_model_summary(session, "report");
     emit_subscription_summary(session, "report");

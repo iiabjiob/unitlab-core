@@ -94,12 +94,21 @@ class _ExternalMmsClientStdin:
             )
             self._stdout.lines.append("native-wire-client: state=ready\n")
         elif command == "gi":
-            self._stdout.lines.append("native-wire-client: async-report\n")
             self._stdout.lines.append(
-                "native-wire-client: subscription-summary phase=async-report rcb=KINTE13LVC01CTRL/LLN0.brcbA/buffered rcb-index=0 rptEna=true rptEna-invoke=4 giRequested=true gi-invoke=5 lastReportReceived=true asyncReports=1 lastReportValues=1 lastReportDataRefs=1 lastReportMatchedDataRefs=1 lastReportReasons=1 lastReportDatasetMismatches=0 lastReportMissingValues=0 lastReportExtraValues=0 lastReportMissingReasons=0 lastReportExtraReasons=0 lastReportUnsupportedValues=0\n"
+                "native-wire-client: report-entry index=0 reference=KINTE13LVC01CTRL/XCBR1$ST$Pos$stVal dataRef=KINTE13LVC01CTRL/XCBR1$ST$Pos$stVal value=true kind=bool reason=general-interrogation datasetMatch=true discoveredMatch=true\n"
             )
             self._stdout.lines.append(
-                "native-wire-client: subscription-summary phase=gi rcb=KINTE13LVC01CTRL/LLN0.brcbA/buffered rcb-index=0 rptEna=true rptEna-invoke=4 giRequested=true gi-invoke=5 lastReportReceived=true asyncReports=1 lastReportValues=1 lastReportDataRefs=1 lastReportMatchedDataRefs=1 lastReportReasons=1 lastReportDatasetMismatches=0 lastReportMissingValues=0 lastReportExtraValues=0 lastReportMissingReasons=0 lastReportExtraReasons=0 lastReportUnsupportedValues=0\n"
+                "native-wire-client: report-entry index=1 reference=KINTE13LVC01CTRL/XCBR1$ST$Pos$q dataRef=KINTE13LVC01CTRL/XCBR1$ST$Pos$q value=0 kind=quality reason=general-interrogation datasetMatch=true discoveredMatch=true\n"
+            )
+            self._stdout.lines.append(
+                "native-wire-client: report-entry index=2 reference=KINTE13LVC01CTRL/XCBR1$ST$Pos$t dataRef=KINTE13LVC01CTRL/XCBR1$ST$Pos$t value=<empty> kind=timestamp reason=general-interrogation datasetMatch=true discoveredMatch=true\n"
+            )
+            self._stdout.lines.append("native-wire-client: async-report\n")
+            self._stdout.lines.append(
+                "native-wire-client: subscription-summary phase=async-report rcb=KINTE13LVC01CTRL/LLN0.brcbA/buffered rcb-index=0 rptEna=true rptEna-invoke=4 giRequested=true gi-invoke=5 lastReportReceived=true asyncReports=1 lastReportValues=3 lastReportDataRefs=3 lastReportMatchedDataRefs=3 lastReportReasons=3 lastReportDatasetMismatches=0 lastReportMissingValues=0 lastReportExtraValues=0 lastReportMissingReasons=0 lastReportExtraReasons=0 lastReportUnsupportedValues=0\n"
+            )
+            self._stdout.lines.append(
+                "native-wire-client: subscription-summary phase=gi rcb=KINTE13LVC01CTRL/LLN0.brcbA/buffered rcb-index=0 rptEna=true rptEna-invoke=4 giRequested=true gi-invoke=5 lastReportReceived=true asyncReports=1 lastReportValues=3 lastReportDataRefs=3 lastReportMatchedDataRefs=3 lastReportReasons=3 lastReportDatasetMismatches=0 lastReportMissingValues=0 lastReportExtraValues=0 lastReportMissingReasons=0 lastReportExtraReasons=0 lastReportUnsupportedValues=0\n"
             )
             self._stdout.lines.append("native-wire-client: state=ready\n")
         elif command in {"disconnect", "exit"}:
@@ -617,7 +626,7 @@ def test_external_mms_target_routes_discover_rptena_gi_to_external_probes(monkey
     scl_path.write_text(
         """<SCL xmlns="http://www.iec.ch/61850/2003/SCL">
   <IED name="KINTE13LVC01"><AccessPoint name="AP1"><Server><LDevice inst="CTRL"><LN0 lnClass="LLN0" inst="" lnType="T_CTRL">
-    <DataSet name="RCB1"><FCDA ldInst="CTRL" lnClass="XCBR" lnInst="1" doName="Pos" daName="stVal" fc="ST" /></DataSet>
+    <DataSet name="RCB1"><FCDA ldInst="CTRL" lnClass="XCBR" lnInst="1" doName="Pos" fc="ST" /></DataSet>
     <ReportControl name="brcbA" datSet="RCB1" buffered="true" indexed="true" rptID="KINTE13LVC01CTRL/LLN0.brcbA" confRev="10000" />
   </LN0></LDevice></Server></AccessPoint></IED>
 </SCL>""",
@@ -662,6 +671,19 @@ def test_external_mms_target_routes_discover_rptena_gi_to_external_probes(monkey
     assert gi_snapshot.ui_state["report"]["received"] is True
     assert gi_snapshot.ui_state["report"]["rpt_id"] == "KINTE13LVC01CTRL/LLN0.brcbA"
     assert gi_snapshot.ui_state["report"]["reason"] == "general-interrogation"
+    assert gi_snapshot.ui_state["report"]["value_count"] == 3
+    assert gi_snapshot.ui_state["report"]["matched_value_count"] == 3
+    assert gi_snapshot.ui_state["report"]["unmatched_value_count"] == 0
+    assert gi_snapshot.ui_state["report"]["signal_state_count"] == 1
+    assert gi_snapshot.ui_state["report"]["signal_states"][0]["reference"] == "CTRL/XCBR1.Pos[ST]"
+    assert gi_snapshot.ui_state["report"]["signal_states"][0]["value"] is True
+    assert gi_snapshot.ui_state["report"]["signal_states"][0]["value_data_reference"] == "KINTE13LVC01CTRL/XCBR1$ST$Pos$stVal"
+    assert gi_snapshot.ui_state["report"]["signal_states"][0]["quality"] == 0
+    assert gi_snapshot.ui_state["report"]["signal_states"][0]["source_timestamp"] == "<empty>"
+    assert gi_snapshot.ui_state["report"]["signal_states"][0]["leaf_count"] == 3
+    assert gi_snapshot.ui_state["report"]["values"][0]["reference"] == "CTRL/XCBR1.Pos[ST]"
+    assert gi_snapshot.ui_state["report"]["values"][0]["data_reference"] == "KINTE13LVC01CTRL/XCBR1$ST$Pos$stVal"
+    assert gi_snapshot.ui_state["report"]["values"][0]["value"] is True
     assert gi_snapshot.ui_state["subscription"]["selected_rcb_ref"] == "KINTE13LVC01/AP1/CTRL/LLN0/brcbA/buffered"
     assert gi_snapshot.ui_state["actions"]["can_rptena"] is True
     assert gi_snapshot.ui_state["actions"]["can_gi"] is True

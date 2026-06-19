@@ -1,6 +1,6 @@
 # IEC 61850 Self-Owned MMS Client Plan
 
-Status: decision record and implementation roadmap. No self-owned MMS client is implemented yet.
+Status: decision record and implementation roadmap. A first single-device native MMS client path exists for association, discovery, RptEna, GI, and normalized report-value ingestion; it is still pre-production and not yet a multi-device client.
 
 This plan records the project decision that UnitLab will implement its own IEC 61850 MMS client and simulator flow. Open-source stacks remain useful as reference implementations and interoperability oracles, but UnitLab core, simulator, and report workflow must not become dependent on a single third-party MMS runtime.
 
@@ -237,6 +237,8 @@ Exit criteria:
 - Trigger GI.
 - Decode incoming MMS `InformationReport` into the existing `Iec61850ReportEvent` DTO shape.
 - Route normalized values through the existing signal observation mapper.
+- Native stdout contract for decoded report values: `native-wire-client: report-entry index=<n> reference=<mms-ref> dataRef=<mms-data-ref> value=<typed-summary> kind=<bool|int|uint|float|string|quality|timestamp|octets|unsupported> reason=<labels> datasetMatch=<true|false> discoveredMatch=<true|false>`.
+- Backend UI contract keeps raw report leaf values in `ui_state.report.values` and projects them into operator-facing `ui_state.report.signal_states` keyed by DataSet member reference. The first projection rules select `$stVal` or `$general` as the primary value, `$q` as quality, and `$t` as source timestamp.
 
 Exit criteria:
 
@@ -274,7 +276,7 @@ Exit criteria:
 
 ## Current Project Position
 
-- Implemented today: SCD report inventory, Signal List merge, subscription plan builder, simulator-only report runtime, normalized report event DTOs, observation mapping, backend simulator parity, incoming report routing, activation precheck gates, MMS endpoint catalog, external IED simulator fixture export, external IED simulator process scaffold, fixture parser/model materialization, report option records, external simulator model plan, fail-closed loader boundary, external simulator model-plan blueprint validation, backend external simulator process preparation, backend external simulator lifecycle guardrails, backend external simulator process-plan orchestration, backend external simulator endpoint resolution, backend external simulator run orchestration, native external simulator loader validation, DataSet member path blueprinting, initial-value type preservation, report-control runtime blueprinting, report-control bit-mask blueprinting, DataSetEntry variable blueprinting, and linked IED/LD/LN container creation.
-- Not implemented today: real MMS transport, self-owned MMS client, real IED connection, report persistence, GOOSE, Sampled Values, and IEC 62351 security.
+- Implemented today: SCD report inventory, Signal List merge, subscription plan builder, simulator-only report runtime, normalized report event DTOs, observation mapping, backend simulator parity, incoming report routing, activation precheck gates, MMS endpoint catalog, external IED simulator fixture export, external IED simulator process scaffold, fixture parser/model materialization, report option records, external simulator model plan, fail-closed loader boundary, external simulator model-plan blueprint validation, backend external simulator process preparation, backend external simulator lifecycle guardrails, backend external simulator process-plan orchestration, backend external simulator endpoint resolution, backend external simulator run orchestration, native external simulator loader validation, DataSet member path blueprinting, initial-value type preservation, report-control runtime blueprinting, report-control bit-mask blueprinting, DataSetEntry variable blueprinting, linked IED/LD/LN container creation, native MMS association/discovery/RptEna/GI path, decoded `InformationReport` entries, and backend mapping from native report entries into UI report values.
+- Not implemented today: production-ready multi-device MMS client, report persistence, GOOSE, Sampled Values, and IEC 62351 security.
 - Implemented boundary step: backend has an explicit MMS endpoint catalog, a fail-closed unavailable MMS adapter, a JSON fixture boundary for an external IED simulator, a C/CMake simulator process scaffold, materialized fixture records, report option records, an external simulator model plan, a fail-closed loader boundary, validated model-plan blueprint records for future libIEC61850 construction, native loader guardrail tests, explicit DataSet member kind/DO/DA path records, typed initial values, ReportControl runtime fields and libIEC61850-compatible bit masks, DataSetEntry variable names, linked dynamic `IedModel`/LD/LN container creation, and a backend process-boundary helper for fixture writing, command construction, endpoint shape, endpoint resolution, dry-run startup checks, process-plan orchestration, run orchestration through the report-runtime boundary, no-shell spawn, premature-exit diagnostics, and terminate/kill cleanup.
 - Next architecture step: define the shared UnitLab MMS core boundary, then implement the client and simulator on top of it and validate parity against libiec61850.

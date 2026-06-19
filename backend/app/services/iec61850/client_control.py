@@ -32,6 +32,7 @@ from .report_runtime import (
     Iec61850ReportControlReadResult,
     Iec61850ReportControlState,
     Iec61850ReportEvent,
+    Iec61850ReportEventValue,
     Iec61850ReportKind,
     Iec61850ReportReason,
     Iec61850ReportRuntimeError,
@@ -141,6 +142,7 @@ class Iec61850ClientControlService:
         self._live_wire_last_diagnostic: Iec61850ClientControlDiagnostic | None = None
         self._external_mms_process: subprocess.Popen[str] | None = None
         self._external_mms_stdout_buffer = bytearray()
+        self._pending_external_report_entries: list[dict[str, str]] = []
         self._lock = RLock()
 
     @property
@@ -742,6 +744,8 @@ class Iec61850ClientControlService:
             elif phase in {"async-report", "report"}:
                 self._last_report = self._external_report_event(fields)
                 self._last_state = self._external_state(Iec61850RuntimeStatus.REPORTING, enabled=True, gi_in_progress=False)
+        elif line.startswith("native-wire-client: report-entry "):
+            self._pending_external_report_entries.append(_parse_space_kv_line(line.removeprefix("native-wire-client: report-entry ")))
         elif line.startswith("native-wire-client: async-report"):
             self._last_report = self._external_report_event({})
             self._last_state = self._external_state(Iec61850RuntimeStatus.REPORTING, enabled=True, gi_in_progress=False)
@@ -776,6 +780,10 @@ class Iec61850ClientControlService:
         now = _utc_now().isoformat().replace("+00:00", "Z")
         sequence_number = _parse_int_or_none(fields.get("asyncReports") or fields.get("count"))
         reason = Iec61850ReportReason.GENERAL_INTERROGATION
+        values = tuple(_external_report_values(self._candidate, self._pending_external_report_entries, now))
+        if not values and self._last_report is not None:
+            values = self._last_report.values
+        self._pending_external_report_entries.clear()
         return Iec61850ReportEvent(
             id=f"{self._session_id}:external-report:{sequence_number or 0}",
             endpoint_id=self._endpoint.id,
@@ -789,13 +797,14 @@ class Iec61850ClientControlService:
             entry_id=f"{self._endpoint.id}:{report_control_key(to_report_control_ref(self._candidate))}:{sequence_number or 0}",
             buffer_overflow=False,
             reason=reason,
-            values=(),
+            values=values,
         )
 
     def _stop_external_mms_client_process(self) -> None:
         process = self._external_mms_process
         self._external_mms_process = None
         self._external_mms_stdout_buffer.clear()
+        self._pending_external_report_entries.clear()
         if process is None:
             return
         if process.poll() is None:
@@ -1131,7 +1140,13 @@ def _build_ui_state(
     )
     report_values = []
     if last_report is not None:
+        candidate_signal_refs = {signal.reference for signal in candidate.signals}
         for value in last_report.values:
+            matched = (
+                value.reference in candidate_signal_refs
+                or value.data_reference is None
+                or value.data_reference == value.reference
+            )
             report_values.append({
                 "index": value.data_set_index,
                 "reference": value.reference,
@@ -1139,8 +1154,9 @@ def _build_ui_state(
                 "value": value.value,
                 "reason": value.reason_code.value,
                 "timestamp": value.timestamp,
-                "matched": value.data_reference is None or value.data_reference == value.reference,
+                "matched": matched,
             })
+    report_signal_states = _report_signal_states(candidate, last_report)
 
     return {
         "schema": "unitlab.iec61850.client.ui-state.v1",
@@ -1192,6 +1208,8 @@ def _build_ui_state(
             "value_count": len(last_report.values) if last_report is not None else 0,
             "matched_value_count": sum(1 for value in report_values if value["matched"]),
             "unmatched_value_count": sum(1 for value in report_values if not value["matched"]),
+            "signal_state_count": len(report_signal_states),
+            "signal_states": report_signal_states,
             "values": report_values,
         },
         "wire": {
@@ -1350,6 +1368,157 @@ def _parse_int_or_none(value: str | None) -> int | None:
         return int(value)
     except ValueError:
         return None
+
+
+def _parse_external_report_value(value: str | None) -> bool | int | float | str | None:
+    if value is None or value == "<none>":
+        return None
+    normalized = value.strip()
+    if len(normalized) >= 2 and normalized[0] == '"' and normalized[-1] == '"':
+        normalized = normalized[1:-1]
+    if normalized == "true":
+        return True
+    if normalized == "false":
+        return False
+    try:
+        return int(normalized, 10)
+    except ValueError:
+        pass
+    try:
+        return float(normalized)
+    except ValueError:
+        return normalized
+
+
+def _external_report_reason(value: str | None) -> Iec61850ReportReason:
+    labels = set((value or "").split(","))
+    if "general-interrogation" in labels:
+        return Iec61850ReportReason.GENERAL_INTERROGATION
+    if "data-change" in labels:
+        return Iec61850ReportReason.DATA_CHANGE
+    if "quality-change" in labels:
+        return Iec61850ReportReason.QUALITY_CHANGE
+    if "data-update" in labels:
+        return Iec61850ReportReason.DATA_UPDATE
+    if "integrity" in labels:
+        return Iec61850ReportReason.INTEGRITY
+    return Iec61850ReportReason.GENERAL_INTERROGATION
+
+
+def _external_report_values(
+    candidate: Iec61850ReportControlCandidate,
+    entries: Sequence[dict[str, str]],
+    timestamp: str,
+) -> list[Iec61850ReportEventValue]:
+    values: list[Iec61850ReportEventValue] = []
+    for fallback_index, entry in enumerate(entries):
+        data_reference = _none_if_placeholder(entry.get("dataRef")) or _none_if_placeholder(entry.get("reference"))
+        matched_reference, matched_index = _match_external_report_reference(candidate, data_reference)
+        data_set_index = _parse_int_or_none(entry.get("index"))
+        if data_set_index is None:
+            data_set_index = matched_index if matched_index is not None else fallback_index
+        values.append(
+            Iec61850ReportEventValue(
+                data_set_index=data_set_index,
+                reference=matched_reference or data_reference or "<unknown>",
+                data_reference=data_reference,
+                value=_parse_external_report_value(entry.get("value")),
+                reason_code=_external_report_reason(entry.get("reason")),
+                timestamp=timestamp,
+            )
+        )
+    return values
+
+
+def _match_external_report_reference(candidate: Iec61850ReportControlCandidate, data_reference: str | None) -> tuple[str | None, int | None]:
+    if data_reference is None:
+        return None, None
+    for index, signal in enumerate(candidate.signals):
+        prefix = _signal_mms_prefix(candidate.ied_name, signal.reference)
+        if prefix is not None and (data_reference == prefix or data_reference.startswith(prefix + "$")):
+            return signal.reference, index
+    return None, None
+
+
+def _signal_mms_prefix(ied_name: str, reference: str) -> str | None:
+    if "/" not in reference or "." not in reference or "[" not in reference or not reference.endswith("]"):
+        return None
+    logical_device, rest = reference.split("/", 1)
+    logical_node, object_and_fc = rest.split(".", 1)
+    object_path, fc = object_and_fc.rsplit("[", 1)
+    fc = fc[:-1]
+    object_mms = object_path.replace(".", "$")
+    return f"{ied_name}{logical_device}/{logical_node}${fc}${object_mms}"
+
+
+def _report_signal_states(
+    candidate: Iec61850ReportControlCandidate,
+    report: Iec61850ReportEvent | None,
+) -> list[dict]:
+    if report is None:
+        return []
+
+    states: list[dict] = []
+    for signal_index, signal in enumerate(candidate.signals):
+        prefix = _signal_mms_prefix(candidate.ied_name, signal.reference)
+        if prefix is None:
+            continue
+
+        signal_values = [
+            value
+            for value in report.values
+            if value.data_reference is not None
+            and (value.data_reference == prefix or value.data_reference.startswith(prefix + "$"))
+        ]
+        if not signal_values:
+            continue
+
+        primary = _select_signal_primary_value(prefix, signal_values)
+        quality = _select_signal_leaf_value(prefix, signal_values, "$q")
+        source_timestamp = _select_signal_leaf_value(prefix, signal_values, "$t")
+        states.append({
+            "index": signal_index,
+            "reference": signal.reference,
+            "fc": signal.fc,
+            "value": primary.value if primary is not None else None,
+            "value_data_reference": primary.data_reference if primary is not None else None,
+            "quality": quality.value if quality is not None else None,
+            "quality_data_reference": quality.data_reference if quality is not None else None,
+            "source_timestamp": source_timestamp.value if source_timestamp is not None else None,
+            "source_timestamp_data_reference": source_timestamp.data_reference if source_timestamp is not None else None,
+            "timestamp": primary.timestamp if primary is not None else signal_values[-1].timestamp,
+            "reason": primary.reason_code.value if primary is not None else signal_values[-1].reason_code.value,
+            "leaf_count": len(signal_values),
+        })
+    return states
+
+
+def _select_signal_primary_value(
+    prefix: str,
+    values: Sequence[Iec61850ReportEventValue],
+) -> Iec61850ReportEventValue | None:
+    for suffix in ("$stVal", "$general", ""):
+        selected = _select_signal_leaf_value(prefix, values, suffix)
+        if selected is not None:
+            return selected
+    for value in values:
+        if value.data_reference is None:
+            continue
+        if not value.data_reference.endswith("$q") and not value.data_reference.endswith("$t"):
+            return value
+    return values[0] if values else None
+
+
+def _select_signal_leaf_value(
+    prefix: str,
+    values: Sequence[Iec61850ReportEventValue],
+    suffix: str,
+) -> Iec61850ReportEventValue | None:
+    expected = f"{prefix}{suffix}"
+    for value in values:
+        if value.data_reference == expected:
+            return value
+    return None
 
 
 def _read_process_stdout_line(process, *, timeout_deadline: float, line_buffer: bytearray) -> str | None:
