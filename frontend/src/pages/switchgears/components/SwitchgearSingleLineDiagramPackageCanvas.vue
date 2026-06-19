@@ -5,6 +5,7 @@ import { getSvgEntityProps, useDiagramEngine, useDiagramPointerController, useDi
 import type { DiagramEdge } from "@affino/diagram-core"
 
 import UiButton from "@/components/ui/UiButton.vue"
+import SwitchgearControlToolbar from "./SwitchgearControlToolbar.vue"
 import { useToastStore } from "@/stores/toastStore"
 import { writeLocalSetting } from "@/services/localSettingsStorage"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
@@ -181,6 +182,17 @@ const selectedStaticCount = computed(() => selectedShapeIds.value.length)
 const selectedEdgeCount = computed(() => selectedEdgeIds.value.length)
 const selectedNodeCount = computed(() => selectedNodeIds.value.length)
 const selectedTextCount = computed(() => selectedTextIds.value.length)
+const singleSelectedSwitchgear = computed(() => {
+  if (selectedNodeIds.value.length !== 1 || selectedEdgeIds.value.length > 0 || selectedShapeIds.value.length > 0 || selectedTextIds.value.length > 0) {
+    return null
+  }
+  const nodeId = selectedNodeIds.value[0]
+  if (!nodeId) {
+    return null
+  }
+  const switchgearId = resolveSwitchgearId(nodeId)
+  return switchgearId == null ? null : switchgearStore.getById(switchgearId)
+})
 const selectedStaticSize = computed<DiagramStaticSize | "mixed" | null>(() => {
   if (selectedShapeIds.value.length === 0) {
     return null
@@ -1632,6 +1644,17 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
       @wheel.prevent="onWheel"
       @keydown="onStageKeydown"
     >
+      <div
+        v-if="singleSelectedSwitchgear"
+        class="switchgear-sld-package-canvas__selected-controls"
+        @pointerdown.stop
+      >
+        <SwitchgearControlToolbar
+          :switchgear="singleSelectedSwitchgear"
+          compact
+        />
+      </div>
+
       <svg
         class="switchgear-sld-package-canvas__svg"
         :viewBox="`${viewportBox.x} ${viewportBox.y} ${viewportBox.width} ${viewportBox.height}`"
@@ -2014,6 +2037,45 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-blue-500) 35%, transparent);
 }
 
+.switchgear-sld-package-canvas__selected-controls {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 12;
+  max-width: min(45rem, calc(100% - 1.5rem));
+  overflow-x: auto;
+  padding: 0.375rem;
+  border: 1px solid color-mix(in srgb, var(--color-neutral-300) 70%, transparent);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--color-white) 90%, transparent);
+  box-shadow: 0 14px 30px rgb(15 23 42 / 0.14);
+  backdrop-filter: blur(10px);
+}
+
+.switchgear-sld-package-canvas__selected-controls :deep(.switchgear-control-toolbar__row),
+.switchgear-sld-package-canvas__selected-controls :deep(.switchgear-control-toolbar__commands) {
+  flex-wrap: nowrap;
+}
+
+.switchgear-sld-package-canvas__selected-controls :deep(.switchgear-control-toolbar__compact-title),
+.switchgear-sld-package-canvas__selected-controls :deep(.switchgear-control-toolbar__warning),
+.switchgear-sld-package-canvas__selected-controls :deep(.switchgear-control-toolbar__state) {
+  white-space: nowrap;
+}
+
+.switchgear-sld-package-canvas__selected-controls :deep(.switchgear-control-toolbar__command-button--compact) {
+  min-width: 78px;
+}
+
+@media (max-width: 960px) {
+  .switchgear-sld-package-canvas__selected-controls {
+    top: 3.625rem;
+    right: 0.75rem;
+    left: 0.75rem;
+    max-width: none;
+  }
+}
+
 .switchgear-sld-package-canvas__svg {
   display: block;
   width: 100%;
@@ -2119,6 +2181,11 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
   border-color: var(--color-blue-500);
   background: color-mix(in srgb, var(--color-blue-900) 75%, transparent);
   color: var(--color-blue-100);
+}
+
+:global(.dark .switchgear-sld-package-canvas__selected-controls) {
+  border-color: color-mix(in srgb, var(--color-neutral-700) 88%, transparent);
+  background: color-mix(in srgb, var(--color-neutral-950) 82%, transparent);
 }
 
 :global(.dark .switchgear-sld-package-canvas__stage) {
