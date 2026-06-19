@@ -60,6 +60,8 @@ const scdImportError = ref<string | null>(null)
 const scdImportPreview = ref<ScdImportPreview | null>(null)
 const scdImportCreateCandidates = ref(false)
 const fitRequestKey = ref(0)
+const selectionRequestKey = ref(0)
+const requestedSelectionIds = ref<string[]>([])
 
 const workspaceId = computed(() => workspaceStore.activeWorkspaceId)
 const storageKey = computed(() => (
@@ -228,6 +230,8 @@ async function applyScdImportPreview() {
     writeLocalSetting(key, nextState, {
       legacyKeys: [`unitlab.switchgears.sld.${workspace}`],
     })
+    requestedSelectionIds.value = createdIds.map(item => `switchgear:${item.id}`)
+    selectionRequestKey.value += 1
     fitRequestKey.value += 1
     resetScdImportPreview()
     if ((preview.adapterResult.diagram.edges ?? preview.adapterResult.diagram.lines ?? []).length > 0 || createdIds.length > 0) {
@@ -341,6 +345,8 @@ function loadStoredState() {
       :storage-key="storageKey"
       :initial-stored-state="storedState"
       :fit-request-key="fitRequestKey"
+      :selection-request-key="selectionRequestKey"
+      :requested-selection-ids="requestedSelectionIds"
       @edit-switchgear-bindings="emit('editSwitchgearBindings', $event)"
     />
 

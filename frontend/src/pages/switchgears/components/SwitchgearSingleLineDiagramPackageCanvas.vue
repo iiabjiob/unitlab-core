@@ -101,6 +101,8 @@ const props = defineProps<{
   storageKey: string
   initialStoredState: StoredDiagramState | null
   fitRequestKey?: number
+  selectionRequestKey?: number
+  requestedSelectionIds?: string[]
 }>()
 
 const emit = defineEmits<{
@@ -402,6 +404,17 @@ watch(() => props.fitRequestKey, (next, previous) => {
     return
   }
   fitScene()
+})
+
+watch(() => props.selectionRequestKey, (next, previous) => {
+  if (next == null || next === previous) {
+    return
+  }
+  const nodeIds = (props.requestedSelectionIds ?? []).filter(id => diagram.scene.value.entities.nodesById.has(id))
+  if (nodeIds.length === 0) {
+    return
+  }
+  selection.setSelection(nodeIds, nodeIds[0] ?? null)
 })
 
 diagram.engine.subscribe((scene) => {
