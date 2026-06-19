@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue"
+import { computed, onMounted, onUnmounted, ref } from "vue"
 import { RouterLink } from "vue-router"
 
 import UiButton from "@/components/ui/UiButton.vue"
@@ -14,6 +14,8 @@ const targetHost = ref("host.docker.internal")
 const targetPort = ref(12447)
 const targetSclPath = ref("/workspace/.refs/sld-rev2.scd")
 const targetIedName = ref("KINTE13LVC01")
+let liveRefreshTimer: ReturnType<typeof window.setInterval> | null = null
+let liveRefreshInFlight = false
 
 const transcript = computed(() => state.value?.transcript ?? [])
 const uiState = computed(() => state.value?.ui_state ?? null)
@@ -81,20 +83,56 @@ const phaseClass = computed(() => {
   const phase = uiState.value?.session.phase ?? "idle"
   return `iec61850-client-page__phase--${phase}`
 })
+const shouldLiveRefresh = computed(() => {
+  const session = uiState.value?.session
+  if (!session?.associated) return false
+  return ["associated", "discovered", "subscribed", "reporting"].includes(session.phase)
+})
 
 onMounted(async () => {
   await refreshState()
+  startLiveRefresh()
 })
 
-async function refreshState() {
-  loading.value = true
-  errorMessage.value = null
+onUnmounted(() => {
+  stopLiveRefresh()
+})
+
+async function refreshState(options: { silent?: boolean } = {}) {
+  if (!options.silent) {
+    loading.value = true
+    errorMessage.value = null
+  }
   try {
     state.value = await Iec61850ClientAPI.state()
   } catch (error) {
-    errorMessage.value = normalizeHttpError(error).message
+    if (!options.silent) {
+      errorMessage.value = normalizeHttpError(error).message
+    }
   } finally {
-    loading.value = false
+    if (!options.silent) {
+      loading.value = false
+    }
+  }
+}
+
+function startLiveRefresh() {
+  stopLiveRefresh()
+  liveRefreshTimer = window.setInterval(async () => {
+    if (!shouldLiveRefresh.value || busyAction.value !== null || liveRefreshInFlight) return
+    liveRefreshInFlight = true
+    try {
+      await refreshState({ silent: true })
+    } finally {
+      liveRefreshInFlight = false
+    }
+  }, 500)
+}
+
+function stopLiveRefresh() {
+  if (liveRefreshTimer !== null) {
+    window.clearInterval(liveRefreshTimer)
+    liveRefreshTimer = null
   }
 }
 

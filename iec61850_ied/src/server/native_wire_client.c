@@ -627,29 +627,29 @@ static void copy_report_reason_metadata(const UnitLabMmsBerElement* reason, Unit
     }
     entry->reason_code = decode_unsigned_bytes(reason->value_bytes, reason->value_length);
     reason_bits = reason->value_bytes[reason->value_length - 1U];
-    if ((reason_bits & 0x80U) != 0U) {
+    if ((reason_bits & 0x40U) != 0U) {
         entry->reason_flags |= UNITLAB_NATIVE_REPORT_REASON_DATA_CHANGE;
         append_reason_label(entry->reason_labels, sizeof(entry->reason_labels), "data-change");
     }
-    if ((reason_bits & 0x40U) != 0U) {
+    if ((reason_bits & 0x20U) != 0U) {
         entry->reason_flags |= UNITLAB_NATIVE_REPORT_REASON_QUALITY_CHANGE;
         append_reason_label(entry->reason_labels, sizeof(entry->reason_labels), "quality-change");
     }
-    if ((reason_bits & 0x20U) != 0U) {
+    if ((reason_bits & 0x10U) != 0U) {
         entry->reason_flags |= UNITLAB_NATIVE_REPORT_REASON_DATA_UPDATE;
         append_reason_label(entry->reason_labels, sizeof(entry->reason_labels), "data-update");
     }
-    if ((reason_bits & 0x10U) != 0U) {
+    if ((reason_bits & 0x08U) != 0U) {
         entry->reason_flags |= UNITLAB_NATIVE_REPORT_REASON_INTEGRITY;
         append_reason_label(entry->reason_labels, sizeof(entry->reason_labels), "integrity");
-    }
-    if ((reason_bits & 0x08U) != 0U) {
-        entry->reason_flags |= UNITLAB_NATIVE_REPORT_REASON_APPLICATION_TRIGGER;
-        append_reason_label(entry->reason_labels, sizeof(entry->reason_labels), "application-trigger");
     }
     if ((reason_bits & 0x04U) != 0U) {
         entry->reason_flags |= UNITLAB_NATIVE_REPORT_REASON_GENERAL_INTERROGATION;
         append_reason_label(entry->reason_labels, sizeof(entry->reason_labels), "general-interrogation");
+    }
+    if ((reason_bits & 0x02U) != 0U) {
+        entry->reason_flags |= UNITLAB_NATIVE_REPORT_REASON_APPLICATION_TRIGGER;
+        append_reason_label(entry->reason_labels, sizeof(entry->reason_labels), "application-trigger");
     }
 }
 

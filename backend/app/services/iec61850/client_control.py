@@ -64,6 +64,10 @@ class _ExternalDiscoveredReportControl:
     item: str
 
 
+_EXTERNAL_RCB_OPTFLDS_HEX = "067f80"
+_EXTERNAL_RCB_TRGOPS_HEX = "0274"
+
+
 @dataclass(frozen=True, slots=True)
 class Iec61850ClientTargetRequest:
     mode: str
@@ -577,6 +581,9 @@ class Iec61850ClientControlService:
 
     def _enable_external_mms_reporting(self) -> None:
         self._ensure_external_mms_client_started()
+        for command in self._external_rcb_configuration_commands():
+            self._write_external_mms_command(command)
+            self._drain_external_mms_process_stdout(timeout_seconds=3.0, stop_on="native-wire-client: state=ready")
         self._write_external_mms_command(self._external_rptena_command(True))
         self._drain_external_mms_process_stdout(timeout_seconds=3.0, stop_on="native-wire-client: state=ready")
         self._last_state = self._external_state(Iec61850RuntimeStatus.ENABLED, enabled=True)
@@ -650,6 +657,10 @@ class Iec61850ClientControlService:
         return _external_rcb_bool_command(self._candidate, "GI", True)
 
     def _selected_external_discovered_rcb_index(self) -> int | None:
+        discovered = self._selected_external_discovered_rcb()
+        return discovered.index if discovered is not None else None
+
+    def _selected_external_discovered_rcb(self) -> _ExternalDiscoveredReportControl | None:
         expected_domain = f"{self._candidate.ied_name}{self._candidate.logical_device_inst}"
         report_folder = "BR" if self._candidate.report_kind == Iec61850ReportKind.BUFFERED else "RP"
         expected_prefix = f"{self._candidate.logical_node_name}${report_folder}$"
@@ -659,11 +670,23 @@ class Iec61850ClientControlService:
                 continue
             discovered_name = discovered.item[len(expected_prefix):]
             if discovered_name == expected_name:
-                return discovered.index
+                return discovered
             suffix = discovered_name[len(expected_name):]
             if discovered_name.startswith(expected_name) and suffix.isdigit():
-                return discovered.index
+                return discovered
         return None
+
+    def _external_rcb_configuration_commands(self) -> tuple[str, str]:
+        discovered = self._selected_external_discovered_rcb()
+        if discovered is not None:
+            return (
+                f"write-hex {discovered.domain} {discovered.item}$OptFlds 4 {_EXTERNAL_RCB_OPTFLDS_HEX}",
+                f"write-hex {discovered.domain} {discovered.item}$TrgOps 4 {_EXTERNAL_RCB_TRGOPS_HEX}",
+            )
+        return (
+            _external_rcb_hex_command(self._candidate, "OptFlds", _EXTERNAL_RCB_OPTFLDS_HEX),
+            _external_rcb_hex_command(self._candidate, "TrgOps", _EXTERNAL_RCB_TRGOPS_HEX),
+        )
 
     def _ensure_external_mms_client_started(self) -> None:
         if self._external_mms_process is not None and self._external_mms_process.poll() is None:
@@ -1462,6 +1485,13 @@ def _external_rcb_bool_command(candidate: Iec61850ReportControlCandidate, field:
     domain = f"{candidate.ied_name}{candidate.logical_device_inst}"
     item = f"{candidate.logical_node_name}${rcb_kind}${candidate.report_control_name}${field}"
     return f"write-bool {domain} {item} {'true' if value else 'false'}"
+
+
+def _external_rcb_hex_command(candidate: Iec61850ReportControlCandidate, field: str, value_hex: str) -> str:
+    rcb_kind = "BR" if candidate.report_kind == Iec61850ReportKind.BUFFERED else "RP"
+    domain = f"{candidate.ied_name}{candidate.logical_device_inst}"
+    item = f"{candidate.logical_node_name}${rcb_kind}${candidate.report_control_name}${field}"
+    return f"write-hex {domain} {item} 4 {value_hex}"
 
 
 def _external_report_reason(value: str | None) -> Iec61850ReportReason:

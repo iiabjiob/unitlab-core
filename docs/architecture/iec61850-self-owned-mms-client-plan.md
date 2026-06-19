@@ -1,6 +1,6 @@
 # IEC 61850 Self-Owned MMS Client Plan
 
-Status: decision record and implementation roadmap. A first single-device native MMS client path exists for association, discovery, RptEna, GI, and normalized report-value ingestion; it is still pre-production and not yet a multi-device client. Live-discover flows use the MMS RCB instance names returned by discovery, including indexed report controls such as `brcbA01`, and confirmed Write responses with access-result failures are treated as command failures rather than optimistic success. Structured FCDA report values are currently projected to their primary value leaf for operator-facing signal state instead of surfacing raw BER hex blobs.
+Status: decision record and implementation roadmap. A first single-device native MMS client path exists for association, discovery, RptEna, GI, normalized report-value ingestion, and live debug-page refresh while associated; it is still pre-production and not yet a multi-device client. Live-discover flows use the MMS RCB instance names returned by discovery, including indexed report controls such as `brcbA01`, and confirmed Write responses with access-result failures are treated as command failures rather than optimistic success. Structured FCDA report values are currently projected to their primary value leaf for operator-facing signal state instead of surfacing raw BER hex blobs. The debug UI currently polls the backend state endpoint during active association so the backend can drain async native reports into the UI contract; a dedicated event stream remains a later production hardening slice.
 
 This plan records the project decision that UnitLab will implement its own IEC 61850 MMS client and simulator flow. Open-source stacks remain useful as reference implementations and interoperability oracles, but UnitLab core, simulator, and report workflow must not become dependent on a single third-party MMS runtime.
 
@@ -208,6 +208,8 @@ Exit criteria:
 
 - Client can read one known object from a simulator or lab IED.
 - Request invoke IDs, response correlation, errors, and timeouts are covered.
+- The backend subscription flow writes `OptFlds=06 7f 80` and `TrgOps=02 74` before `RptEna` so live MMS reports include data-change, quality-change, data-update, GI, sequence, timestamp, reason, dataset, data-reference, entry-id, config-revision, and buffer-overflow fields.
+- Report reason-code decoding uses the same IEC 61850 bit-string mask as `TrgOps`: `0x40=data-change`, `0x20=quality-change`, `0x10=data-update`, `0x08=integrity`, `0x04=GI`, `0x02=application-trigger`.
 
 ### Slice F - IEC 61850 ReportControl Access
 

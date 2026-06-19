@@ -89,6 +89,13 @@ class _ExternalMmsClientStdin:
                 "native-wire-client: subscription-summary phase=discover rcb=KINTE13LVC01CTRL/LLN0.brcbA/<none> rcb-index=0 rptEna=false rptEna-invoke=0 giRequested=false gi-invoke=0 lastReportReceived=false asyncReports=0 lastReportValues=0 lastReportDataRefs=0 lastReportMatchedDataRefs=0 lastReportReasons=0 lastReportDatasetMismatches=0 lastReportMissingValues=0 lastReportExtraValues=0 lastReportMissingReasons=0 lastReportExtraReasons=0 lastReportUnsupportedValues=0\n"
             )
             self._stdout.lines.append("native-wire-client: state=ready\n")
+        elif command in {
+            "write-hex KINTE13LVC01CTRL LLN0$BR$brcbA$OptFlds 4 067f80",
+            "write-hex KINTE13LVC01CTRL LLN0$BR$brcbA$TrgOps 4 0274",
+            "write-hex KINTE13LVC01CTRL LLN0$BR$brcbA01$OptFlds 4 067f80",
+            "write-hex KINTE13LVC01CTRL LLN0$BR$brcbA01$TrgOps 4 0274",
+        }:
+            self._stdout.lines.append("native-wire-client: state=ready\n")
         elif command in {"write-bool KINTE13LVC01CTRL LLN0$BR$brcbA$RptEna true", "rptena 0"}:
             self._stdout.lines.append(
                 "native-wire-client: subscription-summary phase=rptena rcb=KINTE13LVC01CTRL/LLN0.brcbA/buffered rcb-index=0 rptEna=true rptEna-invoke=4 giRequested=false gi-invoke=0 lastReportReceived=false asyncReports=0 lastReportValues=0 lastReportDataRefs=0 lastReportMatchedDataRefs=0 lastReportReasons=0 lastReportDatasetMismatches=0 lastReportMissingValues=0 lastReportExtraValues=0 lastReportMissingReasons=0 lastReportExtraReasons=0 lastReportUnsupportedValues=0\n"
@@ -197,6 +204,13 @@ class _FailingExternalMmsClientStdin:
             self._process.stdout.lines.append(
                 "native-wire-client: subscription-summary phase=discover rcb=KINTE13LVC01CTRL/LLN0.brcbA/<none> rcb-index=0 rptEna=false giRequested=false gi-invoke=0 lastReportReceived=false asyncReports=0 lastReportValues=0 lastReportDataRefs=0 lastReportMatchedDataRefs=0 lastReportReasons=0 lastReportDatasetMismatches=0 lastReportMissingValues=0 lastReportExtraValues=0 lastReportMissingReasons=0 lastReportExtraReasons=0 lastReportUnsupportedValues=0\n"
             )
+            self._process.stdout.lines.append("native-wire-client: state=ready\n")
+        elif command in {
+            "write-hex KINTE13LVC01CTRL LLN0$BR$brcbA$OptFlds 4 067f80",
+            "write-hex KINTE13LVC01CTRL LLN0$BR$brcbA$TrgOps 4 0274",
+            "write-hex KINTE13LVC01CTRL LLN0$BR$brcbA01$OptFlds 4 067f80",
+            "write-hex KINTE13LVC01CTRL LLN0$BR$brcbA01$TrgOps 4 0274",
+        }:
             self._process.stdout.lines.append("native-wire-client: state=ready\n")
         elif command in {"write-bool KINTE13LVC01CTRL LLN0$BR$brcbA$RptEna true", "rptena 0"}:
             self._process.stdout.lines.append(
@@ -704,6 +718,14 @@ def test_external_mms_target_routes_discover_rptena_gi_to_external_probes(monkey
     assert async_snapshot.ui_state["report"]["signal_states"][0]["source_timestamp"] == "<empty>"
     assert async_snapshot.ui_state["report"]["signal_states"][0]["leaf_count"] == 3
     assert async_snapshot.ui_state["report"]["signal_states"][0]["reason"] == "data-change"
+    processes[0].stdout.lines.extend([
+        "native-wire-client: report-entry index=0 reference=KINTE13LVC01CTRL/XCBR1$ST$Pos$stVal dataRef=KINTE13LVC01CTRL/XCBR1$ST$Pos$stVal value=true kind=bool reason=quality-change datasetMatch=true discoveredMatch=true\n",
+        "native-wire-client: async-report\n",
+        "native-wire-client: subscription-summary phase=async-report rcb=KINTE13LVC01CTRL/LLN0.brcbA/buffered rcb-index=0 rptEna=true rptEna-invoke=4 giRequested=true gi-invoke=5 lastReportReceived=true asyncReports=3 lastReportValues=1 lastReportDataRefs=1 lastReportMatchedDataRefs=1 lastReportReasons=1 lastReportDatasetMismatches=0 lastReportMissingValues=0 lastReportExtraValues=0 lastReportMissingReasons=0 lastReportExtraReasons=0 lastReportUnsupportedValues=0\n",
+    ])
+    quality_snapshot = service.snapshot()
+    assert quality_snapshot.ui_state["report"]["signal_states"][0]["value"] is True
+    assert quality_snapshot.ui_state["report"]["signal_states"][0]["reason"] == "quality-change"
     disconnect_snapshot = service.disconnect_ied()
     assert gi_snapshot.ui_state["subscription"]["selected_rcb_ref"] == "KINTE13LVC01/AP1/CTRL/LLN0/brcbA/buffered"
     assert gi_snapshot.ui_state["actions"]["can_rptena"] is True
@@ -722,8 +744,10 @@ def test_external_mms_target_routes_discover_rptena_gi_to_external_probes(monkey
         "12447",
         "--mms-client-start",
     )
-    assert stdin_commands[:4] == [
+    assert stdin_commands[:6] == [
         "discover KINTE13LVC01CTRL",
+        "write-hex KINTE13LVC01CTRL LLN0$BR$brcbA01$OptFlds 4 067f80",
+        "write-hex KINTE13LVC01CTRL LLN0$BR$brcbA01$TrgOps 4 0274",
         "rptena 0",
         "gi 0",
         "disconnect",
@@ -790,7 +814,9 @@ def test_external_mms_target_connects_and_reports_from_scd_without_discover(monk
     assert gi_snapshot.ui_state["report"]["signal_state_count"] == 1
     assert disconnect_snapshot.ui_state["session"]["associated"] is False
 
-    assert stdin_commands[:4] == [
+    assert stdin_commands[:6] == [
+        "write-hex KINTE13LVC01CTRL LLN0$BR$brcbA$OptFlds 4 067f80",
+        "write-hex KINTE13LVC01CTRL LLN0$BR$brcbA$TrgOps 4 0274",
         "write-bool KINTE13LVC01CTRL LLN0$BR$brcbA$RptEna true",
         "write-bool KINTE13LVC01CTRL LLN0$BR$brcbA$GI true",
         "write-bool KINTE13LVC01CTRL LLN0$BR$brcbA$RptEna false",
@@ -856,8 +882,10 @@ def test_external_mms_state_failed_aborts_general_interrogation(monkeypatch: pyt
     assert snapshot.last_state.runtime_status == Iec61850RuntimeStatus.FAILED
     assert snapshot.ui_state["subscription"]["runtime_status"] == "failed"
     assert snapshot.ui_state["session"]["phase"] == "failed"
-    assert process_commands[:3] == [
+    assert process_commands[:5] == [
         "discover KINTE13LVC01CTRL",
+        "write-hex KINTE13LVC01CTRL LLN0$BR$brcbA01$OptFlds 4 067f80",
+        "write-hex KINTE13LVC01CTRL LLN0$BR$brcbA01$TrgOps 4 0274",
         "rptena 0",
         "gi 0",
     ]

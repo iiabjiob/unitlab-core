@@ -756,10 +756,10 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
     const uint8_t bool_true[1U] = { 0x01U };
     const uint8_t bool_false[1U] = { 0x00U };
     const uint8_t reason_gi[2U] = { 0x02U, 0x04U };
-    const uint8_t reason_data_change[2U] = { 0x02U, 0x80U };
-    const uint8_t reason_quality_change[2U] = { 0x02U, 0x40U };
-    const uint8_t reason_data_update[2U] = { 0x02U, 0x20U };
-    const uint8_t reason_integrity[2U] = { 0x02U, 0x10U };
+    const uint8_t reason_data_change[2U] = { 0x02U, 0x40U };
+    const uint8_t reason_quality_change[2U] = { 0x02U, 0x20U };
+    const uint8_t reason_data_update[2U] = { 0x02U, 0x10U };
+    const uint8_t reason_integrity[2U] = { 0x02U, 0x08U };
     const uint8_t* reason_code = reason_gi;
     UnitLabMmsPdu report_pdu;
     const UnitLabIedModelReportControl* report = NULL;
@@ -1015,4 +1015,3 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
     server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     return 1;
 }
-
