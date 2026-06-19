@@ -88,12 +88,12 @@ class _ExternalMmsClientStdin:
                 "native-wire-client: subscription-summary phase=discover rcb=KINTE13LVC01CTRL/LLN0.brcbA/<none> rcb-index=0 rptEna=false rptEna-invoke=0 giRequested=false gi-invoke=0 lastReportReceived=false asyncReports=0 lastReportValues=0 lastReportDataRefs=0 lastReportMatchedDataRefs=0 lastReportReasons=0 lastReportDatasetMismatches=0 lastReportMissingValues=0 lastReportExtraValues=0 lastReportMissingReasons=0 lastReportExtraReasons=0 lastReportUnsupportedValues=0\n"
             )
             self._stdout.lines.append("native-wire-client: state=ready\n")
-        elif command.startswith("rptena"):
+        elif command == "write-bool KINTE13LVC01CTRL LLN0$BR$brcbA$RptEna true":
             self._stdout.lines.append(
                 "native-wire-client: subscription-summary phase=rptena rcb=KINTE13LVC01CTRL/LLN0.brcbA/buffered rcb-index=0 rptEna=true rptEna-invoke=4 giRequested=false gi-invoke=0 lastReportReceived=false asyncReports=0 lastReportValues=0 lastReportDataRefs=0 lastReportMatchedDataRefs=0 lastReportReasons=0 lastReportDatasetMismatches=0 lastReportMissingValues=0 lastReportExtraValues=0 lastReportMissingReasons=0 lastReportExtraReasons=0 lastReportUnsupportedValues=0\n"
             )
             self._stdout.lines.append("native-wire-client: state=ready\n")
-        elif command == "gi":
+        elif command == "write-bool KINTE13LVC01CTRL LLN0$BR$brcbA$GI true":
             self._stdout.lines.append(
                 "native-wire-client: report-entry index=0 reference=KINTE13LVC01CTRL/XCBR1$ST$Pos$stVal dataRef=KINTE13LVC01CTRL/XCBR1$ST$Pos$stVal value=true kind=bool reason=general-interrogation datasetMatch=true discoveredMatch=true\n"
             )
@@ -110,6 +110,8 @@ class _ExternalMmsClientStdin:
             self._stdout.lines.append(
                 "native-wire-client: subscription-summary phase=gi rcb=KINTE13LVC01CTRL/LLN0.brcbA/buffered rcb-index=0 rptEna=true rptEna-invoke=4 giRequested=true gi-invoke=5 lastReportReceived=true asyncReports=1 lastReportValues=3 lastReportDataRefs=3 lastReportMatchedDataRefs=3 lastReportReasons=3 lastReportDatasetMismatches=0 lastReportMissingValues=0 lastReportExtraValues=0 lastReportMissingReasons=0 lastReportExtraReasons=0 lastReportUnsupportedValues=0\n"
             )
+            self._stdout.lines.append("native-wire-client: state=ready\n")
+        elif command == "write-bool KINTE13LVC01CTRL LLN0$BR$brcbA$RptEna false":
             self._stdout.lines.append("native-wire-client: state=ready\n")
         elif command in {"disconnect", "exit"}:
             self._stdout.lines.append("native-wire-client: disconnected\n")
@@ -194,7 +196,7 @@ class _FailingExternalMmsClientStdin:
                 "native-wire-client: subscription-summary phase=discover rcb=KINTE13LVC01CTRL/LLN0.brcbA/<none> rcb-index=0 rptEna=false giRequested=false gi-invoke=0 lastReportReceived=false asyncReports=0 lastReportValues=0 lastReportDataRefs=0 lastReportMatchedDataRefs=0 lastReportReasons=0 lastReportDatasetMismatches=0 lastReportMissingValues=0 lastReportExtraValues=0 lastReportMissingReasons=0 lastReportExtraReasons=0 lastReportUnsupportedValues=0\n"
             )
             self._process.stdout.lines.append("native-wire-client: state=ready\n")
-        elif command.startswith("rptena"):
+        elif command == "write-bool KINTE13LVC01CTRL LLN0$BR$brcbA$RptEna true":
             self._process.stdout.lines.append(
                 "native-wire-client: subscription-summary phase=rptena rcb=KINTE13LVC01CTRL/LLN0.brcbA/buffered rcb-index=0 rptEna=true rptEna-invoke=4 giRequested=false gi-invoke=0 lastReportReceived=false asyncReports=0 lastReportValues=0 lastReportDataRefs=0 lastReportMatchedDataRefs=0 lastReportReasons=0 lastReportDatasetMismatches=0 lastReportMissingValues=0 lastReportExtraValues=0 lastReportMissingReasons=0 lastReportExtraReasons=0 lastReportUnsupportedValues=0\n"
             )
@@ -703,10 +705,11 @@ def test_external_mms_target_routes_discover_rptena_gi_to_external_probes(monkey
     )
     assert stdin_commands[:4] == [
         "discover KINTE13LVC01CTRL",
-        "rptena",
-        "gi",
-        "disconnect",
+        "write-bool KINTE13LVC01CTRL LLN0$BR$brcbA$RptEna true",
+        "write-bool KINTE13LVC01CTRL LLN0$BR$brcbA$GI true",
+        "write-bool KINTE13LVC01CTRL LLN0$BR$brcbA$RptEna false",
     ]
+    assert stdin_commands[4] == "disconnect"
     assert [event.kind for event in service.snapshot().transcript[-5:]] == [
         "external-session-open",
         "external-ied-discover",
@@ -714,6 +717,74 @@ def test_external_mms_target_routes_discover_rptena_gi_to_external_probes(monkey
         "external-report-control-gi",
         "external-ied-disconnect",
     ]
+
+
+def test_external_mms_target_connects_and_reports_from_scd_without_discover(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    scl_path = tmp_path / "target.scd"
+    scl_path.write_text(
+        """<SCL xmlns="http://www.iec.ch/61850/2003/SCL">
+  <IED name="KINTE13LVC01"><AccessPoint name="AP1"><Server><LDevice inst="CTRL"><LN0 lnClass="LLN0" inst="" lnType="T_CTRL">
+    <DataSet name="RCB1"><FCDA ldInst="CTRL" lnClass="XCBR" lnInst="1" doName="Pos" fc="ST" /></DataSet>
+    <ReportControl name="brcbA" datSet="RCB1" buffered="true" indexed="true" rptID="KINTE13LVC01CTRL/LLN0.brcbA" confRev="10000" />
+  </LN0></LDevice></Server></AccessPoint></IED>
+</SCL>""",
+        encoding="utf-8",
+    )
+    service = Iec61850ClientControlService(
+        live_wire_binary_path="/bin/true",
+        live_wire_service_host="host.docker.internal",
+        live_wire_data_port=12447,
+    )
+    service.configure_target(
+        client_control_module.Iec61850ClientTargetRequest(
+            mode="external-mms",
+            host="host.docker.internal",
+            port=12447,
+            ied_name="KINTE13LVC01",
+            scl_path=str(scl_path),
+        )
+    )
+
+    process_commands: list[tuple[str, ...]] = []
+    stdin_commands: list[str] = []
+
+    def fake_popen(command, **_kwargs):
+        process_commands.append(tuple(command))
+        return _ExternalMmsClientProcess(command, stdin_commands)
+
+    monkeypatch.setattr(client_control_module.subprocess, "Popen", fake_popen)
+
+    connect_snapshot = service.connect_ied()
+    rptena_snapshot = service.enable_reporting()
+    gi_snapshot = service.send_general_interrogation()
+    disconnect_snapshot = service.disconnect_ied()
+
+    assert connect_snapshot.session_open is True
+    assert connect_snapshot.last_discovery is None
+    assert connect_snapshot.ui_state["session"]["phase"] == "associated"
+    assert connect_snapshot.ui_state["discovery"]["discovered"] is False
+    assert connect_snapshot.ui_state["actions"]["can_rptena"] is True
+    assert rptena_snapshot.last_discovery is None
+    assert rptena_snapshot.ui_state["session"]["phase"] == "subscribed"
+    assert rptena_snapshot.ui_state["subscription"]["runtime_status"] == "enabled"
+    assert gi_snapshot.last_discovery is None
+    assert gi_snapshot.ui_state["session"]["phase"] == "reporting"
+    assert gi_snapshot.ui_state["report"]["signal_state_count"] == 1
+    assert disconnect_snapshot.ui_state["session"]["associated"] is False
+
+    assert stdin_commands[:4] == [
+        "write-bool KINTE13LVC01CTRL LLN0$BR$brcbA$RptEna true",
+        "write-bool KINTE13LVC01CTRL LLN0$BR$brcbA$GI true",
+        "write-bool KINTE13LVC01CTRL LLN0$BR$brcbA$RptEna false",
+        "disconnect",
+    ]
+    assert [event.kind for event in service.snapshot().transcript[-4:]] == [
+        "external-session-open",
+        "external-report-control-enable",
+        "external-report-control-gi",
+        "external-ied-disconnect",
+    ]
+    assert process_commands[0][-1] == "--mms-client-start"
 
 
 def test_external_mms_state_failed_aborts_general_interrogation(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
@@ -745,7 +816,10 @@ def test_external_mms_state_failed_aborts_general_interrogation(monkeypatch: pyt
     process_commands: list[str] = []
 
     def fake_popen(command, **_kwargs):
-        return _FailingExternalMmsClientProcess(process_commands, fail_on_command="gi")
+        return _FailingExternalMmsClientProcess(
+            process_commands,
+            fail_on_command="write-bool KINTE13LVC01CTRL LLN0$BR$brcbA$GI true",
+        )
 
     monkeypatch.setattr(client_control_module.subprocess, "Popen", fake_popen)
 
@@ -764,4 +838,8 @@ def test_external_mms_state_failed_aborts_general_interrogation(monkeypatch: pyt
     assert snapshot.last_state.runtime_status == Iec61850RuntimeStatus.FAILED
     assert snapshot.ui_state["subscription"]["runtime_status"] == "failed"
     assert snapshot.ui_state["session"]["phase"] == "failed"
-    assert process_commands[:3] == ["discover KINTE13LVC01CTRL", "rptena", "gi"]
+    assert process_commands[:3] == [
+        "discover KINTE13LVC01CTRL",
+        "write-bool KINTE13LVC01CTRL LLN0$BR$brcbA$RptEna true",
+        "write-bool KINTE13LVC01CTRL LLN0$BR$brcbA$GI true",
+    ]
