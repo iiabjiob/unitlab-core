@@ -737,8 +737,9 @@ class Iec61850ClientControlService:
             if phase == "rptena":
                 self._last_state = self._external_state(Iec61850RuntimeStatus.ENABLED, enabled=True)
             elif phase == "gi":
-                self._last_state = self._external_state(Iec61850RuntimeStatus.GI_PENDING, enabled=True, gi_in_progress=True)
-            elif phase == "async-report":
+                if self._last_report is None:
+                    self._last_state = self._external_state(Iec61850RuntimeStatus.GI_PENDING, enabled=True, gi_in_progress=True)
+            elif phase in {"async-report", "report"}:
                 self._last_report = self._external_report_event(fields)
                 self._last_state = self._external_state(Iec61850RuntimeStatus.REPORTING, enabled=True, gi_in_progress=False)
         elif line.startswith("native-wire-client: async-report"):
@@ -1375,11 +1376,12 @@ def _read_process_stdout_line(process, *, timeout_deadline: float, line_buffer: 
             return line.decode("utf-8", errors="replace")
 
         remaining = timeout_deadline - time.monotonic()
-        if remaining <= 0:
-            return None
+        select_timeout = min(remaining, 1.0) if remaining > 0 else 0.0
 
-        readable, _, _ = select.select([raw_fd], [], [], min(remaining, 1.0))
+        readable, _, _ = select.select([raw_fd], [], [], select_timeout)
         if not readable:
+            if remaining <= 0:
+                return None
             continue
 
         try:

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import io
+import os
 import subprocess
 
 import pytest
@@ -13,6 +15,28 @@ from app.services.iec61850.report_runtime import Iec61850ReportReason, Iec61850R
 
 READ_RESPONSE_FRAME = bytes.fromhex("0300001d02f080010001006110610e300c020103a407a105a0030201ff")
 REPORT_FRAME = bytes.fromhex("0300001402f0800100010040076305a003810100")
+
+
+def test_read_process_stdout_line_supports_zero_timeout_ready_fd() -> None:
+    read_fd, write_fd = os.pipe()
+    stdout = io.TextIOWrapper(os.fdopen(read_fd, "rb", buffering=0), encoding="utf-8")
+
+    class _Process:
+        pass
+
+    process = _Process()
+    process.stdout = stdout
+    try:
+        os.write(write_fd, b"native-wire-client: async-report\n")
+        line = client_control_module._read_process_stdout_line(
+            process,
+            timeout_deadline=client_control_module.time.monotonic(),
+            line_buffer=bytearray(),
+        )
+        assert line == "native-wire-client: async-report\n"
+    finally:
+        os.close(write_fd)
+        stdout.close()
 
 
 def _wire_frame_response_line(frame: bytes) -> bytes:
@@ -73,6 +97,9 @@ class _ExternalMmsClientStdin:
             self._stdout.lines.append("native-wire-client: async-report\n")
             self._stdout.lines.append(
                 "native-wire-client: subscription-summary phase=async-report rcb=KINTE13LVC01CTRL/LLN0.brcbA/buffered rcb-index=0 rptEna=true rptEna-invoke=4 giRequested=true gi-invoke=5 lastReportReceived=true asyncReports=1 lastReportValues=1 lastReportDataRefs=1 lastReportMatchedDataRefs=1 lastReportReasons=1 lastReportDatasetMismatches=0 lastReportMissingValues=0 lastReportExtraValues=0 lastReportMissingReasons=0 lastReportExtraReasons=0 lastReportUnsupportedValues=0\n"
+            )
+            self._stdout.lines.append(
+                "native-wire-client: subscription-summary phase=gi rcb=KINTE13LVC01CTRL/LLN0.brcbA/buffered rcb-index=0 rptEna=true rptEna-invoke=4 giRequested=true gi-invoke=5 lastReportReceived=true asyncReports=1 lastReportValues=1 lastReportDataRefs=1 lastReportMatchedDataRefs=1 lastReportReasons=1 lastReportDatasetMismatches=0 lastReportMissingValues=0 lastReportExtraValues=0 lastReportMissingReasons=0 lastReportExtraReasons=0 lastReportUnsupportedValues=0\n"
             )
             self._stdout.lines.append("native-wire-client: state=ready\n")
         elif command in {"disconnect", "exit"}:

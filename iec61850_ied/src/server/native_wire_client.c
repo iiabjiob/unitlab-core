@@ -2162,6 +2162,44 @@ static int emit_get_attributes_response(
     size_t text_buffer_length,
     UnitLabMmsDiagnostic* diagnostic);
 
+static int emit_immediate_post_write_frame_if_available(
+    UnitLabNativeClientSessionState* session,
+    int data_fd,
+    uint8_t* response,
+    size_t response_length,
+    size_t* encoded_response_length,
+    uint8_t* text_buffer,
+    size_t text_buffer_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    int had_report;
+    int extra_frame = read_tpkt_frame_if_available(data_fd, response, response_length, encoded_response_length, 100);
+    if (extra_frame < 0) {
+        if (diagnostic != NULL) {
+            diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR;
+            snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Native wire client could not receive an immediate post-write frame.");
+        }
+        return 0;
+    }
+    if (extra_frame == 0) {
+        return 1;
+    }
+    had_report = session != NULL && session->subscription_model.last_report_received;
+    if (encoded_response_length == NULL || !emit_wire_frame_response(session, response, *encoded_response_length, text_buffer, text_buffer_length)) {
+        if (diagnostic != NULL) {
+            diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL;
+            snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Native wire client could not format the immediate post-write frame.");
+        }
+        return 0;
+    }
+    if (session != NULL && !had_report && session->subscription_model.last_report_received) {
+        printf("native-wire-client: async-report\n");
+        session->subscription_model.async_report_count++;
+        emit_subscription_summary(session, "async-report");
+    }
+    return 1;
+}
+
 static size_t encode_uint32_be_minimal(uint32_t value, uint8_t* output, size_t output_size)
 {
     size_t length = 0U;
@@ -2648,24 +2686,16 @@ static int emit_write_bool_response(
         return 0;
     }
 
-    {
-        int extra_frame = read_tpkt_frame_if_available(data_fd, response, response_length, encoded_response_length, 100);
-        if (extra_frame < 0) {
-            if (diagnostic != NULL) {
-                diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR;
-                snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Native wire client could not receive an immediate post-write frame.");
-            }
-            return 0;
-        }
-        if (extra_frame > 0) {
-            if (encoded_response_length == NULL || !emit_wire_frame_response(session, response, *encoded_response_length, text_buffer, text_buffer_length)) {
-                if (diagnostic != NULL) {
-                    diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL;
-                    snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Native wire client could not format the immediate post-write frame.");
-                }
-                return 0;
-            }
-        }
+    if (!emit_immediate_post_write_frame_if_available(
+            session,
+            data_fd,
+            response,
+            response_length,
+            encoded_response_length,
+            text_buffer,
+            text_buffer_length,
+            diagnostic)) {
+        return 0;
     }
     return 1;
 }
@@ -2736,24 +2766,16 @@ static int emit_write_element_response(
         return 0;
     }
 
-    {
-        int extra_frame = read_tpkt_frame_if_available(data_fd, response, response_length, encoded_response_length, 100);
-        if (extra_frame < 0) {
-            if (diagnostic != NULL) {
-                diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR;
-                snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Native wire client could not receive an immediate post-write frame.");
-            }
-            return 0;
-        }
-        if (extra_frame > 0) {
-            if (encoded_response_length == NULL || !emit_wire_frame_response(session, response, *encoded_response_length, text_buffer, text_buffer_length)) {
-                if (diagnostic != NULL) {
-                    diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL;
-                    snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Native wire client could not format the immediate post-write frame.");
-                }
-                return 0;
-            }
-        }
+    if (!emit_immediate_post_write_frame_if_available(
+            session,
+            data_fd,
+            response,
+            response_length,
+            encoded_response_length,
+            text_buffer,
+            text_buffer_length,
+            diagnostic)) {
+        return 0;
     }
     return 1;
 }
@@ -3591,7 +3613,7 @@ int unitlab_run_native_wire_client_with_options(
             session.subscription_model.last_gi_invoke_id = invoke_id;
             snprintf(session.subscription_model.rcb_domain, sizeof(session.subscription_model.rcb_domain), "%s", selected_rcb->domain);
             snprintf(session.subscription_model.rcb_item, sizeof(session.subscription_model.rcb_item), "%s", selected_rcb->item);
-            emit_subscription_summary(&session, "gi");
+            emit_subscription_summary(&session, session.subscription_model.last_report_received ? "async-report" : "gi");
             state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_READY;
             if (!emit_state_response(state)) {
                 set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its ready state after GI.");
