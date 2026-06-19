@@ -302,6 +302,63 @@ def test_debug_connect_disconnect_are_idempotent_for_debug_view():
     assert disconnected_again.transcript[-1].outcome == "already-disconnected"
 
 
+def test_client_control_snapshot_exposes_operator_ui_state_contract() -> None:
+    service = Iec61850ClientControlService(now=lambda: datetime(2026, 5, 29, 12, 0, tzinfo=UTC))
+
+    initial = service.snapshot().ui_state
+    assert initial["schema"] == "unitlab.iec61850.client.ui-state.v1"
+    assert initial["session"]["phase"] == "idle"
+    assert initial["discovery"]["discovered"] is False
+    assert initial["subscription"]["subscribed"] is False
+    assert initial["report"]["received"] is False
+
+    discovered = service.discover_ied().ui_state
+    assert discovered["session"]["phase"] == "discovered"
+    assert discovered["session"]["associated"] is True
+    assert discovered["discovery"]["logical_devices"] == 1
+    assert discovered["discovery"]["logical_nodes"] == 1
+    assert discovered["discovery"]["data_sets"] == 1
+    assert discovered["discovery"]["data_set_members"] == 1
+    assert discovered["discovery"]["report_controls"] == 1
+    assert discovered["discovery"]["selected_rcb_ref"] == "IED1/AP1/LD0/LLN0/brcbEvents/buffered"
+    assert discovered["actions"]["can_rptena"] is True
+
+    subscribed = service.enable_reporting().ui_state
+    assert subscribed["session"]["phase"] == "subscribed"
+    assert subscribed["subscription"]["subscribed"] is True
+    assert subscribed["subscription"]["rptena_enabled"] is True
+    assert subscribed["subscription"]["owner"] == "unitlab-test-client"
+    assert subscribed["actions"]["can_gi"] is True
+
+    reporting = service.send_general_interrogation().ui_state
+    assert reporting["session"]["phase"] == "reporting"
+    assert reporting["report"]["received"] is True
+    assert reporting["report"]["reason"] == "general-interrogation"
+    assert reporting["report"]["value_count"] == 1
+    assert reporting["report"]["values"][0]["reference"] == "LD0/XCBR1.Pos.stVal[ST]"
+
+    closed = service.close_ied().ui_state
+    assert closed["session"]["phase"] == "idle"
+    assert closed["session"]["associated"] is False
+    assert closed["discovery"]["discovered"] is False
+    assert closed["subscription"]["subscribed"] is False
+    assert closed["report"]["received"] is False
+
+
+def test_client_control_ui_state_exposes_active_diagnostic() -> None:
+    service = Iec61850ClientControlService(now=lambda: datetime(2026, 5, 29, 12, 0, tzinfo=UTC))
+    service.open_session()
+
+    with pytest.raises(Iec61850ReportRuntimeError):
+        service.open_session()
+
+    ui_state = service.snapshot().ui_state
+    assert ui_state["session"]["phase"] == "failed"
+    assert ui_state["diagnostic"]["active"] is True
+    assert ui_state["diagnostic"]["action"] == "open-session"
+    assert ui_state["diagnostic"]["code"] == "SESSION_EXISTS"
+
+
 
 def test_client_control_configures_external_mms_target_from_scd(tmp_path) -> None:
     scl_path = tmp_path / "target.scd"

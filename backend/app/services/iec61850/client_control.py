@@ -84,6 +84,7 @@ class Iec61850ClientControlSnapshot:
     live_wire_last_frame_length: int | None
     live_wire_last_frame_hex: str | None
     live_wire_last_diagnostic: Iec61850ClientControlDiagnostic | None
+    ui_state: dict
 
 
 class Iec61850ClientControlService:
@@ -138,6 +139,28 @@ class Iec61850ClientControlService:
 
     def snapshot(self) -> Iec61850ClientControlSnapshot:
         with self._lock:
+            transcript = self._project_transcript(self._runtime.transcript())
+            live_wire_open = self._live_wire_process is not None
+            live_wire_control_open = self._live_wire_process is not None and self._live_wire_process.process.stdin is not None
+            live_wire_last_frame_length = len(self._live_wire_last_frame) if self._live_wire_last_frame is not None else None
+            live_wire_last_frame_hex = self._live_wire_last_frame.hex() if self._live_wire_last_frame is not None else None
+            ui_state = _build_ui_state(
+                session_id=self._session_id,
+                client_id=self._client_id,
+                session_open=self._session_open,
+                endpoint=self._endpoint,
+                candidate=self._candidate,
+                last_discovery=self._last_discovery,
+                last_state=self._last_state,
+                last_report=self._last_report,
+                last_diagnostic=self._last_diagnostic,
+                live_wire_open=live_wire_open,
+                live_wire_control_open=live_wire_control_open,
+                live_wire_endpoint=self._live_wire_endpoint,
+                live_wire_last_frame_length=live_wire_last_frame_length,
+                live_wire_last_diagnostic=self._live_wire_last_diagnostic,
+                transcript=transcript,
+            )
             return Iec61850ClientControlSnapshot(
                 session_id=self._session_id,
                 client_id=self._client_id,
@@ -149,14 +172,15 @@ class Iec61850ClientControlService:
                 last_state=self._last_state,
                 last_report=self._last_report,
                 last_plan=self._last_plan,
-                transcript=self._project_transcript(self._runtime.transcript()),
+                transcript=transcript,
                 last_diagnostic=self._last_diagnostic,
-                live_wire_open=self._live_wire_process is not None,
-                live_wire_control_open=(self._live_wire_process is not None and self._live_wire_process.process.stdin is not None),
+                live_wire_open=live_wire_open,
+                live_wire_control_open=live_wire_control_open,
                 live_wire_endpoint=self._live_wire_endpoint,
-                live_wire_last_frame_length=len(self._live_wire_last_frame) if self._live_wire_last_frame is not None else None,
-                live_wire_last_frame_hex=self._live_wire_last_frame.hex() if self._live_wire_last_frame is not None else None,
+                live_wire_last_frame_length=live_wire_last_frame_length,
+                live_wire_last_frame_hex=live_wire_last_frame_hex,
                 live_wire_last_diagnostic=self._live_wire_last_diagnostic,
+                ui_state=ui_state,
             )
 
     def configure_target(self, request: Iec61850ClientTargetRequest) -> Iec61850ClientControlSnapshot:
@@ -780,6 +804,194 @@ class Iec61850ClientControlService:
         self._last_plan = result.plan
         self._last_report = result.reports[0].event if result.reports else None
 
+
+def _build_ui_state(
+    *,
+    session_id: str,
+    client_id: str,
+    session_open: bool,
+    endpoint: Iec61850DeviceEndpoint,
+    candidate: Iec61850ReportControlCandidate,
+    last_discovery: dict | None,
+    last_state: Iec61850ReportControlState | None,
+    last_report: Iec61850ReportEvent | None,
+    last_diagnostic: Iec61850ClientControlDiagnostic | None,
+    live_wire_open: bool,
+    live_wire_control_open: bool,
+    live_wire_endpoint: Iec61850DeviceEndpoint | None,
+    live_wire_last_frame_length: int | None,
+    live_wire_last_diagnostic: Iec61850ClientControlDiagnostic | None,
+    transcript: tuple[Iec61850MmsClientEvent, ...],
+) -> dict:
+    selected_rcb_ref = _candidate_rcb_reference(candidate)
+    selected_dataset_ref = candidate.data_set_ref
+    discovery_counts = _discovery_counts(last_discovery, candidate)
+    runtime_status = last_state.runtime_status.value if last_state is not None else "disconnected"
+    rptena_enabled = bool(last_state.enabled) if last_state is not None else False
+    subscribed = rptena_enabled or runtime_status in {"enabled", "gi-pending", "reporting"}
+    associated = session_open or live_wire_open
+    last_event = transcript[-1] if transcript else None
+    active_diagnostic = last_diagnostic or live_wire_last_diagnostic
+    phase = _ui_phase(
+        session_open=session_open,
+        live_wire_open=live_wire_open,
+        discovered=last_discovery is not None,
+        subscribed=subscribed,
+        last_report=last_report,
+        diagnostic=active_diagnostic,
+    )
+    report_values = []
+    if last_report is not None:
+        for value in last_report.values:
+            report_values.append({
+                "index": value.data_set_index,
+                "reference": value.reference,
+                "data_reference": value.data_reference,
+                "value": value.value,
+                "reason": value.reason_code.value,
+                "timestamp": value.timestamp,
+                "matched": value.data_reference is None or value.data_reference == value.reference,
+            })
+
+    return {
+        "schema": "unitlab.iec61850.client.ui-state.v1",
+        "session": {
+            "id": session_id,
+            "client_id": client_id,
+            "phase": phase,
+            "connected": session_open,
+            "associated": associated,
+            "mode": endpoint.mode.value,
+            "endpoint_id": endpoint.id,
+            "endpoint_label": _endpoint_label(endpoint),
+            "last_event_kind": last_event.kind if last_event is not None else None,
+            "last_event_outcome": last_event.outcome if last_event is not None else None,
+        },
+        "discovery": {
+            "discovered": last_discovery is not None,
+            "logical_devices": discovery_counts["logical_devices"],
+            "logical_nodes": discovery_counts["logical_nodes"],
+            "data_sets": discovery_counts["data_sets"],
+            "data_set_members": discovery_counts["data_set_members"],
+            "report_controls": discovery_counts["report_controls"],
+            "signals": discovery_counts["signals"],
+            "selected_dataset_ref": selected_dataset_ref,
+            "selected_rcb_ref": selected_rcb_ref,
+        },
+        "subscription": {
+            "subscribed": subscribed,
+            "runtime_status": runtime_status,
+            "rptena_enabled": rptena_enabled,
+            "reserved_by": last_state.reserved_by if last_state is not None else None,
+            "owner": last_state.owner if last_state is not None else None,
+            "gi_in_progress": bool(last_state.gi_in_progress) if last_state is not None else False,
+            "sequence_number": last_state.sequence_number if last_state is not None else None,
+            "selected_rcb_ref": selected_rcb_ref,
+            "selected_dataset_ref": selected_dataset_ref,
+        },
+        "report": {
+            "received": last_report is not None,
+            "rpt_id": last_report.rpt_id if last_report is not None else None,
+            "data_set_ref": last_report.data_set_ref if last_report is not None else None,
+            "conf_rev": last_report.conf_rev if last_report is not None else None,
+            "sequence_number": last_report.sequence_number if last_report is not None else None,
+            "reason": last_report.reason.value if last_report is not None else None,
+            "value_count": len(last_report.values) if last_report is not None else 0,
+            "matched_value_count": sum(1 for value in report_values if value["matched"]),
+            "unmatched_value_count": sum(1 for value in report_values if not value["matched"]),
+            "values": report_values,
+        },
+        "wire": {
+            "open": live_wire_open,
+            "control_open": live_wire_control_open,
+            "endpoint_id": live_wire_endpoint.id if live_wire_endpoint is not None else None,
+            "endpoint_label": _endpoint_label(live_wire_endpoint) if live_wire_endpoint is not None else None,
+            "last_frame_length": live_wire_last_frame_length,
+        },
+        "diagnostic": {
+            "active": active_diagnostic is not None,
+            "action": active_diagnostic.action if active_diagnostic is not None else None,
+            "code": active_diagnostic.code if active_diagnostic is not None else None,
+            "message": active_diagnostic.message if active_diagnostic is not None else None,
+        },
+        "actions": {
+            "can_connect": not session_open and not live_wire_open,
+            "can_discover": associated,
+            "can_rptena": associated and last_discovery is not None,
+            "can_gi": associated and subscribed,
+            "can_disconnect": associated,
+            "can_close_ied": session_open or live_wire_open or last_discovery is not None or last_report is not None,
+        },
+    }
+
+
+def _ui_phase(
+    *,
+    session_open: bool,
+    live_wire_open: bool,
+    discovered: bool,
+    subscribed: bool,
+    last_report: Iec61850ReportEvent | None,
+    diagnostic: Iec61850ClientControlDiagnostic | None,
+) -> str:
+    if diagnostic is not None:
+        return "failed"
+    if last_report is not None:
+        return "reporting"
+    if subscribed:
+        return "subscribed"
+    if discovered:
+        return "discovered"
+    if session_open or live_wire_open:
+        return "associated"
+    return "idle"
+
+
+def _discovery_counts(discovery: dict | None, candidate: Iec61850ReportControlCandidate) -> dict[str, int]:
+    if discovery is None:
+        return {
+            "logical_devices": 0,
+            "logical_nodes": 0,
+            "data_sets": 0,
+            "data_set_members": 0,
+            "report_controls": 0,
+            "signals": 0,
+        }
+    data_sets = discovery.get("dataSets") if isinstance(discovery, dict) else None
+    return {
+        "logical_devices": _list_count(discovery.get("logicalDevices")),
+        "logical_nodes": _list_count(discovery.get("logicalNodes")),
+        "data_sets": _list_count(data_sets),
+        "data_set_members": _data_set_member_count(data_sets),
+        "report_controls": _list_count(discovery.get("reportControls")),
+        "signals": _list_count(discovery.get("signals")) or candidate.signal_count,
+    }
+
+
+def _list_count(value) -> int:
+    return len(value) if isinstance(value, list) else 0
+
+
+def _data_set_member_count(value) -> int:
+    if not isinstance(value, list):
+        return 0
+    total = 0
+    for item in value:
+        if isinstance(item, dict) and isinstance(item.get("memberCount"), int):
+            total += item["memberCount"]
+        elif isinstance(item, dict) and isinstance(item.get("members"), list):
+            total += len(item["members"])
+    return total
+
+
+def _candidate_rcb_reference(candidate: Iec61850ReportControlCandidate) -> str:
+    return f"{candidate.ied_name}/{candidate.access_point_name}/{candidate.logical_device_inst}/{candidate.logical_node_name}/{candidate.report_control_name}/{candidate.report_kind.value}"
+
+
+def _endpoint_label(endpoint: Iec61850DeviceEndpoint) -> str:
+    if endpoint.host:
+        return f"{endpoint.ied_name}@{endpoint.host}:{endpoint.port}"
+    return f"{endpoint.ied_name}/{endpoint.access_point_name}"
 
 def get_iec61850_client_control_service() -> Iec61850ClientControlService:
     return _CLIENT_CONTROL_SERVICE

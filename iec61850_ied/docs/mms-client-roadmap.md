@@ -382,6 +382,17 @@ Validation:
 
 ## Slice 9: Debug UI State Contract
 
+Status: in progress.
+
+Closed in current slice:
+
+- Backend client snapshot now includes `ui_state` with schema `unitlab.iec61850.client.ui-state.v1`.
+- `ui_state` is derived from backend/client runtime state, not from frontend optimism or transcript parsing.
+- The contract exposes session phase, endpoint label, discovery counts, selected RCB/DataSet, subscription/RptEna owner state, last report summary and values, wire status, diagnostics, and safe action availability flags.
+- `close-ied` projects an idle UI state with discovered/subscribed/report state cleared.
+- Active runtime diagnostics project a `failed` phase and explicit diagnostic action/code/message.
+- Existing `/61850-debug/client` page renders the structured state contract first and keeps raw snapshot JSON only as drill-down diagnostics.
+
 Goal: make the UI useful for operator/developer verification without hiding protocol state.
 
 Change boundary:
@@ -404,9 +415,15 @@ Acceptance criteria:
 - UI shows errors/timeouts/access-denied states.
 - Close IED clears in-memory model and subscription state visibly.
 
+Remaining follow-up:
+
+- Add browser-level visual verification against the running backend and local native-wire server.
+- Decide whether `ui_state` should become a versioned public schema class instead of a dictionary projection before non-debug consumers depend on it.
+
 Validation:
 
-- Component/manual visual check for state transitions.
+- Backend client-control contract tests for idle, discovered, subscribed, reporting, closed, and failed states.
+- Frontend type-check for `/61850-debug/client`.
 - Runtime smoke with local server.
 - Manual Wireshark capture while using UI.
 
