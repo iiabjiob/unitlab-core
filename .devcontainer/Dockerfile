@@ -11,6 +11,8 @@ RUN apt-get update && apt-get install -y \
     tshark \
     iputils-ping \
     netcat-openbsd \
+    uidmap \ 
+    bubblewrap \
     && apt-get clean
 
 # Install Node.js 20 + pnpm

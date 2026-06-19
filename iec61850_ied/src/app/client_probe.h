@@ -22,4 +22,10 @@ int unitlab_probe_ied_server_gi(
     const char* report_key,
     UnitLabIedModelLoadResult* result);
 
+int unitlab_run_ied_server_mms_client(
+    const UnitLabIedFixtureModel* fixture,
+    const UnitLabIedModelPlan* plan,
+    const UnitLabIedServerConfig* config,
+    UnitLabIedModelLoadResult* result);
+
 #endif

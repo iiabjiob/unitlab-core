@@ -20,6 +20,45 @@ const uiState = computed(() => state.value?.ui_state ?? null)
 const lastDiagnostic = computed(() => uiState.value?.diagnostic.active ? uiState.value.diagnostic : state.value?.last_diagnostic ?? null)
 const sessionStatus = computed(() => uiState.value?.session.phase ?? "not-loaded")
 const discoveryStatus = computed(() => uiState.value?.discovery.discovered ? "Structure loaded" : "Not discovered")
+const availableReportControls = computed(() => {
+  const declared = uiState.value?.discovery.available_report_controls
+  if (declared && declared.length > 0) return declared
+
+  const legacyReportControls = Array.isArray(state.value?.last_discovery?.reportControls)
+    ? state.value.last_discovery.reportControls
+    : []
+  if (legacyReportControls.length > 0) {
+    return legacyReportControls.map((reportControl: any) => {
+      const reportControlId = typeof reportControl?.id === "string" ? reportControl.id : ""
+      const reportControlName = typeof reportControl?.name === "string" ? reportControl.name : "unknown"
+      const kind = typeof reportControl?.kind === "string" ? reportControl.kind : "buffered"
+      const rptId = typeof reportControl?.rptId === "string" ? reportControl.rptId : reportControl?.rptID
+      const dataSetRef = typeof reportControl?.dataSetRef === "string" ? reportControl.dataSetRef : null
+      const logicalPart = reportControlId.includes(":") ? reportControlId.split(":", 2)[1] : reportControlId
+      const [ldPath = "", reportName = reportControlName] = logicalPart.split(".")
+      return {
+        rcb_ref: `${state.value?.endpoint.ied_name ?? "unknown"}/${state.value?.candidate.access_point_name ?? "AP1"}/${ldPath}/${reportName}/${kind}`,
+        report_control_id: reportControlId,
+        report_control_name: reportName,
+        report_kind: kind,
+        rpt_id: rptId ?? null,
+        data_set_ref: dataSetRef,
+      }
+    })
+  }
+
+  if (!state.value?.candidate) return []
+  return [{
+    rcb_ref: state.value.candidate.report_control_name
+      ? `${state.value.endpoint.ied_name}/${state.value.candidate.access_point_name ?? "AP1"}/${state.value.candidate.logical_device_inst}/${state.value.candidate.logical_node_name}/${state.value.candidate.report_control_name}/${state.value.candidate.report_kind}`
+      : state.value.candidate.id,
+    report_control_id: state.value.candidate.id,
+    report_control_name: state.value.candidate.report_control_name,
+    report_kind: state.value.candidate.report_kind,
+    rpt_id: state.value.candidate.rpt_id,
+    data_set_ref: state.value.candidate.data_set_ref,
+  }]
+})
 const liveWireStatus = computed(() => uiState.value?.wire.open ? "Wire connected" : "Wire closed")
 const isExternalTarget = computed(() => state.value?.endpoint.mode === "mms")
 const externalActionDisabled = computed(() => busyAction.value !== null)
@@ -70,6 +109,11 @@ async function runAction(action: string, operation: () => Promise<Iec61850Client
   } finally {
     busyAction.value = null
   }
+}
+
+async function selectReportControl(reference: string) {
+  if (!reference) return
+  await runAction("select-report-control", () => Iec61850ClientAPI.selectReportControl({ selected_rcb_ref: reference }))
 }
 
 async function configureExternalTarget() {
@@ -232,6 +276,20 @@ function formatJson(value: unknown): string {
                 <div><dt>Reports</dt><dd>{{ uiState.discovery.report_controls }}</dd></div>
                 <div><dt>Signals</dt><dd>{{ uiState.discovery.signals }}</dd></div>
               </dl>
+              <div class="iec61850-client-page__field" v-if="availableReportControls.length > 0">
+                <label class="iec61850-client-page__field-label" for="report-control-selector">Available report controls</label>
+                <select
+                  id="report-control-selector"
+                  class="iec61850-client-page__target-input"
+                  :value="uiState.discovery.selected_rcb_ref"
+                  :disabled="busyAction !== null"
+                  @change="selectReportControl(($event.target as HTMLSelectElement).value)"
+                >
+                  <option v-for="item in availableReportControls" :key="item.rcb_ref" :value="item.rcb_ref">
+                    {{ item.report_control_name }} · {{ item.rcb_ref }}
+                  </option>
+                </select>
+              </div>
               <dl class="iec61850-client-page__state-list">
                 <div><dt>Selected RCB</dt><dd>{{ uiState.discovery.selected_rcb_ref }}</dd></div>
                 <div><dt>Selected DataSet</dt><dd>{{ uiState.discovery.selected_dataset_ref ?? 'none' }}</dd></div>
@@ -414,6 +472,19 @@ function formatJson(value: unknown): string {
 
 .iec61850-client-page__target-input--path {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+.iec61850-client-page__field {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.55rem;
+}
+
+.iec61850-client-page__field-label {
+  color: var(--color-neutral-600);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .iec61850-client-page__nav-link {

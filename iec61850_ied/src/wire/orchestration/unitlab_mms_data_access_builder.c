@@ -181,58 +181,29 @@ int unitlab_mms_build_read_request_frame(
         return 0;
     }
 
-    unitlab_mms_ber_element_init(&variable_access_element);
-    variable_access_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
-    variable_access_element.tag.constructed = 1;
-    variable_access_element.tag.tag_number = 1U;
-    variable_access_element.value_bytes = variable_access_bytes;
-    variable_access_element.value_length = variable_access_length;
-    if (!wire_builder_encode_ber_element(
-            variable_access_element.tag.tag_class,
-            variable_access_element.tag.constructed,
-            variable_access_element.tag.tag_number,
-            variable_access_element.value_bytes,
-            variable_access_element.value_length,
-            read_request_bytes,
-            sizeof(read_request_bytes),
-            &read_request_length,
-            diagnostic)) {
+    (void)variable_access_element;
+    (void)read_request_element;
+    if (variable_access_length > sizeof(read_request_bytes)) {
+        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Read request variable access specification is too large.");
         return 0;
     }
-
-    unitlab_mms_ber_element_init(&read_request_element);
-    read_request_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
-    read_request_element.tag.constructed = 1;
-    read_request_element.tag.tag_number = 16U;
-    read_request_element.value_bytes = read_request_bytes;
-    read_request_element.value_length = read_request_length;
-    if (!wire_builder_encode_ber_element(
-            read_request_element.tag.tag_class,
-            read_request_element.tag.constructed,
-            read_request_element.tag.tag_number,
-            read_request_element.value_bytes,
-            read_request_element.value_length,
-            service_bytes,
-            sizeof(service_bytes),
-            &service_length,
-            diagnostic)) {
-        return 0;
-    }
+    memcpy(read_request_bytes, variable_access_bytes, variable_access_length);
+    read_request_length = variable_access_length;
 
     unitlab_mms_ber_element_init(&service_element);
     service_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
     service_element.tag.constructed = 1;
     service_element.tag.tag_number = 4U;
-    service_element.value_bytes = service_bytes;
-    service_element.value_length = service_length;
+    service_element.value_bytes = read_request_bytes;
+    service_element.value_length = read_request_length;
     if (!wire_builder_encode_ber_element(
             service_element.tag.tag_class,
             service_element.tag.constructed,
             service_element.tag.tag_number,
             service_element.value_bytes,
             service_element.value_length,
-            read_request_bytes,
-            sizeof(read_request_bytes),
+            service_bytes,
+            sizeof(service_bytes),
             &service_length,
             diagnostic)) {
         return 0;
@@ -273,7 +244,7 @@ int unitlab_mms_build_read_request_frame(
         wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Read request payload is too large.");
         return 0;
     }
-    memcpy(request_payload + invoke_id_length, read_request_bytes, service_length);
+    memcpy(request_payload + invoke_id_length, service_bytes, service_length);
     request_length = invoke_id_length + service_length;
 
     unitlab_mms_pdu_init(&request_pdu);
@@ -506,38 +477,22 @@ int unitlab_mms_build_write_request_frame(
     write_request_length = variable_access_length + data_wrapper_length;
 
     unitlab_mms_ber_element_init(&write_request_element);
-    write_request_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
-    write_request_element.tag.constructed = 1;
-    write_request_element.tag.tag_number = 16U;
-    write_request_element.value_bytes = write_request_bytes;
-    write_request_element.value_length = write_request_length;
-    if (!wire_builder_encode_ber_element(
-            write_request_element.tag.tag_class,
-            write_request_element.tag.constructed,
-            write_request_element.tag.tag_number,
-            write_request_element.value_bytes,
-            write_request_element.value_length,
-            service_bytes,
-            sizeof(service_bytes),
-            &service_length,
-            diagnostic)) {
-        return 0;
-    }
+    (void)write_request_element;
 
     unitlab_mms_ber_element_init(&service_element);
     service_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
     service_element.tag.constructed = 1;
     service_element.tag.tag_number = 5U;
-    service_element.value_bytes = service_bytes;
-    service_element.value_length = service_length;
+    service_element.value_bytes = write_request_bytes;
+    service_element.value_length = write_request_length;
     if (!wire_builder_encode_ber_element(
             service_element.tag.tag_class,
             service_element.tag.constructed,
             service_element.tag.tag_number,
             service_element.value_bytes,
             service_element.value_length,
-            write_request_bytes,
-            sizeof(write_request_bytes),
+            service_bytes,
+            sizeof(service_bytes),
             &service_length,
             diagnostic)) {
         return 0;
@@ -578,7 +533,7 @@ int unitlab_mms_build_write_request_frame(
         wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Write request payload is too large.");
         return 0;
     }
-    memcpy(request_payload + invoke_id_length, write_request_bytes, service_length);
+    memcpy(request_payload + invoke_id_length, service_bytes, service_length);
     request_length = invoke_id_length + service_length;
 
     unitlab_mms_pdu_init(&request_pdu);
@@ -1072,22 +1027,7 @@ int unitlab_mms_build_get_name_list_request_frame_ex(
             diagnostic)) {
         return 0;
     }
-    if (node_id != NULL && node_id[0] != '\0') {
-        size_t node_id_length = 0U;
-        if (!wire_builder_encode_ber_element(
-                UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL,
-                0,
-                26U,
-                (const uint8_t*)node_id,
-                strlen(node_id),
-                &object_scope_bytes[object_scope_value_length],
-                sizeof(object_scope_bytes) - object_scope_value_length,
-                &node_id_length,
-                diagnostic)) {
-            return 0;
-        }
-        object_scope_value_length += node_id_length;
-    }
+    (void)node_id;
 
     unitlab_mms_ber_element_init(&object_scope_outer_element);
     object_scope_outer_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
@@ -1104,25 +1044,6 @@ int unitlab_mms_build_get_name_list_request_frame_ex(
             object_scope_value_bytes,
             sizeof(object_scope_value_bytes),
             &object_scope_length,
-            diagnostic)) {
-        return 0;
-    }
-
-    unitlab_mms_ber_element_init(&object_class_element);
-    object_class_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
-    object_class_element.tag.constructed = 0;
-    object_class_element.tag.tag_number = 2U;
-    object_class_element.value_bytes = object_class_value;
-    object_class_element.value_length = object_class_value_length;
-    if (!wire_builder_encode_ber_element(
-            object_class_element.tag.tag_class,
-            object_class_element.tag.constructed,
-            object_class_element.tag.tag_number,
-            object_class_element.value_bytes,
-            object_class_element.value_length,
-            object_class_bytes,
-            sizeof(object_class_bytes),
-            &object_class_length,
             diagnostic)) {
         return 0;
     }
@@ -1187,29 +1108,20 @@ int unitlab_mms_build_get_name_list_request_frame_ex(
     }
 
     unitlab_mms_ber_element_init(&sequence_element);
+    (void)sequence_element;
+    (void)sequence_encoded_bytes;
     sequence_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
     sequence_element.tag.constructed = 1;
     sequence_element.tag.tag_number = 16U;
     sequence_element.value_bytes = sequence_value_bytes;
     sequence_element.value_length = sequence_value_length;
-    if (!wire_builder_encode_ber_element(
-            sequence_element.tag.tag_class,
-            sequence_element.tag.constructed,
-            sequence_element.tag.tag_number,
-            sequence_element.value_bytes,
-            sequence_element.value_length,
-            sequence_encoded_bytes,
-            sizeof(sequence_encoded_bytes),
-            &sequence_length,
-            diagnostic)) {
-        return 0;
-    }
+    sequence_length = sequence_value_length;
 
     unitlab_mms_ber_element_init(&service_element);
     service_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
     service_element.tag.constructed = 1;
     service_element.tag.tag_number = 1U;
-    service_element.value_bytes = sequence_encoded_bytes;
+    service_element.value_bytes = sequence_value_bytes;
     service_element.value_length = sequence_length;
     if (!wire_builder_encode_ber_element(
             service_element.tag.tag_class,
@@ -1268,4 +1180,3 @@ int unitlab_mms_build_get_name_list_request_frame_ex(
     request_pdu.pdu_length = request_length;
     return unitlab_mms_build_wire_frame_from_pdu(&request_pdu, scratch, scratch_length, buffer, buffer_length, encoded_length, diagnostic);
 }
-

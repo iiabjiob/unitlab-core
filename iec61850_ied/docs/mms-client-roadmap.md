@@ -392,7 +392,10 @@ Closed in current slice:
 - `close-ied` projects an idle UI state with discovered/subscribed/report state cleared.
 - Active runtime diagnostics project a `failed` phase and explicit diagnostic action/code/message.
 - Existing `/61850-debug/client` page renders the structured state contract first and keeps raw snapshot JSON only as drill-down diagnostics.
-- External MMS `RptEna` precheck and `GI` probe acceptances project explicit `rptena-accepted`/`gi-accepted` phases, last-command fields, and selected RCB/DataSet summary values without claiming a persistent enabled subscription.
+- External MMS debug actions now use a persistent native wire client process (`--mms-client-start`) for `discover -> RptEna -> GI -> disconnect`,
+  keeping association state open and projecting enabled/reporting state into `ui_state`.
+  - Stateless probe projection remains only as a fallback for accepted probe events without a live runtime state; it is not part of the primary client
+  path.
 
 Goal: make the UI useful for operator/developer verification without hiding protocol state.
 
@@ -418,6 +421,7 @@ Acceptance criteria:
 
 Remaining follow-up:
 
+- Decode persistent external MMS report values into full per-member `ui_state.report.values`; current backend projection records report summary (`RptID`, `DatSet`, `ConfRev`, reason) first.
 - Add browser-level visual verification against the running backend and local native-wire server.
 - Decide whether `ui_state` should become a versioned public schema class instead of a dictionary projection before non-debug consumers depend on it.
 

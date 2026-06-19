@@ -51,6 +51,11 @@ class Iec61850ClientTargetRequestSchema(BaseModel):
     ied_name: str = "KINTE13LVC01"
     scl_path: str | None = "/workspace/.refs/sld-rev2.scd"
     access_point_name: str = "AP1"
+    selected_rcb_ref: str | None = None
+
+
+class Iec61850ClientReportControlSelectionRequestSchema(BaseModel):
+    selected_rcb_ref: str
 
 
 @router.get("/state")
@@ -78,8 +83,14 @@ async def configure_client_target(payload: Iec61850ClientTargetRequestSchema) ->
         ied_name=payload.ied_name,
         scl_path=payload.scl_path,
         access_point_name=payload.access_point_name,
+        selected_rcb_ref=payload.selected_rcb_ref,
     )
     return _run_action("configure-target", lambda: get_iec61850_client_control_service().configure_target(request))
+
+
+@router.post("/report-control/select")
+async def select_report_control(payload: Iec61850ClientReportControlSelectionRequestSchema) -> dict:
+    return _run_action("select-report-control", lambda: get_iec61850_client_control_service().select_report_control(payload.selected_rcb_ref))
 
 
 @router.post("/session/open")

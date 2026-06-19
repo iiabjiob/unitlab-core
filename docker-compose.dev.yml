@@ -6,6 +6,13 @@ services:
       tags:
         - unitlab-dev:latest
     container_name: unitlab-dev-container
+    user: root
+    privileged: true
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - seccomp=unconfined
+      - apparmor=unconfined
     volumes:
       - .:/workspace
     command: sleep infinity

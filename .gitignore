@@ -67,4 +67,14 @@ dist-release/
 .ISO9506
 iec61850_ied/build-dev
 iec61850_ied/build-libiec61850
-iec61850_ied/artifacts
+iec61850_ied/artifacts/*
+!iec61850_ied/artifacts/golden/
+iec61850_ied/artifacts/golden/*
+!iec61850_ied/artifacts/golden/association/
+!iec61850_ied/artifacts/golden/scd/
+!iec61850_ied/artifacts/golden/discovery/
+!iec61850_ied/artifacts/golden/native-wire/
+!iec61850_ied/artifacts/golden/association/*.pcapng
+!iec61850_ied/artifacts/golden/scd/*.pcapng
+!iec61850_ied/artifacts/golden/discovery/*.pcapng
+!iec61850_ied/artifacts/golden/native-wire/*.pcapng

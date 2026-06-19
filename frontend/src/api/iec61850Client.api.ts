@@ -172,6 +172,11 @@ export type Iec61850ClientTargetPayload = {
   ied_name?: string
   scl_path?: string | null
   access_point_name?: string
+  selected_rcb_ref?: string
+}
+
+export type Iec61850ClientReportControlSelectionPayload = {
+  selected_rcb_ref: string
 }
 
 export type Iec61850ClientUiState = {
@@ -195,6 +200,14 @@ export type Iec61850ClientUiState = {
     data_sets: number
     data_set_members: number
     report_controls: number
+    available_report_controls: Array<{
+      rcb_ref: string
+      report_control_id: string
+      report_control_name: string
+      report_kind: string
+      rpt_id: string | null
+      data_set_ref: string | null
+    }>
     signals: number
     selected_dataset_ref: string | null
     selected_rcb_ref: string
@@ -402,6 +415,10 @@ export const Iec61850ClientAPI = {
 
   configureTarget(payload: Iec61850ClientTargetPayload) {
     return httpData.post<Iec61850ClientState>(`${API_V1}/iec61850/client/target`, payload)
+  },
+
+  selectReportControl(payload: Iec61850ClientReportControlSelectionPayload) {
+    return httpData.post<Iec61850ClientState>(`${API_V1}/iec61850/client/report-control/select`, payload)
   },
 
   openSession() {

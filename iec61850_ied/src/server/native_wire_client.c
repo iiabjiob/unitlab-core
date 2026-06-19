@@ -1508,7 +1508,8 @@ static int format_hex_response(const uint8_t* frame, size_t frame_length, char* 
         return 0;
     }
     if (response_length < required_length) {
-        return 0;
+        snprintf(response, response_length, "wire-frame=<omitted length=%zu>", frame_length);
+        return 1;
     }
 
     memcpy(response, "wire-frame=", 11U);
@@ -2943,7 +2944,7 @@ int unitlab_run_native_wire_client_with_options(
         set_result(result, "NATIVE_WIRE_CLIENT_HOST_REQUIRED", "Native wire client requires a target host.");
         return 0;
     }
-    if (config->port <= 0 || config->port > 65535 || config->control_port <= 0 || config->control_port > 65535) {
+    if (config->port <= 0 || config->port > 65535 || config->control_port < 0 || config->control_port > 65535) {
         set_result(result, "NATIVE_WIRE_CLIENT_PORT_INVALID", "Native wire client target ports are invalid.");
         return 0;
     }
@@ -2978,16 +2979,18 @@ int unitlab_run_native_wire_client_with_options(
         set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its data-connected state.");
         goto fail;
     }
-    control_fd = connect_socket(config->bind_address, config->control_port);
-    if (control_fd < 0) {
-        state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
-        set_result(result, "NATIVE_WIRE_CLIENT_CONTROL_CONNECT_FAILED", "Native wire client could not connect to the control endpoint.");
-        goto fail;
-    }
-    state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_CONTROL_CONNECTED;
-    if (!emit_state_response(state)) {
-        set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its control-connected state.");
-        goto fail;
+    if (config->control_port > 0) {
+        control_fd = connect_socket(config->bind_address, config->control_port);
+        if (control_fd < 0) {
+            state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
+            set_result(result, "NATIVE_WIRE_CLIENT_CONTROL_CONNECT_FAILED", "Native wire client could not connect to the control endpoint.");
+            goto fail;
+        }
+        state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_CONTROL_CONNECTED;
+        if (!emit_state_response(state)) {
+            set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its control-connected state.");
+            goto fail;
+        }
     }
 
     if (!unitlab_mms_build_cotp_connect_request_frame(frame, sizeof(frame), &encoded_length, &diagnostic)) {
@@ -3888,6 +3891,10 @@ int unitlab_run_native_wire_client_with_options(
             continue;
         }
         if (strcmp(command, "emit-report") == 0) {
+            if (control_fd < 0) {
+                set_result(result, "NATIVE_WIRE_CLIENT_REPORT_UNAVAILABLE", "Native wire client emit-report requires a control endpoint.");
+                goto fail;
+            }
             state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_REPORT_REQUESTED;
             if (!emit_state_response(state)) {
                 set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its report-requested state.");

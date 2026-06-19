@@ -33,12 +33,14 @@ from .report_runtime import (
     Iec61850ReportControlState,
     Iec61850ReportEvent,
     Iec61850ReportKind,
+    Iec61850ReportReason,
     Iec61850ReportRuntimeError,
     Iec61850ReportSubscriptionPlan,
     Iec61850ReportSubscriptionPlanDevice,
     Iec61850ReportSubscriptionPlanReport,
     Iec61850ReportSubscriptionPlanSignal,
     Iec61850RuntimeMode,
+    Iec61850RuntimeStatus,
     Iec61850RuntimeTriggerOptions,
     Iec61850SelectedSignal,
     create_iec61850_simulator_adapter,
@@ -62,6 +64,7 @@ class Iec61850ClientTargetRequest:
     ied_name: str
     scl_path: str | None = None
     access_point_name: str = "AP1"
+    selected_rcb_ref: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,12 +132,15 @@ class Iec61850ClientControlService:
             self._live_wire_binary_path = getattr(settings, "iec61850_ied_live_wire_binary_path", None) or None
         self._live_wire_service_host = live_wire_service_host or getattr(settings, "iec61850_ied_live_wire_host", "iec61850-ied")
         self._live_wire_data_port = live_wire_data_port if live_wire_data_port is not None else int(getattr(settings, "iec61850_ied_live_wire_port", 12447))
+        self._available_candidates = (_default_candidate(),)
         self._live_wire_process: Iec61850IedSimulatorProcessHandle | None = None
         self._live_wire_fixture_dir: tempfile.TemporaryDirectory[str] | None = None
         self._live_wire_endpoint: Iec61850DeviceEndpoint | None = None
         self._transcript_wire_endpoint_id: str | None = None
         self._live_wire_last_frame: bytes | None = None
         self._live_wire_last_diagnostic: Iec61850ClientControlDiagnostic | None = None
+        self._external_mms_process: subprocess.Popen[str] | None = None
+        self._external_mms_stdout_buffer = bytearray()
         self._lock = RLock()
 
     @property
@@ -147,6 +153,7 @@ class Iec61850ClientControlService:
 
     def snapshot(self) -> Iec61850ClientControlSnapshot:
         with self._lock:
+            self._drain_external_mms_process_stdout(timeout_seconds=0.0)
             transcript = self._project_transcript(self._runtime.transcript())
             live_wire_open = self._live_wire_process is not None
             live_wire_control_open = self._live_wire_process is not None and self._live_wire_process.process.stdin is not None
@@ -158,6 +165,7 @@ class Iec61850ClientControlService:
                 session_open=self._session_open,
                 endpoint=self._endpoint,
                 candidate=self._candidate,
+                available_candidates=self._available_candidates,
                 last_discovery=self._last_discovery,
                 last_state=self._last_state,
                 last_report=self._last_report,
@@ -194,9 +202,10 @@ class Iec61850ClientControlService:
     def configure_target(self, request: Iec61850ClientTargetRequest) -> Iec61850ClientControlSnapshot:
         with self._lock:
             self._reset_runtime_state_for_target_change()
-            endpoint, candidate = _build_target_endpoint_and_candidate(request)
+            endpoint, candidate, available_candidates = _build_target_endpoint_and_candidate(request)
             self._endpoint = endpoint
             self._candidate = candidate
+            self._available_candidates = available_candidates
             self._target_scl_path = request.scl_path.strip() if request.scl_path is not None and request.scl_path.strip() else None
             if endpoint.mode == Iec61850RuntimeMode.MMS and endpoint.host is not None:
                 self._live_wire_service_host = endpoint.host
@@ -213,11 +222,43 @@ class Iec61850ClientControlService:
             )
             return self.snapshot()
 
+    def select_report_control(self, selected_rcb_ref: str) -> Iec61850ClientControlSnapshot:
+        with self._lock:
+            selected = _find_candidate_by_rcb_reference(
+                candidates=self._available_candidates,
+                selected_rcb_ref=selected_rcb_ref,
+            )
+            if selected is None:
+                raise Iec61850ReportRuntimeError(
+                    "CLIENT_REPORT_CONTROL_NOT_FOUND",
+                    f"Selected IEC 61850 report control was not found: {selected_rcb_ref}.",
+                )
+            if selected == self._candidate:
+                return self.snapshot()
+            self._candidate = selected
+            self._last_read = None
+            self._last_discovery = None
+            self._last_state = None
+            self._last_report = None
+            self._last_plan = None
+            self._last_diagnostic = None
+            self._runtime._append_event(
+                kind="report-control-select",
+                session_id=self._session_id,
+                endpoint_id=self._endpoint.id,
+                candidate_id=selected.id,
+                report_control_name=selected.report_control_name,
+                client_id=self._client_id,
+                outcome="selected",
+                message=f"Selected IEC 61850 report control {selected.report_control_name}.",
+            )
+            return self.snapshot()
+
     def open_session(self) -> Iec61850ClientControlSnapshot:
         with self._lock:
             return self._run(
                 "open-session",
-                lambda: self._runtime.open_session(session_id=self._session_id, endpoint=self._endpoint, candidates=[self._candidate]),
+                lambda: self._runtime.open_session(session_id=self._session_id, endpoint=self._endpoint, candidates=self._available_candidates),
                 post=lambda _result: setattr(self, "_session_open", True),
             )
 
@@ -229,6 +270,8 @@ class Iec61850ClientControlService:
 
     def connect_ied(self) -> Iec61850ClientControlSnapshot:
         with self._lock:
+            if self._endpoint.mode == Iec61850RuntimeMode.MMS:
+                return self._run("external-connect-ied", self._ensure_external_mms_client_started)
             if self._session_open:
                 self._runtime._append_event(
                     kind="ied-connect",
@@ -240,7 +283,7 @@ class Iec61850ClientControlService:
                 return self.snapshot()
             return self._run(
                 "connect-ied",
-                lambda: self._runtime.open_session(session_id=self._session_id, endpoint=self._endpoint, candidates=[self._candidate]),
+                lambda: self._runtime.open_session(session_id=self._session_id, endpoint=self._endpoint, candidates=self._available_candidates),
                 post=lambda _result: setattr(self, "_session_open", True),
             )
 
@@ -265,6 +308,8 @@ class Iec61850ClientControlService:
 
     def close_ied(self) -> Iec61850ClientControlSnapshot:
         with self._lock:
+            if self._external_mms_process is not None:
+                self._stop_external_mms_client_process()
             if self._live_wire_process is not None:
                 self._stop_live_wire_transport()
             if self._session_open:
@@ -383,7 +428,7 @@ class Iec61850ClientControlService:
 
     def _discover_ied(self) -> None:
         if not self._session_open:
-            self._runtime.open_session(session_id=self._session_id, endpoint=self._endpoint, candidates=[self._candidate])
+            self._runtime.open_session(session_id=self._session_id, endpoint=self._endpoint, candidates=self._available_candidates)
             self._session_open = True
         read_result = self._runtime.read_report_control(session_id=self._session_id, endpoint=self._endpoint, candidate=self._candidate)
         self._last_read = read_result
@@ -500,8 +545,10 @@ class Iec61850ClientControlService:
         )
 
     def _discover_external_mms_ied(self) -> None:
-        result = self._run_external_probe("metadata")
-        self._last_discovery = _build_wire_discovery_structure(self._endpoint, self._candidate, "metadata-probe")
+        self._ensure_external_mms_client_started()
+        self._write_external_mms_command(self._build_external_discover_command())
+        self._drain_external_mms_process_stdout(timeout_seconds=3.0, stop_on="native-wire-client: state=ready")
+        self._last_discovery = _build_wire_discovery_structure(self._endpoint, self._candidate, "persistent-discover")
         self._runtime._append_event(
             kind="external-ied-discover",
             session_id=self._session_id,
@@ -510,26 +557,35 @@ class Iec61850ClientControlService:
             report_control_name=self._candidate.report_control_name,
             client_id=self._client_id,
             outcome="accepted",
-            code=str(result.returncode),
-            message=_compact_probe_output(result),
+            message="Persistent external MMS client discovery completed.",
         )
 
     def _enable_external_mms_reporting(self) -> None:
-        result = self._run_external_probe("metadata")
+        self._ensure_external_mms_client_started()
+        if self._last_discovery is None:
+            self._write_external_mms_command(self._build_external_discover_command())
+            self._drain_external_mms_process_stdout(timeout_seconds=3.0, stop_on="native-wire-client: state=ready")
+            self._last_discovery = _build_wire_discovery_structure(self._endpoint, self._candidate, "persistent-discover")
+        self._write_external_mms_command("rptena")
+        self._drain_external_mms_process_stdout(timeout_seconds=3.0, stop_on="native-wire-client: state=ready")
+        self._last_state = self._external_state(Iec61850RuntimeStatus.ENABLED, enabled=True)
         self._runtime._append_event(
-            kind="external-report-control-precheck",
+            kind="external-report-control-enable",
             session_id=self._session_id,
             endpoint_id=self._endpoint.id,
             candidate_id=self._candidate.id,
             report_control_name=self._candidate.report_control_name,
             client_id=self._client_id,
             outcome="accepted",
-            code=str(result.returncode),
-            message=_compact_probe_output(result),
+            message="Persistent external MMS client enabled RptEna.",
         )
 
     def _send_external_mms_general_interrogation(self) -> None:
-        result = self._run_external_probe("gi")
+        self._ensure_external_mms_client_started()
+        self._write_external_mms_command("gi")
+        self._drain_external_mms_process_stdout(timeout_seconds=3.0, stop_on="native-wire-client: state=ready")
+        if self._last_report is None:
+            self._last_state = self._external_state(Iec61850RuntimeStatus.GI_PENDING, enabled=True, gi_in_progress=True)
         self._runtime._append_event(
             kind="external-report-control-gi",
             session_id=self._session_id,
@@ -538,11 +594,17 @@ class Iec61850ClientControlService:
             report_control_name=self._candidate.report_control_name,
             client_id=self._client_id,
             outcome="accepted",
-            code=str(result.returncode),
-            message=_compact_probe_output(result),
+            message="Persistent external MMS client requested GI.",
         )
+        self._drain_external_mms_process_stdout(timeout_seconds=1.0)
 
     def _disconnect_external_mms_ied(self) -> None:
+        if self._external_mms_process is not None:
+            self._write_external_mms_command("disconnect")
+            self._drain_external_mms_process_stdout(timeout_seconds=2.0, stop_on="native-wire-client: state=stopped")
+            self._stop_external_mms_client_process()
+        self._session_open = False
+        self._last_state = self._external_state(Iec61850RuntimeStatus.DISCONNECTED, enabled=False)
         self._runtime._append_event(
             kind="external-ied-disconnect",
             session_id=self._session_id,
@@ -550,9 +612,204 @@ class Iec61850ClientControlService:
             candidate_id=self._candidate.id,
             report_control_name=self._candidate.report_control_name,
             client_id=self._client_id,
-            outcome="not-persistent",
-            message="External MMS probe commands open and close their own client association.",
+            outcome="disconnected",
+            message="Persistent external MMS client disconnected and cleaned up the selected RCB.",
         )
+
+    def _build_external_discover_command(self) -> str:
+        domain = self._candidate.logical_device_inst
+        if domain:
+            return f"discover {self._candidate.ied_name}{domain}"
+        return "discover"
+
+    def _ensure_external_mms_client_started(self) -> None:
+        if self._external_mms_process is not None and self._external_mms_process.poll() is None:
+            self._session_open = True
+            return
+        if self._endpoint.host is None or not self._endpoint.host.strip():
+            raise Iec61850ReportRuntimeError("EXTERNAL_MMS_HOST_REQUIRED", "IEC 61850 external MMS target host is required.")
+        if self._target_scl_path is None or not self._target_scl_path.strip():
+            raise Iec61850ReportRuntimeError("EXTERNAL_MMS_SCL_REQUIRED", "IEC 61850 external MMS target SCD path is required.")
+        command = [
+            self._external_probe_binary_path(),
+            "--scl",
+            self._target_scl_path,
+            "--ied",
+            self._endpoint.ied_name,
+            "--bind",
+            self._endpoint.host,
+            "--port",
+            str(self._endpoint.port),
+            "--mms-client-start",
+        ]
+        try:
+            process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
+        except OSError as exc:
+            raise Iec61850ReportRuntimeError("EXTERNAL_MMS_CLIENT_START_FAILED", f"IEC 61850 external MMS client could not be started: {exc}") from exc
+        self._external_mms_process = process
+        self._external_mms_stdout_buffer.clear()
+        try:
+            self._drain_external_mms_process_stdout(timeout_seconds=5.0, stop_on="native-wire-client: state=ready")
+        except Exception:
+            self._stop_external_mms_client_process()
+            raise
+        if process.poll() is not None:
+            stderr = process.stderr.read() if process.stderr is not None else ""
+            raise Iec61850ReportRuntimeError("EXTERNAL_MMS_CLIENT_EXITED", f"IEC 61850 external MMS client exited during startup: {stderr.strip()}")
+        self._session_open = True
+        self._last_state = self._external_state(Iec61850RuntimeStatus.CONNECTED, enabled=False)
+        self._runtime._append_event(
+            kind="external-session-open",
+            session_id=self._session_id,
+            endpoint_id=self._endpoint.id,
+            candidate_id=self._candidate.id,
+            report_control_name=self._candidate.report_control_name,
+            client_id=self._client_id,
+            outcome="associated",
+            message="Persistent external MMS client associated with the target IED.",
+        )
+
+    def _write_external_mms_command(self, command: str) -> None:
+        if self._external_mms_process is None or self._external_mms_process.stdin is None or self._external_mms_process.poll() is not None:
+            raise Iec61850ReportRuntimeError("EXTERNAL_MMS_CLIENT_NOT_OPEN", "IEC 61850 external MMS client process is not open.")
+        self._external_mms_process.stdin.write(command.rstrip("\n") + "\n")
+        self._external_mms_process.stdin.flush()
+
+    def _drain_external_mms_process_stdout(
+        self,
+        *,
+        timeout_seconds: float,
+        stop_on: str | None = None,
+        require_stop: bool | None = None,
+    ) -> None:
+        process = self._external_mms_process
+        if process is None:
+            return
+        if require_stop is None:
+            require_stop = stop_on is not None
+        deadline = time.monotonic() + max(timeout_seconds, 0.0)
+        saw_stop = stop_on is None
+        saw_failed = False
+        while True:
+            line = _read_process_stdout_line(process, timeout_deadline=deadline, line_buffer=self._external_mms_stdout_buffer)
+            if line is None:
+                if require_stop and not saw_stop:
+                    if process.poll() is not None:
+                        self._stop_external_mms_client_process()
+                    stderr = ""
+                    if process.poll() is not None and process.stderr is not None:
+                        read = getattr(process.stderr, "read", None)
+                        if callable(read):
+                            stderr = str(read()).strip()
+                    if stderr:
+                        raise Iec61850ReportRuntimeError("EXTERNAL_MMS_CLIENT_COMMAND_FAILED", stderr)
+                    if saw_failed:
+                        try:
+                            process.wait(timeout=0.25)
+                        except subprocess.TimeoutExpired:
+                            pass
+                        if process.poll() is not None and process.stderr is not None:
+                            read = getattr(process.stderr, "read", None)
+                            if callable(read):
+                                stderr = str(read()).strip()
+                        if stderr:
+                            raise Iec61850ReportRuntimeError("EXTERNAL_MMS_CLIENT_COMMAND_FAILED", stderr)
+                        raise Iec61850ReportRuntimeError(
+                            "EXTERNAL_MMS_CLIENT_COMMAND_FAILED",
+                            "IEC 61850 external MMS client reported state=failed.",
+                        )
+                    raise Iec61850ReportRuntimeError("EXTERNAL_MMS_CLIENT_COMMAND_FAILED", "IEC 61850 external MMS client command ended before completion.")
+                return
+            stripped = line.strip()
+            if not stripped:
+                continue
+            self._apply_external_mms_client_line(stripped)
+            if stripped.startswith("native-wire-client: state=failed"):
+                saw_failed = True
+            if stop_on is not None and stripped.startswith(stop_on):
+                saw_stop = True
+                return
+
+    def _apply_external_mms_client_line(self, line: str) -> None:
+        if line.startswith("native-wire-client: subscription-summary "):
+            fields = _parse_space_kv_line(line.removeprefix("native-wire-client: subscription-summary "))
+            phase = fields.get("phase")
+            if phase == "rptena":
+                self._last_state = self._external_state(Iec61850RuntimeStatus.ENABLED, enabled=True)
+            elif phase == "gi":
+                self._last_state = self._external_state(Iec61850RuntimeStatus.GI_PENDING, enabled=True, gi_in_progress=True)
+            elif phase == "async-report":
+                self._last_report = self._external_report_event(fields)
+                self._last_state = self._external_state(Iec61850RuntimeStatus.REPORTING, enabled=True, gi_in_progress=False)
+        elif line.startswith("native-wire-client: async-report"):
+            self._last_report = self._external_report_event({})
+            self._last_state = self._external_state(Iec61850RuntimeStatus.REPORTING, enabled=True, gi_in_progress=False)
+        elif line.startswith("native-wire-client: state=failed"):
+            self._session_open = False
+            self._last_state = self._external_state(Iec61850RuntimeStatus.FAILED, enabled=False)
+        elif line.startswith("native-wire-client: disconnected"):
+            self._session_open = False
+            self._last_state = self._external_state(Iec61850RuntimeStatus.DISCONNECTED, enabled=False)
+
+    def _external_state(self, runtime_status: Iec61850RuntimeStatus, *, enabled: bool, gi_in_progress: bool = False) -> Iec61850ReportControlState:
+        return Iec61850ReportControlState(
+            reference=to_report_control_ref(self._candidate),
+            runtime_status=runtime_status,
+            rpt_id=self._candidate.rpt_id,
+            data_set_ref=self._candidate.data_set_ref,
+            conf_rev=self._candidate.conf_rev,
+            indexed=self._candidate.indexed,
+            buffer_time_ms=self._candidate.buffer_time_ms,
+            integrity_period_ms=self._candidate.integrity_period_ms,
+            trigger_options=self._candidate.trigger_options,
+            optional_fields=self._candidate.optional_fields,
+            signal_count=self._candidate.signal_count,
+            enabled=enabled,
+            reserved_by=self._client_id if enabled and self._candidate.report_kind == Iec61850ReportKind.BUFFERED else None,
+            owner=self._client_id if enabled else None,
+            sequence_number=self._last_state.sequence_number + 1 if self._last_state is not None else 0,
+            gi_in_progress=gi_in_progress,
+        )
+
+    def _external_report_event(self, fields: dict[str, str]) -> Iec61850ReportEvent:
+        now = _utc_now().isoformat().replace("+00:00", "Z")
+        sequence_number = _parse_int_or_none(fields.get("asyncReports") or fields.get("count"))
+        reason = Iec61850ReportReason.GENERAL_INTERROGATION
+        return Iec61850ReportEvent(
+            id=f"{self._session_id}:external-report:{sequence_number or 0}",
+            endpoint_id=self._endpoint.id,
+            received_at=now,
+            report_control=to_report_control_ref(self._candidate),
+            rpt_id=self._candidate.rpt_id,
+            data_set_ref=self._candidate.data_set_ref,
+            conf_rev=self._candidate.conf_rev,
+            sequence_number=sequence_number,
+            time_of_entry=now,
+            entry_id=f"{self._endpoint.id}:{report_control_key(to_report_control_ref(self._candidate))}:{sequence_number or 0}",
+            buffer_overflow=False,
+            reason=reason,
+            values=(),
+        )
+
+    def _stop_external_mms_client_process(self) -> None:
+        process = self._external_mms_process
+        self._external_mms_process = None
+        self._external_mms_stdout_buffer.clear()
+        if process is None:
+            return
+        if process.poll() is None:
+            try:
+                if process.stdin is not None:
+                    process.stdin.write("exit\n")
+                    process.stdin.flush()
+            except (BrokenPipeError, OSError):
+                pass
+            try:
+                process.terminate()
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=2)
 
     def _external_probe_binary_path(self) -> str:
         preferred = Path("/workspace/iec61850_ied/build-libiec61850/unitlab-iec61850-ied-sim")
@@ -718,6 +975,8 @@ class Iec61850ClientControlService:
         return self._endpoint.id
 
     def _reset_runtime_state_for_target_change(self) -> None:
+        if self._external_mms_process is not None:
+            self._stop_external_mms_client_process()
         if self._live_wire_process is not None:
             self._stop_live_wire_transport()
         if self._session_open:
@@ -820,6 +1079,7 @@ def _build_ui_state(
     session_open: bool,
     endpoint: Iec61850DeviceEndpoint,
     candidate: Iec61850ReportControlCandidate,
+    available_candidates: tuple[Iec61850ReportControlCandidate, ...],
     last_discovery: dict | None,
     last_state: Iec61850ReportControlState | None,
     last_report: Iec61850ReportEvent | None,
@@ -837,7 +1097,11 @@ def _build_ui_state(
     rptena_enabled = bool(last_state.enabled) if last_state is not None else False
     associated = session_open or live_wire_open
     last_event = transcript[-1] if transcript else None
-    external_probe = _external_probe_ui_state(endpoint=endpoint, last_event=last_event)
+    external_probe = (
+        _external_probe_ui_state(endpoint=endpoint, last_event=last_event)
+        if last_state is None and not session_open
+        else None
+    )
     runtime_status = (
         external_probe.runtime_status
         if external_probe is not None
@@ -899,6 +1163,7 @@ def _build_ui_state(
             "data_set_members": discovery_counts["data_set_members"],
             "report_controls": discovery_counts["report_controls"],
             "signals": discovery_counts["signals"],
+            "available_report_controls": _available_report_controls_payload(available_candidates),
             "selected_dataset_ref": selected_dataset_ref,
             "selected_rcb_ref": selected_rcb_ref,
         },
@@ -912,7 +1177,7 @@ def _build_ui_state(
             "sequence_number": last_state.sequence_number if last_state is not None else None,
             "last_command": external_probe.last_command if external_probe is not None else None,
             "command_accepted": external_probe.command_accepted if external_probe is not None else False,
-            "external_probe": external_mms,
+            "external_probe": external_probe is not None,
             "selected_rcb_ref": selected_rcb_ref,
             "selected_dataset_ref": selected_dataset_ref,
         },
@@ -998,6 +1263,20 @@ def _ui_phase(
     return "idle"
 
 
+def _available_report_controls_payload(candidates: tuple[Iec61850ReportControlCandidate, ...]) -> list[dict[str, str | bool | None]]:
+    return [
+        {
+            "rcb_ref": _candidate_rcb_reference(candidate),
+            "report_control_id": candidate.id,
+            "report_control_name": candidate.report_control_name,
+            "report_kind": candidate.report_kind.value,
+            "rpt_id": candidate.rpt_id,
+            "data_set_ref": candidate.data_set_ref,
+        }
+        for candidate in candidates
+    ]
+
+
 def _discovery_counts(discovery: dict | None, candidate: Iec61850ReportControlCandidate) -> dict[str, int]:
     if discovery is None:
         return {
@@ -1046,6 +1325,31 @@ def _endpoint_label(endpoint: Iec61850DeviceEndpoint) -> str:
 
 def get_iec61850_client_control_service() -> Iec61850ClientControlService:
     return _CLIENT_CONTROL_SERVICE
+
+def _parse_space_kv_line(text: str) -> dict[str, str]:
+    fields: dict[str, str] = {}
+    for token in text.split():
+        if "=" not in token:
+            continue
+        key, value = token.split("=", 1)
+        fields[key] = value
+    return fields
+
+
+def _none_if_placeholder(value: str | None) -> str | None:
+    if value is None or value == "<none>":
+        return None
+    return value
+
+
+def _parse_int_or_none(value: str | None) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
 
 def _read_process_stdout_line(process, *, timeout_deadline: float, line_buffer: bytearray) -> str | None:
     stdout = process.stdout
@@ -1155,10 +1459,16 @@ def _build_discovery_structure(
     }
 
 
-def _build_target_endpoint_and_candidate(request: Iec61850ClientTargetRequest) -> tuple[Iec61850DeviceEndpoint, Iec61850ReportControlCandidate]:
+def _build_target_endpoint_and_candidate(
+    request: Iec61850ClientTargetRequest,
+) -> tuple[
+    Iec61850DeviceEndpoint,
+    Iec61850ReportControlCandidate,
+    tuple[Iec61850ReportControlCandidate, ...],
+]:
     mode = request.mode.strip().lower()
     if mode == "simulator":
-        return _default_endpoint(), _default_candidate()
+        return _default_endpoint(), _default_candidate(), (_default_candidate(),)
     if mode not in {"mms", "external-mms"}:
         raise Iec61850ReportRuntimeError("CLIENT_TARGET_MODE_INVALID", "IEC 61850 client target mode must be simulator or external-mms.")
     host = request.host.strip()
@@ -1174,7 +1484,13 @@ def _build_target_endpoint_and_candidate(request: Iec61850ClientTargetRequest) -
     scl_path = Path(request.scl_path.strip())
     if not scl_path.is_file():
         raise Iec61850ReportRuntimeError("CLIENT_TARGET_SCL_NOT_FOUND", f"IEC 61850 SCD/SCL file was not found: {scl_path}.")
-    candidate = _candidate_from_scd(scl_path, ied_name, request.access_point_name.strip() or "AP1")
+    fallback_access_point = request.access_point_name.strip() or "AP1"
+    candidates = _candidates_from_scd(scl_path, ied_name, fallback_access_point)
+    if not candidates:
+        raise Iec61850ReportRuntimeError("CLIENT_TARGET_REPORT_CONTROL_NOT_FOUND", f'IED "{ied_name}" has no ReportControl in {scl_path}.')
+    candidate = _find_candidate_by_rcb_reference(candidates, request.selected_rcb_ref)
+    if candidate is None:
+        candidate = next((item for item in candidates if item.access_point_name == fallback_access_point), candidates[0])
     endpoint = Iec61850DeviceEndpoint(
         id=f"mms:{ied_name}@{host}:{request.port}",
         mode=Iec61850RuntimeMode.MMS,
@@ -1183,10 +1499,10 @@ def _build_target_endpoint_and_candidate(request: Iec61850ClientTargetRequest) -
         host=host,
         port=request.port,
     )
-    return endpoint, candidate
+    return endpoint, candidate, candidates
 
 
-def _candidate_from_scd(scl_path: Path, ied_name: str, fallback_access_point: str) -> Iec61850ReportControlCandidate:
+def _candidates_from_scd(scl_path: Path, ied_name: str, fallback_access_point: str) -> tuple[Iec61850ReportControlCandidate, ...]:
     try:
         root = ET.parse(scl_path).getroot()
     except ET.ParseError as exc:
@@ -1196,6 +1512,7 @@ def _candidate_from_scd(scl_path: Path, ied_name: str, fallback_access_point: st
     if ied is None:
         raise Iec61850ReportRuntimeError("CLIENT_TARGET_IED_NOT_FOUND", f'IED "{ied_name}" was not found in {scl_path}.')
 
+    candidates: list[Iec61850ReportControlCandidate] = []
     for access_point in _iter_children(ied, "AccessPoint"):
         access_point_name = access_point.attrib.get("name") or fallback_access_point
         server = _first_child(access_point, "Server")
@@ -1217,25 +1534,42 @@ def _candidate_from_scd(scl_path: Path, ied_name: str, fallback_access_point: st
                     data_set_name = report.attrib.get("datSet", "").strip()
                     data_set = data_sets.get(data_set_name)
                     signals = _data_set_members(logical_device_inst, data_set) if data_set is not None else ()
-                    return Iec61850ReportControlCandidate(
-                        id=f"{ied_name}:{logical_device_inst}/{logical_node_name}.{report_name}",
-                        ied_name=ied_name,
-                        access_point_name=access_point_name,
-                        logical_device_inst=logical_device_inst,
-                        logical_node_name=logical_node_name,
-                        report_control_name=report_name,
-                        report_kind=Iec61850ReportKind.BUFFERED if _bool_attr(report, "buffered", False) else Iec61850ReportKind.UNBUFFERED,
-                        rpt_id=report.attrib.get("rptID"),
-                        data_set_ref=f"{ied_name}{logical_device_inst}/{logical_node_name}.{data_set_name}" if data_set_name else None,
-                        conf_rev=report.attrib.get("confRev"),
-                        indexed=_bool_attr(report, "indexed", True),
-                        buffer_time_ms=_int_attr(report, "bufTime"),
-                        integrity_period_ms=_int_attr(report, "intgPd"),
-                        trigger_options=_trigger_options(report),
-                        optional_fields=_optional_fields(report),
-                        signals=signals or (Iec61850DataSetMember(reference=f"{logical_device_inst}/{logical_node_name}", fc=None),),
+                    candidates.append(
+                        Iec61850ReportControlCandidate(
+                            id=f"{ied_name}:{logical_device_inst}/{logical_node_name}.{report_name}",
+                            ied_name=ied_name,
+                            access_point_name=access_point_name,
+                            logical_device_inst=logical_device_inst,
+                            logical_node_name=logical_node_name,
+                            report_control_name=report_name,
+                            report_kind=Iec61850ReportKind.BUFFERED if _bool_attr(report, "buffered", False) else Iec61850ReportKind.UNBUFFERED,
+                            rpt_id=report.attrib.get("rptID"),
+                            data_set_ref=f"{ied_name}{logical_device_inst}/{logical_node_name}.{data_set_name}" if data_set_name else None,
+                            conf_rev=report.attrib.get("confRev"),
+                            indexed=_bool_attr(report, "indexed", True),
+                            buffer_time_ms=_int_attr(report, "bufTime"),
+                            integrity_period_ms=_int_attr(report, "intgPd"),
+                            trigger_options=_trigger_options(report),
+                            optional_fields=_optional_fields(report),
+                            signals=signals or (Iec61850DataSetMember(reference=f"{logical_device_inst}/{logical_node_name}", fc=None),),
+                        ),
                     )
-    raise Iec61850ReportRuntimeError("CLIENT_TARGET_REPORT_CONTROL_NOT_FOUND", f'IED "{ied_name}" has no ReportControl in {scl_path}.')
+    return tuple(candidates)
+
+
+def _find_candidate_by_rcb_reference(
+    candidates: tuple[Iec61850ReportControlCandidate, ...],
+    selected_rcb_ref: str | None,
+) -> Iec61850ReportControlCandidate | None:
+    if selected_rcb_ref is None:
+        return None
+    selected = selected_rcb_ref.strip()
+    if not selected:
+        return None
+    for candidate in candidates:
+        if candidate.id == selected or _candidate_rcb_reference(candidate) == selected:
+            return candidate
+    return None
 
 
 def _build_wire_discovery_structure(endpoint: Iec61850DeviceEndpoint, candidate: Iec61850ReportControlCandidate, command: str) -> dict:

@@ -50,6 +50,124 @@ static int identifier_list_append(UnitLabNativeIdentifierList* list, const char*
     return 1;
 }
 
+static int identifier_list_contains(const UnitLabNativeIdentifierList* list, const char* value)
+{
+    if (list == NULL || value == NULL || value[0] == '\0') {
+        return 0;
+    }
+    for (size_t index = 0U; index < list->count; index++) {
+        if (strcmp(list->items[index], value) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int identifier_list_append_unique(UnitLabNativeIdentifierList* list, const char* value)
+{
+    if (identifier_list_contains(list, value)) {
+        return 1;
+    }
+    return identifier_list_append(list, value);
+}
+
+static int split_mms_identifier_token(const char* value, size_t token_index, char* output, size_t output_size)
+{
+    const char* start = value;
+    const char* end = NULL;
+    size_t current_index = 0U;
+    size_t length = 0U;
+
+    if (value == NULL || output == NULL || output_size == 0U) {
+        return 0;
+    }
+    output[0] = '\0';
+    while (current_index < token_index) {
+        start = strchr(start, '$');
+        if (start == NULL) {
+            return 0;
+        }
+        start++;
+        current_index++;
+    }
+    end = strchr(start, '$');
+    if (end == NULL) {
+        end = start + strlen(start);
+    }
+    if (end <= start) {
+        return 0;
+    }
+    length = (size_t)(end - start);
+    if (length >= output_size) {
+        length = output_size - 1U;
+    }
+    memcpy(output, start, length);
+    output[length] = '\0';
+    return 1;
+}
+
+static int mms_identifier_token_count(const char* value)
+{
+    int count = 1;
+    if (value == NULL || value[0] == '\0') {
+        return 0;
+    }
+    for (const char* cursor = value; *cursor != '\0'; cursor++) {
+        if (*cursor == '$') {
+            count++;
+        }
+    }
+    return count;
+}
+
+static int mms_identifier_is_fc_data_name(const char* value)
+{
+    char fc[32U];
+    if (!split_mms_identifier_token(value, 1U, fc, sizeof(fc))) {
+        return 0;
+    }
+    return strcmp(fc, "ST") == 0
+        || strcmp(fc, "MX") == 0
+        || strcmp(fc, "CF") == 0
+        || strcmp(fc, "DC") == 0
+        || strcmp(fc, "EX") == 0
+        || strcmp(fc, "SP") == 0
+        || strcmp(fc, "SG") == 0
+        || strcmp(fc, "SE") == 0
+        || strcmp(fc, "SV") == 0;
+}
+
+static int derive_domain_model_names(
+    const UnitLabNativeIdentifierList* domain_variables,
+    UnitLabNativeIdentifierList* logical_nodes,
+    UnitLabNativeIdentifierList* brcb_names,
+    UnitLabNativeIdentifierList* brcb_logical_nodes)
+{
+    if (domain_variables == NULL || logical_nodes == NULL || brcb_names == NULL || brcb_logical_nodes == NULL) {
+        return 0;
+    }
+    for (size_t index = 0U; index < domain_variables->count; index++) {
+        char logical_node[128U];
+        char fc[32U];
+        char rcb_name[128U];
+        if (!split_mms_identifier_token(domain_variables->items[index], 0U, logical_node, sizeof(logical_node))) {
+            continue;
+        }
+        if (!identifier_list_append_unique(logical_nodes, logical_node)) {
+            return 0;
+        }
+        if (mms_identifier_token_count(domain_variables->items[index]) == 3
+            && split_mms_identifier_token(domain_variables->items[index], 1U, fc, sizeof(fc))
+            && strcmp(fc, "BR") == 0
+            && split_mms_identifier_token(domain_variables->items[index], 2U, rcb_name, sizeof(rcb_name))) {
+            if (!identifier_list_append(brcb_names, rcb_name) || !identifier_list_append(brcb_logical_nodes, logical_node)) {
+                return 0;
+            }
+        }
+    }
+    return 1;
+}
+
 static void set_discovery_diagnostic(const UnitLabNativeDiscoveryIo* io, UnitLabMmsDiagnosticCode code, const char* message)
 {
     if (io == NULL || io->diagnostic == NULL) {
@@ -660,6 +778,7 @@ int unitlab_native_client_run_discover_sequence(
     uint32_t* next_invoke_id)
 {
     UnitLabNativeIdentifierList logical_device_names = {0};
+    UnitLabNativeIdentifierList domain_variable_names = {0};
     UnitLabNativeIdentifierList logical_node_names = {0};
     UnitLabNativeIdentifierList data_set_items = {0};
     UnitLabNativeIdentifierList brcb_names = {0};
@@ -705,26 +824,30 @@ int unitlab_native_client_run_discover_sequence(
         }
     }
 
-    if (!io->get_name_list_step(session, io, "domain-logical-nodes", 1U, 1U, domain_id, NULL, NULL, unitlab_native_client_session_reserve_invoke_id(session))) {
+    if (!io->get_name_list_step(session, io, "domain-named-variables", 0U, 1U, domain_id, NULL, NULL, unitlab_native_client_session_reserve_invoke_id(session))) {
         goto cleanup;
     }
-    if (!extract_get_name_list_identifiers(io->response, *io->encoded_response_length, &logical_node_names, &more_follows, last_identifier, sizeof(last_identifier))) {
-        set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not decode logical node GetNameList response.");
+    if (!extract_get_name_list_identifiers(io->response, *io->encoded_response_length, &domain_variable_names, &more_follows, last_identifier, sizeof(last_identifier))) {
+        set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not decode domain named variable GetNameList response.");
         goto cleanup;
     }
     while (more_follows && last_identifier[0] != '\0') {
-        size_t before_count = logical_node_names.count;
-        if (!io->get_name_list_step(session, io, "domain-logical-nodes-page", 1U, 1U, domain_id, NULL, last_identifier, unitlab_native_client_session_reserve_invoke_id(session))) {
+        size_t before_count = domain_variable_names.count;
+        if (!io->get_name_list_step(session, io, "domain-named-variables-page", 0U, 1U, domain_id, NULL, last_identifier, unitlab_native_client_session_reserve_invoke_id(session))) {
             goto cleanup;
         }
-        if (!extract_get_name_list_identifiers(io->response, *io->encoded_response_length, &logical_node_names, &more_follows, last_identifier, sizeof(last_identifier))) {
-            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not decode logical node GetNameList page.");
+        if (!extract_get_name_list_identifiers(io->response, *io->encoded_response_length, &domain_variable_names, &more_follows, last_identifier, sizeof(last_identifier))) {
+            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not decode domain named variable GetNameList page.");
             goto cleanup;
         }
-        if (logical_node_names.count == before_count) {
-            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client logical node pagination did not advance.");
+        if (domain_variable_names.count == before_count) {
+            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client named variable pagination did not advance.");
             goto cleanup;
         }
+    }
+    if (!derive_domain_model_names(&domain_variable_names, &logical_node_names, &brcb_names, &brcb_logical_nodes)) {
+        set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not derive domain model names.");
+        goto cleanup;
     }
 
     if (!io->get_name_list_step(session, io, "domain-datasets", 2U, 1U, domain_id, NULL, NULL, unitlab_native_client_session_reserve_invoke_id(session))) {
@@ -750,14 +873,6 @@ int unitlab_native_client_run_discover_sequence(
     }
     session->discovered_model.data_set_count = data_set_items.count;
 
-    if (logical_node_names.count == 0U) {
-        if (!identifier_list_append(&logical_node_names, "LLN0")) {
-            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate logical node fallback.");
-            goto cleanup;
-        }
-        printf("native-wire-client: discover-fallback=logical-nodes value=LLN0\n");
-        fflush(stdout);
-    }
     for (size_t index = 0U; index < logical_node_names.count; index++) {
         if (unitlab_native_client_session_append_logical_node(session, domain_id, logical_node_names.items[index]) == NULL) {
             set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered logical node state.");
@@ -765,133 +880,32 @@ int unitlab_native_client_run_discover_sequence(
         }
     }
 
-    for (size_t ln_index = 0U; ln_index < logical_node_names.count; ln_index++) {
-        char step_label[160U];
-        UnitLabNativeIdentifierList ln_data_names = {0};
-        UnitLabNativeIdentifierList ln_brcb_names = {0};
-
-        snprintf(step_label, sizeof(step_label), "ln-data-attributes:%s", logical_node_names.items[ln_index]);
-        if (!io->get_name_list_step(session, io, step_label, 3U, 1U, domain_id, logical_node_names.items[ln_index], NULL, unitlab_native_client_session_reserve_invoke_id(session))) {
-            identifier_list_reset(&ln_data_names);
-            identifier_list_reset(&ln_brcb_names);
+    for (size_t data_index = 0U; data_index < domain_variable_names.count; data_index++) {
+        char logical_node[128U];
+        char data_name_ref[256U];
+        const char* suffix = NULL;
+        UnitLabNativeDiscoveredDataName* data_name;
+        if (!mms_identifier_is_fc_data_name(domain_variable_names.items[data_index])
+            || !split_mms_identifier_token(domain_variable_names.items[data_index], 0U, logical_node, sizeof(logical_node))) {
+            continue;
+        }
+        suffix = strchr(domain_variable_names.items[data_index], '$');
+        if (suffix == NULL || suffix[1] == '\0') {
+            continue;
+        }
+        snprintf(data_name_ref, sizeof(data_name_ref), "%s", suffix + 1);
+        data_name = unitlab_native_client_session_append_data_name(session, domain_id, logical_node, data_name_ref);
+        if (data_name == NULL) {
+            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered domain data state.");
             goto cleanup;
         }
-        if (!extract_get_name_list_identifiers(io->response, *io->encoded_response_length, &ln_data_names, &more_follows, last_identifier, sizeof(last_identifier))) {
-            identifier_list_reset(&ln_data_names);
-            identifier_list_reset(&ln_brcb_names);
-            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not decode LN data GetNameList response.");
+        if (!io->attributes_step(session, io, "domain-data-components", domain_id, domain_variable_names.items[data_index], unitlab_native_client_session_reserve_invoke_id(session), 0)) {
             goto cleanup;
         }
-        while (more_follows && last_identifier[0] != '\0') {
-            size_t before_count = ln_data_names.count;
-            snprintf(step_label, sizeof(step_label), "ln-data-attributes-page:%s", logical_node_names.items[ln_index]);
-            if (!io->get_name_list_step(session, io, step_label, 3U, 1U, domain_id, logical_node_names.items[ln_index], last_identifier, unitlab_native_client_session_reserve_invoke_id(session))) {
-                identifier_list_reset(&ln_data_names);
-                identifier_list_reset(&ln_brcb_names);
-                goto cleanup;
-            }
-            if (!extract_get_name_list_identifiers(io->response, *io->encoded_response_length, &ln_data_names, &more_follows, last_identifier, sizeof(last_identifier))) {
-                identifier_list_reset(&ln_data_names);
-                identifier_list_reset(&ln_brcb_names);
-                set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not decode LN data GetNameList page.");
-                goto cleanup;
-            }
-            if (ln_data_names.count == before_count) {
-                identifier_list_reset(&ln_data_names);
-                identifier_list_reset(&ln_brcb_names);
-                set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client LN data pagination did not advance.");
-                goto cleanup;
-            }
-        }
-        for (size_t data_index = 0U; data_index < ln_data_names.count; data_index++) {
-            char data_item[320U];
-            UnitLabNativeDiscoveredDataName* data_name = unitlab_native_client_session_append_data_name(session, domain_id, logical_node_names.items[ln_index], ln_data_names.items[data_index]);
-            if (data_name == NULL) {
-                identifier_list_reset(&ln_data_names);
-                identifier_list_reset(&ln_brcb_names);
-                set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered LN data state.");
-                goto cleanup;
-            }
-            snprintf(data_item, sizeof(data_item), "%s$%s", logical_node_names.items[ln_index], ln_data_names.items[data_index]);
-            if (!io->attributes_step(session, io, "ln-data-components", domain_id, data_item, unitlab_native_client_session_reserve_invoke_id(session), 0)) {
-                identifier_list_reset(&ln_data_names);
-                identifier_list_reset(&ln_brcb_names);
-                goto cleanup;
-            }
-            if (!collect_get_variable_access_attributes_components_from_frame(session, io, data_name, data_item, io->response, *io->encoded_response_length)) {
-                identifier_list_reset(&ln_data_names);
-                identifier_list_reset(&ln_brcb_names);
-                set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not decode LN data component attributes.");
-                goto cleanup;
-            }
-        }
-        identifier_list_reset(&ln_data_names);
-        snprintf(step_label, sizeof(step_label), "ln-brcbs:%s", logical_node_names.items[ln_index]);
-        if (!io->get_name_list_step(session, io, step_label, 4U, 1U, domain_id, logical_node_names.items[ln_index], NULL, unitlab_native_client_session_reserve_invoke_id(session))) {
-            identifier_list_reset(&ln_brcb_names);
+        if (!collect_get_variable_access_attributes_components_from_frame(session, io, data_name, domain_variable_names.items[data_index], io->response, *io->encoded_response_length)) {
+            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not decode domain data component attributes.");
             goto cleanup;
         }
-        if (!extract_get_name_list_identifiers(io->response, *io->encoded_response_length, &ln_brcb_names, &more_follows, last_identifier, sizeof(last_identifier))) {
-            identifier_list_reset(&ln_brcb_names);
-            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not decode BRCB GetNameList response.");
-            goto cleanup;
-        }
-        while (more_follows && last_identifier[0] != '\0') {
-            size_t before_count = ln_brcb_names.count;
-            snprintf(step_label, sizeof(step_label), "ln-brcbs-page:%s", logical_node_names.items[ln_index]);
-            if (!io->get_name_list_step(session, io, step_label, 4U, 1U, domain_id, logical_node_names.items[ln_index], last_identifier, unitlab_native_client_session_reserve_invoke_id(session))) {
-                identifier_list_reset(&ln_brcb_names);
-                goto cleanup;
-            }
-            if (!extract_get_name_list_identifiers(io->response, *io->encoded_response_length, &ln_brcb_names, &more_follows, last_identifier, sizeof(last_identifier))) {
-                identifier_list_reset(&ln_brcb_names);
-                set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not decode BRCB GetNameList page.");
-                goto cleanup;
-            }
-            if (ln_brcb_names.count == before_count) {
-                identifier_list_reset(&ln_brcb_names);
-                set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client BRCB pagination did not advance.");
-                goto cleanup;
-            }
-        }
-        for (size_t brcb_index = 0U; brcb_index < ln_brcb_names.count; brcb_index++) {
-            if (!identifier_list_append(&brcb_names, ln_brcb_names.items[brcb_index]) || !identifier_list_append(&brcb_logical_nodes, logical_node_names.items[ln_index])) {
-                identifier_list_reset(&ln_brcb_names);
-                set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered BRCB state.");
-                goto cleanup;
-            }
-        }
-        identifier_list_reset(&ln_brcb_names);
-
-        snprintf(step_label, sizeof(step_label), "ln-urcbs:%s", logical_node_names.items[ln_index]);
-        if (!io->get_name_list_step(session, io, step_label, 5U, 1U, domain_id, logical_node_names.items[ln_index], NULL, unitlab_native_client_session_reserve_invoke_id(session))) {
-            identifier_list_reset(&ln_brcb_names);
-            goto cleanup;
-        }
-        if (!extract_get_name_list_identifiers(io->response, *io->encoded_response_length, &ln_brcb_names, &more_follows, last_identifier, sizeof(last_identifier))) {
-            identifier_list_reset(&ln_brcb_names);
-            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not decode URCB GetNameList response.");
-            goto cleanup;
-        }
-        while (more_follows && last_identifier[0] != '\0') {
-            size_t before_count = ln_brcb_names.count;
-            snprintf(step_label, sizeof(step_label), "ln-urcbs-page:%s", logical_node_names.items[ln_index]);
-            if (!io->get_name_list_step(session, io, step_label, 5U, 1U, domain_id, logical_node_names.items[ln_index], last_identifier, unitlab_native_client_session_reserve_invoke_id(session))) {
-                identifier_list_reset(&ln_brcb_names);
-                goto cleanup;
-            }
-            if (!extract_get_name_list_identifiers(io->response, *io->encoded_response_length, &ln_brcb_names, &more_follows, last_identifier, sizeof(last_identifier))) {
-                identifier_list_reset(&ln_brcb_names);
-                set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not decode URCB GetNameList page.");
-                goto cleanup;
-            }
-            if (ln_brcb_names.count == before_count) {
-                identifier_list_reset(&ln_brcb_names);
-                set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client URCB pagination did not advance.");
-                goto cleanup;
-            }
-        }
-        identifier_list_reset(&ln_brcb_names);
     }
     session->discovered_model.brcb_count = brcb_names.count;
     if (brcb_names.count == 0U) {
@@ -938,6 +952,7 @@ int unitlab_native_client_run_discover_sequence(
 
 cleanup:
     identifier_list_reset(&logical_device_names);
+    identifier_list_reset(&domain_variable_names);
     identifier_list_reset(&logical_node_names);
     identifier_list_reset(&data_set_items);
     identifier_list_reset(&brcb_names);

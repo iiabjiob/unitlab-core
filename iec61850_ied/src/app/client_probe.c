@@ -1091,6 +1091,340 @@ static int probe_gi_report(
     return passed;
 }
 
+
+typedef struct UnitLabPersistentClientContext {
+    volatile int report_count;
+    int value_count;
+    int first_reason;
+    int conf_rev;
+    char rpt_id[128];
+    char data_set_name[256];
+} UnitLabPersistentClientContext;
+
+typedef struct UnitLabPersistentClientSubscription {
+    ClientReportControlBlock rcb;
+    const UnitLabIedModelReportControl* report;
+    UnitLabPersistentClientContext context;
+    char rcb_ref[384];
+    int enabled;
+    int reserved;
+} UnitLabPersistentClientSubscription;
+
+static void persistent_report_callback(void* parameter, ClientReport report)
+{
+    UnitLabPersistentClientContext* context = (UnitLabPersistentClientContext*)parameter;
+    if (context == NULL) {
+        return;
+    }
+    context->report_count++;
+    context->value_count = 0;
+
+    char* rpt_id = ClientReport_getRptId(report);
+    if (rpt_id != NULL) {
+        snprintf(context->rpt_id, sizeof(context->rpt_id), "%s", rpt_id);
+    }
+    const char* data_set_name = ClientReport_getDataSetName(report);
+    if (data_set_name != NULL) {
+        snprintf(context->data_set_name, sizeof(context->data_set_name), "%s", data_set_name);
+    }
+    if (ClientReport_hasConfRev(report)) {
+        context->conf_rev = (int)ClientReport_getConfRev(report);
+    }
+    if (ClientReport_hasReasonForInclusion(report)) {
+        context->first_reason = ClientReport_getReasonForInclusion(report, 0);
+    }
+    MmsValue* values = ClientReport_getDataSetValues(report);
+    if (values != NULL) {
+        context->value_count = (int)MmsValue_getArraySize(values);
+    }
+
+    printf(
+        "unitlab-mms-client: report received=true count=%d rptId=%s dataSet=%s confRev=%d values=%d firstReason=%d\n",
+        context->report_count,
+        context->rpt_id[0] != '\0' ? context->rpt_id : "<none>",
+        context->data_set_name[0] != '\0' ? context->data_set_name : "<none>",
+        context->conf_rev,
+        context->value_count,
+        context->first_reason);
+    fflush(stdout);
+}
+
+static const UnitLabIedModelReportControl* persistent_client_find_report(const UnitLabIedModelPlan* plan, const char* report_key)
+{
+    if (plan == NULL || plan->report_count == 0U) {
+        return NULL;
+    }
+    if (report_key == NULL || report_key[0] == '\0') {
+        return &plan->reports[0];
+    }
+    for (size_t index = 0U; index < plan->report_count; index++) {
+        if (strcmp(plan->reports[index].key, report_key) == 0) {
+            return &plan->reports[index];
+        }
+    }
+    return NULL;
+}
+
+static int persistent_client_format_rcb_ref(
+    const UnitLabIedFixtureModel* fixture,
+    const UnitLabIedModelReportControl* report,
+    char* rcb_ref,
+    size_t rcb_ref_size,
+    UnitLabIedModelLoadResult* result)
+{
+    char logical_node_ref[256];
+    if (!format_logical_node_ref(
+            logical_node_ref,
+            sizeof(logical_node_ref),
+            result,
+            "IEC61850_CLIENT_LN_REF_OVERFLOW",
+            fixture->ied_name,
+            report->logical_device_inst,
+            report->logical_node_name)) {
+        return 0;
+    }
+    return format_ref(
+        rcb_ref,
+        rcb_ref_size,
+        result,
+        "IEC61850_CLIENT_RCB_REF_OVERFLOW",
+        report->is_buffered ? "%s.BR.%s" : "%s.RP.%s",
+        logical_node_ref,
+        report->name,
+        "");
+}
+
+static int persistent_client_cleanup_subscription(IedConnection connection, UnitLabPersistentClientSubscription* subscription, UnitLabIedModelLoadResult* result)
+{
+    if (subscription == NULL || subscription->rcb == NULL) {
+        return 1;
+    }
+
+    int passed = 1;
+    IedClientError error = IED_ERROR_OK;
+    if (subscription->enabled) {
+        ClientReportControlBlock_setRptEna(subscription->rcb, false);
+        IedConnection_setRCBValues(connection, &error, subscription->rcb, RCB_ELEMENT_RPT_ENA, true);
+        if (error != IED_ERROR_OK) {
+            char message[256];
+            snprintf(message, sizeof(message), "IEC 61850 persistent client failed to disable ReportControl: %s.", IedClientError_toString(error));
+            set_probe_result(result, 0, "IEC61850_CLIENT_DISABLE_FAILED", message);
+            passed = 0;
+        }
+        subscription->enabled = 0;
+    }
+    if (passed && subscription->reserved && subscription->report != NULL && subscription->report->is_buffered) {
+        ClientReportControlBlock_setResvTms(subscription->rcb, 0);
+        IedConnection_setRCBValues(connection, &error, subscription->rcb, RCB_ELEMENT_RESV_TMS, true);
+        if (error != IED_ERROR_OK) {
+            char message[256];
+            snprintf(message, sizeof(message), "IEC 61850 persistent client failed to release buffered ReportControl: %s.", IedClientError_toString(error));
+            set_probe_result(result, 0, "IEC61850_CLIENT_RELEASE_FAILED", message);
+            passed = 0;
+        }
+        subscription->reserved = 0;
+    }
+    if (subscription->rcb_ref[0] != '\0') {
+        IedConnection_uninstallReportHandler(connection, subscription->rcb_ref);
+    }
+    ClientReportControlBlock_destroy(subscription->rcb);
+    memset(subscription, 0, sizeof(*subscription));
+    return passed;
+}
+
+static int persistent_client_enable_report(
+    IedConnection connection,
+    const UnitLabIedFixtureModel* fixture,
+    const UnitLabIedModelPlan* plan,
+    const char* report_key,
+    UnitLabPersistentClientSubscription* subscription,
+    UnitLabIedModelLoadResult* result)
+{
+    const UnitLabIedModelReportControl* report = persistent_client_find_report(plan, report_key);
+    if (report == NULL) {
+        set_probe_result(result, 0, "IEC61850_CLIENT_REPORT_NOT_FOUND", "IEC 61850 persistent client did not find the requested ReportControl key.");
+        return 0;
+    }
+    if (!persistent_client_cleanup_subscription(connection, subscription, result)) {
+        return 0;
+    }
+    if (!persistent_client_format_rcb_ref(fixture, report, subscription->rcb_ref, sizeof(subscription->rcb_ref), result)) {
+        return 0;
+    }
+
+    IedClientError error = IED_ERROR_OK;
+    subscription->rcb = IedConnection_getRCBValues(connection, &error, subscription->rcb_ref, NULL);
+    if (error != IED_ERROR_OK || subscription->rcb == NULL) {
+        char message[256];
+        snprintf(message, sizeof(message), "IEC 61850 persistent client failed to read ReportControl values: %s.", IedClientError_toString(error));
+        set_probe_result(result, 0, "IEC61850_CLIENT_RCB_READ_FAILED", message);
+        memset(subscription, 0, sizeof(*subscription));
+        return 0;
+    }
+
+    subscription->report = report;
+    IedConnection_installReportHandler(connection, subscription->rcb_ref, ClientReportControlBlock_getRptId(subscription->rcb), persistent_report_callback, &subscription->context);
+    if (report->is_buffered) {
+        ClientReportControlBlock_setResvTms(subscription->rcb, 30);
+        IedConnection_setRCBValues(connection, &error, subscription->rcb, RCB_ELEMENT_RESV_TMS, true);
+        if (error != IED_ERROR_OK) {
+            char message[256];
+            snprintf(message, sizeof(message), "IEC 61850 persistent client failed to reserve buffered ReportControl: %s.", IedClientError_toString(error));
+            set_probe_result(result, 0, "IEC61850_CLIENT_RESERVE_FAILED", message);
+            persistent_client_cleanup_subscription(connection, subscription, result);
+            return 0;
+        }
+        subscription->reserved = 1;
+    }
+
+    ClientReportControlBlock_setRptEna(subscription->rcb, true);
+    IedConnection_setRCBValues(connection, &error, subscription->rcb, RCB_ELEMENT_RPT_ENA, true);
+    if (error != IED_ERROR_OK) {
+        char message[256];
+        snprintf(message, sizeof(message), "IEC 61850 persistent client failed to enable ReportControl: %s.", IedClientError_toString(error));
+        set_probe_result(result, 0, "IEC61850_CLIENT_ENABLE_FAILED", message);
+        persistent_client_cleanup_subscription(connection, subscription, result);
+        return 0;
+    }
+    subscription->enabled = 1;
+    printf("unitlab-mms-client: subscription phase=rptena reportKey=%s rcb=%s rptEna=true\n", report->key, subscription->rcb_ref);
+    fflush(stdout);
+    return 1;
+}
+
+static int persistent_client_request_gi(IedConnection connection, UnitLabPersistentClientSubscription* subscription, UnitLabIedModelLoadResult* result)
+{
+    if (subscription == NULL || subscription->rcb == NULL || !subscription->enabled) {
+        set_probe_result(result, 0, "IEC61850_CLIENT_GI_NO_SUBSCRIPTION", "IEC 61850 persistent client requires RptEna before GI.");
+        return 0;
+    }
+    IedClientError error = IED_ERROR_OK;
+    ClientReportControlBlock_setGI(subscription->rcb, true);
+    IedConnection_setRCBValues(connection, &error, subscription->rcb, RCB_ELEMENT_GI, true);
+    if (error != IED_ERROR_OK) {
+        char message[256];
+        snprintf(message, sizeof(message), "IEC 61850 persistent client failed to request GI: %s.", IedClientError_toString(error));
+        set_probe_result(result, 0, "IEC61850_CLIENT_GI_FAILED", message);
+        return 0;
+    }
+    printf("unitlab-mms-client: subscription phase=gi reportKey=%s rcb=%s gi=true reports=%d\n", subscription->report != NULL ? subscription->report->key : "<none>", subscription->rcb_ref, subscription->context.report_count);
+    fflush(stdout);
+    return 1;
+}
+
+static int persistent_client_run_discover(
+    IedConnection connection,
+    const UnitLabIedFixtureModel* fixture,
+    const UnitLabIedModelPlan* plan,
+    UnitLabIedModelLoadResult* result)
+{
+    int passed = verify_logical_devices(connection, fixture, plan, result)
+        && verify_data_objects(connection, fixture, plan, result)
+        && verify_data_sets(connection, fixture, plan, result)
+        && verify_reports(connection, fixture, plan, result);
+    if (!passed) {
+        return 0;
+    }
+    printf(
+        "unitlab-mms-client: discovery phase=discovered logicalDevices=%zu logicalNodes=%zu dataSets=%zu reports=%zu signals=%zu\n",
+        plan->logical_device_count,
+        plan->logical_node_count,
+        plan->data_set_count,
+        plan->report_count,
+        plan->signal_count);
+    fflush(stdout);
+    return 1;
+}
+
+int unitlab_run_ied_server_mms_client(
+    const UnitLabIedFixtureModel* fixture,
+    const UnitLabIedModelPlan* plan,
+    const UnitLabIedServerConfig* config,
+    UnitLabIedModelLoadResult* result)
+{
+    if (fixture == NULL || plan == NULL || config == NULL || result == NULL) {
+        set_probe_result(result, 0, "IEC61850_CLIENT_INVALID_ARGUMENT", "Fixture, model plan, server config, and result are required.");
+        return 0;
+    }
+
+    IedConnection connection = connect_to_server(config, result);
+    if (connection == NULL) {
+        return 0;
+    }
+
+    UnitLabPersistentClientSubscription subscription;
+    memset(&subscription, 0, sizeof(subscription));
+    printf("unitlab-mms-client: associated endpoint=%s:%d\n", connect_host(config), config->port);
+    printf("unitlab-mms-client: ready\n");
+    fflush(stdout);
+
+    int running = 1;
+    int passed = 1;
+    char command[512];
+    while (running && fgets(command, sizeof(command), stdin) != NULL) {
+        command[strcspn(command, "\r\n")] = '\0';
+        if (strcmp(command, "discover") == 0) {
+            passed = persistent_client_run_discover(connection, fixture, plan, result);
+        }
+        else if (strncmp(command, "rptena", 6) == 0 && (command[6] == '\0' || command[6] == ' ' || command[6] == '\t')) {
+            char* key = strtok(command + 6, " \t");
+            char* extra = strtok(NULL, " \t");
+            if (extra != NULL) {
+                set_probe_result(result, 0, "IEC61850_CLIENT_RPTENA_COMMAND_INVALID", "Usage: rptena [reportKey].");
+                passed = 0;
+            }
+            else {
+                passed = persistent_client_enable_report(connection, fixture, plan, key, &subscription, result);
+            }
+        }
+        else if (strcmp(command, "gi") == 0) {
+            passed = persistent_client_request_gi(connection, &subscription, result);
+        }
+        else if (strcmp(command, "status") == 0) {
+            printf(
+                "unitlab-mms-client: status associated=true subscribed=%s reportKey=%s reports=%d rptId=%s dataSet=%s values=%d\n",
+                subscription.enabled ? "true" : "false",
+                subscription.report != NULL ? subscription.report->key : "<none>",
+                subscription.context.report_count,
+                subscription.context.rpt_id[0] != '\0' ? subscription.context.rpt_id : "<none>",
+                subscription.context.data_set_name[0] != '\0' ? subscription.context.data_set_name : "<none>",
+                subscription.context.value_count);
+            fflush(stdout);
+            passed = 1;
+        }
+        else if (strcmp(command, "disconnect") == 0 || strcmp(command, "exit") == 0 || strcmp(command, "close-ied") == 0) {
+            passed = persistent_client_cleanup_subscription(connection, &subscription, result);
+            running = 0;
+        }
+        else if (command[0] == '\0') {
+            passed = 1;
+        }
+        else {
+            set_probe_result(result, 0, "IEC61850_CLIENT_COMMAND_INVALID", "IEC 61850 persistent client command is invalid.");
+            passed = 0;
+        }
+
+        if (!passed) {
+            fprintf(stderr, "%s: %s\n", result->code, result->message);
+            fflush(stderr);
+            break;
+        }
+    }
+
+    if (subscription.rcb != NULL) {
+        (void)persistent_client_cleanup_subscription(connection, &subscription, result);
+    }
+    IedConnection_close(connection);
+    IedConnection_destroy(connection);
+    if (passed) {
+        set_probe_result(result, 1, "IEC61850_CLIENT_STOPPED", "IEC 61850 persistent client stopped.");
+        printf("unitlab-mms-client: disconnected endpoint=%s:%d\n", connect_host(config), config->port);
+        fflush(stdout);
+    }
+    return passed;
+}
+
+
 int unitlab_probe_ied_server_gi(
     const UnitLabIedFixtureModel* fixture,
     const UnitLabIedModelPlan* plan,
@@ -1191,6 +1525,23 @@ int unitlab_probe_ied_server_gi(
         0,
         "LIBIEC61850_NOT_LINKED",
         "libIEC61850 is not linked; build with UNITLAB_IEC61850_SIM_WITH_LIBIEC61850=ON before probing MMS GI.");
+    return 0;
+}
+
+int unitlab_run_ied_server_mms_client(
+    const UnitLabIedFixtureModel* fixture,
+    const UnitLabIedModelPlan* plan,
+    const UnitLabIedServerConfig* config,
+    UnitLabIedModelLoadResult* result)
+{
+    (void)fixture;
+    (void)plan;
+    (void)config;
+    set_probe_result(
+        result,
+        0,
+        "LIBIEC61850_NOT_LINKED",
+        "libIEC61850 is not linked; build with UNITLAB_IEC61850_SIM_WITH_LIBIEC61850=ON before starting the persistent MMS client.");
     return 0;
 }
 
