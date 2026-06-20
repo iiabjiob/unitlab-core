@@ -1483,7 +1483,7 @@ def _ui_phase(
     return "idle"
 
 
-def _available_report_controls_payload(candidates: tuple[Iec61850ReportControlCandidate, ...]) -> list[dict[str, str | bool | None]]:
+def _available_report_controls_payload(candidates: tuple[Iec61850ReportControlCandidate, ...]) -> list[dict[str, str | bool | dict | None]]:
     return [
         {
             "rcb_ref": _candidate_rcb_reference(candidate),
@@ -1492,6 +1492,8 @@ def _available_report_controls_payload(candidates: tuple[Iec61850ReportControlCa
             "report_kind": candidate.report_kind.value,
             "rpt_id": candidate.rpt_id,
             "data_set_ref": candidate.data_set_ref,
+            "trigger_options": _trigger_options_payload(candidate.trigger_options),
+            "optional_fields": _optional_fields_payload(candidate.optional_fields),
         }
         for candidate in candidates
     ]
@@ -2115,8 +2117,10 @@ def _apply_live_rcb_attr(report_control: dict, field: str, value: str) -> None:
         report_control["integrityPeriodMs"] = _parse_int_or_none(value)
     elif field == "OptFlds":
         report_control["optFlds"] = value
+        report_control["optionalFields"] = _optional_fields_payload(_optional_fields_from_mms_bit_string(value))
     elif field == "TrgOps":
         report_control["trgOps"] = value
+        report_control["triggerOptions"] = _trigger_options_payload(_trigger_options_from_mms_bit_string(value))
 
 
 def _candidate_with_live_rcb_attr(
@@ -2152,7 +2156,74 @@ def _candidate_with_live_rcb_attr(
         kwargs["buffer_time_ms"] = _parse_int_or_none(value)
     elif field == "IntgPd":
         kwargs["integrity_period_ms"] = _parse_int_or_none(value)
+    elif field == "OptFlds":
+        kwargs["optional_fields"] = _optional_fields_from_mms_bit_string(value)
+    elif field == "TrgOps":
+        kwargs["trigger_options"] = _trigger_options_from_mms_bit_string(value)
     return Iec61850ReportControlCandidate(**kwargs)
+
+
+def _trigger_options_payload(options: Iec61850RuntimeTriggerOptions) -> dict[str, bool | None]:
+    return {
+        "data_change": options.data_change,
+        "quality_change": options.quality_change,
+        "data_update": options.data_update,
+        "periodic": options.periodic,
+        "general_interrogation": options.general_interrogation,
+    }
+
+
+def _optional_fields_payload(fields: Iec61850OptionalFields) -> dict[str, bool | None]:
+    return {
+        "sequence_number": fields.sequence_number,
+        "timestamp": fields.timestamp,
+        "reason_code": fields.reason_code,
+        "data_set_name": fields.data_set_name,
+        "data_reference": fields.data_reference,
+        "entry_id": fields.entry_id,
+        "config_revision": fields.config_revision,
+        "buffer_overflow": fields.buffer_overflow,
+    }
+
+
+def _trigger_options_from_mms_bit_string(value: str) -> Iec61850RuntimeTriggerOptions:
+    bytes_value = _parse_mms_hex_value(value)
+    mask = bytes_value[1] if len(bytes_value) >= 2 else 0
+    return Iec61850RuntimeTriggerOptions(
+        data_change=(mask & 0x40) != 0,
+        quality_change=(mask & 0x20) != 0,
+        data_update=(mask & 0x10) != 0,
+        periodic=(mask & 0x08) != 0,
+        general_interrogation=(mask & 0x04) != 0,
+    )
+
+
+def _optional_fields_from_mms_bit_string(value: str) -> Iec61850OptionalFields:
+    bytes_value = _parse_mms_hex_value(value)
+    first = bytes_value[1] if len(bytes_value) >= 2 else 0
+    second = bytes_value[2] if len(bytes_value) >= 3 else 0
+    return Iec61850OptionalFields(
+        sequence_number=(first & 0x40) != 0,
+        timestamp=(first & 0x20) != 0,
+        reason_code=(first & 0x10) != 0,
+        data_set_name=(first & 0x08) != 0,
+        data_reference=(first & 0x04) != 0,
+        buffer_overflow=(first & 0x02) != 0,
+        entry_id=(first & 0x01) != 0,
+        config_revision=(second & 0x80) != 0,
+    )
+
+
+def _parse_mms_hex_value(value: str) -> bytes:
+    normalized = value.strip()
+    if normalized.startswith("0x"):
+        normalized = normalized[2:]
+    if len(normalized) % 2 != 0:
+        return b""
+    try:
+        return bytes.fromhex(normalized)
+    except ValueError:
+        return b""
 
 
 def _live_rcb_logical_node_and_kind(item: str) -> tuple[str, Iec61850ReportKind]:

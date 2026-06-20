@@ -94,6 +94,8 @@ class _ExternalMmsClientStdin:
             self._stdout.lines.append("native-wire-client: discovered-rcb-attr[0] domain=KINTE13LVC01CTRL item=LLN0$BR$brcbA01 field=ConfRev value=10000\n")
             self._stdout.lines.append("native-wire-client: discovered-rcb-attr[0] domain=KINTE13LVC01CTRL item=LLN0$BR$brcbA01 field=BufTm value=500\n")
             self._stdout.lines.append("native-wire-client: discovered-rcb-attr[0] domain=KINTE13LVC01CTRL item=LLN0$BR$brcbA01 field=IntgPd value=0\n")
+            self._stdout.lines.append("native-wire-client: discovered-rcb-attr[0] domain=KINTE13LVC01CTRL item=LLN0$BR$brcbA01 field=OptFlds value=0x067f80\n")
+            self._stdout.lines.append("native-wire-client: discovered-rcb-attr[0] domain=KINTE13LVC01CTRL item=LLN0$BR$brcbA01 field=TrgOps value=0x0274\n")
             self._stdout.lines.append(
                 "native-wire-client: subscription-summary phase=discover rcb=KINTE13LVC01CTRL/LLN0.brcbA/<none> rcb-index=0 rptEna=false rptEna-invoke=0 giRequested=false gi-invoke=0 lastReportReceived=false asyncReports=0 lastReportValues=0 lastReportDataRefs=0 lastReportMatchedDataRefs=0 lastReportReasons=0 lastReportDatasetMismatches=0 lastReportMissingValues=0 lastReportExtraValues=0 lastReportMissingReasons=0 lastReportExtraReasons=0 lastReportUnsupportedValues=0\n"
             )
@@ -219,6 +221,8 @@ class _FailingExternalMmsClientStdin:
             self._process.stdout.lines.append("native-wire-client: discovered-rcb-attr[0] domain=KINTE13LVC01CTRL item=LLN0$BR$brcbA01 field=ConfRev value=10000\n")
             self._process.stdout.lines.append("native-wire-client: discovered-rcb-attr[0] domain=KINTE13LVC01CTRL item=LLN0$BR$brcbA01 field=BufTm value=500\n")
             self._process.stdout.lines.append("native-wire-client: discovered-rcb-attr[0] domain=KINTE13LVC01CTRL item=LLN0$BR$brcbA01 field=IntgPd value=0\n")
+            self._process.stdout.lines.append("native-wire-client: discovered-rcb-attr[0] domain=KINTE13LVC01CTRL item=LLN0$BR$brcbA01 field=OptFlds value=0x067f80\n")
+            self._process.stdout.lines.append("native-wire-client: discovered-rcb-attr[0] domain=KINTE13LVC01CTRL item=LLN0$BR$brcbA01 field=TrgOps value=0x0274\n")
             self._process.stdout.lines.append(
                 "native-wire-client: subscription-summary phase=discover rcb=KINTE13LVC01CTRL/LLN0.brcbA/<none> rcb-index=0 rptEna=false giRequested=false gi-invoke=0 lastReportReceived=false asyncReports=0 lastReportValues=0 lastReportDataRefs=0 lastReportMatchedDataRefs=0 lastReportReasons=0 lastReportDatasetMismatches=0 lastReportMissingValues=0 lastReportExtraValues=0 lastReportMissingReasons=0 lastReportExtraReasons=0 lastReportUnsupportedValues=0\n"
             )
@@ -775,9 +779,25 @@ def test_external_mms_target_routes_discover_rptena_gi_to_external_probes(monkey
     assert discover_snapshot.candidate.conf_rev == "10000"
     assert discover_snapshot.candidate.buffer_time_ms == 500
     assert discover_snapshot.candidate.integrity_period_ms == 0
+    assert discover_snapshot.candidate.trigger_options.data_change is True
+    assert discover_snapshot.candidate.trigger_options.quality_change is True
+    assert discover_snapshot.candidate.trigger_options.data_update is True
+    assert discover_snapshot.candidate.trigger_options.periodic is False
+    assert discover_snapshot.candidate.trigger_options.general_interrogation is True
+    assert discover_snapshot.candidate.optional_fields.sequence_number is True
+    assert discover_snapshot.candidate.optional_fields.timestamp is True
+    assert discover_snapshot.candidate.optional_fields.reason_code is True
+    assert discover_snapshot.candidate.optional_fields.data_set_name is True
+    assert discover_snapshot.candidate.optional_fields.data_reference is True
+    assert discover_snapshot.candidate.optional_fields.entry_id is True
+    assert discover_snapshot.candidate.optional_fields.config_revision is True
+    assert discover_snapshot.candidate.optional_fields.buffer_overflow is True
     assert discover_snapshot.candidate.signals[0].reference == "XCBR1.Pos[ST]"
     assert discover_snapshot.ui_state["discovery"]["available_report_controls"][0]["report_control_id"] == "KINTE13LVC01CTRL:LLN0$BR$brcbA01"
     assert discover_snapshot.ui_state["discovery"]["available_report_controls"][0]["rpt_id"] == "KINTE13LVC01CTRL/LLN0.brcbA"
+    assert discover_snapshot.ui_state["discovery"]["available_report_controls"][0]["trigger_options"]["data_change"] is True
+    assert discover_snapshot.ui_state["discovery"]["available_report_controls"][0]["trigger_options"]["periodic"] is False
+    assert discover_snapshot.ui_state["discovery"]["available_report_controls"][0]["optional_fields"]["config_revision"] is True
 
     assert stdin_commands[:6] == [
         "discover",
