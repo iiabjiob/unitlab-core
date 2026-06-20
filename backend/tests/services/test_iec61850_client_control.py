@@ -673,6 +673,59 @@ def test_client_control_configures_external_target_with_multiple_report_controls
     assert selection.transcript[-1].kind == "report-control-select"
 
 
+def test_external_mms_target_can_connect_and_discover_without_scd(monkeypatch: pytest.MonkeyPatch) -> None:
+    service = Iec61850ClientControlService(
+        live_wire_binary_path="/bin/true",
+        live_wire_service_host="host.docker.internal",
+        live_wire_data_port=12447,
+    )
+    snapshot = service.configure_target(
+        client_control_module.Iec61850ClientTargetRequest(
+            mode="external-mms",
+            host="host.docker.internal",
+            port=12447,
+            ied_name="KINTE13LVC01",
+        )
+    )
+    assert snapshot.candidate.report_control_name == ""
+    assert snapshot.ui_state["discovery"]["available_report_controls"] == []
+    assert snapshot.ui_state["actions"]["can_rptena"] is False
+
+    process_commands: list[tuple[str, ...]] = []
+    stdin_commands: list[str] = []
+    def fake_popen(command, **_kwargs):
+        process_commands.append(tuple(command))
+        process = _ExternalMmsClientProcess(command, stdin_commands)
+        return process
+
+    monkeypatch.setattr(client_control_module.subprocess, "Popen", fake_popen)
+
+    connect_snapshot = service.connect_ied()
+    discover_snapshot = service.discover_ied()
+    rptena_snapshot = service.enable_reporting()
+    gi_snapshot = service.send_general_interrogation()
+
+    assert connect_snapshot.session_open is True
+    assert connect_snapshot.ui_state["session"]["phase"] == "associated"
+    assert connect_snapshot.ui_state["actions"]["can_rptena"] is False
+    assert discover_snapshot.last_discovery is not None
+    assert discover_snapshot.candidate.report_control_name == "brcbA"
+    assert discover_snapshot.ui_state["discovery"]["available_report_controls"][0]["report_control_name"] == "brcbA"
+    assert discover_snapshot.ui_state["discovery"]["selected_rcb_ref"] == "KINTE13LVC01/AP1/CTRL/LLN0/brcbA/buffered"
+    assert discover_snapshot.ui_state["actions"]["can_rptena"] is True
+    assert rptena_snapshot.ui_state["subscription"]["runtime_status"] == "enabled"
+    assert gi_snapshot.ui_state["session"]["phase"] == "reporting"
+    assert gi_snapshot.ui_state["report"]["received"] is True
+    assert gi_snapshot.ui_state["report"]["value_count"] == 3
+
+    assert process_commands[0][-1] == "--mms-client-start"
+    assert stdin_commands[0] == "discover"
+    assert any(cmd.startswith("write-hex KINTE13LVC01CTRL LLN0$BR$brcbA01$OptFlds") for cmd in stdin_commands)
+    assert any(cmd.startswith("write-hex KINTE13LVC01CTRL LLN0$BR$brcbA01$TrgOps") for cmd in stdin_commands)
+    assert "rptena 0" in stdin_commands
+    assert "gi 0" in stdin_commands
+
+
 def test_external_mms_target_routes_discover_rptena_gi_to_external_probes(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     scl_path = tmp_path / "target.scd"
     scl_path.write_text(

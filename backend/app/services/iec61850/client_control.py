@@ -79,6 +79,14 @@ class Iec61850ClientTargetRequest:
     selected_rcb_ref: str | None = None
 
 
+def _candidate_is_unselected(candidate: Iec61850ReportControlCandidate) -> bool:
+    return (
+        candidate.logical_device_inst.strip() == ""
+        or candidate.logical_node_name.strip() == ""
+        or candidate.report_control_name.strip() == ""
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class Iec61850ClientControlSnapshot:
     session_id: str
@@ -662,6 +670,8 @@ class Iec61850ClientControlService:
         return discovered.index if discovered is not None else None
 
     def _selected_external_discovered_rcb(self) -> _ExternalDiscoveredReportControl | None:
+        if _candidate_is_unselected(self._candidate):
+            return None
         expected_domain = f"{self._candidate.ied_name}{self._candidate.logical_device_inst}"
         report_folder = "BR" if self._candidate.report_kind == Iec61850ReportKind.BUFFERED else "RP"
         expected_prefix = f"{self._candidate.logical_node_name}${report_folder}$"
@@ -678,6 +688,11 @@ class Iec61850ClientControlService:
         return None
 
     def _external_rcb_configuration_commands(self) -> tuple[str, str]:
+        if _candidate_is_unselected(self._candidate):
+            raise Iec61850ReportRuntimeError(
+                "CLIENT_REPORT_CONTROL_NOT_SELECTED",
+                "IEC 61850 report control must be discovered before RptEna or GI.",
+            )
         discovered = self._selected_external_discovered_rcb()
         if discovered is not None:
             return (
@@ -695,12 +710,8 @@ class Iec61850ClientControlService:
             return
         if self._endpoint.host is None or not self._endpoint.host.strip():
             raise Iec61850ReportRuntimeError("EXTERNAL_MMS_HOST_REQUIRED", "IEC 61850 external MMS target host is required.")
-        if self._target_scl_path is None or not self._target_scl_path.strip():
-            raise Iec61850ReportRuntimeError("EXTERNAL_MMS_SCL_REQUIRED", "IEC 61850 external MMS target SCD path is required.")
         command = [
             self._external_probe_binary_path(),
-            "--scl",
-            self._target_scl_path,
             "--ied",
             self._endpoint.ied_name,
             "--bind",
@@ -709,6 +720,8 @@ class Iec61850ClientControlService:
             str(self._endpoint.port),
             "--mms-client-start",
         ]
+        if self._target_scl_path is not None and self._target_scl_path.strip():
+            command[1:1] = ["--scl", self._target_scl_path]
         try:
             process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
         except OSError as exc:
@@ -877,7 +890,7 @@ class Iec61850ClientControlService:
                 discovery=discovery,
             )
             self._available_candidates = _replace_or_append_candidate(self._available_candidates, candidate)
-            if self._candidate.report_control_name == base_name:
+            if _candidate_is_unselected(self._candidate) or self._candidate.report_control_name == base_name:
                 self._candidate = candidate
 
     def _ensure_external_live_discovery(self) -> dict:
@@ -1310,8 +1323,9 @@ def _build_ui_state(
     live_wire_last_diagnostic: Iec61850ClientControlDiagnostic | None,
     transcript: tuple[Iec61850MmsClientEvent, ...],
 ) -> dict:
-    selected_rcb_ref = _candidate_rcb_reference(candidate)
-    selected_dataset_ref = candidate.data_set_ref
+    candidate_ready = not _candidate_is_unselected(candidate)
+    selected_rcb_ref = _candidate_rcb_reference(candidate) if candidate_ready else None
+    selected_dataset_ref = candidate.data_set_ref if candidate_ready else None
     discovery_counts = _discovery_counts(last_discovery, candidate)
     rptena_enabled = bool(last_state.enabled) if last_state is not None else False
     associated = session_open or live_wire_open
@@ -1341,7 +1355,7 @@ def _build_ui_state(
         )
     )
     external_mms = endpoint.mode == Iec61850RuntimeMode.MMS
-    can_external_probe = external_mms and last_discovery is not None
+    can_external_probe = external_mms and last_discovery is not None and candidate_ready
     can_external_gi = (
         can_external_probe
         and external_probe is not None
@@ -1437,8 +1451,8 @@ def _build_ui_state(
         "actions": {
             "can_connect": not session_open and not live_wire_open,
             "can_discover": associated or external_mms,
-            "can_rptena": (associated and (last_discovery is not None or external_mms)) or can_external_probe,
-            "can_gi": (associated and subscribed) or can_external_gi,
+            "can_rptena": (associated and candidate_ready and (last_discovery is not None or external_mms)) or can_external_probe,
+            "can_gi": (associated and subscribed and candidate_ready) or can_external_gi,
             "can_disconnect": associated,
             "can_close_ied": session_open or live_wire_open or last_discovery is not None or last_report is not None,
         },
@@ -1883,32 +1897,32 @@ def _build_target_endpoint_and_candidate(
         raise Iec61850ReportRuntimeError("CLIENT_TARGET_MODE_INVALID", "IEC 61850 client target mode must be simulator or external-mms.")
     host = request.host.strip()
     ied_name = request.ied_name.strip()
+    access_point_name = request.access_point_name.strip() or "AP1"
     if not host:
         raise Iec61850ReportRuntimeError("CLIENT_TARGET_HOST_REQUIRED", "IEC 61850 external MMS target host is required.")
     if request.port <= 0 or request.port > 65535:
         raise Iec61850ReportRuntimeError("CLIENT_TARGET_PORT_INVALID", "IEC 61850 external MMS target port must be in range 1..65535.")
     if not ied_name:
         raise Iec61850ReportRuntimeError("CLIENT_TARGET_IED_REQUIRED", "IEC 61850 external MMS target IED name is required.")
-    if request.scl_path is None or not request.scl_path.strip():
-        raise Iec61850ReportRuntimeError("CLIENT_TARGET_SCL_REQUIRED", "IEC 61850 external MMS target requires an SCD/SCL path.")
-    scl_path = Path(request.scl_path.strip())
-    if not scl_path.is_file():
-        raise Iec61850ReportRuntimeError("CLIENT_TARGET_SCL_NOT_FOUND", f"IEC 61850 SCD/SCL file was not found: {scl_path}.")
-    fallback_access_point = request.access_point_name.strip() or "AP1"
-    candidates = _candidates_from_scd(scl_path, ied_name, fallback_access_point)
-    if not candidates:
-        raise Iec61850ReportRuntimeError("CLIENT_TARGET_REPORT_CONTROL_NOT_FOUND", f'IED "{ied_name}" has no ReportControl in {scl_path}.')
-    candidate = _find_candidate_by_rcb_reference(candidates, request.selected_rcb_ref)
-    if candidate is None:
-        candidate = next((item for item in candidates if item.access_point_name == fallback_access_point), candidates[0])
     endpoint = Iec61850DeviceEndpoint(
         id=f"mms:{ied_name}@{host}:{request.port}",
         mode=Iec61850RuntimeMode.MMS,
         ied_name=ied_name,
-        access_point_name=candidate.access_point_name,
+        access_point_name=access_point_name,
         host=host,
         port=request.port,
     )
+    if request.scl_path is None or not request.scl_path.strip():
+        return endpoint, _external_unselected_candidate(endpoint), ()
+    scl_path = Path(request.scl_path.strip())
+    if not scl_path.is_file():
+        raise Iec61850ReportRuntimeError("CLIENT_TARGET_SCL_NOT_FOUND", f"IEC 61850 SCD/SCL file was not found: {scl_path}.")
+    candidates = _candidates_from_scd(scl_path, ied_name, access_point_name)
+    if not candidates:
+        raise Iec61850ReportRuntimeError("CLIENT_TARGET_REPORT_CONTROL_NOT_FOUND", f'IED "{ied_name}" has no ReportControl in {scl_path}.')
+    candidate = _find_candidate_by_rcb_reference(candidates, request.selected_rcb_ref)
+    if candidate is None:
+        candidate = next((item for item in candidates if item.access_point_name == access_point_name), candidates[0])
     return endpoint, candidate, candidates
 
 
@@ -2447,6 +2461,27 @@ def _default_candidate() -> Iec61850ReportControlCandidate:
         signals=(
             Iec61850DataSetMember(reference="LD0/XCBR1.Pos.stVal[ST]", fc="ST"),
         ),
+    )
+
+
+def _external_unselected_candidate(endpoint: Iec61850DeviceEndpoint) -> Iec61850ReportControlCandidate:
+    return Iec61850ReportControlCandidate(
+        id=f"{endpoint.id}:unselected",
+        ied_name=endpoint.ied_name,
+        access_point_name=endpoint.access_point_name,
+        logical_device_inst="",
+        logical_node_name="",
+        report_control_name="",
+        report_kind=Iec61850ReportKind.BUFFERED,
+        rpt_id=None,
+        data_set_ref=None,
+        conf_rev=None,
+        indexed=None,
+        buffer_time_ms=None,
+        integrity_period_ms=None,
+        trigger_options=Iec61850RuntimeTriggerOptions(),
+        optional_fields=Iec61850OptionalFields(),
+        signals=(),
     )
 
 

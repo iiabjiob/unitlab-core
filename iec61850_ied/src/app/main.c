@@ -64,7 +64,7 @@ static int immediate_stop_requested(void* context)
 
 static void print_usage(const char* program_name)
 {
-    printf("Usage: %s (--fixture PATH | --scl PATH) --ied NAME [--bind ADDRESS] [--port PORT] [--dry-run] [--smoke-start] [--native-smoke-start] [--native-wire-start] [--native-wire-client-start] [--mms-client-start] [--discover-probe] [--metadata-probe] [--gi-probe] [--report-key KEY] [--native-test-report-tick-ms MS]\n", program_name);
+    printf("Usage: %s [--fixture PATH | --scl PATH] --ied NAME [--bind ADDRESS] [--port PORT] [--dry-run] [--smoke-start] [--native-smoke-start] [--native-wire-start] [--native-wire-client-start] [--mms-client-start] [--discover-probe] [--metadata-probe] [--gi-probe] [--report-key KEY] [--native-test-report-tick-ms MS]\n", program_name);
     printf("\n");
     printf("Options:\n");
     printf("  --fixture PATH   UnitLab IEC 61850 IED simulator fixture JSON.\n");
@@ -77,7 +77,7 @@ static void print_usage(const char* program_name)
     printf("  --native-smoke-start Exercise the native server-runtime boundary once, then exit.\n");
     printf("  --native-wire-start  Start a native wire server that can emit live reports over TCP.\n");
     printf("  --native-wire-client-start  Start a native wire client that connects and emits wire frames.\n");
-    printf("  --mms-client-start  Start a persistent native wire MMS client controlled by stdin.\n");
+    printf("  --mms-client-start  Start a persistent native wire MMS client controlled by stdin. Can run without --fixture/--scl.\n");
     printf("  --native-client-read-domain DOMAIN  Optional startup native wire client Read domain.\n");
     printf("  --native-client-read-item ITEM      Optional startup native wire client Read item.\n");
     printf("  --native-client-read-invoke-id ID   Optional startup native wire client Read invokeId. Default when enabled: 3.\n");
@@ -232,8 +232,8 @@ static int parse_args(int argc, char** argv, SimulatorOptions* options)
         return -1;
     }
 
-    if ((options->fixture_path == NULL || options->fixture_path[0] == '\0') && (options->scl_path == NULL || options->scl_path[0] == '\0')) {
-        fprintf(stderr, "SOURCE_REQUIRED: --fixture PATH or --scl PATH is required.\n");
+    if ((options->fixture_path == NULL || options->fixture_path[0] == '\0') && (options->scl_path == NULL || options->scl_path[0] == '\0') && !options->mms_client_start) {
+        fprintf(stderr, "SOURCE_REQUIRED: --fixture PATH or --scl PATH is required unless --mms-client-start is used.\n");
         return -1;
     }
     if (options->fixture_path != NULL && options->fixture_path[0] != '\0' && options->scl_path != NULL && options->scl_path[0] != '\0') {
@@ -616,6 +616,38 @@ int main(int argc, char** argv)
     }
     if (parsed < 0) {
         return 64;
+    }
+
+    if (options.mms_client_start) {
+        UnitLabIedModelLoadResult load_result;
+        UnitLabIedServerConfig client_config = {
+            .bind_address = options.bind_address,
+            .port = options.port,
+            .control_port = options.port < 65535 ? options.port + 1 : 0,
+            .native_test_report_tick_ms = options.native_test_report_tick_ms,
+        };
+        UnitLabNativeWireClientOptions wire_client_options;
+
+        memset(&wire_client_options, 0, sizeof(wire_client_options));
+        wire_client_options.initial_read_domain = options.native_client_read_domain;
+        wire_client_options.initial_read_item = options.native_client_read_item;
+        wire_client_options.initial_read_invoke_id = options.native_client_read_invoke_id;
+        wire_client_options.initial_read_enabled = options.native_client_read_domain != NULL && options.native_client_read_item != NULL;
+
+        client_config.control_port = 0;
+
+        signal(SIGINT, handle_stop_signal);
+        signal(SIGTERM, handle_stop_signal);
+        if (!unitlab_run_native_wire_client_with_options(&client_config, &wire_client_options, &load_result, signal_stop_requested, NULL)) {
+            fprintf(stderr, "%s: %s\n", load_result.code, load_result.message);
+            fprintf(stderr, "libiec61850=%s\n", libiec61850_status());
+            return 69;
+        }
+        printf("unitlab-iec61850-ied-sim: persistent native MMS client stopped\n");
+        printf("ied=%s\n", options.ied_name);
+        printf("endpoint=%s:%d\n", options.bind_address, options.port);
+        printf("libiec61850=%s\n", libiec61850_status());
+        return 0;
     }
 
     if (options.scl_path != NULL && options.scl_path[0] != '\0') {
