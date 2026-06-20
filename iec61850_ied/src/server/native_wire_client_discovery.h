@@ -66,4 +66,10 @@ int unitlab_native_client_run_discover_sequence(
     uint32_t invoke_id,
     uint32_t* next_invoke_id);
 
+int unitlab_native_client_run_discover_root_sequence(
+    UnitLabNativeClientSessionState* session,
+    const UnitLabNativeDiscoveryIo* io,
+    uint32_t invoke_id,
+    uint32_t* next_invoke_id);
+
 #endif

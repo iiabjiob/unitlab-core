@@ -83,7 +83,11 @@ class _ExternalMmsClientStdin:
     def write(self, value: str) -> None:
         command = value.rstrip("\n")
         self._commands.append(command)
-        if command.startswith("discover "):
+        if command == "discover" or command.startswith("discover "):
+            self._stdout.lines.append("native-wire-client: discovered-logical-device[0] domain=KINTE13LVC01CTRL\n")
+            self._stdout.lines.append("native-wire-client: discovered-logical-node[0] domain=KINTE13LVC01CTRL name=LLN0\n")
+            self._stdout.lines.append("native-wire-client: discovered-dataset[0] reference=KINTE13LVC01CTRL/LLN0.RCB1\n")
+            self._stdout.lines.append("native-wire-client: discovered-dataset-member[0.0] dataset=KINTE13LVC01CTRL/LLN0.RCB1 ref=KINTE13LVC01CTRL/XCBR1$ST$Pos\n")
             self._stdout.lines.append("native-wire-client: discovered-brcb[0] domain=KINTE13LVC01CTRL item=LLN0$BR$brcbA01\n")
             self._stdout.lines.append(
                 "native-wire-client: subscription-summary phase=discover rcb=KINTE13LVC01CTRL/LLN0.brcbA/<none> rcb-index=0 rptEna=false rptEna-invoke=0 giRequested=false gi-invoke=0 lastReportReceived=false asyncReports=0 lastReportValues=0 lastReportDataRefs=0 lastReportMatchedDataRefs=0 lastReportReasons=0 lastReportDatasetMismatches=0 lastReportMissingValues=0 lastReportExtraValues=0 lastReportMissingReasons=0 lastReportExtraReasons=0 lastReportUnsupportedValues=0\n"
@@ -199,7 +203,11 @@ class _FailingExternalMmsClientStdin:
     def write(self, value: str) -> None:
         command = value.rstrip("\n")
         self._commands.append(command)
-        if command.startswith("discover "):
+        if command == "discover" or command.startswith("discover "):
+            self._process.stdout.lines.append("native-wire-client: discovered-logical-device[0] domain=KINTE13LVC01CTRL\n")
+            self._process.stdout.lines.append("native-wire-client: discovered-logical-node[0] domain=KINTE13LVC01CTRL name=LLN0\n")
+            self._process.stdout.lines.append("native-wire-client: discovered-dataset[0] reference=KINTE13LVC01CTRL/LLN0.RCB1\n")
+            self._process.stdout.lines.append("native-wire-client: discovered-dataset-member[0.0] dataset=KINTE13LVC01CTRL/LLN0.RCB1 ref=KINTE13LVC01CTRL/XCBR1$ST$Pos\n")
             self._process.stdout.lines.append("native-wire-client: discovered-brcb[0] domain=KINTE13LVC01CTRL item=LLN0$BR$brcbA01\n")
             self._process.stdout.lines.append(
                 "native-wire-client: subscription-summary phase=discover rcb=KINTE13LVC01CTRL/LLN0.brcbA/<none> rcb-index=0 rptEna=false giRequested=false gi-invoke=0 lastReportReceived=false asyncReports=0 lastReportValues=0 lastReportDataRefs=0 lastReportMatchedDataRefs=0 lastReportReasons=0 lastReportDatasetMismatches=0 lastReportMissingValues=0 lastReportExtraValues=0 lastReportMissingReasons=0 lastReportExtraReasons=0 lastReportUnsupportedValues=0\n"
@@ -744,8 +752,16 @@ def test_external_mms_target_routes_discover_rptena_gi_to_external_probes(monkey
         "12447",
         "--mms-client-start",
     )
+    assert discover_snapshot.last_discovery is not None
+    assert discover_snapshot.last_discovery["source"] == "live"
+    assert discover_snapshot.last_discovery["logicalDevices"][0]["reference"] == "KINTE13LVC01CTRL"
+    assert discover_snapshot.last_discovery["logicalNodes"][0]["reference"] == "KINTE13LVC01CTRL/LLN0"
+    assert discover_snapshot.last_discovery["dataSets"][0]["reference"] == "KINTE13LVC01CTRL/LLN0.RCB1"
+    assert discover_snapshot.last_discovery["dataSets"][0]["memberCount"] == 1
+    assert discover_snapshot.last_discovery["reportControls"][0]["item"] == "LLN0$BR$brcbA01"
+
     assert stdin_commands[:6] == [
-        "discover KINTE13LVC01CTRL",
+        "discover",
         "write-hex KINTE13LVC01CTRL LLN0$BR$brcbA01$OptFlds 4 067f80",
         "write-hex KINTE13LVC01CTRL LLN0$BR$brcbA01$TrgOps 4 0274",
         "rptena 0",
@@ -883,7 +899,7 @@ def test_external_mms_state_failed_aborts_general_interrogation(monkeypatch: pyt
     assert snapshot.ui_state["subscription"]["runtime_status"] == "failed"
     assert snapshot.ui_state["session"]["phase"] == "failed"
     assert process_commands[:5] == [
-        "discover KINTE13LVC01CTRL",
+        "discover",
         "write-hex KINTE13LVC01CTRL LLN0$BR$brcbA01$OptFlds 4 067f80",
         "write-hex KINTE13LVC01CTRL LLN0$BR$brcbA01$TrgOps 4 0274",
         "rptena 0",

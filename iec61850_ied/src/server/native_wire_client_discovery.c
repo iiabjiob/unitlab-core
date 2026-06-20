@@ -822,6 +822,8 @@ int unitlab_native_client_run_discover_sequence(
             set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered logical device state.");
             goto cleanup;
         }
+        printf("native-wire-client: discovered-logical-device[%zu] domain=%s\n", index, logical_device_names.items[index]);
+        fflush(stdout);
     }
 
     if (!io->get_name_list_step(session, io, "domain-named-variables", 0U, 1U, domain_id, NULL, NULL, unitlab_native_client_session_reserve_invoke_id(session))) {
@@ -878,6 +880,8 @@ int unitlab_native_client_run_discover_sequence(
             set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered logical node state.");
             goto cleanup;
         }
+        printf("native-wire-client: discovered-logical-node[%zu] domain=%s name=%s\n", index, domain_id, logical_node_names.items[index]);
+        fflush(stdout);
     }
 
     for (size_t data_index = 0U; data_index < domain_variable_names.count; data_index++) {
@@ -934,6 +938,8 @@ int unitlab_native_client_run_discover_sequence(
     for (size_t index = 0U; index < data_set_items.count; index++) {
         char data_set_reference[384U];
         snprintf(data_set_reference, sizeof(data_set_reference), "%s/%s", domain_id, data_set_items.items[index]);
+        printf("native-wire-client: discovered-dataset[%zu] reference=%s\n", index, data_set_reference);
+        fflush(stdout);
         if (!io->attributes_step(session, io, "dataset-members", domain_id, data_set_items.items[index], unitlab_native_client_session_reserve_invoke_id(session), 1)) {
             goto cleanup;
         }
@@ -954,5 +960,60 @@ cleanup:
     identifier_list_reset(&data_set_items);
     identifier_list_reset(&brcb_names);
     identifier_list_reset(&brcb_logical_nodes);
+    return ok;
+}
+
+int unitlab_native_client_run_discover_root_sequence(
+    UnitLabNativeClientSessionState* session,
+    const UnitLabNativeDiscoveryIo* io,
+    uint32_t invoke_id,
+    uint32_t* next_invoke_id)
+{
+    UnitLabNativeIdentifierList logical_device_names = {0};
+    int more_follows = 0;
+    char last_identifier[128U];
+    uint32_t cursor_invoke_id = invoke_id;
+    int ok = 0;
+
+    if (session == NULL || io == NULL || io->get_name_list_step == NULL || next_invoke_id == NULL) {
+        set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Native wire client root discover requires session and discovery callbacks.");
+        return 0;
+    }
+
+    unitlab_native_client_session_reset(session);
+    unitlab_native_client_session_set_next_invoke_id(session, invoke_id);
+    if (!io->get_name_list_step(session, io, "root-vmd-logical-devices", 9U, 0U, NULL, NULL, NULL, unitlab_native_client_session_reserve_invoke_id(session))) {
+        goto cleanup;
+    }
+    if (!extract_get_name_list_identifiers(io->response, *io->encoded_response_length, &logical_device_names, &more_follows, last_identifier, sizeof(last_identifier))) {
+        set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not decode root logical device GetNameList response.");
+        goto cleanup;
+    }
+    while (more_follows && last_identifier[0] != '\0') {
+        size_t before_count = logical_device_names.count;
+        if (!io->get_name_list_step(session, io, "root-vmd-logical-devices-page", 9U, 0U, NULL, NULL, last_identifier, unitlab_native_client_session_reserve_invoke_id(session))) {
+            goto cleanup;
+        }
+        if (!extract_get_name_list_identifiers(io->response, *io->encoded_response_length, &logical_device_names, &more_follows, last_identifier, sizeof(last_identifier))) {
+            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not decode root logical device GetNameList page.");
+            goto cleanup;
+        }
+        if (logical_device_names.count == before_count) {
+            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client root logical device pagination did not advance.");
+            goto cleanup;
+        }
+    }
+    if (logical_device_names.count == 0U) {
+        set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client root discover found no logical-device domains.");
+        goto cleanup;
+    }
+
+    cursor_invoke_id = session->next_invoke_id;
+    printf("native-wire-client: discover-root selected-domain=%s logical-device-count=%zu\n", logical_device_names.items[0], logical_device_names.count);
+    fflush(stdout);
+    ok = unitlab_native_client_run_discover_sequence(session, io, logical_device_names.items[0], cursor_invoke_id, next_invoke_id);
+
+cleanup:
+    identifier_list_reset(&logical_device_names);
     return ok;
 }

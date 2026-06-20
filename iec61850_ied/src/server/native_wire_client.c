@@ -3262,15 +3262,15 @@ int unitlab_run_native_wire_client_with_options(
             break;
         }
         command[strcspn(command, "\r\n")] = '\0';
-        if (strncmp(command, "discover ", 9U) == 0) {
+        if (strcmp(command, "discover") == 0 || strncmp(command, "discover ", 9U) == 0) {
             char* saveptr = NULL;
-            char* domain_id = strtok_r(command + 9U, " 	", &saveptr);
+            char* domain_id = strcmp(command, "discover") == 0 ? NULL : strtok_r(command + 9U, " 	", &saveptr);
             char* invoke_id_text = strtok_r(NULL, " 	", &saveptr);
             char* extra = strtok_r(NULL, " 	", &saveptr);
             uint32_t invoke_id = session.next_invoke_id != 0U ? session.next_invoke_id : 1U;
 
-            if (domain_id == NULL || extra != NULL) {
-                set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_COMMAND_INVALID", "Usage: discover <domain> [invokeBase].");
+            if (extra != NULL) {
+                set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_COMMAND_INVALID", "Usage: discover [domain] [invokeBase].");
                 goto fail;
             }
             if (invoke_id_text != NULL) {
@@ -3306,12 +3306,10 @@ int unitlab_run_native_wire_client_with_options(
                     .attributes_step = discovery_attributes_step_adapter,
                     .emit_model_summary = emit_discovered_model_summary,
                 };
-                if (!unitlab_native_client_run_discover_sequence(
-                        &session,
-                        &discovery_io,
-                        domain_id,
-                        invoke_id,
-                        &next_invoke_id)) {
+                int discovered = domain_id != NULL && domain_id[0] != '\0'
+                    ? unitlab_native_client_run_discover_sequence(&session, &discovery_io, domain_id, invoke_id, &next_invoke_id)
+                    : unitlab_native_client_run_discover_root_sequence(&session, &discovery_io, invoke_id, &next_invoke_id);
+                if (!discovered) {
                     state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
                     set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_FAILED", diagnostic.message);
                     goto fail;

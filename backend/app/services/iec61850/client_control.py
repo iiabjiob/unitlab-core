@@ -154,6 +154,7 @@ class Iec61850ClientControlService:
         self._external_mms_process: subprocess.Popen[str] | None = None
         self._external_mms_stdout_buffer = bytearray()
         self._external_discovered_rcbs: list[_ExternalDiscoveredReportControl] = []
+        self._external_live_discovery: dict | None = None
         self._pending_external_report_entries: list[dict[str, str]] = []
         self._current_external_report_values: dict[str, Iec61850ReportEventValue] = {}
         self._lock = RLock()
@@ -255,6 +256,7 @@ class Iec61850ClientControlService:
             self._last_read = None
             self._last_discovery = None
             self._external_discovered_rcbs.clear()
+            self._external_live_discovery = None
             self._last_state = None
             self._last_report = None
             self._last_plan = None
@@ -334,6 +336,7 @@ class Iec61850ClientControlService:
             self._session_open = False
             self._last_read = None
             self._last_discovery = None
+            self._external_live_discovery = None
             self._last_state = None
             self._last_report = None
             self._last_plan = None
@@ -565,9 +568,10 @@ class Iec61850ClientControlService:
     def _discover_external_mms_ied(self) -> None:
         self._ensure_external_mms_client_started()
         self._external_discovered_rcbs.clear()
+        self._external_live_discovery = _empty_wire_discovery_structure(self._endpoint, self._build_external_discover_command(), source="live")
         self._write_external_mms_command(self._build_external_discover_command())
         self._drain_external_mms_process_stdout(timeout_seconds=3.0, stop_on="native-wire-client: state=ready")
-        self._last_discovery = _build_wire_discovery_structure(self._endpoint, self._candidate, "persistent-discover")
+        self._last_discovery = self._external_live_discovery or _empty_wire_discovery_structure(self._endpoint, self._build_external_discover_command(), source="live")
         self._runtime._append_event(
             kind="external-ied-discover",
             session_id=self._session_id,
@@ -639,9 +643,6 @@ class Iec61850ClientControlService:
         )
 
     def _build_external_discover_command(self) -> str:
-        domain = self._candidate.logical_device_inst
-        if domain:
-            return f"discover {self._candidate.ied_name}{domain}"
         return "discover"
 
     def _external_rptena_command(self, value: bool) -> str:
@@ -811,6 +812,14 @@ class Iec61850ClientControlService:
                 self._last_state = self._external_state(Iec61850RuntimeStatus.REPORTING, enabled=True, gi_in_progress=False)
         elif line.startswith("native-wire-client: report-entry "):
             self._pending_external_report_entries.append(_parse_space_kv_line(line.removeprefix("native-wire-client: report-entry ")))
+        elif line.startswith("native-wire-client: discovered-logical-device["):
+            self._apply_external_discovered_logical_device_line(line)
+        elif line.startswith("native-wire-client: discovered-logical-node["):
+            self._apply_external_discovered_logical_node_line(line)
+        elif line.startswith("native-wire-client: discovered-dataset["):
+            self._apply_external_discovered_dataset_line(line)
+        elif line.startswith("native-wire-client: discovered-dataset-member["):
+            self._apply_external_discovered_dataset_member_line(line)
         elif line.startswith("native-wire-client: discovered-brcb["):
             self._apply_external_discovered_rcb_line(line)
         elif line.startswith("native-wire-client: async-report"):
@@ -840,6 +849,71 @@ class Iec61850ClientControlService:
         discovered = _ExternalDiscoveredReportControl(index=index, domain=domain, item=item)
         self._external_discovered_rcbs = [rcb for rcb in self._external_discovered_rcbs if rcb.index != index]
         self._external_discovered_rcbs.append(discovered)
+        discovery = self._ensure_external_live_discovery()
+        report_controls = discovery.setdefault("reportControls", [])
+        if not any(isinstance(item_, dict) and item_.get("domain") == domain and item_.get("item") == item for item_ in report_controls):
+            name = item.rsplit("$", 1)[-1]
+            base_name = name.rstrip("0123456789") or name
+            report_controls.append({
+                "id": f"{domain}:{item}",
+                "domain": domain,
+                "item": item,
+                "name": base_name,
+                "kind": "buffered" if "$BR$" in item else "unbuffered",
+                "indexed": name != base_name,
+            })
+
+    def _ensure_external_live_discovery(self) -> dict:
+        if self._external_live_discovery is None:
+            self._external_live_discovery = _empty_wire_discovery_structure(self._endpoint, self._build_external_discover_command(), source="live")
+        return self._external_live_discovery
+
+    def _apply_external_discovered_logical_device_line(self, line: str) -> None:
+        fields = _parse_indexed_space_kv_line(line, "native-wire-client: discovered-logical-device[")
+        domain = fields.get("domain")
+        if not domain:
+            return
+        discovery = self._ensure_external_live_discovery()
+        logical_devices = discovery.setdefault("logicalDevices", [])
+        if not any(isinstance(item, dict) and item.get("reference") == domain for item in logical_devices):
+            logical_devices.append({"reference": domain, "domain": domain})
+
+    def _apply_external_discovered_logical_node_line(self, line: str) -> None:
+        fields = _parse_indexed_space_kv_line(line, "native-wire-client: discovered-logical-node[")
+        domain = fields.get("domain")
+        name = fields.get("name")
+        if not domain or not name:
+            return
+        discovery = self._ensure_external_live_discovery()
+        logical_nodes = discovery.setdefault("logicalNodes", [])
+        reference = f"{domain}/{name}"
+        if not any(isinstance(item, dict) and item.get("reference") == reference for item in logical_nodes):
+            logical_nodes.append({"logicalDeviceRef": domain, "name": name, "reference": reference})
+
+    def _apply_external_discovered_dataset_line(self, line: str) -> None:
+        fields = _parse_indexed_space_kv_line(line, "native-wire-client: discovered-dataset[")
+        reference = fields.get("reference")
+        if not reference:
+            return
+        discovery = self._ensure_external_live_discovery()
+        _ensure_live_discovery_dataset(discovery, reference)
+
+    def _apply_external_discovered_dataset_member_line(self, line: str) -> None:
+        fields = _parse_indexed_space_kv_line(line, "native-wire-client: discovered-dataset-member[")
+        data_set_ref = fields.get("dataset")
+        member_ref = fields.get("ref")
+        if not data_set_ref or not member_ref:
+            return
+        discovery = self._ensure_external_live_discovery()
+        data_set = _ensure_live_discovery_dataset(discovery, data_set_ref)
+        members = data_set.setdefault("members", [])
+        signal = _live_member_signal(member_ref)
+        if not any(isinstance(item, dict) and item.get("reference") == signal["reference"] for item in members):
+            members.append(signal)
+            data_set["memberCount"] = len(members)
+        signals = discovery.setdefault("signals", [])
+        if not any(isinstance(item, dict) and item.get("reference") == signal["reference"] for item in signals):
+            signals.append(signal)
 
     def _external_state(self, runtime_status: Iec61850RuntimeStatus, *, enabled: bool, gi_in_progress: bool = False) -> Iec61850ReportControlState:
         return Iec61850ReportControlState(
@@ -1083,6 +1157,7 @@ class Iec61850ClientControlService:
         self._last_read = None
         self._last_discovery = None
         self._external_discovered_rcbs.clear()
+        self._external_live_discovery = None
         self._last_state = None
         self._last_report = None
         self._last_plan = None
@@ -1443,6 +1518,14 @@ def _parse_space_kv_line(text: str) -> dict[str, str]:
         key, value = token.split("=", 1)
         fields[key] = value
     return fields
+
+
+def _parse_indexed_space_kv_line(text: str, prefix: str) -> dict[str, str]:
+    payload = text.removeprefix(prefix)
+    _index_text, separator, fields_text = payload.partition("] ")
+    if separator != "] ":
+        return {}
+    return _parse_space_kv_line(fields_text)
 
 
 def _none_if_placeholder(value: str | None) -> str | None:
@@ -1853,6 +1936,7 @@ def _build_wire_discovery_structure(endpoint: Iec61850DeviceEndpoint, candidate:
     signal_items = [{"reference": signal.reference, "fc": signal.fc} for signal in candidate.signals]
     return {
         "schema": "unitlab.iec61850.client.wire-discovery.v1",
+        "source": "scd-derived",
         "command": command,
         "endpoint": {
             "id": endpoint.id,
@@ -1868,6 +1952,51 @@ def _build_wire_discovery_structure(endpoint: Iec61850DeviceEndpoint, candidate:
         "reportControls": [{"id": candidate.id, "name": candidate.report_control_name, "kind": candidate.report_kind.value, "rptId": candidate.rpt_id, "dataSetRef": candidate.data_set_ref, "confRev": candidate.conf_rev, "indexed": candidate.indexed, "bufferTimeMs": candidate.buffer_time_ms, "integrityPeriodMs": candidate.integrity_period_ms}],
         "signals": signal_items,
     }
+
+
+def _empty_wire_discovery_structure(endpoint: Iec61850DeviceEndpoint, command: str, *, source: str) -> dict:
+    return {
+        "schema": "unitlab.iec61850.client.wire-discovery.v1",
+        "source": source,
+        "command": command,
+        "endpoint": {
+            "id": endpoint.id,
+            "mode": endpoint.mode.value,
+            "iedName": endpoint.ied_name,
+            "accessPointName": endpoint.access_point_name,
+            "host": endpoint.host,
+            "port": endpoint.port,
+        },
+        "logicalDevices": [],
+        "logicalNodes": [],
+        "dataSets": [],
+        "reportControls": [],
+        "signals": [],
+    }
+
+
+def _ensure_live_discovery_dataset(discovery: dict, reference: str) -> dict:
+    data_sets = discovery.setdefault("dataSets", [])
+    for item in data_sets:
+        if isinstance(item, dict) and item.get("reference") == reference:
+            return item
+    data_set = {"reference": reference, "members": [], "memberCount": 0}
+    data_sets.append(data_set)
+    return data_set
+
+
+def _live_member_signal(member_ref: str) -> dict[str, str]:
+    domain, separator, item = member_ref.partition("/")
+    reference_item = item if separator else member_ref
+    fc = ""
+    if "$" in reference_item:
+        parts = reference_item.split("$")
+        if len(parts) >= 2:
+            fc = parts[1]
+    reference = reference_item.replace("$", ".")
+    if fc:
+        reference = f"{reference}[{fc}]"
+    return {"reference": reference, "mmsReference": member_ref, "domain": domain if separator else "", "fc": fc}
 
 
 def _data_set_members(default_ld_inst: str, data_set: ET.Element | None) -> tuple[Iec61850DataSetMember, ...]:
