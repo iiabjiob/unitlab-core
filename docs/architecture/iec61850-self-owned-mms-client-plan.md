@@ -124,6 +124,7 @@ Discovery and subscription flow:
 - Discovery starts from host/port when no richer model is available; SCD is optional input, not a hard prerequisite.
 - The first browse step should establish the live VMD/domain context, then enumerate logical devices, logical nodes, data objects, data attributes, named variable lists, data sets, and report controls.
 - A single bad leaf or unsupported object class must be skipped with diagnostics instead of aborting the whole browse session.
+- One failed live domain browse must not abort the full root discovery if other logical-device domains are still available.
 - `RptEna` and `GI` are explicit state-machine actions, not UI side effects.
 - Report decoding must merge into the current backend signal-state projection so report arrivals update the runtime reactively.
 

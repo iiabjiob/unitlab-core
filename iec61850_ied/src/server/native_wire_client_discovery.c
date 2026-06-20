@@ -180,6 +180,14 @@ static void set_discovery_diagnostic(const UnitLabNativeDiscoveryIo* io, UnitLab
     snprintf(io->diagnostic->message, sizeof(io->diagnostic->message), "%s", message != NULL ? message : "Native wire discovery failed.");
 }
 
+static void clear_discovery_diagnostic(const UnitLabNativeDiscoveryIo* io)
+{
+    if (io == NULL || io->diagnostic == NULL) {
+        return;
+    }
+    unitlab_mms_diagnostic_clear(io->diagnostic);
+}
+
 static int collect_get_named_variable_list_members_from_frame(UnitLabNativeClientSessionState* session, const UnitLabNativeDiscoveryIo* io, const char* data_set_reference, const uint8_t* frame, size_t frame_length)
 {
     UnitLabMmsAssociationFrame association_frame;
@@ -247,12 +255,22 @@ static int collect_get_named_variable_list_members_from_frame(UnitLabNativeClien
             && unitlab_native_client_decode_object_name_domain_item(&object_name, domain, sizeof(domain), item, sizeof(item))) {
             snprintf(reference, sizeof(reference), "%s/%s", domain[0] != '\0' ? domain : "<vmd>", item);
             if (!unitlab_native_client_session_append_data_set_member(session, data_set, reference)) {
-                set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered DataSet member state.");
-                return 0;
+                printf(
+                    "native-wire-client: discover-skip=dataset-member dataset=%s ref=%s reason=allocation-failed\n",
+                    data_set_reference,
+                    reference);
+                fflush(stdout);
+                offset += member_consumed;
+                continue;
             }
             if (unitlab_native_client_session_append_leaf_ref(session, reference) == NULL) {
-                set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered leaf reference state.");
-                return 0;
+                printf(
+                    "native-wire-client: discover-skip=leaf-ref dataset=%s ref=%s reason=allocation-failed\n",
+                    data_set_reference,
+                    reference);
+                fflush(stdout);
+                offset += member_consumed;
+                continue;
             }
             printf(
                 "native-wire-client: discovered-dataset-member[%zu.%zu] dataset=%s ref=%s\n",
@@ -504,8 +522,15 @@ static int collect_gva_components_from_bytes(
                     component_type_kind = gva_type_kind_from_bytes(&element.value_bytes[child_consumed], element.value_length - child_consumed);
                 }
                 if (!build_gva_path(path_prefix, component_name, child_path, sizeof(child_path))) {
-                    set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not build GVA path.");
-                    return 0;
+                    printf(
+                        "native-wire-client: discover-skip=gva-component domain=%s data=%s path=%s component=%s reason=path-build-failed\n",
+                        data_name->logical_device,
+                        data_name->name,
+                        path_prefix != NULL ? path_prefix : "",
+                        component_name);
+                    fflush(stdout);
+                    offset += consumed;
+                    continue;
                 }
                 if (fc != NULL && fc[0] != '\0' && strcmp(component_name, fc) == 0 && path_prefix != NULL && strcmp(path_prefix, fc) == 0) {
                     if (child_consumed < element.value_length
@@ -529,8 +554,15 @@ static int collect_gva_components_from_bytes(
                 }
                 if (child_fc != NULL && child_fc[0] != '\0' && strcmp(node_kind, "fc-container") != 0) {
                     if (!build_gva_reference_fields(data_name, child_fc, child_path, mms_reference, sizeof(mms_reference), display_reference, sizeof(display_reference))) {
-                        set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not build GVA reference fields.");
-                        return 0;
+                        printf(
+                            "native-wire-client: discover-skip=gva-component domain=%s data=%s path=%s component=%s reason=reference-build-failed\n",
+                            data_name->logical_device,
+                            data_name->name,
+                            child_path,
+                            component_name);
+                        fflush(stdout);
+                        offset += consumed;
+                        continue;
                     }
                 }
                 node_index = session->discovered_typed_data_node_count;
@@ -547,14 +579,28 @@ static int collect_gva_components_from_bytes(
                     depth,
                     parent_index);
                 if (node == NULL) {
-                    set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate typed GVA tree node state.");
-                    return 0;
+                    printf(
+                        "native-wire-client: discover-skip=gva-component domain=%s data=%s path=%s component=%s reason=allocation-failed\n",
+                        data_name->logical_device,
+                        data_name->name,
+                        child_path,
+                        component_name);
+                    fflush(stdout);
+                    offset += consumed;
+                    continue;
                 }
                 snprintf(node->reference_kind, sizeof(node->reference_kind), "%s", reference_kind);
                 snprintf(node->semantic_kind, sizeof(node->semantic_kind), "%s", node_kind);
                 if (!unitlab_native_client_session_append_data_component(session, data_name, component_name, component_type_kind)) {
-                    set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered data component state.");
-                    return 0;
+                    printf(
+                        "native-wire-client: discover-skip=gva-component domain=%s data=%s path=%s component=%s reason=allocation-failed\n",
+                        data_name->logical_device,
+                        data_name->name,
+                        child_path,
+                        component_name);
+                    fflush(stdout);
+                    offset += consumed;
+                    continue;
                 }
                 (*component_count)++;
                 if (child_consumed < element.value_length
@@ -566,8 +612,14 @@ static int collect_gva_components_from_bytes(
                     if (mms_reference[0] != '\0') {
                         UnitLabNativeDiscoveredLeafRef* leaf_ref = unitlab_native_client_session_append_leaf_ref(session, mms_reference);
                         if (leaf_ref == NULL) {
-                            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered leaf reference state.");
-                            return 0;
+                            printf(
+                                "native-wire-client: discover-skip=gva-leaf domain=%s data=%s ref=%s reason=allocation-failed\n",
+                                data_name->logical_device,
+                                data_name->name,
+                                mms_reference);
+                            fflush(stdout);
+                            offset += consumed;
+                            continue;
                         }
                         snprintf(leaf_ref->type_kind, sizeof(leaf_ref->type_kind), "%s", component_type_kind);
                     }
@@ -955,8 +1007,12 @@ static int run_root_discover_domain_sequence(
 
     for (size_t index = 0U; index < logical_node_names.count; index++) {
         if (unitlab_native_client_session_append_logical_node(session, domain_id, logical_node_names.items[index]) == NULL) {
-            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered logical node state.");
-            goto cleanup;
+            printf(
+                "native-wire-client: discover-skip=logical-node domain=%s name=%s reason=allocation-failed\n",
+                domain_id,
+                logical_node_names.items[index]);
+            fflush(stdout);
+            continue;
         }
         printf("native-wire-client: discovered-logical-node[%zu] domain=%s name=%s\n", session->discovered_logical_node_count - 1U, domain_id, logical_node_names.items[index]);
         fflush(stdout);
@@ -978,11 +1034,20 @@ static int run_root_discover_domain_sequence(
         snprintf(data_name_ref, sizeof(data_name_ref), "%s", suffix + 1);
         data_name = unitlab_native_client_session_append_data_name(session, domain_id, logical_node, data_name_ref);
         if (data_name == NULL) {
-            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered domain data state.");
-            goto cleanup;
+            printf(
+                "native-wire-client: discover-skip=domain-data domain=%s item=%s reason=allocation-failed\n",
+                domain_id,
+                domain_variable_names.items[data_index]);
+            fflush(stdout);
+            continue;
         }
         if (!io->attributes_step(session, io, "domain-data-components", domain_id, domain_variable_names.items[data_index], unitlab_native_client_session_reserve_invoke_id(session), 0)) {
-            goto cleanup;
+            printf(
+                "native-wire-client: discover-skip=gva-attributes domain=%s item=%s reason=request-failed\n",
+                domain_id,
+                domain_variable_names.items[data_index]);
+            fflush(stdout);
+            continue;
         }
         if (!collect_get_variable_access_attributes_components_from_frame(session, io, data_name, domain_variable_names.items[data_index], io->response, *io->encoded_response_length)) {
             printf(
@@ -1012,8 +1077,12 @@ static int run_root_discover_domain_sequence(
         }
         snprintf(rcb_read_item, sizeof(rcb_read_item), "%s$%s$%s", rcb_logical_nodes.items[index], rcb_folders.items[index], rcb_names.items[index]);
         if (unitlab_native_client_session_append_discovered_rcb(session, domain_id, rcb_read_item) == NULL) {
-            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered RCB state.");
-            goto cleanup;
+            printf(
+                "native-wire-client: discover-skip=rcb-attrs domain=%s item=%s reason=allocation-failed\n",
+                domain_id,
+                rcb_read_item);
+            fflush(stdout);
+            continue;
         }
         printf("native-wire-client: discovered-rcb[%zu] domain=%s item=%s kind=%s\n", session->discovered_rcb_count - 1U, domain_id, rcb_read_item, strcmp(rcb_folders.items[index], "RP") == 0 ? "unbuffered" : "buffered");
         fflush(stdout);
@@ -1189,8 +1258,12 @@ int unitlab_native_client_run_discover_sequence(
 
     for (size_t index = 0U; index < logical_node_names.count; index++) {
         if (unitlab_native_client_session_append_logical_node(session, domain_id, logical_node_names.items[index]) == NULL) {
-            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered logical node state.");
-            goto cleanup;
+            printf(
+                "native-wire-client: discover-skip=logical-node domain=%s name=%s reason=allocation-failed\n",
+                domain_id,
+                logical_node_names.items[index]);
+            fflush(stdout);
+            continue;
         }
         printf("native-wire-client: discovered-logical-node[%zu] domain=%s name=%s\n", index, domain_id, logical_node_names.items[index]);
         fflush(stdout);
@@ -1212,11 +1285,20 @@ int unitlab_native_client_run_discover_sequence(
         snprintf(data_name_ref, sizeof(data_name_ref), "%s", suffix + 1);
         data_name = unitlab_native_client_session_append_data_name(session, domain_id, logical_node, data_name_ref);
         if (data_name == NULL) {
-            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered domain data state.");
-            goto cleanup;
+            printf(
+                "native-wire-client: discover-skip=domain-data domain=%s item=%s reason=allocation-failed\n",
+                domain_id,
+                domain_variable_names.items[data_index]);
+            fflush(stdout);
+            continue;
         }
         if (!io->attributes_step(session, io, "domain-data-components", domain_id, domain_variable_names.items[data_index], unitlab_native_client_session_reserve_invoke_id(session), 0)) {
-            goto cleanup;
+            printf(
+                "native-wire-client: discover-skip=gva-attributes domain=%s item=%s reason=request-failed\n",
+                domain_id,
+                domain_variable_names.items[data_index]);
+            fflush(stdout);
+            continue;
         }
         if (!collect_get_variable_access_attributes_components_from_frame(session, io, data_name, domain_variable_names.items[data_index], io->response, *io->encoded_response_length)) {
             printf(
@@ -1246,8 +1328,12 @@ int unitlab_native_client_run_discover_sequence(
         }
         snprintf(rcb_read_item, sizeof(rcb_read_item), "%s$%s$%s", rcb_logical_nodes.items[index], rcb_folders.items[index], rcb_names.items[index]);
         if (unitlab_native_client_session_append_discovered_rcb(session, domain_id, rcb_read_item) == NULL) {
-            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered RCB state.");
-            goto cleanup;
+            printf(
+                "native-wire-client: discover-skip=rcb-attrs domain=%s item=%s reason=allocation-failed\n",
+                domain_id,
+                rcb_read_item);
+            fflush(stdout);
+            continue;
         }
         printf("native-wire-client: discovered-rcb[%zu] domain=%s item=%s kind=%s\n", session->discovered_rcb_count - 1U, domain_id, rcb_read_item, strcmp(rcb_folders.items[index], "RP") == 0 ? "unbuffered" : "buffered");
         fflush(stdout);
@@ -1374,12 +1460,23 @@ int unitlab_native_client_run_discover_root_sequence(
     unitlab_native_client_session_set_next_invoke_id(session, cursor_invoke_id);
     printf("native-wire-client: discover-root logical-device-count=%zu\n", logical_device_names.count);
     fflush(stdout);
+    size_t discovered_domain_count = 0U;
     for (size_t index = 0U; index < logical_device_names.count; index++) {
         printf("native-wire-client: discover-root domain[%zu]=%s\n", index, logical_device_names.items[index]);
         fflush(stdout);
         if (!run_root_discover_domain_sequence(session, io, logical_device_names.items[index])) {
-            goto cleanup;
+            printf(
+                "native-wire-client: discover-skip=domain domain=%s reason=domain-sequence-failed\n",
+                logical_device_names.items[index]);
+            fflush(stdout);
+            clear_discovery_diagnostic(io);
+            continue;
         }
+        discovered_domain_count++;
+    }
+    if (discovered_domain_count == 0U) {
+        set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client root discover did not complete any logical-device domain.");
+        goto cleanup;
     }
     *next_invoke_id = session->next_invoke_id;
     if (io->emit_model_summary != NULL) {
