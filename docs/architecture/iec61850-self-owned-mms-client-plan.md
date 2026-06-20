@@ -98,6 +98,47 @@ SCD + Signal List
 
 The self-owned MMS client and the simulator should follow the same internal service flow and share the same report-control lifecycle model so the virtual IED and the real IED execute the same UnitLab semantics. The client-side boundary is mandatory because UnitLab will subscribe to its own virtual IEDs and ingest their report streams as evidence.
 
+## Runtime Architecture
+
+Target architecture for the self-owned MMS path:
+
+```text
+endpoint identity (IP / hostname / port)
+  -> backend session orchestration
+  -> native MMS client session
+  -> discovery / browse / read / write / report-control state machine
+  -> report decoder
+  -> backend runtime snapshot
+  -> UI / report consumers
+```
+
+Ownership boundaries:
+
+- Backend owns endpoint resolution, session lifecycle, retry/recovery policy, evidence persistence, and the runtime snapshot contract.
+- Native MMS client owns ACSE association, confirmed requests, browse/read/write/report-control commands, and report reception.
+- The simulator and the real IED must exercise the same UnitLab service contract once they enter the MMS boundary.
+- `libiec61850` remains the behavior oracle for pcap comparison and parity checks, not the production authority.
+
+Discovery and subscription flow:
+
+- Discovery starts from host/port when no richer model is available; SCD is optional input, not a hard prerequisite.
+- The first browse step should establish the live VMD/domain context, then enumerate logical devices, logical nodes, data objects, data attributes, named variable lists, data sets, and report controls.
+- A single bad leaf or unsupported object class must be skipped with diagnostics instead of aborting the whole browse session.
+- `RptEna` and `GI` are explicit state-machine actions, not UI side effects.
+- Report decoding must merge into the current backend signal-state projection so report arrivals update the runtime reactively.
+
+Parity target versus the lib baseline:
+
+- Match the successful service mix observed in the library-backed baseline: `GetNameList`, `GetVariableAccessAttributes`, `GetNamedVariableListAttributes`, `Read`, `RptEna`, `GI`, and report drain.
+- Preserve the same logical-device / logical-node / dataset / report-control coverage across the same endpoint.
+- Keep the debug/runtime contract honest: if discovery or GI is partial, the snapshot must say so rather than synthesizing a fully healthy state.
+
+Current implementation posture:
+
+- Native discover is no longer expected to be coupled to a hidden library fallback.
+- The first release still supports report-oriented browsing and subscription, but it is not yet a full MMS model explorer across every LD/LN/DO/DA combination.
+- The UI should remain report-centric until the runtime contract for full model browsing and reactive report patching is stable.
+
 ## Non-Negotiable Boundaries
 
 - `frontend/src/modules/scd-sld-core` stays framework-neutral and does not know about MMS frames, sockets, native libraries, Java, or backend clients.
