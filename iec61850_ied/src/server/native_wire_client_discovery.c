@@ -313,26 +313,11 @@ static const char* gva_type_kind_label_for_context_number(uint32_t tag_number)
 
 static const char* gva_type_kind_label_from_type_spec(const UnitLabMmsBerElement* type_spec)
 {
-    UnitLabMmsBerElement nested;
-    UnitLabMmsDiagnostic diagnostic;
-    size_t consumed = 0U;
-
     if (type_spec == NULL || type_spec->tag.tag_class != UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC) {
         return "unknown";
     }
     if (type_spec->tag.tag_number != 1U) {
         return gva_type_kind_label_for_context_number(type_spec->tag.tag_number);
-    }
-    if (!type_spec->tag.constructed || type_spec->value_bytes == NULL || type_spec->value_length == 0U) {
-        return "structure";
-    }
-    unitlab_mms_diagnostic_clear(&diagnostic);
-    unitlab_mms_ber_element_init(&nested);
-    if (!unitlab_mms_ber_read(&nested, type_spec->value_bytes, type_spec->value_length, &consumed, &diagnostic) || consumed == 0U) {
-        return "structure";
-    }
-    if (nested.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC) {
-        return gva_type_kind_label_for_context_number(nested.tag.tag_number);
     }
     return "structure";
 }
@@ -465,6 +450,16 @@ static int gva_component_is_fc_token(const char* component_name)
         && (strcmp(component_name, "BR") == 0 || strcmp(component_name, "RP") == 0 || strcmp(component_name, "ST") == 0 || strcmp(component_name, "MX") == 0 || strcmp(component_name, "CF") == 0 || strcmp(component_name, "DC") == 0 || strcmp(component_name, "EX") == 0);
 }
 
+static const char* gva_type_kind_or_unsupported_from_bytes(const uint8_t* bytes, size_t length)
+{
+    const char* type_kind = gva_type_kind_from_bytes(bytes, length);
+
+    if (type_kind == NULL || type_kind[0] == '\0' || strcmp(type_kind, "unknown") == 0) {
+        return "unsupported";
+    }
+    return type_kind;
+}
+
 static int collect_gva_components_from_bytes(
     UnitLabNativeClientSessionState* session,
     const UnitLabNativeDiscoveryIo* io,
@@ -519,7 +514,7 @@ static int collect_gva_components_from_bytes(
                 memcpy(component_name, first_child.value_bytes, copy_length);
                 component_name[copy_length] = '\0';
                 if (child_consumed < element.value_length) {
-                    component_type_kind = gva_type_kind_from_bytes(&element.value_bytes[child_consumed], element.value_length - child_consumed);
+                    component_type_kind = gva_type_kind_or_unsupported_from_bytes(&element.value_bytes[child_consumed], element.value_length - child_consumed);
                 }
                 if (!build_gva_path(path_prefix, component_name, child_path, sizeof(child_path))) {
                     printf(
