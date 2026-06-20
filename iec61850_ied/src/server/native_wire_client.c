@@ -15,6 +15,10 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#ifndef MSG_NOSIGNAL
+#define MSG_NOSIGNAL 0
+#endif
+
 #include "wire/orchestration/unitlab_mms_association_frame.h"
 #include "wire/acse/unitlab_mms_acse.h"
 #include "wire/mms/unitlab_mms_pdu.h"
@@ -175,7 +179,7 @@ static int send_all(int fd, const uint8_t* buffer, size_t length)
 {
     size_t offset = 0U;
     while (offset < length) {
-        ssize_t written = send(fd, buffer + offset, length - offset, 0);
+        ssize_t written = send(fd, buffer + offset, length - offset, MSG_NOSIGNAL);
         if (written < 0) {
             if (errno == EINTR) {
                 continue;
@@ -3264,14 +3268,19 @@ int unitlab_run_native_wire_client_with_options(
         command[strcspn(command, "\r\n")] = '\0';
         if (strcmp(command, "discover") == 0 || strncmp(command, "discover ", 9U) == 0) {
             char* saveptr = NULL;
-            char* domain_id = strcmp(command, "discover") == 0 ? NULL : strtok_r(command + 9U, " 	", &saveptr);
-            char* invoke_id_text = strtok_r(NULL, " 	", &saveptr);
-            char* extra = strtok_r(NULL, " 	", &saveptr);
+            char* domain_id = NULL;
+            char* invoke_id_text = NULL;
+            char* extra = NULL;
             uint32_t invoke_id = session.next_invoke_id != 0U ? session.next_invoke_id : 1U;
 
-            if (extra != NULL) {
-                set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_COMMAND_INVALID", "Usage: discover [domain] [invokeBase].");
-                goto fail;
+            if (strcmp(command, "discover") != 0) {
+                domain_id = strtok_r(command + 9U, " 	", &saveptr);
+                invoke_id_text = strtok_r(NULL, " 	", &saveptr);
+                extra = strtok_r(NULL, " 	", &saveptr);
+                if (extra != NULL) {
+                    set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_COMMAND_INVALID", "Usage: discover [domain] [invokeBase].");
+                    goto fail;
+                }
             }
             if (invoke_id_text != NULL) {
                 if (!parse_invoke_id_token(invoke_id_text, &invoke_id)) {

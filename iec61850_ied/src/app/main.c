@@ -64,12 +64,12 @@ static int immediate_stop_requested(void* context)
 
 static void print_usage(const char* program_name)
 {
-    printf("Usage: %s [--fixture PATH | --scl PATH] --ied NAME [--bind ADDRESS] [--port PORT] [--dry-run] [--smoke-start] [--native-smoke-start] [--native-wire-start] [--native-wire-client-start] [--mms-client-start] [--discover-probe] [--metadata-probe] [--gi-probe] [--report-key KEY] [--native-test-report-tick-ms MS]\n", program_name);
+    printf("Usage: %s [--fixture PATH | --scl PATH] [--ied NAME] [--bind ADDRESS] [--port PORT] [--dry-run] [--smoke-start] [--native-smoke-start] [--native-wire-start] [--native-wire-client-start] [--mms-client-start] [--discover-probe] [--metadata-probe] [--gi-probe] [--report-key KEY] [--native-test-report-tick-ms MS]\n", program_name);
     printf("\n");
     printf("Options:\n");
     printf("  --fixture PATH   UnitLab IEC 61850 IED simulator fixture JSON.\n");
     printf("  --scl PATH       SCL/SCD source compiled by the native SCL compiler for native wire server mode.\n");
-    printf("  --ied NAME       IED name from the fixture to expose.\n");
+    printf("  --ied NAME       IED name from the fixture to expose. Optional for --mms-client-start.\n");
     printf("  --bind ADDRESS   Bind address for the MMS server. Default: 0.0.0.0.\n");
     printf("  --port PORT      TCP port for the MMS server. Default: 102.\n");
     printf("  --dry-run        Validate CLI and fixture boundary without opening MMS.\n");
@@ -240,7 +240,7 @@ static int parse_args(int argc, char** argv, SimulatorOptions* options)
         fprintf(stderr, "INVALID_ARGUMENT: --fixture and --scl are mutually exclusive.\n");
         return -1;
     }
-    if (options->ied_name == NULL || options->ied_name[0] == '\0') {
+    if ((options->ied_name == NULL || options->ied_name[0] == '\0') && !options->mms_client_start) {
         fprintf(stderr, "IED_REQUIRED: --ied NAME is required.\n");
         return -1;
     }
@@ -644,7 +644,7 @@ int main(int argc, char** argv)
             return 69;
         }
         printf("unitlab-iec61850-ied-sim: persistent native MMS client stopped\n");
-        printf("ied=%s\n", options.ied_name);
+        printf("ied=%s\n", options.ied_name != NULL ? options.ied_name : "");
         printf("endpoint=%s:%d\n", options.bind_address, options.port);
         printf("libiec61850=%s\n", libiec61850_status());
         return 0;

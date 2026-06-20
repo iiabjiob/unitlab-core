@@ -15,6 +15,9 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+#ifndef MSG_NOSIGNAL
+#define MSG_NOSIGNAL 0
+#endif
 #include "model/model_loader.h"
 #include "server/unitlab_mms_server_runtime_internal.h"
 #include "wire/mms/unitlab_mms_pdu.h"
@@ -78,7 +81,7 @@ static int send_all(int fd, const uint8_t* buffer, size_t length)
 {
     size_t offset = 0U;
     while (offset < length) {
-        ssize_t written = send(fd, buffer + offset, length - offset, 0);
+        ssize_t written = send(fd, buffer + offset, length - offset, MSG_NOSIGNAL);
         if (written < 0) {
             if (errno == EINTR) {
                 continue;

@@ -238,6 +238,9 @@ class _FailingExternalMmsClientStdin:
             self._process.stdout.lines.append(
                 "native-wire-client: subscription-summary phase=discover rcb=KINTE13LVC01CTRL/LLN0.brcbA/<none> rcb-index=0 rptEna=false giRequested=false gi-invoke=0 lastReportReceived=false asyncReports=0 lastReportValues=0 lastReportDataRefs=0 lastReportMatchedDataRefs=0 lastReportReasons=0 lastReportDatasetMismatches=0 lastReportMissingValues=0 lastReportExtraValues=0 lastReportMissingReasons=0 lastReportExtraReasons=0 lastReportUnsupportedValues=0\n"
             )
+            self._process.stdout.lines.append(
+                "native-wire-client: model-summary phase=discover domain=KINTE13LVC01CTRL logical-devices=1 logical-nodes=1 data-names=1 typed-data-names=1 data-components=3 typed-data-components=3 typed-data-nodes=3 leaf-refs=1 datasets=1 dataset-members=1 brcbs=1 last-report-entries=0 last-report-dataRefs=0 last-report-values=0 last-report-reasons=0 last-report-matched-dataRefs=0 last-report-dataset-mismatches=0 last-report-missing-values=0 last-report-extra-values=0 last-report-missing-reasons=0 last-report-extra-reasons=0 last-report-unsupported-values=0 last-report-rptId=<none> last-report-datSet=<none>\n"
+            )
             self._process.stdout.lines.append("native-wire-client: state=ready\n")
         elif command in {
             "write-hex KINTE13LVC01CTRL LLN0$BR$brcbA$OptFlds 4 067f80",
@@ -260,6 +263,66 @@ class _FailingExternalMmsClientStdin:
 
     def flush(self) -> None:
         return None
+
+
+class _SummaryOnlyExternalMmsClientStdin:
+    def __init__(self, process, commands: list[str]) -> None:
+        self._process = process
+        self._commands = commands
+
+    def write(self, value: str) -> None:
+        command = value.rstrip("\n")
+        self._commands.append(command)
+        if command == "discover" or command.startswith("discover "):
+            self._process.stdout.lines.append("native-wire-client: discovered-logical-device[0] domain=KINTE13LVC01CTRL\n")
+            self._process.stdout.lines.append("native-wire-client: discovered-logical-node[0] domain=KINTE13LVC01CTRL name=LLN0\n")
+            self._process.stdout.lines.append("native-wire-client: discovered-dataset[0] reference=KINTE13LVC01CTRL/LLN0.RCB1\n")
+            self._process.stdout.lines.append("native-wire-client: discovered-dataset-member[0.0] dataset=KINTE13LVC01CTRL/LLN0.RCB1 ref=KINTE13LVC01CTRL/XCBR1$ST$Pos\n")
+            self._process.stdout.lines.append("native-wire-client: discovered-brcb[0] domain=KINTE13LVC01CTRL item=LLN0$BR$brcbA01\n")
+            self._process.stdout.lines.append(
+                "native-wire-client: subscription-summary phase=discover rcb=KINTE13LVC01CTRL/LLN0.brcbA/<none> rcb-index=0 rptEna=false giRequested=false gi-invoke=0 lastReportReceived=false asyncReports=0 lastReportValues=0 lastReportDataRefs=0 lastReportMatchedDataRefs=0 lastReportReasons=0 lastReportDatasetMismatches=0 lastReportMissingValues=0 lastReportExtraValues=0 lastReportMissingReasons=0 lastReportExtraReasons=0 lastReportUnsupportedValues=0\n"
+            )
+            self._process.stdout.lines.append(
+                "native-wire-client: model-summary phase=discover domain=KINTE13LVC01CTRL logical-devices=1 logical-nodes=1 data-names=1 typed-data-names=1 data-components=3 typed-data-components=3 typed-data-nodes=3 leaf-refs=1 datasets=1 dataset-members=1 brcbs=1 last-report-entries=0 last-report-dataRefs=0 last-report-values=0 last-report-reasons=0 last-report-matched-dataRefs=0 last-report-dataset-mismatches=0 last-report-missing-values=0 last-report-extra-values=0 last-report-missing-reasons=0 last-report-extra-reasons=0 last-report-unsupported-values=0 last-report-rptId=<none> last-report-datSet=<none>\n"
+            )
+        elif command in {"rptena 0", "gi 0"}:
+            self._process.stdout.lines.append("native-wire-client: state=ready\n")
+        elif command == "disconnect":
+            self._process.stdout.lines.append("native-wire-client: disconnected\n")
+            self._process.stdout.lines.append("native-wire-client: state=stopped\n")
+
+    def flush(self) -> None:
+        return None
+
+
+class _SummaryOnlyExternalMmsClientProcess:
+    def __init__(self, command: list[str], commands: list[str]) -> None:
+        self.command = tuple(command)
+        self.stdout = _QueuedStdout()
+        self.stdout.lines.extend([
+            "native-wire-client: state=init\n",
+            "native-wire-client: state=data-connected\n",
+            "native-wire-client: state=associated\n",
+            "native-wire-client: state=ready\n",
+            "native-wire-client: ready\n",
+        ])
+        self.stdin = _SummaryOnlyExternalMmsClientStdin(self, commands)
+        self.stderr = _QueuedStdout()
+        self.pid = 4242
+        self._returncode = None
+
+    def poll(self):
+        return self._returncode
+
+    def terminate(self) -> None:
+        self._returncode = 0
+
+    def kill(self) -> None:
+        self._returncode = -9
+
+    def wait(self, timeout=None):
+        self._returncode = 0
+        return self._returncode
 
 
 class _CommandDrivenSelect:
@@ -684,9 +747,10 @@ def test_external_mms_target_can_connect_and_discover_without_scd(monkeypatch: p
             mode="external-mms",
             host="host.docker.internal",
             port=12447,
-            ied_name="KINTE13LVC01",
         )
     )
+    assert snapshot.endpoint.ied_name == ""
+    assert snapshot.ui_state["session"]["endpoint_label"] == "host.docker.internal:12447"
     assert snapshot.candidate.report_control_name == ""
     assert snapshot.ui_state["discovery"]["available_report_controls"] == []
     assert snapshot.ui_state["actions"]["can_rptena"] is False
@@ -707,9 +771,15 @@ def test_external_mms_target_can_connect_and_discover_without_scd(monkeypatch: p
 
     assert connect_snapshot.session_open is True
     assert connect_snapshot.ui_state["session"]["phase"] == "associated"
+    assert connect_snapshot.endpoint.ied_name == ""
     assert connect_snapshot.ui_state["actions"]["can_rptena"] is False
     assert discover_snapshot.last_discovery is not None
+    assert discover_snapshot.last_discovery["endpoint"]["iedName"] == "KINTE13LVC01"
+    assert discover_snapshot.endpoint.ied_name == "KINTE13LVC01"
+    assert discover_snapshot.endpoint.id == "mms:KINTE13LVC01@host.docker.internal:12447"
+    assert discover_snapshot.ui_state["session"]["endpoint_label"] == "KINTE13LVC01@host.docker.internal:12447"
     assert discover_snapshot.candidate.report_control_name == "brcbA"
+    assert discover_snapshot.candidate.ied_name == "KINTE13LVC01"
     assert discover_snapshot.ui_state["discovery"]["available_report_controls"][0]["report_control_name"] == "brcbA"
     assert discover_snapshot.ui_state["discovery"]["selected_rcb_ref"] == "KINTE13LVC01/AP1/CTRL/LLN0/brcbA/buffered"
     assert discover_snapshot.ui_state["actions"]["can_rptena"] is True
@@ -718,12 +788,52 @@ def test_external_mms_target_can_connect_and_discover_without_scd(monkeypatch: p
     assert gi_snapshot.ui_state["report"]["received"] is True
     assert gi_snapshot.ui_state["report"]["value_count"] == 3
 
-    assert process_commands[0][-1] == "--mms-client-start"
+    assert "--ied" not in process_commands[0]
+    assert process_commands[0][-5:] == (
+        "--bind",
+        "host.docker.internal",
+        "--port",
+        "12447",
+        "--mms-client-start",
+    )
     assert stdin_commands[0] == "discover"
     assert any(cmd.startswith("write-hex KINTE13LVC01CTRL LLN0$BR$brcbA01$OptFlds") for cmd in stdin_commands)
     assert any(cmd.startswith("write-hex KINTE13LVC01CTRL LLN0$BR$brcbA01$TrgOps") for cmd in stdin_commands)
     assert "rptena 0" in stdin_commands
     assert "gi 0" in stdin_commands
+
+
+def test_external_mms_target_can_discover_when_summary_arrives_before_ready(monkeypatch: pytest.MonkeyPatch) -> None:
+    service = Iec61850ClientControlService(
+        live_wire_binary_path="/bin/true",
+        live_wire_service_host="host.docker.internal",
+        live_wire_data_port=12447,
+    )
+    service.configure_target(
+        client_control_module.Iec61850ClientTargetRequest(
+            mode="external-mms",
+            host="host.docker.internal",
+            port=12447,
+            ied_name="KINTE13LVC01",
+        )
+    )
+
+    process_commands: list[tuple[str, ...]] = []
+    stdin_commands: list[str] = []
+
+    def fake_popen(command, **_kwargs):
+        process_commands.append(tuple(command))
+        return _SummaryOnlyExternalMmsClientProcess(command, stdin_commands)
+
+    monkeypatch.setattr(client_control_module.subprocess, "Popen", fake_popen)
+
+    snapshot = service.discover_ied()
+
+    assert snapshot.last_discovery is not None
+    assert snapshot.ui_state["session"]["phase"] == "discovered"
+    assert snapshot.ui_state["discovery"]["logical_devices"] == 1
+    assert stdin_commands[0] == "discover"
+    assert process_commands[0][-1] == "--mms-client-start"
 
 
 def test_external_mms_target_routes_discover_rptena_gi_to_external_probes(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:

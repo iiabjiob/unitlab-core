@@ -985,8 +985,11 @@ static int run_root_discover_domain_sequence(
             goto cleanup;
         }
         if (!collect_get_variable_access_attributes_components_from_frame(session, io, data_name, domain_variable_names.items[data_index], io->response, *io->encoded_response_length)) {
-            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not decode domain data component attributes.");
-            goto cleanup;
+            printf(
+                "native-wire-client: discover-skip=gva-attributes domain=%s item=%s reason=decode-failed\n",
+                domain_id,
+                domain_variable_names.items[data_index]);
+            fflush(stdout);
         }
     }
     session->discovered_model.brcb_count += rcb_names.count;
@@ -1000,7 +1003,12 @@ static int run_root_discover_domain_sequence(
         static const char* rcb_fields[] = { "RptID", "DatSet", "ConfRev", "BufTm", "IntgPd", "OptFlds", "TrgOps" };
         snprintf(rcb_item, sizeof(rcb_item), "%s$%s$%s$RptEna", rcb_logical_nodes.items[index], rcb_folders.items[index], rcb_names.items[index]);
         if (!io->attributes_step(session, io, "rcb-attrs", domain_id, rcb_item, unitlab_native_client_session_reserve_invoke_id(session), 0)) {
-            goto cleanup;
+            printf(
+                "native-wire-client: discover-skip=rcb-attrs domain=%s item=%s reason=decode-failed\n",
+                domain_id,
+                rcb_item);
+            fflush(stdout);
+            continue;
         }
         snprintf(rcb_read_item, sizeof(rcb_read_item), "%s$%s$%s", rcb_logical_nodes.items[index], rcb_folders.items[index], rcb_names.items[index]);
         if (unitlab_native_client_session_append_discovered_rcb(session, domain_id, rcb_read_item) == NULL) {
@@ -1014,7 +1022,13 @@ static int run_root_discover_domain_sequence(
             char field_value[160U];
             snprintf(field_item, sizeof(field_item), "%s$%s", rcb_read_item, rcb_fields[field_index]);
             if (!io->read_step(session, io, "brcb-field", domain_id, field_item, unitlab_native_client_session_reserve_invoke_id(session))) {
-                goto cleanup;
+                printf(
+                    "native-wire-client: discover-skip=rcb-field domain=%s item=%s field=%s reason=decode-failed\n",
+                    domain_id,
+                    rcb_read_item,
+                    rcb_fields[field_index]);
+                fflush(stdout);
+                continue;
             }
             if (extract_confirmed_read_first_value_summary(io->response, *io->encoded_response_length, field_value, sizeof(field_value))) {
                 printf(
@@ -1036,10 +1050,19 @@ static int run_root_discover_domain_sequence(
         char data_set_reference[384U];
         snprintf(data_set_reference, sizeof(data_set_reference), "%s/%s", domain_id, data_set_items.items[index]);
         if (!io->attributes_step(session, io, "dataset-members", domain_id, data_set_items.items[index], unitlab_native_client_session_reserve_invoke_id(session), 1)) {
-            goto cleanup;
+            printf(
+                "native-wire-client: discover-skip=dataset-members domain=%s item=%s reason=decode-failed\n",
+                domain_id,
+                data_set_items.items[index]);
+            fflush(stdout);
+            continue;
         }
         if (!collect_get_named_variable_list_members_from_frame(session, io, data_set_reference, io->response, *io->encoded_response_length)) {
-            goto cleanup;
+            printf(
+                "native-wire-client: discover-skip=dataset-members domain=%s item=%s reason=decode-failed\n",
+                domain_id,
+                data_set_items.items[index]);
+            fflush(stdout);
         }
     }
     ok = 1;
@@ -1196,8 +1219,11 @@ int unitlab_native_client_run_discover_sequence(
             goto cleanup;
         }
         if (!collect_get_variable_access_attributes_components_from_frame(session, io, data_name, domain_variable_names.items[data_index], io->response, *io->encoded_response_length)) {
-            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not decode domain data component attributes.");
-            goto cleanup;
+            printf(
+                "native-wire-client: discover-skip=gva-attributes domain=%s item=%s reason=decode-failed\n",
+                domain_id,
+                domain_variable_names.items[data_index]);
+            fflush(stdout);
         }
     }
     session->discovered_model.brcb_count += rcb_names.count;
@@ -1211,7 +1237,12 @@ int unitlab_native_client_run_discover_sequence(
         static const char* rcb_fields[] = { "RptID", "DatSet", "ConfRev", "BufTm", "IntgPd", "OptFlds", "TrgOps" };
         snprintf(rcb_item, sizeof(rcb_item), "%s$%s$%s$RptEna", rcb_logical_nodes.items[index], rcb_folders.items[index], rcb_names.items[index]);
         if (!io->attributes_step(session, io, "rcb-attrs", domain_id, rcb_item, unitlab_native_client_session_reserve_invoke_id(session), 0)) {
-            goto cleanup;
+            printf(
+                "native-wire-client: discover-skip=rcb-attrs domain=%s item=%s reason=decode-failed\n",
+                domain_id,
+                rcb_item);
+            fflush(stdout);
+            continue;
         }
         snprintf(rcb_read_item, sizeof(rcb_read_item), "%s$%s$%s", rcb_logical_nodes.items[index], rcb_folders.items[index], rcb_names.items[index]);
         if (unitlab_native_client_session_append_discovered_rcb(session, domain_id, rcb_read_item) == NULL) {
@@ -1225,7 +1256,13 @@ int unitlab_native_client_run_discover_sequence(
             char field_value[160U];
             snprintf(field_item, sizeof(field_item), "%s$%s", rcb_read_item, rcb_fields[field_index]);
             if (!io->read_step(session, io, "brcb-field", domain_id, field_item, unitlab_native_client_session_reserve_invoke_id(session))) {
-                goto cleanup;
+                printf(
+                    "native-wire-client: discover-skip=rcb-field domain=%s item=%s field=%s reason=decode-failed\n",
+                    domain_id,
+                    rcb_read_item,
+                    rcb_fields[field_index]);
+                fflush(stdout);
+                continue;
             }
             if (extract_confirmed_read_first_value_summary(io->response, *io->encoded_response_length, field_value, sizeof(field_value))) {
                 printf(
@@ -1247,10 +1284,19 @@ int unitlab_native_client_run_discover_sequence(
         char data_set_reference[384U];
         snprintf(data_set_reference, sizeof(data_set_reference), "%s/%s", domain_id, data_set_items.items[index]);
         if (!io->attributes_step(session, io, "dataset-members", domain_id, data_set_items.items[index], unitlab_native_client_session_reserve_invoke_id(session), 1)) {
-            goto cleanup;
+            printf(
+                "native-wire-client: discover-skip=dataset-members domain=%s item=%s reason=decode-failed\n",
+                domain_id,
+                data_set_items.items[index]);
+            fflush(stdout);
+            continue;
         }
         if (!collect_get_named_variable_list_members_from_frame(session, io, data_set_reference, io->response, *io->encoded_response_length)) {
-            goto cleanup;
+            printf(
+                "native-wire-client: discover-skip=dataset-members domain=%s item=%s reason=decode-failed\n",
+                domain_id,
+                data_set_items.items[index]);
+            fflush(stdout);
         }
     }
     *next_invoke_id = session->next_invoke_id;

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 import os
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -73,7 +74,7 @@ class Iec61850ClientTargetRequest:
     mode: str
     host: str
     port: int
-    ied_name: str
+    ied_name: str = ""
     scl_path: str | None = None
     access_point_name: str = "AP1"
     selected_rcb_ref: str | None = None
@@ -162,6 +163,7 @@ class Iec61850ClientControlService:
         self._external_mms_process: subprocess.Popen[str] | None = None
         self._external_mms_stdout_buffer = bytearray()
         self._external_discovered_rcbs: list[_ExternalDiscoveredReportControl] = []
+        self._external_discover_summary_seen = False
         self._external_live_discovery: dict | None = None
         self._pending_external_report_entries: list[dict[str, str]] = []
         self._current_external_report_values: dict[str, Iec61850ReportEventValue] = {}
@@ -243,7 +245,7 @@ class Iec61850ClientControlService:
                 report_control_name=candidate.report_control_name,
                 client_id=self._client_id,
                 outcome="configured",
-                message=f"Configured IEC 61850 client target {endpoint.ied_name}@{endpoint.host}:{endpoint.port}.",
+                message=f"Configured IEC 61850 client target {_endpoint_label(endpoint)}.",
             )
             return self.snapshot()
 
@@ -345,6 +347,7 @@ class Iec61850ClientControlService:
             self._last_read = None
             self._last_discovery = None
             self._external_live_discovery = None
+            self._external_discover_summary_seen = False
             self._last_state = None
             self._last_report = None
             self._last_plan = None
@@ -576,9 +579,14 @@ class Iec61850ClientControlService:
     def _discover_external_mms_ied(self) -> None:
         self._ensure_external_mms_client_started()
         self._external_discovered_rcbs.clear()
+        self._external_discover_summary_seen = False
         self._external_live_discovery = _empty_wire_discovery_structure(self._endpoint, self._build_external_discover_command(), source="live")
         self._write_external_mms_command(self._build_external_discover_command())
-        self._drain_external_mms_process_stdout(timeout_seconds=3.0, stop_on="native-wire-client: state=ready")
+        try:
+            self._drain_external_mms_process_stdout(timeout_seconds=60.0, stop_on="native-wire-client: state=ready", refresh_timeout_on_activity=True)
+        except Iec61850ReportRuntimeError as exc:
+            if exc.code != "EXTERNAL_MMS_CLIENT_COMMAND_FAILED" or not self._external_discover_summary_seen:
+                raise
         self._last_discovery = self._external_live_discovery or _empty_wire_discovery_structure(self._endpoint, self._build_external_discover_command(), source="live")
         self._runtime._append_event(
             kind="external-ied-discover",
@@ -712,14 +720,14 @@ class Iec61850ClientControlService:
             raise Iec61850ReportRuntimeError("EXTERNAL_MMS_HOST_REQUIRED", "IEC 61850 external MMS target host is required.")
         command = [
             self._external_probe_binary_path(),
-            "--ied",
-            self._endpoint.ied_name,
             "--bind",
             self._endpoint.host,
             "--port",
             str(self._endpoint.port),
             "--mms-client-start",
         ]
+        if self._endpoint.ied_name.strip():
+            command[1:1] = ["--ied", self._endpoint.ied_name]
         if self._target_scl_path is not None and self._target_scl_path.strip():
             command[1:1] = ["--scl", self._target_scl_path]
         try:
@@ -762,6 +770,7 @@ class Iec61850ClientControlService:
         timeout_seconds: float,
         stop_on: str | None = None,
         require_stop: bool | None = None,
+        refresh_timeout_on_activity: bool = False,
     ) -> None:
         process = self._external_mms_process
         if process is None:
@@ -775,10 +784,11 @@ class Iec61850ClientControlService:
             line = _read_process_stdout_line(process, timeout_deadline=deadline, line_buffer=self._external_mms_stdout_buffer)
             if line is None:
                 if require_stop and not saw_stop:
-                    if process.poll() is not None:
+                    returncode = process.poll()
+                    if returncode is not None:
                         self._stop_external_mms_client_process()
                     stderr = ""
-                    if process.poll() is not None and process.stderr is not None:
+                    if returncode is not None and process.stderr is not None:
                         read = getattr(process.stderr, "read", None)
                         if callable(read):
                             stderr = str(read()).strip()
@@ -799,12 +809,24 @@ class Iec61850ClientControlService:
                             "EXTERNAL_MMS_CLIENT_COMMAND_FAILED",
                             "IEC 61850 external MMS client reported state=failed.",
                         )
+                    if returncode is not None:
+                        if returncode < 0:
+                            raise Iec61850ReportRuntimeError(
+                                "EXTERNAL_MMS_CLIENT_COMMAND_FAILED",
+                                f"IEC 61850 external MMS client exited by signal {-returncode} before completion.",
+                            )
+                        raise Iec61850ReportRuntimeError(
+                            "EXTERNAL_MMS_CLIENT_COMMAND_FAILED",
+                            f"IEC 61850 external MMS client exited with code {returncode} before completion.",
+                        )
                     raise Iec61850ReportRuntimeError("EXTERNAL_MMS_CLIENT_COMMAND_FAILED", "IEC 61850 external MMS client command ended before completion.")
                 return
             stripped = line.strip()
             if not stripped:
                 continue
             self._apply_external_mms_client_line(stripped)
+            if refresh_timeout_on_activity and timeout_seconds > 0.0:
+                deadline = time.monotonic() + timeout_seconds
             if stripped.startswith("native-wire-client: state=failed"):
                 saw_failed = True
             if stop_on is not None and stripped.startswith(stop_on):
@@ -837,6 +859,8 @@ class Iec61850ClientControlService:
             self._apply_external_discovered_rcb_line(line)
         elif line.startswith("native-wire-client: discovered-rcb-attr["):
             self._apply_external_discovered_rcb_attr_line(line)
+        elif line.startswith("native-wire-client: model-summary phase=discover"):
+            self._external_discover_summary_seen = True
         elif line.startswith("native-wire-client: async-report"):
             self._last_report = self._external_report_event({})
             self._last_state = self._external_state(Iec61850RuntimeStatus.REPORTING, enabled=True, gi_in_progress=False)
@@ -892,11 +916,39 @@ class Iec61850ClientControlService:
             self._available_candidates = _replace_or_append_candidate(self._available_candidates, candidate)
             if _candidate_is_unselected(self._candidate) or self._candidate.report_control_name == base_name:
                 self._candidate = candidate
+            if not self._endpoint.ied_name.strip() and candidate.ied_name.strip():
+                self._set_external_live_identity(candidate.ied_name)
 
     def _ensure_external_live_discovery(self) -> dict:
         if self._external_live_discovery is None:
             self._external_live_discovery = _empty_wire_discovery_structure(self._endpoint, self._build_external_discover_command(), source="live")
         return self._external_live_discovery
+
+    def _set_external_live_identity(self, ied_name: str) -> None:
+        normalized = ied_name.strip()
+        if not normalized or normalized == self._endpoint.ied_name:
+            return
+        self._endpoint = replace(
+            self._endpoint,
+            id=f"mms:{normalized}@{self._endpoint.host}:{self._endpoint.port}",
+            ied_name=normalized,
+        )
+        discovery = self._external_live_discovery
+        if discovery is None:
+            return
+        endpoint = discovery.setdefault("endpoint", {})
+        if isinstance(endpoint, dict):
+            endpoint["id"] = self._endpoint.id
+            endpoint["iedName"] = normalized
+        logical_devices = discovery.get("logicalDevices")
+        if isinstance(logical_devices, list):
+            for item in logical_devices:
+                if not isinstance(item, dict):
+                    continue
+                domain = item.get("domain")
+                if isinstance(domain, str):
+                    item["iedName"] = normalized
+                    item["inst"] = _live_logical_device_inst(normalized, domain)
 
     def _apply_external_discovered_logical_device_line(self, line: str) -> None:
         fields = _parse_indexed_space_kv_line(line, "native-wire-client: discovered-logical-device[")
@@ -1559,13 +1611,16 @@ def _data_set_member_count(value) -> int:
 
 
 def _candidate_rcb_reference(candidate: Iec61850ReportControlCandidate) -> str:
-    return f"{candidate.ied_name}/{candidate.access_point_name}/{candidate.logical_device_inst}/{candidate.logical_node_name}/{candidate.report_control_name}/{candidate.report_kind.value}"
+    logical_device_inst = _normalized_live_logical_device_inst(candidate.ied_name, candidate.logical_device_inst)
+    return f"{candidate.ied_name}/{candidate.access_point_name}/{logical_device_inst}/{candidate.logical_node_name}/{candidate.report_control_name}/{candidate.report_kind.value}"
 
 
 def _endpoint_label(endpoint: Iec61850DeviceEndpoint) -> str:
     if endpoint.host:
-        return f"{endpoint.ied_name}@{endpoint.host}:{endpoint.port}"
-    return f"{endpoint.ied_name}/{endpoint.access_point_name}"
+        if endpoint.ied_name:
+            return f"{endpoint.ied_name}@{endpoint.host}:{endpoint.port}"
+        return f"{endpoint.host}:{endpoint.port}"
+    return f"{endpoint.ied_name}/{endpoint.access_point_name}" if endpoint.ied_name else endpoint.access_point_name
 
 def get_iec61850_client_control_service() -> Iec61850ClientControlService:
     return _CLIENT_CONTROL_SERVICE
@@ -1625,14 +1680,14 @@ def _parse_external_report_value(value: str | None) -> bool | int | float | str 
 
 def _external_rcb_bool_command(candidate: Iec61850ReportControlCandidate, field: str, value: bool) -> str:
     rcb_kind = "BR" if candidate.report_kind == Iec61850ReportKind.BUFFERED else "RP"
-    domain = f"{candidate.ied_name}{candidate.logical_device_inst}"
+    domain = _external_mms_domain(candidate)
     item = f"{candidate.logical_node_name}${rcb_kind}${candidate.report_control_name}${field}"
     return f"write-bool {domain} {item} {'true' if value else 'false'}"
 
 
 def _external_rcb_hex_command(candidate: Iec61850ReportControlCandidate, field: str, value_hex: str) -> str:
     rcb_kind = "BR" if candidate.report_kind == Iec61850ReportKind.BUFFERED else "RP"
-    domain = f"{candidate.ied_name}{candidate.logical_device_inst}"
+    domain = _external_mms_domain(candidate)
     item = f"{candidate.logical_node_name}${rcb_kind}${candidate.report_control_name}${field}"
     return f"write-hex {domain} {item} 4 {value_hex}"
 
@@ -1744,6 +1799,14 @@ def _report_signal_states(
             "leaf_count": len(signal_values),
         })
     return states
+
+
+def _external_mms_domain(candidate: Iec61850ReportControlCandidate) -> str:
+    logical_device_inst = candidate.logical_device_inst.strip()
+    ied_name = candidate.ied_name.strip()
+    if not ied_name or logical_device_inst.startswith(ied_name):
+        return logical_device_inst or ied_name
+    return f"{ied_name}{logical_device_inst}"
 
 
 def _select_signal_primary_value(
@@ -1902,10 +1965,10 @@ def _build_target_endpoint_and_candidate(
         raise Iec61850ReportRuntimeError("CLIENT_TARGET_HOST_REQUIRED", "IEC 61850 external MMS target host is required.")
     if request.port <= 0 or request.port > 65535:
         raise Iec61850ReportRuntimeError("CLIENT_TARGET_PORT_INVALID", "IEC 61850 external MMS target port must be in range 1..65535.")
-    if not ied_name:
+    if (request.scl_path is not None and request.scl_path.strip()) and not ied_name:
         raise Iec61850ReportRuntimeError("CLIENT_TARGET_IED_REQUIRED", "IEC 61850 external MMS target IED name is required.")
     endpoint = Iec61850DeviceEndpoint(
-        id=f"mms:{ied_name}@{host}:{request.port}",
+        id=f"mms:{ied_name}@{host}:{request.port}" if ied_name else f"mms:{host}:{request.port}",
         mode=Iec61850RuntimeMode.MMS,
         ied_name=ied_name,
         access_point_name=access_point_name,
@@ -1997,6 +2060,7 @@ def _find_candidate_by_rcb_reference(
 
 
 def _build_wire_discovery_structure(endpoint: Iec61850DeviceEndpoint, candidate: Iec61850ReportControlCandidate, command: str) -> dict:
+    logical_device_inst = _normalized_live_logical_device_inst(candidate.ied_name, candidate.logical_device_inst)
     signal_items = [{"reference": signal.reference, "fc": signal.fc} for signal in candidate.signals]
     return {
         "schema": "unitlab.iec61850.client.wire-discovery.v1",
@@ -2010,8 +2074,8 @@ def _build_wire_discovery_structure(endpoint: Iec61850DeviceEndpoint, candidate:
             "host": endpoint.host,
             "port": endpoint.port,
         },
-        "logicalDevices": [{"iedName": candidate.ied_name, "inst": candidate.logical_device_inst, "reference": f"{candidate.ied_name}{candidate.logical_device_inst}"}],
-        "logicalNodes": [{"logicalDeviceInst": candidate.logical_device_inst, "name": candidate.logical_node_name, "reference": f"{candidate.ied_name}{candidate.logical_device_inst}/{candidate.logical_node_name}"}],
+        "logicalDevices": [{"iedName": candidate.ied_name, "inst": logical_device_inst, "reference": f"{candidate.ied_name}{logical_device_inst}"}],
+        "logicalNodes": [{"logicalDeviceInst": logical_device_inst, "name": candidate.logical_node_name, "reference": f"{candidate.ied_name}{logical_device_inst}/{candidate.logical_node_name}"}],
         "dataSets": [{"reference": candidate.data_set_ref, "members": signal_items, "memberCount": len(signal_items)}],
         "reportControls": [{"id": candidate.id, "name": candidate.report_control_name, "kind": candidate.report_kind.value, "rptId": candidate.rpt_id, "dataSetRef": candidate.data_set_ref, "confRev": candidate.conf_rev, "indexed": candidate.indexed, "bufferTimeMs": candidate.buffer_time_ms, "integrityPeriodMs": candidate.integrity_period_ms}],
         "signals": signal_items,
@@ -2080,6 +2144,90 @@ def _first_live_discovery_dataset_ref(discovery: dict, domain: str) -> str | Non
     return None
 
 
+def _infer_live_logical_device_inst_from_discovery(discovery: dict) -> str:
+    for key in ("signals", "dataSets"):
+        items = discovery.get(key)
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            if key == "signals":
+                for reference_key in ("mmsReference", "reference"):
+                    reference = item.get(reference_key)
+                    if not isinstance(reference, str) or "/" not in reference:
+                        continue
+                    logical_device_inst = _split_live_domain_identity(reference.split("/", 1)[0].strip())[1]
+                    if logical_device_inst:
+                        return logical_device_inst
+            else:
+                members = item.get("members")
+                if not isinstance(members, list):
+                    continue
+                for member in members:
+                    if not isinstance(member, dict):
+                        continue
+                    for reference_key in ("mmsReference", "reference"):
+                        reference = member.get(reference_key)
+                        if not isinstance(reference, str) or "/" not in reference:
+                            continue
+                        logical_device_inst = _split_live_domain_identity(reference.split("/", 1)[0].strip())[1]
+                        if logical_device_inst:
+                            return logical_device_inst
+    return ""
+
+
+def _infer_live_ied_name_from_discovery(discovery: dict, logical_device_inst: str, discovered_domain: str) -> str:
+    if logical_device_inst and discovered_domain.endswith(logical_device_inst):
+        candidate = discovered_domain[: -len(logical_device_inst)]
+        if candidate:
+            return candidate
+    prefix, suffix = _split_live_domain_identity(discovered_domain)
+    if prefix and suffix:
+        return prefix
+    logical_devices = discovery.get("logicalDevices")
+    if isinstance(logical_devices, list):
+        device_references = [
+            item.get("reference")
+            for item in logical_devices
+            if isinstance(item, dict) and isinstance(item.get("reference"), str)
+        ]
+        if device_references:
+            common_prefix = os.path.commonprefix(device_references).rstrip("._-/")
+            if common_prefix:
+                return common_prefix
+    return ""
+
+
+def _split_live_domain_identity(domain: str) -> tuple[str, str]:
+    normalized = domain.strip()
+    if not normalized:
+        return "", ""
+    match = re.match(r"^(.*?)([A-Z][A-Z0-9]{1,})$", normalized)
+    if match is None:
+        return "", normalized
+    prefix = match.group(1).strip()
+    suffix = match.group(2).strip()
+    if not prefix:
+        return "", normalized
+    return prefix, suffix
+
+
+def _infer_live_identity(endpoint_ied_name: str, discovered_domain: str, discovery: dict) -> tuple[str, str]:
+    normalized_endpoint_ied_name = endpoint_ied_name.strip()
+    if normalized_endpoint_ied_name:
+        return normalized_endpoint_ied_name, _live_logical_device_inst(normalized_endpoint_ied_name, discovered_domain)
+    logical_device_inst = _infer_live_logical_device_inst_from_discovery(discovery)
+    inferred_ied_name = _infer_live_ied_name_from_discovery(discovery, logical_device_inst, discovered_domain)
+    if inferred_ied_name:
+        return inferred_ied_name, logical_device_inst or _live_logical_device_inst(inferred_ied_name, discovered_domain)
+    if logical_device_inst and discovered_domain.endswith(logical_device_inst):
+        inferred_ied_name = discovered_domain[: -len(logical_device_inst)]
+        if inferred_ied_name:
+            return inferred_ied_name, logical_device_inst
+    return discovered_domain, logical_device_inst or discovered_domain
+
+
 def _candidate_from_live_discovered_rcb(
     *,
     endpoint: Iec61850DeviceEndpoint,
@@ -2089,11 +2237,12 @@ def _candidate_from_live_discovered_rcb(
     discovery: dict,
 ) -> Iec61850ReportControlCandidate:
     logical_node_name, report_kind = _live_rcb_logical_node_and_kind(discovered.item)
-    logical_device_inst = _live_logical_device_inst(endpoint.ied_name, discovered.domain)
+    inferred_ied_name, logical_device_inst = _infer_live_identity(endpoint.ied_name, discovered.domain, discovery)
+    logical_device_inst = _normalized_live_logical_device_inst(inferred_ied_name, logical_device_inst)
     signals = _live_candidate_signals(discovery, data_set_ref)
     return Iec61850ReportControlCandidate(
         id=f"{discovered.domain}:{discovered.item}",
-        ied_name=endpoint.ied_name,
+        ied_name=inferred_ied_name,
         access_point_name=endpoint.access_point_name,
         logical_device_inst=logical_device_inst,
         logical_node_name=logical_node_name,
@@ -2124,6 +2273,15 @@ def _candidate_from_live_discovered_rcb(
         ),
         signals=signals,
     )
+
+
+def _normalized_live_logical_device_inst(ied_name: str, logical_device_inst: str) -> str:
+    normalized = logical_device_inst.strip()
+    normalized_ied_name = ied_name.strip()
+    if normalized_ied_name and normalized.startswith(normalized_ied_name):
+        suffix = normalized[len(normalized_ied_name):]
+        return suffix or normalized
+    return normalized
 
 
 def _apply_live_rcb_attr(report_control: dict, field: str, value: str) -> None:

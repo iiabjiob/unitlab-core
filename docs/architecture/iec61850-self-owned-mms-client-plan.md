@@ -19,6 +19,7 @@ Scope: this audit covers generic IEC 61850-8-1 MMS client/server behavior needed
 - Client association is implemented for the basic MMS-over-TCP path used by the native wire client.
 - Client live discovery can enumerate logical devices, logical nodes, data sets, data-set members, and BRCB/URCB report-control candidates for the current single-device flow.
 - External MMS discovery can start from only host/port: the native client first asks the live VMD logical-device list and then discovers every returned live domain in one native session.
+- Persistent external MMS browse-only startup can omit the explicit IED name; the backend and native client infer the live device identity from the browse response when enough naming context is present.
 - Live-discovered report candidates are enriched from individual RCB reads rather than SCD-derived `RptID`, `DatSet`, `ConfRev`, `BufTm`, or `IntgPd` values.
 - Live-discovered `OptFlds` and `TrgOps` are decoded into typed `optional_fields` and `trigger_options` so the UI can show effective report options instead of only raw bit strings.
 - Client can connect from SCD/in-memory model or external MMS browse-only mode without live discovery and can subscribe to a known RCB path once a live RCB is selected.

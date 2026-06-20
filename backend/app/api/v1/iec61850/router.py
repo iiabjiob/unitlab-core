@@ -48,7 +48,7 @@ class Iec61850ClientTargetRequestSchema(BaseModel):
     mode: str
     host: str = "host.docker.internal"
     port: int = 12447
-    ied_name: str = "KINTE13LVC01"
+    ied_name: str = ""
     scl_path: str | None = "/workspace/.refs/sld-rev2.scd"
     access_point_name: str = "AP1"
     selected_rcb_ref: str | None = None
