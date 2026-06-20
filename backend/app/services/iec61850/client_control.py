@@ -890,7 +890,12 @@ class Iec61850ClientControlService:
         discovery = self._ensure_external_live_discovery()
         logical_devices = discovery.setdefault("logicalDevices", [])
         if not any(isinstance(item, dict) and item.get("reference") == domain for item in logical_devices):
-            logical_devices.append({"reference": domain, "domain": domain})
+            logical_devices.append({
+                "iedName": self._endpoint.ied_name,
+                "inst": _live_logical_device_inst(self._endpoint.ied_name, domain),
+                "reference": domain,
+                "domain": domain,
+            })
 
     def _apply_external_discovered_logical_node_line(self, line: str) -> None:
         fields = _parse_indexed_space_kv_line(line, "native-wire-client: discovered-logical-node[")

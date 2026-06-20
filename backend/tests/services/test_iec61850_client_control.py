@@ -85,10 +85,15 @@ class _ExternalMmsClientStdin:
         self._commands.append(command)
         if command == "discover" or command.startswith("discover "):
             self._stdout.lines.append("native-wire-client: discovered-logical-device[0] domain=KINTE13LVC01CTRL\n")
+            self._stdout.lines.append("native-wire-client: discovered-logical-device[1] domain=KINTE13LVC01PROT\n")
             self._stdout.lines.append("native-wire-client: discovered-logical-node[0] domain=KINTE13LVC01CTRL name=LLN0\n")
+            self._stdout.lines.append("native-wire-client: discovered-logical-node[1] domain=KINTE13LVC01PROT name=LLN0\n")
             self._stdout.lines.append("native-wire-client: discovered-dataset[0] reference=KINTE13LVC01CTRL/LLN0.RCB1\n")
+            self._stdout.lines.append("native-wire-client: discovered-dataset[1] reference=KINTE13LVC01PROT/LLN0.RCB2\n")
             self._stdout.lines.append("native-wire-client: discovered-dataset-member[0.0] dataset=KINTE13LVC01CTRL/LLN0.RCB1 ref=KINTE13LVC01CTRL/XCBR1$ST$Pos\n")
+            self._stdout.lines.append("native-wire-client: discovered-dataset-member[1.0] dataset=KINTE13LVC01PROT/LLN0.RCB2 ref=KINTE13LVC01PROT/PTOC1$ST$Str\n")
             self._stdout.lines.append("native-wire-client: discovered-brcb[0] domain=KINTE13LVC01CTRL item=LLN0$BR$brcbA01\n")
+            self._stdout.lines.append("native-wire-client: discovered-brcb[1] domain=KINTE13LVC01PROT item=LLN0$BR$brcbB01\n")
             self._stdout.lines.append("native-wire-client: discovered-rcb-attr[0] domain=KINTE13LVC01CTRL item=LLN0$BR$brcbA01 field=RptID value=KINTE13LVC01CTRL/LLN0.brcbA\n")
             self._stdout.lines.append("native-wire-client: discovered-rcb-attr[0] domain=KINTE13LVC01CTRL item=LLN0$BR$brcbA01 field=DatSet value=KINTE13LVC01CTRL/LLN0.RCB1\n")
             self._stdout.lines.append("native-wire-client: discovered-rcb-attr[0] domain=KINTE13LVC01CTRL item=LLN0$BR$brcbA01 field=ConfRev value=10000\n")
@@ -96,6 +101,13 @@ class _ExternalMmsClientStdin:
             self._stdout.lines.append("native-wire-client: discovered-rcb-attr[0] domain=KINTE13LVC01CTRL item=LLN0$BR$brcbA01 field=IntgPd value=0\n")
             self._stdout.lines.append("native-wire-client: discovered-rcb-attr[0] domain=KINTE13LVC01CTRL item=LLN0$BR$brcbA01 field=OptFlds value=0x067f80\n")
             self._stdout.lines.append("native-wire-client: discovered-rcb-attr[0] domain=KINTE13LVC01CTRL item=LLN0$BR$brcbA01 field=TrgOps value=0x0274\n")
+            self._stdout.lines.append("native-wire-client: discovered-rcb-attr[1] domain=KINTE13LVC01PROT item=LLN0$BR$brcbB01 field=RptID value=KINTE13LVC01PROT/LLN0.brcbB\n")
+            self._stdout.lines.append("native-wire-client: discovered-rcb-attr[1] domain=KINTE13LVC01PROT item=LLN0$BR$brcbB01 field=DatSet value=KINTE13LVC01PROT/LLN0.RCB2\n")
+            self._stdout.lines.append("native-wire-client: discovered-rcb-attr[1] domain=KINTE13LVC01PROT item=LLN0$BR$brcbB01 field=ConfRev value=7\n")
+            self._stdout.lines.append("native-wire-client: discovered-rcb-attr[1] domain=KINTE13LVC01PROT item=LLN0$BR$brcbB01 field=BufTm value=250\n")
+            self._stdout.lines.append("native-wire-client: discovered-rcb-attr[1] domain=KINTE13LVC01PROT item=LLN0$BR$brcbB01 field=IntgPd value=1000\n")
+            self._stdout.lines.append("native-wire-client: discovered-rcb-attr[1] domain=KINTE13LVC01PROT item=LLN0$BR$brcbB01 field=OptFlds value=0x067f80\n")
+            self._stdout.lines.append("native-wire-client: discovered-rcb-attr[1] domain=KINTE13LVC01PROT item=LLN0$BR$brcbB01 field=TrgOps value=0x0274\n")
             self._stdout.lines.append(
                 "native-wire-client: subscription-summary phase=discover rcb=KINTE13LVC01CTRL/LLN0.brcbA/<none> rcb-index=0 rptEna=false rptEna-invoke=0 giRequested=false gi-invoke=0 lastReportReceived=false asyncReports=0 lastReportValues=0 lastReportDataRefs=0 lastReportMatchedDataRefs=0 lastReportReasons=0 lastReportDatasetMismatches=0 lastReportMissingValues=0 lastReportExtraValues=0 lastReportMissingReasons=0 lastReportExtraReasons=0 lastReportUnsupportedValues=0\n"
             )
@@ -768,11 +780,22 @@ def test_external_mms_target_routes_discover_rptena_gi_to_external_probes(monkey
     )
     assert discover_snapshot.last_discovery is not None
     assert discover_snapshot.last_discovery["source"] == "live"
+    assert [item["reference"] for item in discover_snapshot.last_discovery["logicalDevices"]] == [
+        "KINTE13LVC01CTRL",
+        "KINTE13LVC01PROT",
+    ]
     assert discover_snapshot.last_discovery["logicalDevices"][0]["reference"] == "KINTE13LVC01CTRL"
     assert discover_snapshot.last_discovery["logicalNodes"][0]["reference"] == "KINTE13LVC01CTRL/LLN0"
+    assert discover_snapshot.last_discovery["logicalNodes"][1]["reference"] == "KINTE13LVC01PROT/LLN0"
     assert discover_snapshot.last_discovery["dataSets"][0]["reference"] == "KINTE13LVC01CTRL/LLN0.RCB1"
+    assert discover_snapshot.last_discovery["dataSets"][1]["reference"] == "KINTE13LVC01PROT/LLN0.RCB2"
     assert discover_snapshot.last_discovery["dataSets"][0]["memberCount"] == 1
     assert discover_snapshot.last_discovery["reportControls"][0]["item"] == "LLN0$BR$brcbA01"
+    assert discover_snapshot.last_discovery["reportControls"][1]["item"] == "LLN0$BR$brcbB01"
+    assert discover_snapshot.ui_state["discovery"]["logical_devices"] == 2
+    assert discover_snapshot.ui_state["discovery"]["logical_nodes"] == 2
+    assert discover_snapshot.ui_state["discovery"]["data_sets"] == 2
+    assert discover_snapshot.ui_state["discovery"]["report_controls"] == 2
     assert discover_snapshot.candidate.id == "KINTE13LVC01CTRL:LLN0$BR$brcbA01"
     assert discover_snapshot.candidate.rpt_id == "KINTE13LVC01CTRL/LLN0.brcbA"
     assert discover_snapshot.candidate.data_set_ref == "KINTE13LVC01CTRL/LLN0.RCB1"
@@ -795,6 +818,8 @@ def test_external_mms_target_routes_discover_rptena_gi_to_external_probes(monkey
     assert discover_snapshot.candidate.signals[0].reference == "XCBR1.Pos[ST]"
     assert discover_snapshot.ui_state["discovery"]["available_report_controls"][0]["report_control_id"] == "KINTE13LVC01CTRL:LLN0$BR$brcbA01"
     assert discover_snapshot.ui_state["discovery"]["available_report_controls"][0]["rpt_id"] == "KINTE13LVC01CTRL/LLN0.brcbA"
+    assert discover_snapshot.ui_state["discovery"]["available_report_controls"][1]["report_control_id"] == "KINTE13LVC01PROT:LLN0$BR$brcbB01"
+    assert discover_snapshot.ui_state["discovery"]["available_report_controls"][1]["data_set_ref"] == "KINTE13LVC01PROT/LLN0.RCB2"
     assert discover_snapshot.ui_state["discovery"]["available_report_controls"][0]["trigger_options"]["data_change"] is True
     assert discover_snapshot.ui_state["discovery"]["available_report_controls"][0]["trigger_options"]["periodic"] is False
     assert discover_snapshot.ui_state["discovery"]["available_report_controls"][0]["optional_fields"]["config_revision"] is True

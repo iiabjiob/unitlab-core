@@ -874,6 +874,179 @@ static int extract_confirmed_read_first_value_summary(const uint8_t* frame, size
     return value_summary[0] != '\0';
 }
 
+static int run_root_discover_domain_sequence(
+    UnitLabNativeClientSessionState* session,
+    const UnitLabNativeDiscoveryIo* io,
+    const char* domain_id)
+{
+    UnitLabNativeIdentifierList domain_variable_names = {0};
+    UnitLabNativeIdentifierList logical_node_names = {0};
+    UnitLabNativeIdentifierList data_set_items = {0};
+    UnitLabNativeIdentifierList brcb_names = {0};
+    UnitLabNativeIdentifierList brcb_logical_nodes = {0};
+    int more_follows = 0;
+    char last_identifier[128U];
+    int ok = 0;
+
+    if (session == NULL || io == NULL || io->get_name_list_step == NULL || io->read_step == NULL || io->attributes_step == NULL || domain_id == NULL || domain_id[0] == '\0') {
+        set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Native wire client root domain discover requires session, domain, and discovery callbacks.");
+        return 0;
+    }
+
+    snprintf(session->discovered_model.domain, sizeof(session->discovered_model.domain), "%s", domain_id);
+    if (!io->get_name_list_step(session, io, "domain-named-variables", 0U, 1U, domain_id, NULL, NULL, unitlab_native_client_session_reserve_invoke_id(session))) {
+        goto cleanup;
+    }
+    if (!extract_get_name_list_identifiers(io->response, *io->encoded_response_length, &domain_variable_names, &more_follows, last_identifier, sizeof(last_identifier))) {
+        set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not decode domain named variable GetNameList response.");
+        goto cleanup;
+    }
+    while (more_follows && last_identifier[0] != '\0') {
+        size_t before_count = domain_variable_names.count;
+        if (!io->get_name_list_step(session, io, "domain-named-variables-page", 0U, 1U, domain_id, NULL, last_identifier, unitlab_native_client_session_reserve_invoke_id(session))) {
+            goto cleanup;
+        }
+        if (!extract_get_name_list_identifiers(io->response, *io->encoded_response_length, &domain_variable_names, &more_follows, last_identifier, sizeof(last_identifier))) {
+            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not decode domain named variable GetNameList page.");
+            goto cleanup;
+        }
+        if (domain_variable_names.count == before_count) {
+            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client named variable pagination did not advance.");
+            goto cleanup;
+        }
+    }
+    if (!derive_domain_model_names(&domain_variable_names, &logical_node_names, &brcb_names, &brcb_logical_nodes)) {
+        set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not derive domain model names.");
+        goto cleanup;
+    }
+
+    if (!io->get_name_list_step(session, io, "domain-datasets", 2U, 1U, domain_id, NULL, NULL, unitlab_native_client_session_reserve_invoke_id(session))) {
+        goto cleanup;
+    }
+    if (!extract_get_name_list_identifiers(io->response, *io->encoded_response_length, &data_set_items, &more_follows, last_identifier, sizeof(last_identifier))) {
+        set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not decode dataset GetNameList response.");
+        goto cleanup;
+    }
+    while (more_follows && last_identifier[0] != '\0') {
+        size_t before_count = data_set_items.count;
+        if (!io->get_name_list_step(session, io, "domain-datasets-page", 2U, 1U, domain_id, NULL, last_identifier, unitlab_native_client_session_reserve_invoke_id(session))) {
+            goto cleanup;
+        }
+        if (!extract_get_name_list_identifiers(io->response, *io->encoded_response_length, &data_set_items, &more_follows, last_identifier, sizeof(last_identifier))) {
+            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not decode dataset GetNameList page.");
+            goto cleanup;
+        }
+        if (data_set_items.count == before_count) {
+            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client dataset pagination did not advance.");
+            goto cleanup;
+        }
+    }
+    session->discovered_model.data_set_count += data_set_items.count;
+    for (size_t index = 0U; index < data_set_items.count; index++) {
+        printf("native-wire-client: discovered-dataset[%zu] reference=%s/%s\n", session->discovered_model.data_set_count - data_set_items.count + index, domain_id, data_set_items.items[index]);
+        fflush(stdout);
+    }
+
+    for (size_t index = 0U; index < logical_node_names.count; index++) {
+        if (unitlab_native_client_session_append_logical_node(session, domain_id, logical_node_names.items[index]) == NULL) {
+            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered logical node state.");
+            goto cleanup;
+        }
+        printf("native-wire-client: discovered-logical-node[%zu] domain=%s name=%s\n", session->discovered_logical_node_count - 1U, domain_id, logical_node_names.items[index]);
+        fflush(stdout);
+    }
+
+    for (size_t data_index = 0U; data_index < domain_variable_names.count; data_index++) {
+        char logical_node[128U];
+        char data_name_ref[256U];
+        const char* suffix = NULL;
+        UnitLabNativeDiscoveredDataName* data_name;
+        if (!mms_identifier_is_fc_data_name(domain_variable_names.items[data_index])
+            || !split_mms_identifier_token(domain_variable_names.items[data_index], 0U, logical_node, sizeof(logical_node))) {
+            continue;
+        }
+        suffix = strchr(domain_variable_names.items[data_index], '$');
+        if (suffix == NULL || suffix[1] == '\0') {
+            continue;
+        }
+        snprintf(data_name_ref, sizeof(data_name_ref), "%s", suffix + 1);
+        data_name = unitlab_native_client_session_append_data_name(session, domain_id, logical_node, data_name_ref);
+        if (data_name == NULL) {
+            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered domain data state.");
+            goto cleanup;
+        }
+        if (!io->attributes_step(session, io, "domain-data-components", domain_id, domain_variable_names.items[data_index], unitlab_native_client_session_reserve_invoke_id(session), 0)) {
+            goto cleanup;
+        }
+        if (!collect_get_variable_access_attributes_components_from_frame(session, io, data_name, domain_variable_names.items[data_index], io->response, *io->encoded_response_length)) {
+            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not decode domain data component attributes.");
+            goto cleanup;
+        }
+    }
+    session->discovered_model.brcb_count += brcb_names.count;
+    if (brcb_names.count == 0U) {
+        printf("native-wire-client: discover-skip=brcb-attrs domain=%s reason=no-brcb\n", domain_id);
+        fflush(stdout);
+    }
+    for (size_t index = 0U; index < brcb_names.count; index++) {
+        char brcb_item[320U];
+        char brcb_read_item[320U];
+        static const char* rcb_fields[] = { "RptID", "DatSet", "ConfRev", "BufTm", "IntgPd", "OptFlds", "TrgOps" };
+        snprintf(brcb_item, sizeof(brcb_item), "%s$BR$%s$RptEna", brcb_logical_nodes.items[index], brcb_names.items[index]);
+        if (!io->attributes_step(session, io, "brcb-attrs", domain_id, brcb_item, unitlab_native_client_session_reserve_invoke_id(session), 0)) {
+            goto cleanup;
+        }
+        snprintf(brcb_read_item, sizeof(brcb_read_item), "%s$BR$%s", brcb_logical_nodes.items[index], brcb_names.items[index]);
+        if (unitlab_native_client_session_append_discovered_rcb(session, domain_id, brcb_read_item) == NULL) {
+            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered BRCB state.");
+            goto cleanup;
+        }
+        printf("native-wire-client: discovered-brcb[%zu] domain=%s item=%s\n", session->discovered_rcb_count - 1U, domain_id, brcb_read_item);
+        fflush(stdout);
+        for (size_t field_index = 0U; field_index < sizeof(rcb_fields) / sizeof(rcb_fields[0]); field_index++) {
+            char field_item[384U];
+            char field_value[160U];
+            snprintf(field_item, sizeof(field_item), "%s$%s", brcb_read_item, rcb_fields[field_index]);
+            if (!io->read_step(session, io, "brcb-field", domain_id, field_item, unitlab_native_client_session_reserve_invoke_id(session))) {
+                goto cleanup;
+            }
+            if (extract_confirmed_read_first_value_summary(io->response, *io->encoded_response_length, field_value, sizeof(field_value))) {
+                printf(
+                    "native-wire-client: discovered-rcb-attr[%zu] domain=%s item=%s field=%s value=%s\n",
+                    session->discovered_rcb_count - 1U,
+                    domain_id,
+                    brcb_read_item,
+                    rcb_fields[field_index],
+                    field_value);
+                fflush(stdout);
+            }
+        }
+    }
+    if (data_set_items.count == 0U) {
+        printf("native-wire-client: discover-skip=dataset-members domain=%s reason=no-dataset\n", domain_id);
+        fflush(stdout);
+    }
+    for (size_t index = 0U; index < data_set_items.count; index++) {
+        char data_set_reference[384U];
+        snprintf(data_set_reference, sizeof(data_set_reference), "%s/%s", domain_id, data_set_items.items[index]);
+        if (!io->attributes_step(session, io, "dataset-members", domain_id, data_set_items.items[index], unitlab_native_client_session_reserve_invoke_id(session), 1)) {
+            goto cleanup;
+        }
+        if (!collect_get_named_variable_list_members_from_frame(session, io, data_set_reference, io->response, *io->encoded_response_length)) {
+            goto cleanup;
+        }
+    }
+    ok = 1;
+
+cleanup:
+    identifier_list_reset(&domain_variable_names);
+    identifier_list_reset(&logical_node_names);
+    identifier_list_reset(&data_set_items);
+    identifier_list_reset(&brcb_names);
+    identifier_list_reset(&brcb_logical_nodes);
+    return ok;
+}
+
 int unitlab_native_client_run_discover_sequence(
     UnitLabNativeClientSessionState* session,
     const UnitLabNativeDiscoveryIo* io,
@@ -1133,10 +1306,31 @@ int unitlab_native_client_run_discover_root_sequence(
         goto cleanup;
     }
 
+    for (size_t index = 0U; index < logical_device_names.count; index++) {
+        if (unitlab_native_client_session_append_logical_device(session, logical_device_names.items[index]) == NULL) {
+            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered logical device state.");
+            goto cleanup;
+        }
+        printf("native-wire-client: discovered-logical-device[%zu] domain=%s\n", index, logical_device_names.items[index]);
+        fflush(stdout);
+    }
+
     cursor_invoke_id = session->next_invoke_id;
-    printf("native-wire-client: discover-root selected-domain=%s logical-device-count=%zu\n", logical_device_names.items[0], logical_device_names.count);
+    unitlab_native_client_session_set_next_invoke_id(session, cursor_invoke_id);
+    printf("native-wire-client: discover-root logical-device-count=%zu\n", logical_device_names.count);
     fflush(stdout);
-    ok = unitlab_native_client_run_discover_sequence(session, io, logical_device_names.items[0], cursor_invoke_id, next_invoke_id);
+    for (size_t index = 0U; index < logical_device_names.count; index++) {
+        printf("native-wire-client: discover-root domain[%zu]=%s\n", index, logical_device_names.items[index]);
+        fflush(stdout);
+        if (!run_root_discover_domain_sequence(session, io, logical_device_names.items[index])) {
+            goto cleanup;
+        }
+    }
+    *next_invoke_id = session->next_invoke_id;
+    if (io->emit_model_summary != NULL) {
+        io->emit_model_summary(session, "discover");
+    }
+    ok = 1;
 
 cleanup:
     identifier_list_reset(&logical_device_names);
