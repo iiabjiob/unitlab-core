@@ -1158,7 +1158,7 @@ int unitlab_native_client_run_discover_sequence(
             goto cleanup;
         }
     }
-    session->discovered_model.data_set_count = data_set_items.count;
+    session->discovered_model.data_set_count += data_set_items.count;
     for (size_t index = 0U; index < data_set_items.count; index++) {
         printf("native-wire-client: discovered-dataset[%zu] reference=%s/%s\n", index, domain_id, data_set_items.items[index]);
         fflush(stdout);
