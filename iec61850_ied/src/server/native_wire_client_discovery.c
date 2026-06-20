@@ -140,10 +140,11 @@ static int mms_identifier_is_fc_data_name(const char* value)
 static int derive_domain_model_names(
     const UnitLabNativeIdentifierList* domain_variables,
     UnitLabNativeIdentifierList* logical_nodes,
-    UnitLabNativeIdentifierList* brcb_names,
-    UnitLabNativeIdentifierList* brcb_logical_nodes)
+    UnitLabNativeIdentifierList* rcb_names,
+    UnitLabNativeIdentifierList* rcb_logical_nodes,
+    UnitLabNativeIdentifierList* rcb_folders)
 {
-    if (domain_variables == NULL || logical_nodes == NULL || brcb_names == NULL || brcb_logical_nodes == NULL) {
+    if (domain_variables == NULL || logical_nodes == NULL || rcb_names == NULL || rcb_logical_nodes == NULL || rcb_folders == NULL) {
         return 0;
     }
     for (size_t index = 0U; index < domain_variables->count; index++) {
@@ -158,9 +159,11 @@ static int derive_domain_model_names(
         }
         if (mms_identifier_token_count(domain_variables->items[index]) == 3
             && split_mms_identifier_token(domain_variables->items[index], 1U, fc, sizeof(fc))
-            && strcmp(fc, "BR") == 0
+            && (strcmp(fc, "BR") == 0 || strcmp(fc, "RP") == 0)
             && split_mms_identifier_token(domain_variables->items[index], 2U, rcb_name, sizeof(rcb_name))) {
-            if (!identifier_list_append(brcb_names, rcb_name) || !identifier_list_append(brcb_logical_nodes, logical_node)) {
+            if (!identifier_list_append(rcb_names, rcb_name)
+                || !identifier_list_append(rcb_logical_nodes, logical_node)
+                || !identifier_list_append(rcb_folders, fc)) {
                 return 0;
             }
         }
@@ -882,8 +885,9 @@ static int run_root_discover_domain_sequence(
     UnitLabNativeIdentifierList domain_variable_names = {0};
     UnitLabNativeIdentifierList logical_node_names = {0};
     UnitLabNativeIdentifierList data_set_items = {0};
-    UnitLabNativeIdentifierList brcb_names = {0};
-    UnitLabNativeIdentifierList brcb_logical_nodes = {0};
+    UnitLabNativeIdentifierList rcb_names = {0};
+    UnitLabNativeIdentifierList rcb_logical_nodes = {0};
+    UnitLabNativeIdentifierList rcb_folders = {0};
     int more_follows = 0;
     char last_identifier[128U];
     int ok = 0;
@@ -915,7 +919,7 @@ static int run_root_discover_domain_sequence(
             goto cleanup;
         }
     }
-    if (!derive_domain_model_names(&domain_variable_names, &logical_node_names, &brcb_names, &brcb_logical_nodes)) {
+    if (!derive_domain_model_names(&domain_variable_names, &logical_node_names, &rcb_names, &rcb_logical_nodes, &rcb_folders)) {
         set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not derive domain model names.");
         goto cleanup;
     }
@@ -983,30 +987,30 @@ static int run_root_discover_domain_sequence(
             goto cleanup;
         }
     }
-    session->discovered_model.brcb_count += brcb_names.count;
-    if (brcb_names.count == 0U) {
-        printf("native-wire-client: discover-skip=brcb-attrs domain=%s reason=no-brcb\n", domain_id);
+    session->discovered_model.brcb_count += rcb_names.count;
+    if (rcb_names.count == 0U) {
+        printf("native-wire-client: discover-skip=rcb-attrs domain=%s reason=no-rcb\n", domain_id);
         fflush(stdout);
     }
-    for (size_t index = 0U; index < brcb_names.count; index++) {
-        char brcb_item[320U];
-        char brcb_read_item[320U];
+    for (size_t index = 0U; index < rcb_names.count; index++) {
+        char rcb_item[320U];
+        char rcb_read_item[320U];
         static const char* rcb_fields[] = { "RptID", "DatSet", "ConfRev", "BufTm", "IntgPd", "OptFlds", "TrgOps" };
-        snprintf(brcb_item, sizeof(brcb_item), "%s$BR$%s$RptEna", brcb_logical_nodes.items[index], brcb_names.items[index]);
-        if (!io->attributes_step(session, io, "brcb-attrs", domain_id, brcb_item, unitlab_native_client_session_reserve_invoke_id(session), 0)) {
+        snprintf(rcb_item, sizeof(rcb_item), "%s$%s$%s$RptEna", rcb_logical_nodes.items[index], rcb_folders.items[index], rcb_names.items[index]);
+        if (!io->attributes_step(session, io, "rcb-attrs", domain_id, rcb_item, unitlab_native_client_session_reserve_invoke_id(session), 0)) {
             goto cleanup;
         }
-        snprintf(brcb_read_item, sizeof(brcb_read_item), "%s$BR$%s", brcb_logical_nodes.items[index], brcb_names.items[index]);
-        if (unitlab_native_client_session_append_discovered_rcb(session, domain_id, brcb_read_item) == NULL) {
-            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered BRCB state.");
+        snprintf(rcb_read_item, sizeof(rcb_read_item), "%s$%s$%s", rcb_logical_nodes.items[index], rcb_folders.items[index], rcb_names.items[index]);
+        if (unitlab_native_client_session_append_discovered_rcb(session, domain_id, rcb_read_item) == NULL) {
+            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered RCB state.");
             goto cleanup;
         }
-        printf("native-wire-client: discovered-brcb[%zu] domain=%s item=%s\n", session->discovered_rcb_count - 1U, domain_id, brcb_read_item);
+        printf("native-wire-client: discovered-rcb[%zu] domain=%s item=%s kind=%s\n", session->discovered_rcb_count - 1U, domain_id, rcb_read_item, strcmp(rcb_folders.items[index], "RP") == 0 ? "unbuffered" : "buffered");
         fflush(stdout);
         for (size_t field_index = 0U; field_index < sizeof(rcb_fields) / sizeof(rcb_fields[0]); field_index++) {
             char field_item[384U];
             char field_value[160U];
-            snprintf(field_item, sizeof(field_item), "%s$%s", brcb_read_item, rcb_fields[field_index]);
+            snprintf(field_item, sizeof(field_item), "%s$%s", rcb_read_item, rcb_fields[field_index]);
             if (!io->read_step(session, io, "brcb-field", domain_id, field_item, unitlab_native_client_session_reserve_invoke_id(session))) {
                 goto cleanup;
             }
@@ -1015,7 +1019,7 @@ static int run_root_discover_domain_sequence(
                     "native-wire-client: discovered-rcb-attr[%zu] domain=%s item=%s field=%s value=%s\n",
                     session->discovered_rcb_count - 1U,
                     domain_id,
-                    brcb_read_item,
+                    rcb_read_item,
                     rcb_fields[field_index],
                     field_value);
                 fflush(stdout);
@@ -1042,8 +1046,9 @@ cleanup:
     identifier_list_reset(&domain_variable_names);
     identifier_list_reset(&logical_node_names);
     identifier_list_reset(&data_set_items);
-    identifier_list_reset(&brcb_names);
-    identifier_list_reset(&brcb_logical_nodes);
+    identifier_list_reset(&rcb_names);
+    identifier_list_reset(&rcb_logical_nodes);
+    identifier_list_reset(&rcb_folders);
     return ok;
 }
 
@@ -1058,8 +1063,9 @@ int unitlab_native_client_run_discover_sequence(
     UnitLabNativeIdentifierList domain_variable_names = {0};
     UnitLabNativeIdentifierList logical_node_names = {0};
     UnitLabNativeIdentifierList data_set_items = {0};
-    UnitLabNativeIdentifierList brcb_names = {0};
-    UnitLabNativeIdentifierList brcb_logical_nodes = {0};
+    UnitLabNativeIdentifierList rcb_names = {0};
+    UnitLabNativeIdentifierList rcb_logical_nodes = {0};
+    UnitLabNativeIdentifierList rcb_folders = {0};
     int more_follows = 0;
     char last_identifier[128U];
     int ok = 0;
@@ -1124,7 +1130,7 @@ int unitlab_native_client_run_discover_sequence(
             goto cleanup;
         }
     }
-    if (!derive_domain_model_names(&domain_variable_names, &logical_node_names, &brcb_names, &brcb_logical_nodes)) {
+    if (!derive_domain_model_names(&domain_variable_names, &logical_node_names, &rcb_names, &rcb_logical_nodes, &rcb_folders)) {
         set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not derive domain model names.");
         goto cleanup;
     }
@@ -1192,30 +1198,30 @@ int unitlab_native_client_run_discover_sequence(
             goto cleanup;
         }
     }
-    session->discovered_model.brcb_count = brcb_names.count;
-    if (brcb_names.count == 0U) {
-        printf("native-wire-client: discover-skip=brcb-attrs reason=no-brcb\n");
+    session->discovered_model.brcb_count = rcb_names.count;
+    if (rcb_names.count == 0U) {
+        printf("native-wire-client: discover-skip=rcb-attrs reason=no-rcb\n");
         fflush(stdout);
     }
-    for (size_t index = 0U; index < brcb_names.count; index++) {
-        char brcb_item[320U];
-        char brcb_read_item[320U];
+    for (size_t index = 0U; index < rcb_names.count; index++) {
+        char rcb_item[320U];
+        char rcb_read_item[320U];
         static const char* rcb_fields[] = { "RptID", "DatSet", "ConfRev", "BufTm", "IntgPd", "OptFlds", "TrgOps" };
-        snprintf(brcb_item, sizeof(brcb_item), "%s$BR$%s$RptEna", brcb_logical_nodes.items[index], brcb_names.items[index]);
-        if (!io->attributes_step(session, io, "brcb-attrs", domain_id, brcb_item, unitlab_native_client_session_reserve_invoke_id(session), 0)) {
+        snprintf(rcb_item, sizeof(rcb_item), "%s$%s$%s$RptEna", rcb_logical_nodes.items[index], rcb_folders.items[index], rcb_names.items[index]);
+        if (!io->attributes_step(session, io, "rcb-attrs", domain_id, rcb_item, unitlab_native_client_session_reserve_invoke_id(session), 0)) {
             goto cleanup;
         }
-        snprintf(brcb_read_item, sizeof(brcb_read_item), "%s$BR$%s", brcb_logical_nodes.items[index], brcb_names.items[index]);
-        if (unitlab_native_client_session_append_discovered_rcb(session, domain_id, brcb_read_item) == NULL) {
-            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered BRCB state.");
+        snprintf(rcb_read_item, sizeof(rcb_read_item), "%s$%s$%s", rcb_logical_nodes.items[index], rcb_folders.items[index], rcb_names.items[index]);
+        if (unitlab_native_client_session_append_discovered_rcb(session, domain_id, rcb_read_item) == NULL) {
+            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate discovered RCB state.");
             goto cleanup;
         }
-        printf("native-wire-client: discovered-brcb[%zu] domain=%s item=%s\n", session->discovered_rcb_count - 1U, domain_id, brcb_read_item);
+        printf("native-wire-client: discovered-rcb[%zu] domain=%s item=%s kind=%s\n", session->discovered_rcb_count - 1U, domain_id, rcb_read_item, strcmp(rcb_folders.items[index], "RP") == 0 ? "unbuffered" : "buffered");
         fflush(stdout);
         for (size_t field_index = 0U; field_index < sizeof(rcb_fields) / sizeof(rcb_fields[0]); field_index++) {
             char field_item[384U];
             char field_value[160U];
-            snprintf(field_item, sizeof(field_item), "%s$%s", brcb_read_item, rcb_fields[field_index]);
+            snprintf(field_item, sizeof(field_item), "%s$%s", rcb_read_item, rcb_fields[field_index]);
             if (!io->read_step(session, io, "brcb-field", domain_id, field_item, unitlab_native_client_session_reserve_invoke_id(session))) {
                 goto cleanup;
             }
@@ -1224,7 +1230,7 @@ int unitlab_native_client_run_discover_sequence(
                     "native-wire-client: discovered-rcb-attr[%zu] domain=%s item=%s field=%s value=%s\n",
                     session->discovered_rcb_count - 1U,
                     domain_id,
-                    brcb_read_item,
+                    rcb_read_item,
                     rcb_fields[field_index],
                     field_value);
                 fflush(stdout);
@@ -1256,8 +1262,9 @@ cleanup:
     identifier_list_reset(&domain_variable_names);
     identifier_list_reset(&logical_node_names);
     identifier_list_reset(&data_set_items);
-    identifier_list_reset(&brcb_names);
-    identifier_list_reset(&brcb_logical_nodes);
+    identifier_list_reset(&rcb_names);
+    identifier_list_reset(&rcb_logical_nodes);
+    identifier_list_reset(&rcb_folders);
     return ok;
 }
 

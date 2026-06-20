@@ -820,7 +820,7 @@ class Iec61850ClientControlService:
             self._apply_external_discovered_dataset_line(line)
         elif line.startswith("native-wire-client: discovered-dataset-member["):
             self._apply_external_discovered_dataset_member_line(line)
-        elif line.startswith("native-wire-client: discovered-brcb["):
+        elif line.startswith("native-wire-client: discovered-rcb[") or line.startswith("native-wire-client: discovered-brcb["):
             self._apply_external_discovered_rcb_line(line)
         elif line.startswith("native-wire-client: discovered-rcb-attr["):
             self._apply_external_discovered_rcb_attr_line(line)
@@ -835,7 +835,10 @@ class Iec61850ClientControlService:
             self._last_state = self._external_state(Iec61850RuntimeStatus.DISCONNECTED, enabled=False)
 
     def _apply_external_discovered_rcb_line(self, line: str) -> None:
-        payload = line.removeprefix("native-wire-client: discovered-brcb[")
+        if line.startswith("native-wire-client: discovered-rcb["):
+            payload = line.removeprefix("native-wire-client: discovered-rcb[")
+        else:
+            payload = line.removeprefix("native-wire-client: discovered-brcb[")
         index_text, separator, fields_text = payload.partition("] ")
         if separator != "] ":
             return
