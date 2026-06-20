@@ -92,7 +92,7 @@ static IedConnection connect_to_server(const UnitLabIedServerConfig* config, Uni
 {
     IedConnection connection = IedConnection_create();
     if (connection == NULL) {
-        set_probe_result(result, 0, "IEC61850_METADATA_PROBE_CONNECTION_CREATE_FAILED", "libIEC61850 failed to create a client connection.");
+        set_probe_result(result, 0, "IEC61850_METADATA_PROBE_CONNECTION_CREATE_FAILED", "Native MMS client failed to create a connection.");
         return NULL;
     }
 
@@ -1488,7 +1488,7 @@ int unitlab_probe_ied_server_discovery(
         result,
         0,
         "LIBIEC61850_NOT_LINKED",
-        "libIEC61850 is not linked; build with UNITLAB_IEC61850_SIM_WITH_LIBIEC61850=ON before probing MMS discovery.");
+        "Native MMS discovery support is not linked; build with UNITLAB_IEC61850_SIM_WITH_LIBIEC61850=ON before probing MMS discovery.");
     return 0;
 }
 
@@ -1505,7 +1505,7 @@ int unitlab_probe_ied_server_metadata(
         result,
         0,
         "LIBIEC61850_NOT_LINKED",
-        "libIEC61850 is not linked; build with UNITLAB_IEC61850_SIM_WITH_LIBIEC61850=ON before probing MMS metadata.");
+        "Native MMS metadata support is not linked; build with UNITLAB_IEC61850_SIM_WITH_LIBIEC61850=ON before probing MMS metadata.");
     return 0;
 }
 
@@ -1524,7 +1524,7 @@ int unitlab_probe_ied_server_gi(
         result,
         0,
         "LIBIEC61850_NOT_LINKED",
-        "libIEC61850 is not linked; build with UNITLAB_IEC61850_SIM_WITH_LIBIEC61850=ON before probing MMS GI.");
+        "Native MMS GI support is not linked; build with UNITLAB_IEC61850_SIM_WITH_LIBIEC61850=ON before probing MMS GI.");
     return 0;
 }
 
@@ -1541,7 +1541,7 @@ int unitlab_run_ied_server_mms_client(
         result,
         0,
         "LIBIEC61850_NOT_LINKED",
-        "libIEC61850 is not linked; build with UNITLAB_IEC61850_SIM_WITH_LIBIEC61850=ON before starting the persistent MMS client.");
+        "Native persistent MMS client support is not linked; build with UNITLAB_IEC61850_SIM_WITH_LIBIEC61850=ON before starting the persistent MMS client.");
     return 0;
 }
 

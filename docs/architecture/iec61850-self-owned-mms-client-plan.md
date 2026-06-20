@@ -112,6 +112,15 @@ endpoint identity (IP / hostname / port)
   -> UI / report consumers
 ```
 
+### CLI entrypoint boundary
+
+- `src/app/main.c` is now a thin dispatcher only.
+- Public CLI API is only `src/app/cli/unitlab_cli.h` with `unitlab_cli_run(...)`.
+- Internal CLI state lives in `src/app/cli/unitlab_cli_options.h` and `src/app/cli/unitlab_cli_internal.h`.
+- Command routing lives in `src/app/cli/unitlab_cli_dispatch.c`.
+- Command execution is split across `src/app/cli/commands/unitlab_cmd_fixture.c`, `src/app/cli/commands/unitlab_cmd_scl.c`, and `src/app/cli/commands/unitlab_cmd_mms_client.c`.
+- `src/app/cli/unitlab_cli_common.c` holds shared internal utilities only.
+
 Ownership boundaries:
 
 - Backend owns endpoint resolution, session lifecycle, retry/recovery policy, evidence persistence, and the runtime snapshot contract.

@@ -718,8 +718,12 @@ static int collect_get_variable_access_attributes_components_from_frame(UnitLabN
             (size_t)-1);
     }
     if (root_node == NULL) {
-        set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not allocate typed GVA root node state.");
-        return 0;
+        printf(
+            "native-wire-client: discover-skip=gva-root domain=%s data=%s reason=allocation-failed\n",
+            data_name->logical_device,
+            data_name->name);
+        fflush(stdout);
+        return 1;
     }
     if (!collect_gva_components_from_bytes(session, io, data_name, item_id, fc, root_path, session->discovered_typed_data_node_count - 1U, &pdu.service_bytes[consumed], pdu.service_length - consumed, 0U, &component_count)) {
         return 0;
@@ -962,19 +966,24 @@ static int run_root_discover_domain_sequence(
     while (more_follows && last_identifier[0] != '\0') {
         size_t before_count = domain_variable_names.count;
         if (!io->get_name_list_step(session, io, "domain-named-variables-page", 0U, 1U, domain_id, NULL, last_identifier, unitlab_native_client_session_reserve_invoke_id(session))) {
-            goto cleanup;
+            printf("native-wire-client: discover-skip=domain-named-variables-page domain=%s reason=request-failed\n", domain_id);
+            fflush(stdout);
+            break;
         }
         if (!extract_get_name_list_identifiers(io->response, *io->encoded_response_length, &domain_variable_names, &more_follows, last_identifier, sizeof(last_identifier))) {
-            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not decode domain named variable GetNameList page.");
-            goto cleanup;
+            printf("native-wire-client: discover-skip=domain-named-variables-page domain=%s reason=decode-failed\n", domain_id);
+            fflush(stdout);
+            break;
         }
         if (domain_variable_names.count == before_count) {
-            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client named variable pagination did not advance.");
-            goto cleanup;
+            printf("native-wire-client: discover-skip=domain-named-variables-page domain=%s reason=did-not-advance\n", domain_id);
+            fflush(stdout);
+            break;
         }
     }
     if (!derive_domain_model_names(&domain_variable_names, &logical_node_names, &rcb_names, &rcb_logical_nodes, &rcb_folders)) {
-        set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Native wire client could not derive domain model names.");
+        printf("native-wire-client: discover-skip=domain domain=%s reason=model-derive-failed\n", domain_id);
+        fflush(stdout);
         goto cleanup;
     }
 
@@ -988,15 +997,19 @@ static int run_root_discover_domain_sequence(
     while (more_follows && last_identifier[0] != '\0') {
         size_t before_count = data_set_items.count;
         if (!io->get_name_list_step(session, io, "domain-datasets-page", 2U, 1U, domain_id, NULL, last_identifier, unitlab_native_client_session_reserve_invoke_id(session))) {
-            goto cleanup;
+            printf("native-wire-client: discover-skip=domain-datasets-page domain=%s reason=request-failed\n", domain_id);
+            fflush(stdout);
+            break;
         }
         if (!extract_get_name_list_identifiers(io->response, *io->encoded_response_length, &data_set_items, &more_follows, last_identifier, sizeof(last_identifier))) {
-            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not decode dataset GetNameList page.");
-            goto cleanup;
+            printf("native-wire-client: discover-skip=domain-datasets-page domain=%s reason=decode-failed\n", domain_id);
+            fflush(stdout);
+            break;
         }
         if (data_set_items.count == before_count) {
-            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client dataset pagination did not advance.");
-            goto cleanup;
+            printf("native-wire-client: discover-skip=domain-datasets-page domain=%s reason=did-not-advance\n", domain_id);
+            fflush(stdout);
+            break;
         }
     }
     session->discovered_model.data_set_count += data_set_items.count;
@@ -1431,15 +1444,19 @@ int unitlab_native_client_run_discover_root_sequence(
     while (more_follows && last_identifier[0] != '\0') {
         size_t before_count = logical_device_names.count;
         if (!io->get_name_list_step(session, io, "root-vmd-logical-devices-page", 9U, 0U, NULL, NULL, last_identifier, unitlab_native_client_session_reserve_invoke_id(session))) {
-            goto cleanup;
+            printf("native-wire-client: discover-skip=root-vmd-logical-devices-page reason=request-failed\n");
+            fflush(stdout);
+            break;
         }
         if (!extract_get_name_list_identifiers(io->response, *io->encoded_response_length, &logical_device_names, &more_follows, last_identifier, sizeof(last_identifier))) {
-            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client could not decode root logical device GetNameList page.");
-            goto cleanup;
+            printf("native-wire-client: discover-skip=root-vmd-logical-devices-page reason=decode-failed\n");
+            fflush(stdout);
+            break;
         }
         if (logical_device_names.count == before_count) {
-            set_discovery_diagnostic(io, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "Native wire client root logical device pagination did not advance.");
-            goto cleanup;
+            printf("native-wire-client: discover-skip=root-vmd-logical-devices-page reason=did-not-advance\n");
+            fflush(stdout);
+            break;
         }
     }
     if (logical_device_names.count == 0U) {

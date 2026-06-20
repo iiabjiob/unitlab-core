@@ -25,6 +25,8 @@ typedef struct DiscoveryFixtureHarness {
     UnitLabIedServerConfig config;
     uint8_t response[8192U];
     size_t response_length;
+    size_t response_capacity;
+    size_t paginated_request_count;
     uint8_t scratch[512U];
     UnitLabMmsDiagnostic diagnostic;
 } DiscoveryFixtureHarness;
@@ -56,7 +58,7 @@ static int discovery_harness_build_response(uint32_t invoke_id, UnitLabMmsReques
     if (browse_continue_after != NULL) {
         snprintf(harness->runtime.pending_request.browse_continue_after, sizeof(harness->runtime.pending_request.browse_continue_after), "%s", browse_continue_after);
     }
-    if (!unitlab_mms_server_runtime_build_confirmed_response_bytes(&harness->runtime, NULL, 0U, harness->response, sizeof(harness->response), &harness->response_length, &harness->diagnostic)) {
+    if (!unitlab_mms_server_runtime_build_confirmed_response_bytes(&harness->runtime, NULL, 0U, harness->response, harness->response_capacity != 0U ? harness->response_capacity : sizeof(harness->response), &harness->response_length, &harness->diagnostic)) {
         return 0;
     }
     return 1;
@@ -75,6 +77,10 @@ static int discovery_harness_get_name_list_step(
 {
     (void)session;
     (void)label;
+    if (g_discovery_harness != NULL && continue_after != NULL && continue_after[0] != '\0') {
+        g_discovery_harness->paginated_request_count++;
+        return 0;
+    }
     const char* advertised_domain = g_discovery_harness != NULL ? server_runtime_advertised_domain_name(&g_discovery_harness->runtime) : domain_id;
     if (!discovery_harness_build_response(invoke_id, UNITLAB_MMS_REQUEST_GET_NAME_LIST, NULL, object_class, object_scope, advertised_domain != NULL ? advertised_domain : domain_id, node_id, continue_after)) {
         return 0;
@@ -216,6 +222,7 @@ static int test_fixture_backed_discover_sequence_normalizes_mx_fc_tree(void)
     io.attributes_step = discovery_harness_attributes_step;
     io.emit_model_summary = discovery_harness_emit_model_summary;
 
+    harness.response_capacity = sizeof(harness.response);
     g_discovery_harness = &harness;
     passed &= expect_true(unitlab_native_client_run_discover_sequence(&session, &io, "LD0", 100U, &next_invoke_id) == 1, "expected fixture-backed discovery sequence to succeed");
     passed &= expect_true(next_invoke_id == 108U, "expected fixture-backed discovery to advance invoke allocator through all request steps");
@@ -243,6 +250,110 @@ static int test_fixture_backed_discover_sequence_normalizes_mx_fc_tree(void)
             }
         }
     }
+
+    unitlab_mms_server_runtime_stop(&harness.runtime, &harness.diagnostic);
+    unitlab_free_ied_model_plan(&harness.plan);
+    return passed;
+}
+
+static int test_paginated_domain_discovery_keeps_partial_results(void)
+{
+    DiscoveryFixtureHarness harness;
+    UnitLabNativeClientSessionState session;
+    UnitLabNativeDiscoveryIo io;
+    UnitLabIedFixtureDataSet data_sets[16U];
+    UnitLabIedFixtureSignal signals[16U];
+    UnitLabIedFixtureModel fixture;
+    uint32_t next_invoke_id = 0U;
+    int passed = 1;
+
+    memset(&harness, 0, sizeof(harness));
+    memset(&session, 0, sizeof(session));
+    memset(&fixture, 0, sizeof(fixture));
+
+    for (size_t index = 0U; index < 16U; index++) {
+        char signal_reference[256U];
+        char data_set_reference[256U];
+
+        snprintf(signal_reference, sizeof(signal_reference), "LD0/GGIO1.Ind%02zu[ST]", index + 1U);
+        snprintf(data_set_reference, sizeof(data_set_reference), "IED1/AP1/LD0/GGIO1.ds%02zu", index + 1U);
+        signals[index] = (UnitLabIedFixtureSignal){
+            .data_set_index = index,
+            .kind = "FCDA",
+            .component = "stVal",
+            .fc = "ST",
+            .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_BOOLEAN,
+            .initial_value = "false",
+        };
+        snprintf(signals[index].reference, sizeof(signals[index].reference), "%s", signal_reference);
+        data_sets[index] = (UnitLabIedFixtureDataSet){
+            .signal_count = 1U,
+            .signals = &signals[index],
+        };
+        snprintf(data_sets[index].reference, sizeof(data_sets[index].reference), "%s", data_set_reference);
+    }
+
+    fixture.device_count = 1U;
+    snprintf(fixture.ied_name, sizeof(fixture.ied_name), "%s", "IED1");
+    snprintf(fixture.access_point_name, sizeof(fixture.access_point_name), "%s", "AP1");
+    fixture.data_set_count = 16U;
+    fixture.data_sets = data_sets;
+    fixture.report_count = 0U;
+    fixture.reports = harness.reports;
+    fixture.signal_count = 16U;
+
+    if (!expect_true(unitlab_build_ied_model_plan(&fixture, &harness.plan, (char[256U]){0}, 256U) == 1, "expected paginated discovery plan to build")) {
+        return 0;
+    }
+    unitlab_mms_server_runtime_init(&harness.runtime);
+    if (!expect_true(unitlab_mms_server_runtime_apply_model_plan(&harness.runtime, &harness.plan) == 1, "expected paginated discovery plan to apply")) {
+        unitlab_free_ied_model_plan(&harness.plan);
+        return 0;
+    }
+    harness.config.bind_address = "127.0.0.1";
+    harness.config.port = 15121;
+    harness.response_capacity = 128U;
+    if (!expect_true(unitlab_mms_server_runtime_prepare(&harness.runtime, &harness.config, &harness.diagnostic) == 1, "expected paginated discovery prepare to succeed")) {
+        unitlab_free_ied_model_plan(&harness.plan);
+        return 0;
+    }
+    if (!expect_true(unitlab_mms_server_runtime_start(&harness.runtime, &harness.diagnostic) == 1, "expected paginated discovery start to succeed")) {
+        unitlab_free_ied_model_plan(&harness.plan);
+        return 0;
+    }
+    if (!expect_true(unitlab_mms_session_begin_association(&harness.runtime.session, &harness.diagnostic) == 1, "expected paginated discovery session begin to succeed")) {
+        unitlab_free_ied_model_plan(&harness.plan);
+        return 0;
+    }
+    if (!expect_true(unitlab_mms_session_complete_association(&harness.runtime.session, 1U, &harness.diagnostic) == 1, "expected paginated discovery session complete to succeed")) {
+        unitlab_free_ied_model_plan(&harness.plan);
+        return 0;
+    }
+
+    io.data_fd = -1;
+    io.scratch = harness.scratch;
+    io.scratch_length = sizeof(harness.scratch);
+    io.request = harness.scratch;
+    io.request_length = sizeof(harness.scratch);
+    io.response = harness.response;
+    io.response_length = sizeof(harness.response);
+    io.encoded_response_length = &harness.response_length;
+    io.text_buffer = (uint8_t[512U]){0};
+    io.text_buffer_length = 512U;
+    io.diagnostic = &harness.diagnostic;
+    io.get_name_list_step = discovery_harness_get_name_list_step;
+    io.read_step = discovery_harness_read_step;
+    io.attributes_step = discovery_harness_attributes_step;
+    io.emit_model_summary = discovery_harness_emit_model_summary;
+
+    g_discovery_harness = &harness;
+    passed &= expect_true(unitlab_native_client_run_discover_root_sequence(&session, &io, 100U, &next_invoke_id) == 1, "expected root discovery to survive a paginated follow-up failure");
+    g_discovery_harness = NULL;
+
+    passed &= expect_true(harness.paginated_request_count > 0U, "expected a paginated browse request to be attempted");
+    passed &= expect_true(session.discovered_logical_device_count == 1U, "expected logical device discovery to survive pagination failure");
+    passed &= expect_true(session.discovered_logical_node_count >= 1U, "expected logical node discovery to survive pagination failure");
+    passed &= expect_true(session.discovered_data_set_count >= 1U, "expected partial dataset discovery to survive pagination failure");
 
     unitlab_mms_server_runtime_stop(&harness.runtime, &harness.diagnostic);
     unitlab_free_ied_model_plan(&harness.plan);
@@ -635,6 +746,9 @@ int main(void)
     }
 
     if (!expect_true(test_fixture_backed_discover_sequence_normalizes_mx_fc_tree() == 1, "expected fixture-backed discovery sequence coverage")) {
+        return 1;
+    }
+    if (!expect_true(test_paginated_domain_discovery_keeps_partial_results() == 1, "expected paginated discovery to keep partial results")) {
         return 1;
     }
 

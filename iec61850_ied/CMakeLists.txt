@@ -75,6 +75,13 @@ unitlab_iec61850_sim_warnings(unitlab-iec61850-scl-compiler-cli)
 
 add_executable(unitlab-iec61850-ied-sim
   src/app/client_probe.c
+  src/app/cli/commands/unitlab_cmd_fixture.c
+  src/app/cli/commands/unitlab_cmd_mms_client.c
+  src/app/cli/commands/unitlab_cmd_scl.c
+  src/app/cli/unitlab_cli.c
+  src/app/cli/unitlab_cli_common.c
+  src/app/cli/unitlab_cli_dispatch.c
+  src/app/cli/unitlab_cli_options.c
   src/fixture/fixture_parser.c
   src/model/libiec61850_model_builder.c
   src/app/main.c

@@ -1,0 +1,6 @@
+#ifndef UNITLAB_IEC61850_IED_APP_CLI_UNITLAB_CLI_H
+#define UNITLAB_IEC61850_IED_APP_CLI_UNITLAB_CLI_H
+
+int unitlab_cli_run(int argc, char** argv);
+
+#endif /* UNITLAB_IEC61850_IED_APP_CLI_UNITLAB_CLI_H */
