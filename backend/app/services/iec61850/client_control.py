@@ -822,6 +822,8 @@ class Iec61850ClientControlService:
             self._apply_external_discovered_dataset_member_line(line)
         elif line.startswith("native-wire-client: discovered-brcb["):
             self._apply_external_discovered_rcb_line(line)
+        elif line.startswith("native-wire-client: discovered-rcb-attr["):
+            self._apply_external_discovered_rcb_attr_line(line)
         elif line.startswith("native-wire-client: async-report"):
             self._last_report = self._external_report_event({})
             self._last_state = self._external_state(Iec61850RuntimeStatus.REPORTING, enabled=True, gi_in_progress=False)
@@ -926,6 +928,28 @@ class Iec61850ClientControlService:
         signals = discovery.setdefault("signals", [])
         if not any(isinstance(item, dict) and item.get("reference") == signal["reference"] for item in signals):
             signals.append(signal)
+
+    def _apply_external_discovered_rcb_attr_line(self, line: str) -> None:
+        fields = _parse_indexed_space_kv_line(line, "native-wire-client: discovered-rcb-attr[")
+        domain = fields.get("domain")
+        item = fields.get("item")
+        field = fields.get("field")
+        value = fields.get("value")
+        if not domain or not item or not field or value is None:
+            return
+        discovery = self._ensure_external_live_discovery()
+        report_controls = discovery.setdefault("reportControls", [])
+        for report_control in report_controls:
+            if isinstance(report_control, dict) and report_control.get("domain") == domain and report_control.get("item") == item:
+                _apply_live_rcb_attr(report_control, field, value)
+                break
+        candidate = next((candidate for candidate in self._available_candidates if candidate.id == f"{domain}:{item}"), None)
+        if candidate is None:
+            return
+        updated = _candidate_with_live_rcb_attr(candidate, field, value)
+        self._available_candidates = _replace_or_append_candidate(self._available_candidates, updated)
+        if self._candidate.id == candidate.id:
+            self._candidate = updated
 
     def _external_state(self, runtime_status: Iec61850RuntimeStatus, *, enabled: bool, gi_in_progress: bool = False) -> Iec61850ReportControlState:
         return Iec61850ReportControlState(
@@ -2076,6 +2100,59 @@ def _candidate_from_live_discovered_rcb(
         ),
         signals=signals,
     )
+
+
+def _apply_live_rcb_attr(report_control: dict, field: str, value: str) -> None:
+    if field == "RptID":
+        report_control["rptId"] = value
+    elif field == "DatSet":
+        report_control["dataSetRef"] = value
+    elif field == "ConfRev":
+        report_control["confRev"] = value
+    elif field == "BufTm":
+        report_control["bufferTimeMs"] = _parse_int_or_none(value)
+    elif field == "IntgPd":
+        report_control["integrityPeriodMs"] = _parse_int_or_none(value)
+    elif field == "OptFlds":
+        report_control["optFlds"] = value
+    elif field == "TrgOps":
+        report_control["trgOps"] = value
+
+
+def _candidate_with_live_rcb_attr(
+    candidate: Iec61850ReportControlCandidate,
+    field: str,
+    value: str,
+) -> Iec61850ReportControlCandidate:
+    kwargs = {
+        "id": candidate.id,
+        "ied_name": candidate.ied_name,
+        "access_point_name": candidate.access_point_name,
+        "logical_device_inst": candidate.logical_device_inst,
+        "logical_node_name": candidate.logical_node_name,
+        "report_control_name": candidate.report_control_name,
+        "report_kind": candidate.report_kind,
+        "rpt_id": candidate.rpt_id,
+        "data_set_ref": candidate.data_set_ref,
+        "conf_rev": candidate.conf_rev,
+        "indexed": candidate.indexed,
+        "buffer_time_ms": candidate.buffer_time_ms,
+        "integrity_period_ms": candidate.integrity_period_ms,
+        "trigger_options": candidate.trigger_options,
+        "optional_fields": candidate.optional_fields,
+        "signals": candidate.signals,
+    }
+    if field == "RptID":
+        kwargs["rpt_id"] = value
+    elif field == "DatSet":
+        kwargs["data_set_ref"] = value
+    elif field == "ConfRev":
+        kwargs["conf_rev"] = value
+    elif field == "BufTm":
+        kwargs["buffer_time_ms"] = _parse_int_or_none(value)
+    elif field == "IntgPd":
+        kwargs["integrity_period_ms"] = _parse_int_or_none(value)
+    return Iec61850ReportControlCandidate(**kwargs)
 
 
 def _live_rcb_logical_node_and_kind(item: str) -> tuple[str, Iec61850ReportKind]:

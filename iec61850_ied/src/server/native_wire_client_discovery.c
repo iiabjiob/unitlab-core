@@ -770,6 +770,110 @@ static int extract_get_name_list_identifiers(
     return 1;
 }
 
+static uint64_t discovery_decode_unsigned_bytes(const uint8_t* bytes, size_t length)
+{
+    uint64_t value = 0U;
+    if (bytes == NULL) {
+        return 0U;
+    }
+    for (size_t index = 0U; index < length; index++) {
+        value = (value << 8U) | bytes[index];
+    }
+    return value;
+}
+
+static void discovery_append_hex(char* buffer, size_t buffer_size, const uint8_t* bytes, size_t length)
+{
+    static const char digits[] = "0123456789abcdef";
+    size_t used;
+    if (buffer == NULL || buffer_size == 0U || bytes == NULL) {
+        return;
+    }
+    used = strlen(buffer);
+    for (size_t index = 0U; index < length && used + 2U < buffer_size; index++) {
+        buffer[used++] = digits[(bytes[index] >> 4U) & 0x0fU];
+        buffer[used++] = digits[bytes[index] & 0x0fU];
+        buffer[used] = '\0';
+    }
+}
+
+static void discovery_format_read_value(const UnitLabMmsBerElement* value, char* buffer, size_t buffer_size)
+{
+    size_t copy_length;
+    if (buffer == NULL || buffer_size == 0U) {
+        return;
+    }
+    buffer[0] = '\0';
+    if (value == NULL || value->value_bytes == NULL || value->value_length == 0U) {
+        snprintf(buffer, buffer_size, "%s", "<empty>");
+    } else if (value->tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && value->tag.tag_number == 3U && value->value_length == 1U) {
+        snprintf(buffer, buffer_size, "%s", value->value_bytes[0] != 0U ? "true" : "false");
+    } else if (value->tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && (value->tag.tag_number == 5U || value->tag.tag_number == 6U) && value->value_length <= sizeof(uint64_t)) {
+        snprintf(buffer, buffer_size, "%llu", (unsigned long long)discovery_decode_unsigned_bytes(value->value_bytes, value->value_length));
+    } else if (unitlab_native_client_bytes_are_printable_ascii(value->value_bytes, value->value_length)) {
+        copy_length = value->value_length < buffer_size - 1U ? value->value_length : buffer_size - 1U;
+        memcpy(buffer, value->value_bytes, copy_length);
+        buffer[copy_length] = '\0';
+    } else {
+        snprintf(buffer, buffer_size, "%s", "0x");
+        discovery_append_hex(buffer, buffer_size, value->value_bytes, value->value_length);
+    }
+}
+
+static int extract_confirmed_read_first_value_summary(const uint8_t* frame, size_t frame_length, char* value_summary, size_t value_summary_size)
+{
+    UnitLabMmsAssociationFrame association_frame;
+    UnitLabMmsPdu pdu;
+    UnitLabMmsBerElement outer;
+    UnitLabMmsBerElement result;
+    UnitLabMmsDiagnostic diagnostic;
+    const uint8_t* list_bytes;
+    size_t list_length;
+    size_t consumed = 0U;
+    size_t result_consumed = 0U;
+
+    if (frame == NULL || frame_length == 0U || value_summary == NULL || value_summary_size == 0U) {
+        return 0;
+    }
+    value_summary[0] = '\0';
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_association_frame_init(&association_frame);
+    if (!unitlab_mms_association_frame_decode(&association_frame, frame, frame_length, &consumed, &diagnostic)) {
+        return 0;
+    }
+    unitlab_mms_pdu_init(&pdu);
+    if (association_frame.presentation.payload_bytes == NULL
+        || association_frame.presentation.payload_length == 0U
+        || !unitlab_mms_pdu_decode(&pdu, association_frame.presentation.payload_bytes, association_frame.presentation.payload_length, &consumed, &diagnostic)
+        || pdu.kind != UNITLAB_MMS_PDU_CONFIRMED_RESPONSE
+        || pdu.service_kind != UNITLAB_MMS_SERVICE_READ
+        || pdu.service_bytes == NULL
+        || pdu.service_length == 0U) {
+        return 0;
+    }
+    list_bytes = pdu.service_bytes;
+    list_length = pdu.service_length;
+    unitlab_mms_ber_element_init(&outer);
+    if (unitlab_mms_ber_read(&outer, pdu.service_bytes, pdu.service_length, &consumed, &diagnostic)
+        && consumed == pdu.service_length
+        && outer.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC
+        && outer.tag.constructed
+        && outer.tag.tag_number == 1U) {
+        list_bytes = outer.value_bytes;
+        list_length = outer.value_length;
+    }
+    unitlab_mms_ber_element_init(&result);
+    if (!unitlab_mms_ber_read(&result, list_bytes, list_length, &result_consumed, &diagnostic) || result_consumed == 0U) {
+        return 0;
+    }
+    if (result.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC && result.tag.tag_number == 0U) {
+        snprintf(value_summary, value_summary_size, "access-failure:%llu", (unsigned long long)discovery_decode_unsigned_bytes(result.value_bytes, result.value_length));
+        return 1;
+    }
+    discovery_format_read_value(&result, value_summary, value_summary_size);
+    return value_summary[0] != '\0';
+}
+
 int unitlab_native_client_run_discover_sequence(
     UnitLabNativeClientSessionState* session,
     const UnitLabNativeDiscoveryIo* io,
@@ -923,6 +1027,7 @@ int unitlab_native_client_run_discover_sequence(
     for (size_t index = 0U; index < brcb_names.count; index++) {
         char brcb_item[320U];
         char brcb_read_item[320U];
+        static const char* rcb_fields[] = { "RptID", "DatSet", "ConfRev", "BufTm", "IntgPd", "OptFlds", "TrgOps" };
         snprintf(brcb_item, sizeof(brcb_item), "%s$BR$%s$RptEna", brcb_logical_nodes.items[index], brcb_names.items[index]);
         if (!io->attributes_step(session, io, "brcb-attrs", domain_id, brcb_item, unitlab_native_client_session_reserve_invoke_id(session), 0)) {
             goto cleanup;
@@ -934,6 +1039,24 @@ int unitlab_native_client_run_discover_sequence(
         }
         printf("native-wire-client: discovered-brcb[%zu] domain=%s item=%s\n", session->discovered_rcb_count - 1U, domain_id, brcb_read_item);
         fflush(stdout);
+        for (size_t field_index = 0U; field_index < sizeof(rcb_fields) / sizeof(rcb_fields[0]); field_index++) {
+            char field_item[384U];
+            char field_value[160U];
+            snprintf(field_item, sizeof(field_item), "%s$%s", brcb_read_item, rcb_fields[field_index]);
+            if (!io->read_step(session, io, "brcb-field", domain_id, field_item, unitlab_native_client_session_reserve_invoke_id(session))) {
+                goto cleanup;
+            }
+            if (extract_confirmed_read_first_value_summary(io->response, *io->encoded_response_length, field_value, sizeof(field_value))) {
+                printf(
+                    "native-wire-client: discovered-rcb-attr[%zu] domain=%s item=%s field=%s value=%s\n",
+                    session->discovered_rcb_count - 1U,
+                    domain_id,
+                    brcb_read_item,
+                    rcb_fields[field_index],
+                    field_value);
+                fflush(stdout);
+            }
+        }
     }
     if (data_set_items.count == 0U) {
         printf("native-wire-client: discover-skip=dataset-members reason=no-dataset\n");
