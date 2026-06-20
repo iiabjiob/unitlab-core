@@ -703,13 +703,13 @@ def test_external_mms_target_routes_discover_rptena_gi_to_external_probes(monkey
     assert gi_snapshot.ui_state["report"]["matched_value_count"] == 3
     assert gi_snapshot.ui_state["report"]["unmatched_value_count"] == 0
     assert gi_snapshot.ui_state["report"]["signal_state_count"] == 1
-    assert gi_snapshot.ui_state["report"]["signal_states"][0]["reference"] == "CTRL/XCBR1.Pos[ST]"
+    assert gi_snapshot.ui_state["report"]["signal_states"][0]["reference"] == "XCBR1.Pos[ST]"
     assert gi_snapshot.ui_state["report"]["signal_states"][0]["value"] is True
     assert gi_snapshot.ui_state["report"]["signal_states"][0]["value_data_reference"] == "KINTE13LVC01CTRL/XCBR1$ST$Pos$stVal"
     assert gi_snapshot.ui_state["report"]["signal_states"][0]["quality"] == 0
     assert gi_snapshot.ui_state["report"]["signal_states"][0]["source_timestamp"] == "<empty>"
     assert gi_snapshot.ui_state["report"]["signal_states"][0]["leaf_count"] == 3
-    assert gi_snapshot.ui_state["report"]["values"][0]["reference"] == "CTRL/XCBR1.Pos[ST]"
+    assert gi_snapshot.ui_state["report"]["values"][0]["reference"] == "XCBR1.Pos[ST]"
     assert gi_snapshot.ui_state["report"]["values"][0]["data_reference"] == "KINTE13LVC01CTRL/XCBR1$ST$Pos$stVal"
     assert gi_snapshot.ui_state["report"]["values"][0]["value"] is True
 
@@ -759,6 +759,10 @@ def test_external_mms_target_routes_discover_rptena_gi_to_external_probes(monkey
     assert discover_snapshot.last_discovery["dataSets"][0]["reference"] == "KINTE13LVC01CTRL/LLN0.RCB1"
     assert discover_snapshot.last_discovery["dataSets"][0]["memberCount"] == 1
     assert discover_snapshot.last_discovery["reportControls"][0]["item"] == "LLN0$BR$brcbA01"
+    assert discover_snapshot.candidate.id == "KINTE13LVC01CTRL:LLN0$BR$brcbA01"
+    assert discover_snapshot.candidate.data_set_ref == "KINTE13LVC01CTRL/LLN0.RCB1"
+    assert discover_snapshot.candidate.signals[0].reference == "XCBR1.Pos[ST]"
+    assert discover_snapshot.ui_state["discovery"]["available_report_controls"][0]["report_control_id"] == "KINTE13LVC01CTRL:LLN0$BR$brcbA01"
 
     assert stdin_commands[:6] == [
         "discover",

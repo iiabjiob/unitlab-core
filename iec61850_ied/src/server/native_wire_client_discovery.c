@@ -874,6 +874,10 @@ int unitlab_native_client_run_discover_sequence(
         }
     }
     session->discovered_model.data_set_count = data_set_items.count;
+    for (size_t index = 0U; index < data_set_items.count; index++) {
+        printf("native-wire-client: discovered-dataset[%zu] reference=%s/%s\n", index, domain_id, data_set_items.items[index]);
+        fflush(stdout);
+    }
 
     for (size_t index = 0U; index < logical_node_names.count; index++) {
         if (unitlab_native_client_session_append_logical_node(session, domain_id, logical_node_names.items[index]) == NULL) {
@@ -938,8 +942,6 @@ int unitlab_native_client_run_discover_sequence(
     for (size_t index = 0U; index < data_set_items.count; index++) {
         char data_set_reference[384U];
         snprintf(data_set_reference, sizeof(data_set_reference), "%s/%s", domain_id, data_set_items.items[index]);
-        printf("native-wire-client: discovered-dataset[%zu] reference=%s\n", index, data_set_reference);
-        fflush(stdout);
         if (!io->attributes_step(session, io, "dataset-members", domain_id, data_set_items.items[index], unitlab_native_client_session_reserve_invoke_id(session), 1)) {
             goto cleanup;
         }

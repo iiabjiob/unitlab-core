@@ -854,6 +854,7 @@ class Iec61850ClientControlService:
         if not any(isinstance(item_, dict) and item_.get("domain") == domain and item_.get("item") == item for item_ in report_controls):
             name = item.rsplit("$", 1)[-1]
             base_name = name.rstrip("0123456789") or name
+            data_set_ref = _first_live_discovery_dataset_ref(discovery, domain)
             report_controls.append({
                 "id": f"{domain}:{item}",
                 "domain": domain,
@@ -861,7 +862,18 @@ class Iec61850ClientControlService:
                 "name": base_name,
                 "kind": "buffered" if "$BR$" in item else "unbuffered",
                 "indexed": name != base_name,
+                "dataSetRef": data_set_ref,
             })
+            candidate = _candidate_from_live_discovered_rcb(
+                endpoint=self._endpoint,
+                discovered=discovered,
+                report_control_name=base_name,
+                data_set_ref=data_set_ref,
+                discovery=discovery,
+            )
+            self._available_candidates = _replace_or_append_candidate(self._available_candidates, candidate)
+            if self._candidate.report_control_name == base_name:
+                self._candidate = candidate
 
     def _ensure_external_live_discovery(self) -> dict:
         if self._external_live_discovery is None:
@@ -1621,16 +1633,20 @@ def _match_external_report_reference(candidate: Iec61850ReportControlCandidate, 
     if data_reference is None:
         return None, None
     for index, signal in enumerate(candidate.signals):
-        prefix = _signal_mms_prefix(candidate.ied_name, signal.reference)
+        prefix = _signal_mms_prefix(candidate.ied_name, candidate.logical_device_inst, signal.reference)
         if prefix is not None and (data_reference == prefix or data_reference.startswith(prefix + "$")):
             return signal.reference, index
     return None, None
 
 
-def _signal_mms_prefix(ied_name: str, reference: str) -> str | None:
-    if "/" not in reference or "." not in reference or "[" not in reference or not reference.endswith("]"):
+def _signal_mms_prefix(ied_name: str, logical_device_inst: str, reference: str) -> str | None:
+    if "." not in reference or "[" not in reference or not reference.endswith("]"):
         return None
-    logical_device, rest = reference.split("/", 1)
+    if "/" in reference:
+        logical_device, rest = reference.split("/", 1)
+    else:
+        logical_device = logical_device_inst
+        rest = reference
     logical_node, object_and_fc = rest.split(".", 1)
     object_path, fc = object_and_fc.rsplit("[", 1)
     fc = fc[:-1]
@@ -1649,7 +1665,7 @@ def _report_signal_states(
 
     states: list[dict] = []
     for signal_index, signal in enumerate(candidate.signals):
-        prefix = _signal_mms_prefix(candidate.ied_name, signal.reference)
+        prefix = _signal_mms_prefix(candidate.ied_name, candidate.logical_device_inst, signal.reference)
         if prefix is None:
             continue
 
@@ -1993,10 +2009,127 @@ def _live_member_signal(member_ref: str) -> dict[str, str]:
         parts = reference_item.split("$")
         if len(parts) >= 2:
             fc = parts[1]
-    reference = reference_item.replace("$", ".")
+            path = ".".join(part for part in (parts[0], ".".join(parts[2:])) if part)
+        else:
+            path = reference_item.replace("$", ".")
+    else:
+        path = reference_item
+    reference = path
     if fc:
         reference = f"{reference}[{fc}]"
     return {"reference": reference, "mmsReference": member_ref, "domain": domain if separator else "", "fc": fc}
+
+
+def _first_live_discovery_dataset_ref(discovery: dict, domain: str) -> str | None:
+    data_sets = discovery.get("dataSets")
+    if not isinstance(data_sets, list):
+        return None
+    for item in data_sets:
+        if isinstance(item, dict):
+            reference = item.get("reference")
+            if isinstance(reference, str) and reference.startswith(f"{domain}/"):
+                return reference
+    return None
+
+
+def _candidate_from_live_discovered_rcb(
+    *,
+    endpoint: Iec61850DeviceEndpoint,
+    discovered: _ExternalDiscoveredReportControl,
+    report_control_name: str,
+    data_set_ref: str | None,
+    discovery: dict,
+) -> Iec61850ReportControlCandidate:
+    logical_node_name, report_kind = _live_rcb_logical_node_and_kind(discovered.item)
+    logical_device_inst = _live_logical_device_inst(endpoint.ied_name, discovered.domain)
+    signals = _live_candidate_signals(discovery, data_set_ref)
+    return Iec61850ReportControlCandidate(
+        id=f"{discovered.domain}:{discovered.item}",
+        ied_name=endpoint.ied_name,
+        access_point_name=endpoint.access_point_name,
+        logical_device_inst=logical_device_inst,
+        logical_node_name=logical_node_name,
+        report_control_name=report_control_name,
+        report_kind=report_kind,
+        rpt_id=f"{discovered.domain}/{logical_node_name}.{report_control_name}",
+        data_set_ref=data_set_ref,
+        conf_rev=None,
+        indexed=discovered.item.rsplit("$", 1)[-1] != report_control_name,
+        buffer_time_ms=None,
+        integrity_period_ms=None,
+        trigger_options=Iec61850RuntimeTriggerOptions(
+            data_change=True,
+            quality_change=True,
+            data_update=True,
+            periodic=False,
+            general_interrogation=True,
+        ),
+        optional_fields=Iec61850OptionalFields(
+            sequence_number=True,
+            timestamp=True,
+            reason_code=True,
+            data_set_name=True,
+            data_reference=True,
+            entry_id=True,
+            config_revision=True,
+            buffer_overflow=True,
+        ),
+        signals=signals,
+    )
+
+
+def _live_rcb_logical_node_and_kind(item: str) -> tuple[str, Iec61850ReportKind]:
+    parts = item.split("$")
+    logical_node_name = parts[0] if parts else "LLN0"
+    report_kind = Iec61850ReportKind.UNBUFFERED if len(parts) > 1 and parts[1] == "RP" else Iec61850ReportKind.BUFFERED
+    return logical_node_name, report_kind
+
+
+def _live_logical_device_inst(ied_name: str, domain: str) -> str:
+    if ied_name and domain.startswith(ied_name):
+        suffix = domain[len(ied_name):]
+        return suffix or domain
+    return domain
+
+
+def _live_candidate_signals(discovery: dict, data_set_ref: str | None) -> tuple[Iec61850DataSetMember, ...]:
+    if data_set_ref is not None:
+        data_sets = discovery.get("dataSets")
+        if isinstance(data_sets, list):
+            for data_set in data_sets:
+                if not isinstance(data_set, dict) or data_set.get("reference") != data_set_ref:
+                    continue
+                members = data_set.get("members")
+                if isinstance(members, list):
+                    signals = tuple(
+                        Iec61850DataSetMember(
+                            reference=str(member.get("reference")),
+                            fc=str(member.get("fc")) if member.get("fc") else None,
+                        )
+                        for member in members
+                        if isinstance(member, dict) and member.get("reference")
+                    )
+                    if signals:
+                        return signals
+    return (Iec61850DataSetMember(reference=data_set_ref or "<live-discovered-dataset>", fc=None),)
+
+
+def _replace_or_append_candidate(
+    candidates: tuple[Iec61850ReportControlCandidate, ...],
+    candidate: Iec61850ReportControlCandidate,
+) -> tuple[Iec61850ReportControlCandidate, ...]:
+    replaced: list[Iec61850ReportControlCandidate] = []
+    found = False
+    for item in candidates:
+        if item.id == candidate.id or _candidate_rcb_reference(item) == _candidate_rcb_reference(candidate):
+            if not found:
+                replaced.append(candidate)
+                found = True
+            continue
+        replaced.append(item)
+    if not found:
+        replaced.append(candidate)
+    return tuple(replaced)
 
 
 def _data_set_members(default_ld_inst: str, data_set: ET.Element | None) -> tuple[Iec61850DataSetMember, ...]:
