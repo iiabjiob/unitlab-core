@@ -179,6 +179,25 @@ export type Iec61850ClientReportControlSelectionPayload = {
   selected_rcb_ref: string
 }
 
+export type Iec61850ReportTriggerOptions = {
+  data_change: boolean | null
+  quality_change: boolean | null
+  data_update: boolean | null
+  periodic: boolean | null
+  general_interrogation: boolean | null
+}
+
+export type Iec61850ReportOptionalFields = {
+  sequence_number: boolean | null
+  timestamp: boolean | null
+  reason_code: boolean | null
+  data_set_name: boolean | null
+  data_reference: boolean | null
+  entry_id: boolean | null
+  config_revision: boolean | null
+  buffer_overflow: boolean | null
+}
+
 export type Iec61850ClientUiState = {
   schema: "unitlab.iec61850.client.ui-state.v1" | string
   session: {
@@ -207,6 +226,8 @@ export type Iec61850ClientUiState = {
       report_kind: string
       rpt_id: string | null
       data_set_ref: string | null
+      trigger_options?: Iec61850ReportTriggerOptions | null
+      optional_fields?: Iec61850ReportOptionalFields | null
     }>
     signals: number
     selected_dataset_ref: string | null

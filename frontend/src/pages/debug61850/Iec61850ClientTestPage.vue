@@ -4,7 +4,28 @@ import { RouterLink } from "vue-router"
 
 import UiButton from "@/components/ui/UiButton.vue"
 import { normalizeHttpError } from "@/api/http"
-import { Iec61850ClientAPI, type Iec61850ClientState } from "@/api/iec61850Client.api"
+import {
+  Iec61850ClientAPI,
+  type Iec61850ClientState,
+  type Iec61850ReportOptionalFields,
+  type Iec61850ReportTriggerOptions,
+} from "@/api/iec61850Client.api"
+
+type ReportControlOptionState = {
+  label: string
+  value: boolean | null | undefined
+}
+
+type AvailableReportControl = {
+  rcb_ref: string
+  report_control_id: string
+  report_control_name: string
+  report_kind: string
+  rpt_id: string | null
+  data_set_ref: string | null
+  trigger_options?: Iec61850ReportTriggerOptions | null
+  optional_fields?: Iec61850ReportOptionalFields | null
+}
 
 const state = ref<Iec61850ClientState | null>(null)
 const loading = ref(false)
@@ -22,7 +43,7 @@ const uiState = computed(() => state.value?.ui_state ?? null)
 const lastDiagnostic = computed(() => uiState.value?.diagnostic.active ? uiState.value.diagnostic : state.value?.last_diagnostic ?? null)
 const sessionStatus = computed(() => uiState.value?.session.phase ?? "not-loaded")
 const discoveryStatus = computed(() => uiState.value?.discovery.discovered ? "Structure loaded" : "Not discovered")
-const availableReportControls = computed(() => {
+const availableReportControls = computed<AvailableReportControl[]>(() => {
   const declared = uiState.value?.discovery.available_report_controls
   if (declared && declared.length > 0) return declared
 
@@ -45,6 +66,8 @@ const availableReportControls = computed(() => {
         report_kind: kind,
         rpt_id: rptId ?? null,
         data_set_ref: dataSetRef,
+        trigger_options: reportControl?.trigger_options ?? reportControl?.triggerOptions ?? null,
+        optional_fields: reportControl?.optional_fields ?? reportControl?.optionalFields ?? null,
       }
     })
   }
@@ -59,7 +82,40 @@ const availableReportControls = computed(() => {
     report_kind: state.value.candidate.report_kind,
     rpt_id: state.value.candidate.rpt_id,
     data_set_ref: state.value.candidate.data_set_ref,
+    trigger_options: (state.value.candidate as any).trigger_options ?? null,
+    optional_fields: (state.value.candidate as any).optional_fields ?? null,
   }]
+})
+const selectedReportControl = computed(() => {
+  const selectedRef = uiState.value?.discovery.selected_rcb_ref
+  if (selectedRef) {
+    const selected = availableReportControls.value.find((item) => item.rcb_ref === selectedRef)
+    if (selected) return selected
+  }
+  return availableReportControls.value[0] ?? null
+})
+const triggerOptionItems = computed<ReportControlOptionState[]>(() => {
+  const options = selectedReportControl.value?.trigger_options
+  return [
+    { label: "dchg", value: options?.data_change },
+    { label: "qchg", value: options?.quality_change },
+    { label: "dupd", value: options?.data_update },
+    { label: "period", value: options?.periodic },
+    { label: "GI", value: options?.general_interrogation },
+  ]
+})
+const optionalFieldItems = computed<ReportControlOptionState[]>(() => {
+  const fields = selectedReportControl.value?.optional_fields
+  return [
+    { label: "seq", value: fields?.sequence_number },
+    { label: "ts", value: fields?.timestamp },
+    { label: "reason", value: fields?.reason_code },
+    { label: "dataset", value: fields?.data_set_name },
+    { label: "data-ref", value: fields?.data_reference },
+    { label: "entry-id", value: fields?.entry_id },
+    { label: "conf-rev", value: fields?.config_revision },
+    { label: "buf-ovfl", value: fields?.buffer_overflow },
+  ]
 })
 const liveWireStatus = computed(() => uiState.value?.wire.open ? "Wire connected" : "Wire closed")
 const isExternalTarget = computed(() => state.value?.endpoint.mode === "mms")
@@ -171,6 +227,20 @@ async function configureSimulatorTarget() {
 
 function formatJson(value: unknown): string {
   return JSON.stringify(value, null, 2)
+}
+
+function optionStateLabel(value: boolean | null | undefined): string {
+  if (value === true) return "on"
+  if (value === false) return "off"
+  return "unknown"
+}
+
+function optionChipClass(value: boolean | null | undefined): Record<string, boolean> {
+  return {
+    "iec61850-client-page__option-chip--on": value === true,
+    "iec61850-client-page__option-chip--off": value === false,
+    "iec61850-client-page__option-chip--unknown": value == null,
+  }
 }
 </script>
 
@@ -332,6 +402,36 @@ function formatJson(value: unknown): string {
                 <div><dt>Selected RCB</dt><dd>{{ uiState.discovery.selected_rcb_ref }}</dd></div>
                 <div><dt>Selected DataSet</dt><dd>{{ uiState.discovery.selected_dataset_ref ?? 'none' }}</dd></div>
               </dl>
+              <div v-if="selectedReportControl" class="iec61850-client-page__option-grid">
+                <section class="iec61850-client-page__option-group">
+                  <h4>Effective TrgOps</h4>
+                  <div class="iec61850-client-page__option-list">
+                    <span
+                      v-for="item in triggerOptionItems"
+                      :key="item.label"
+                      class="iec61850-client-page__option-chip"
+                      :class="optionChipClass(item.value)"
+                    >
+                      <strong>{{ item.label }}</strong>
+                      <span>{{ optionStateLabel(item.value) }}</span>
+                    </span>
+                  </div>
+                </section>
+                <section class="iec61850-client-page__option-group">
+                  <h4>Effective OptFlds</h4>
+                  <div class="iec61850-client-page__option-list">
+                    <span
+                      v-for="item in optionalFieldItems"
+                      :key="item.label"
+                      class="iec61850-client-page__option-chip"
+                      :class="optionChipClass(item.value)"
+                    >
+                      <strong>{{ item.label }}</strong>
+                      <span>{{ optionStateLabel(item.value) }}</span>
+                    </span>
+                  </div>
+                </section>
+              </div>
             </section>
 
             <section class="iec61850-client-page__contract-section">
@@ -699,6 +799,77 @@ function formatJson(value: unknown): string {
   overflow-wrap: anywhere;
 }
 
+.iec61850-client-page__option-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.iec61850-client-page__option-group {
+  display: grid;
+  gap: 0.4rem;
+  min-width: 0;
+  padding: 0.6rem;
+  border: 1px solid var(--color-neutral-200);
+  border-radius: 12px;
+  background: var(--color-neutral-50);
+}
+
+.iec61850-client-page__option-group h4 {
+  margin: 0;
+  color: var(--color-neutral-500);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.iec61850-client-page__option-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.iec61850-client-page__option-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: 1.45rem;
+  padding: 0.12rem 0.45rem;
+  border: 1px solid var(--color-neutral-300);
+  border-radius: 999px;
+  background: var(--color-white);
+  color: var(--color-neutral-700);
+  font-size: 0.72rem;
+}
+
+.iec61850-client-page__option-chip strong {
+  color: inherit;
+  font-weight: 700;
+}
+
+.iec61850-client-page__option-chip span {
+  color: inherit;
+}
+
+.iec61850-client-page__option-chip--on {
+  border-color: color-mix(in srgb, #16a34a 35%, var(--color-neutral-200));
+  background: color-mix(in srgb, #16a34a 10%, var(--color-white));
+  color: #15803d;
+}
+
+.iec61850-client-page__option-chip--off {
+  border-color: color-mix(in srgb, #64748b 30%, var(--color-neutral-200));
+  background: color-mix(in srgb, #64748b 8%, var(--color-white));
+  color: var(--color-neutral-600);
+}
+
+.iec61850-client-page__option-chip--unknown {
+  border-style: dashed;
+  color: var(--color-neutral-500);
+}
+
 .iec61850-client-page__report-values {
   display: grid;
   gap: 0.35rem;
@@ -901,6 +1072,10 @@ function formatJson(value: unknown): string {
   .iec61850-client-page__state-list div {
     grid-template-columns: 1fr;
   }
+
+  .iec61850-client-page__option-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 :global(.dark .iec61850-client-page) {
@@ -975,6 +1150,21 @@ function formatJson(value: unknown): string {
   background: var(--color-neutral-950);
   border-color: var(--color-neutral-800);
   color: var(--color-neutral-100);
+}
+
+:global(.dark .iec61850-client-page__option-group) {
+  background: var(--color-neutral-950);
+  border-color: var(--color-neutral-800);
+}
+
+:global(.dark .iec61850-client-page__option-group h4) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .iec61850-client-page__option-chip) {
+  background: var(--color-neutral-900);
+  border-color: var(--color-neutral-700);
+  color: var(--color-neutral-300);
 }
 
 :global(.dark .iec61850-client-page__transcript-head span),
