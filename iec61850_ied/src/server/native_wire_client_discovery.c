@@ -897,7 +897,9 @@ static int run_root_discover_domain_sequence(
         return 0;
     }
 
-    snprintf(session->discovered_model.domain, sizeof(session->discovered_model.domain), "%s", domain_id);
+    if (session->discovered_model.domain[0] == '\0') {
+        snprintf(session->discovered_model.domain, sizeof(session->discovered_model.domain), "%s", domain_id);
+    }
     if (!io->get_name_list_step(session, io, "domain-named-variables", 0U, 1U, domain_id, NULL, NULL, unitlab_native_client_session_reserve_invoke_id(session))) {
         goto cleanup;
     }
@@ -1198,7 +1200,7 @@ int unitlab_native_client_run_discover_sequence(
             goto cleanup;
         }
     }
-    session->discovered_model.brcb_count = rcb_names.count;
+    session->discovered_model.brcb_count += rcb_names.count;
     if (rcb_names.count == 0U) {
         printf("native-wire-client: discover-skip=rcb-attrs reason=no-rcb\n");
         fflush(stdout);
