@@ -3587,11 +3587,11 @@ int unitlab_run_native_wire_client_with_options(
             continue;
         }
         if (strcmp(command, "connect-ied") == 0) {
-            if (session.discovered_model.domain[0] == '\0' || session.discovered_model.logical_node_count == 0U) {
-                set_result(result, "NATIVE_WIRE_CLIENT_CONNECT_IED_NO_DEVICE", "Run discover first before connect-ied.");
-                goto fail;
+            if (session.discovered_model.domain[0] != '\0') {
+                printf("native-wire-client: connect-ied domain=%s\n", session.discovered_model.domain);
+            } else {
+                printf("native-wire-client: connect-ied domain=<none>\n");
             }
-            printf("native-wire-client: connect-ied domain=%s\n", session.discovered_model.domain);
             emit_discovered_model_summary(&session, "connect-ied");
             state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_READY;
             if (!emit_state_response(state)) {
