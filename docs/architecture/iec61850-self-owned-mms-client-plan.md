@@ -10,6 +10,66 @@ See also: [UnitLab MMS Semantic Contract](./iec61850-unitlab-mms-semantic-contra
 See also: [UnitLab MMS Layered Architecture](./iec61850-unitlab-mms-layered-architecture.md).
 See also: [IEC 61850 MMS Conformance Roadmap](./iec61850-mms-conformance-roadmap.md).
 
+## Current MMS / IEC 61850 Gap Audit Against IEDScout-Class Behavior
+
+Scope: this audit covers generic IEC 61850-8-1 MMS client/server behavior needed for an IEDScout-like engineering workflow. It intentionally excludes vendor-specific quirks, private data models, proprietary services, and GOOSE/Sampled Values.
+
+### Current coverage
+
+- Client association is implemented for the basic MMS-over-TCP path used by the native wire client.
+- Client live discovery can enumerate logical devices, logical nodes, data sets, data-set members, and report-control candidates for the current single-device flow.
+- Client can connect from SCD/in-memory model without live discovery and can subscribe to a known RCB path.
+- Client can write RCB `OptFlds`, `TrgOps`, `RptEna`, and `GI` and treats failed confirmed Write responses as command failures.
+- Client can ingest asynchronous InformationReport frames, map `RptID`, `DatSet`, `ConfRev`, sequence, reason-code, data references, primary values, quality, and timestamps into the debug runtime contract.
+- Server/simulator can expose a usable model, answer core discovery reads, process selected RCB writes, emit GI reports, and emit data-change/quality-change/data-update reports for the current SCD-shaped data model.
+- The debug backend keeps a current signal-state projection so sporadic reports can update last-known state without requiring a full GI report each time.
+
+### Client gaps before IEDScout-class parity
+
+| Area | Current state | Gap to close |
+| --- | --- | --- |
+| Association lifecycle | Basic associate/receive/write flow exists. | Add complete MMS lifecycle handling for release/conclude/abort paths, reconnect behavior, explicit association state diagnostics, and negotiated capability/size limits. |
+| Discovery completeness | Single-device discovery covers the subset needed for current reports. | Implement robust object-class discovery across multiple logical devices, all logical nodes, named variable lists, data objects, data attributes, and indexed/non-indexed RCB instances without relying on SCD shortcuts. |
+| GetNameList pagination | Large responses are buffered, but pagination is not yet a proven contract. | Implement and validate `moreFollows`/continue-after handling for every discovered object class. |
+| Typed model building | Reports are projected to primary signal states. | Build a full typed IEC 61850 model from MMS discovery: DO/DA tree, FC, CDC-like structure hints, leaf types, array/structure nesting, and display references. |
+| Read services | Targeted reads and RCB preflight exist. | Add general read-by-reference and bulk read workflows for arbitrary discovered objects, including structured values, arrays, qualities, timestamps, and clear per-item errors. |
+| Write services | Basic bool/uint/int/string/hex writes exist. | Add typed write helpers over the discovered model so callers do not manually encode BER tags for normal IEC 61850 data attributes. |
+| Data-set operations | Data-set discovery and member mapping exist for the current flow. | Add full named variable list handling, data-set read validation, dynamic data-set creation/deletion where supported, and strict `DatSet`/member compatibility checks. |
+| Report controls | BRCB path works for current indexed reports. | Complete BRCB/URCB parity: reservation rules, `Resv`, `ResvTms`, owner handling, purge buffer, entry-id start/resume, buffer overflow semantics, integrity period, indexed instance selection, and disabled-before-configuration validation. |
+| Report decoding | GI and data-change reports are decoded into current signal state. | Decode full report optional-field combinations, inclusion bitstrings, partial reports, segmentation/large reports, multi-reason values, duplicate/out-of-order sequence behavior, and unknown member diagnostics. |
+| Trigger/options profile | Backend writes a default live SCADA profile before `RptEna`. | Promote `TrgOps`/`OptFlds` into an explicit subscription profile contract with source tracking: SCD default, UnitLab default, live override, and operator-approved advanced override. |
+| Time and quality semantics | Quality and source timestamp are surfaced when present. | Normalize IEC quality bits, timestamp precision/invalidity/leap-second flags, and separate source timestamp from backend receive timestamp. |
+| Multi-device support | Current flow is one active debug session/device. | Add multiple concurrent associations, per-device runtime state, per-device event queues, isolation of report streams, and reconnect/resubscribe behavior. |
+| Runtime eventing | Debug UI polls REST snapshot. | Replace production live updates with backend-published deltas over WebSocket while retaining REST snapshot for initial load and reconnect recovery. |
+| Diagnostics | Command failure codes are structured enough for current slices. | Add protocol-level diagnostics for APDU decode failures, service errors, access-result details, reject/error PDUs, timeout phase, invoke-id correlation, and pcap-friendly frame identifiers. |
+| Conformance tests | Focused service tests and live pcap checks exist. | Add replay tests from captured MMS frames, simulator/client interoperability matrix, negative APDU tests, and cross-checks against an external reference client. |
+
+### Server / simulator gaps before IEDScout-class parity
+
+| Area | Current state | Gap to close |
+| --- | --- | --- |
+| Association lifecycle | Server accepts the current native client flow. | Implement full association release/abort behavior, negotiated limits, multiple simultaneous clients, and deterministic cleanup of reserved/enabled RCBs. |
+| MMS service coverage | Server supports the services needed by current discovery/read/write/report flow. | Complete generic confirmed Read/Write/GetNameList handling for all supported model object classes and return standards-shaped service errors for unsupported operations. |
+| Model exposure | SCD-derived model is exposed enough for current reports. | Expose a complete IEC 61850 object namespace: logical devices, logical nodes, data objects, data attributes, FC partitions, data sets, RCBs, and type-consistent values. |
+| Response pagination | Large model responses can exceed simple frame assumptions. | Implement consistent `moreFollows`/continuation support for large GetNameList responses and validate client behavior against it. |
+| Data values | Current simulator can emit selected structured values and primary values. | Add complete BER encoding for supported IEC 61850 primitive and constructed types, arrays, nested structures, qualities, timestamps, enum/int/float/string variants, and stable type metadata. |
+| Write validation | Selected RCB writes and selected data writes are handled. | Enforce write permissions, FC constraints, type validation, RCB disabled-state constraints, per-attribute access errors, and safe rejection semantics. |
+| RCB behavior | `RptEna`, `GI`, `OptFlds`, `TrgOps`, and basic reports work. | Complete BRCB/URCB state machines: reservation/owner, buffer queue, purge buffer, entry-id resume, sequence rollover, buffer overflow, integrity reporting, dataset mismatch behavior, and multiple clients competing for instances. |
+| Report generation | GI and simple change reports are emitted. | Emit standards-shaped reports for every optional-field combination, inclusion bitstring subset, partial data-set updates, multi-member changes, integrity cycles, buffered replay, and overflow/recovery. |
+| Error/reject behavior | Failed writes are surfaced enough for current client validation. | Add full confirmed-service error responses, reject PDUs for malformed APDUs, access-result errors per item, and deterministic diagnostics for unsupported features. |
+| Timing behavior | Current timing is debug-oriented. | Add configurable report buffering time, integrity period, debounce/coalescing behavior, association idle handling, and deterministic test clocks. |
+| Client interoperability | Validated primarily against the UnitLab native client and selected IEDScout captures. | Validate server behavior with IEDScout and at least one additional reference client for discovery, read, write, RCB enable, GI, and data-change reporting. |
+
+### Recommended completion order
+
+1. Freeze the single-device report runtime contract: report metadata, signal-state projection, current-state merge, and diagnostics.
+2. Add pcap replay tests for GI and data-change reports, including reason-code and inclusion-bitstring coverage.
+3. Complete RCB lifecycle behavior for BRCB and URCB before broadening into unrelated MMS services.
+4. Harden discovery pagination and typed model building so connect-from-discovery does not depend on SCD shortcuts.
+5. Move subscription options into an explicit profile contract and expose effective options read-only in the UI.
+6. Replace debug REST polling with WebSocket deltas after the event payload is stable.
+7. Expand server conformance only after the client can consume the same behavior from an external IED or reference simulator.
+
 ## Ownership Model
 
 - C owns protocol primitives and the wire-level MMS engine.
