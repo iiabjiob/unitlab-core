@@ -242,7 +242,7 @@ UnitLabNativeDiscoveredDataName* unitlab_native_client_session_append_data_name(
 void unitlab_native_client_session_set_data_name_type(UnitLabNativeDiscoveredDataName* data_name, const char* type_kind);
 int unitlab_native_client_session_append_data_component(UnitLabNativeClientSessionState* session, UnitLabNativeDiscoveredDataName* data_name, const char* component_name, const char* type_kind);
 UnitLabNativeDiscoveredTypedDataNode* unitlab_native_client_session_append_typed_data_node(UnitLabNativeClientSessionState* session, const char* logical_device, const char* logical_node, const char* fc, const char* path, const char* mms_reference, const char* display_reference, const char* type_kind, const char* node_kind, size_t depth, size_t parent_index);
-const UnitLabNativeDiscoveredTypedDataNode* unitlab_native_client_session_typed_data_node_at(const UnitLabNativeClientSessionState* session, size_t index);
+UnitLabNativeDiscoveredTypedDataNode* unitlab_native_client_session_typed_data_node_at(UnitLabNativeClientSessionState* session, size_t index);
 UnitLabNativeDiscoveredLeafRef* unitlab_native_client_session_append_leaf_ref(UnitLabNativeClientSessionState* session, const char* mms_reference);
 int unitlab_native_client_session_leaf_ref_exists(const UnitLabNativeClientSessionState* session, const char* mms_reference);
 const UnitLabNativeDiscoveredLeafRef* unitlab_native_client_session_find_leaf_ref(const UnitLabNativeClientSessionState* session, const char* mms_reference);

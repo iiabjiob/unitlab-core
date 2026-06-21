@@ -420,6 +420,27 @@ static void test_mms_read_request_wire_frame_builder_roundtrip(void)
     assert(service_element.tag.tag_number == 4U);
     assert(service_element.tag.constructed == 1);
 
+    {
+        UnitLabMmsBerElement read_request_element;
+        UnitLabMmsBerElement variable_access_element;
+        size_t read_request_consumed_length = 0U;
+        size_t variable_access_consumed_length = 0U;
+
+        unitlab_mms_ber_element_init(&read_request_element);
+        unitlab_mms_ber_element_init(&variable_access_element);
+        assert(unitlab_mms_ber_read(&read_request_element, service_element.value_bytes, service_element.value_length, &read_request_consumed_length, &diagnostic) == 1);
+        assert(read_request_consumed_length == service_element.value_length);
+        assert(read_request_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
+        assert(read_request_element.tag.tag_number == 1U);
+        assert(read_request_element.tag.constructed == 1);
+
+        assert(unitlab_mms_ber_read(&variable_access_element, read_request_element.value_bytes, read_request_element.value_length, &variable_access_consumed_length, &diagnostic) == 1);
+        assert(variable_access_consumed_length == read_request_element.value_length);
+        assert(variable_access_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
+        assert(variable_access_element.tag.tag_number == 0U);
+        assert(variable_access_element.tag.constructed == 1);
+    }
+
     unitlab_mms_pdu_init(&decoded_pdu);
     decoded_pdu.kind = UNITLAB_MMS_PDU_CONFIRMED_REQUEST;
     decoded_pdu.has_invoke_id = 1;

@@ -2,6 +2,7 @@
 #include "server/native_wire_client_discovery.h"
 #include "server/unitlab_mms_server_runtime_internal.h"
 #include "model/model_loader.h"
+#include "wire/mms/unitlab_mms_pdu.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -133,6 +134,43 @@ static int discovery_harness_attributes_step(
     }
     if (io->encoded_response_length != NULL) {
         *io->encoded_response_length = g_discovery_harness != NULL ? g_discovery_harness->response_length : 0U;
+    }
+    return 1;
+}
+
+static const uint8_t exact_health_gva_response_apdu[] = {
+    0x61U, 0x39U, 0x30U, 0x37U, 0x02U, 0x01U, 0x03U, 0xA0U, 0x32U, 0xA1U, 0x30U, 0x02U, 0x02U, 0x00U, 0x9AU, 0xA6U, 0x2AU,
+    0xA2U, 0x25U, 0xA2U, 0x23U, 0xA1U, 0x21U, 0x30U, 0x0CU, 0x80U, 0x05U, 0x73U, 0x74U, 0x56U, 0x61U, 0x6CU, 0xA1U, 0x03U,
+    0x85U, 0x01U, 0x08U, 0x30U, 0x08U, 0x80U, 0x01U, 0x71U, 0xA1U, 0x03U, 0x84U, 0x01U, 0xF3U, 0x30U, 0x07U, 0x80U, 0x01U,
+    0x74U, 0xA1U, 0x02U, 0x91U, 0x00U
+};
+
+static int discovery_harness_attributes_step_exact_health_response(
+    UnitLabNativeClientSessionState* session,
+    const UnitLabNativeDiscoveryIo* io,
+    const char* label,
+    const char* domain_id,
+    const char* item_id,
+    uint32_t invoke_id,
+    int named_variable_list)
+{
+    UnitLabMmsPdu pdu;
+    UnitLabMmsDiagnostic pdu_diagnostic;
+    size_t consumed_length = 0U;
+
+    (void)session;
+    (void)label;
+    (void)domain_id;
+    (void)item_id;
+    (void)invoke_id;
+    (void)named_variable_list;
+    unitlab_mms_diagnostic_clear(&pdu_diagnostic);
+    unitlab_mms_pdu_init(&pdu);
+    if (!unitlab_mms_pdu_decode(&pdu, exact_health_gva_response_apdu, sizeof(exact_health_gva_response_apdu), &consumed_length, &pdu_diagnostic)) {
+        return 0;
+    }
+    if (!unitlab_mms_build_wire_frame_from_pdu(&pdu, io->scratch, io->scratch_length, io->response, io->response_length, io->encoded_response_length, io->diagnostic)) {
+        return 0;
     }
     return 1;
 }
@@ -405,6 +443,157 @@ static int test_fixture_backed_discover_sequence_preserves_health_structure(void
     passed &= expect_true(unitlab_native_client_session_leaf_ref_exists(&session, "PROT/A50gPTOC2$ST$Health$stVal"), "expected Health stVal leaf ref");
     passed &= expect_true(unitlab_native_client_session_leaf_ref_exists(&session, "PROT/A50gPTOC2$ST$Health$q"), "expected Health q leaf ref");
     passed &= expect_true(unitlab_native_client_session_leaf_ref_exists(&session, "PROT/A50gPTOC2$ST$Health$t"), "expected Health t leaf ref");
+
+    unitlab_mms_server_runtime_stop(&harness.runtime, &harness.diagnostic);
+    unitlab_free_ied_model_plan(&harness.plan);
+    return passed;
+}
+
+static int test_fixture_backed_discover_sequence_handles_exact_health_gva_response(void)
+{
+    DiscoveryFixtureHarness harness;
+    UnitLabNativeClientSessionState session;
+    UnitLabNativeDiscoveryIo io;
+    UnitLabIedFixtureDataSet data_sets[1U];
+    UnitLabIedFixtureSignal signals[3U];
+    UnitLabIedFixtureModel fixture;
+    uint32_t next_invoke_id = 0U;
+    const UnitLabNativeDiscoveredTypedDataNode* health_root = NULL;
+    const UnitLabNativeDiscoveredTypedDataNode* health_st_val = NULL;
+    const UnitLabNativeDiscoveredTypedDataNode* health_q = NULL;
+    const UnitLabNativeDiscoveredTypedDataNode* health_t = NULL;
+    int passed = 1;
+
+    memset(&harness, 0, sizeof(harness));
+    memset(&session, 0, sizeof(session));
+    memset(&fixture, 0, sizeof(fixture));
+    memset(data_sets, 0, sizeof(data_sets));
+    memset(signals, 0, sizeof(signals));
+
+    signals[0] = (UnitLabIedFixtureSignal){
+        .data_set_index = 0U,
+        .reference = "PROT/A50gPTOC2.Health.stVal[ST]",
+        .kind = "FCDA",
+        .component = "",
+        .fc = "ST",
+        .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER,
+        .initial_value = "1",
+    };
+    signals[1] = (UnitLabIedFixtureSignal){
+        .data_set_index = 1U,
+        .reference = "PROT/A50gPTOC2.Health.q[ST]",
+        .kind = "FCDA",
+        .component = "",
+        .fc = "ST",
+        .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER,
+        .initial_value = "0",
+    };
+    signals[2] = (UnitLabIedFixtureSignal){
+        .data_set_index = 2U,
+        .reference = "PROT/A50gPTOC2.Health.t[ST]",
+        .kind = "FCDA",
+        .component = "",
+        .fc = "ST",
+        .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_STRING,
+        .initial_value = "2026-06-20T00:00:00Z",
+    };
+    data_sets[0U] = (UnitLabIedFixtureDataSet){
+        .reference = "KINTE13LVC01/P1/PROT/A50gPTOC2.dsHealth",
+        .signal_count = 3U,
+        .signals = signals,
+    };
+    fixture = (UnitLabIedFixtureModel){
+        .device_count = 1U,
+        .ied_name = "KINTE13LVC01",
+        .access_point_name = "P1",
+        .data_set_count = 1U,
+        .data_sets = data_sets,
+        .report_count = 0U,
+        .reports = harness.reports,
+        .signal_count = 3U,
+    };
+    if (!expect_true(unitlab_build_ied_model_plan(&fixture, &harness.plan, (char[256U]){0}, 256U) == 1, "expected exact Health discovery plan to build")) {
+        return 0;
+    }
+    unitlab_mms_server_runtime_init(&harness.runtime);
+    if (!expect_true(unitlab_mms_server_runtime_apply_model_plan(&harness.runtime, &harness.plan) == 1, "expected exact Health discovery plan to apply")) {
+        unitlab_free_ied_model_plan(&harness.plan);
+        return 0;
+    }
+    harness.config.bind_address = "127.0.0.1";
+    harness.config.port = 15122;
+    if (!expect_true(unitlab_mms_server_runtime_prepare(&harness.runtime, &harness.config, &harness.diagnostic) == 1, "expected exact Health discovery prepare to succeed")) {
+        unitlab_free_ied_model_plan(&harness.plan);
+        return 0;
+    }
+    if (!expect_true(unitlab_mms_server_runtime_start(&harness.runtime, &harness.diagnostic) == 1, "expected exact Health discovery start to succeed")) {
+        unitlab_free_ied_model_plan(&harness.plan);
+        return 0;
+    }
+    if (!expect_true(unitlab_mms_session_begin_association(&harness.runtime.session, &harness.diagnostic) == 1, "expected exact Health discovery session begin to succeed")) {
+        unitlab_free_ied_model_plan(&harness.plan);
+        return 0;
+    }
+    if (!expect_true(unitlab_mms_session_complete_association(&harness.runtime.session, 1U, &harness.diagnostic) == 1, "expected exact Health discovery session complete to succeed")) {
+        unitlab_free_ied_model_plan(&harness.plan);
+        return 0;
+    }
+
+    io.data_fd = -1;
+    io.scratch = harness.scratch;
+    io.scratch_length = sizeof(harness.scratch);
+    io.request = harness.scratch;
+    io.request_length = sizeof(harness.scratch);
+    io.response = harness.response;
+    io.response_length = sizeof(harness.response);
+    io.encoded_response_length = &harness.response_length;
+    io.text_buffer = (uint8_t[512U]){0};
+    io.text_buffer_length = 512U;
+    io.diagnostic = &harness.diagnostic;
+    io.get_name_list_step = discovery_harness_get_name_list_step;
+    io.read_step = discovery_harness_read_step;
+    io.attributes_step = discovery_harness_attributes_step_exact_health_response;
+    io.emit_model_summary = discovery_harness_emit_model_summary;
+
+    harness.response_capacity = sizeof(harness.response);
+    g_discovery_harness = &harness;
+    passed &= expect_true(unitlab_native_client_run_discover_sequence(&session, &io, "PROT", 100U, &next_invoke_id) == 1, "expected exact Health discovery sequence to succeed");
+    g_discovery_harness = NULL;
+
+    passed &= expect_true(session.discovered_data_name_count >= 1U, "expected exact Health discovery data names");
+    passed &= expect_true(session.discovered_typed_data_node_count >= 4U, "expected exact Health structure to populate typed nodes");
+    passed &= expect_true(session.discovered_leaf_ref_count >= 3U, "expected exact Health leaf refs to be captured");
+    for (size_t index = 0U; index < session.discovered_typed_data_node_count; index++) {
+        const UnitLabNativeDiscoveredTypedDataNode* node = unitlab_native_client_session_typed_data_node_at(&session, index);
+
+        if (node == NULL) {
+            continue;
+        }
+        if (strcmp(node->request_item, "Health") == 0 && strcmp(node->semantic_kind, "root") == 0) {
+            health_root = node;
+        } else if (strcmp(node->request_item, "Health.stVal") == 0) {
+            health_st_val = node;
+        } else if (strcmp(node->request_item, "Health.q") == 0) {
+            health_q = node;
+        } else if (strcmp(node->request_item, "Health.t") == 0) {
+            health_t = node;
+        }
+    }
+    passed &= expect_true(health_root != NULL && health_st_val != NULL && health_q != NULL && health_t != NULL, "expected exact Health root and child nodes to be present");
+    if (health_root != NULL && health_st_val != NULL && health_q != NULL && health_t != NULL) {
+        passed &= expect_true(strcmp(health_root->type_kind, "structure") == 0, "expected exact Health root type kind");
+        passed &= expect_true(strcmp(health_st_val->type_kind, "integer") == 0, "expected exact Health stVal type kind");
+        passed &= expect_true(strcmp(health_q->type_kind, "bit-string") == 0, "expected exact Health q type kind");
+        passed &= expect_true(strcmp(health_t->type_kind, "utc-time") == 0, "expected exact Health t type kind");
+        passed &= expect_true(strcmp(health_root->mms_reference, "PROT/A50gPTOC2$ST$Health") == 0, "expected exact Health root MMS reference");
+        passed &= expect_true(strcmp(health_st_val->mms_reference, "PROT/A50gPTOC2$ST$Health$stVal") == 0, "expected exact Health stVal MMS reference");
+        passed &= expect_true(strcmp(health_q->mms_reference, "PROT/A50gPTOC2$ST$Health$q") == 0, "expected exact Health q MMS reference");
+        passed &= expect_true(strcmp(health_t->mms_reference, "PROT/A50gPTOC2$ST$Health$t") == 0, "expected exact Health t MMS reference");
+    }
+
+    passed &= expect_true(unitlab_native_client_session_leaf_ref_exists(&session, "PROT/A50gPTOC2$ST$Health$stVal"), "expected exact Health stVal leaf ref");
+    passed &= expect_true(unitlab_native_client_session_leaf_ref_exists(&session, "PROT/A50gPTOC2$ST$Health$q"), "expected exact Health q leaf ref");
+    passed &= expect_true(unitlab_native_client_session_leaf_ref_exists(&session, "PROT/A50gPTOC2$ST$Health$t"), "expected exact Health t leaf ref");
 
     unitlab_mms_server_runtime_stop(&harness.runtime, &harness.diagnostic);
     unitlab_free_ied_model_plan(&harness.plan);
@@ -904,6 +1093,9 @@ int main(void)
         return 1;
     }
     if (!expect_true(test_fixture_backed_discover_sequence_preserves_health_structure() == 1, "expected fixture-backed discovery to preserve Health structure")) {
+        return 1;
+    }
+    if (!expect_true(test_fixture_backed_discover_sequence_handles_exact_health_gva_response() == 1, "expected exact Health GVA response discovery to preserve Health structure")) {
         return 1;
     }
     if (!expect_true(test_paginated_domain_discovery_keeps_partial_results() == 1, "expected paginated discovery to keep partial results")) {

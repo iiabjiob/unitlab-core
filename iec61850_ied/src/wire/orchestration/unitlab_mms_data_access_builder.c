@@ -21,7 +21,6 @@ int unitlab_mms_build_read_request_frame(
     UnitLabMmsBerElement variable_spec_element;
     UnitLabMmsBerElement list_element;
     UnitLabMmsBerElement list_of_variable_element;
-    UnitLabMmsBerElement variable_access_element;
     UnitLabMmsBerElement read_request_element;
     UnitLabMmsBerElement service_element;
     UnitLabMmsPdu request_pdu;
@@ -181,14 +180,24 @@ int unitlab_mms_build_read_request_frame(
         return 0;
     }
 
-    (void)variable_access_element;
-    (void)read_request_element;
-    if (variable_access_length > sizeof(read_request_bytes)) {
-        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Read request variable access specification is too large.");
+    unitlab_mms_ber_element_init(&read_request_element);
+    read_request_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+    read_request_element.tag.constructed = 1;
+    read_request_element.tag.tag_number = 1U;
+    read_request_element.value_bytes = variable_access_bytes;
+    read_request_element.value_length = variable_access_length;
+    if (!wire_builder_encode_ber_element(
+            read_request_element.tag.tag_class,
+            read_request_element.tag.constructed,
+            read_request_element.tag.tag_number,
+            read_request_element.value_bytes,
+            read_request_element.value_length,
+            read_request_bytes,
+            sizeof(read_request_bytes),
+            &read_request_length,
+            diagnostic)) {
         return 0;
     }
-    memcpy(read_request_bytes, variable_access_bytes, variable_access_length);
-    read_request_length = variable_access_length;
 
     unitlab_mms_ber_element_init(&service_element);
     service_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;

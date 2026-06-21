@@ -572,7 +572,7 @@ UnitLabNativeDiscoveredTypedDataNode* unitlab_native_client_session_append_typed
     return node;
 }
 
-const UnitLabNativeDiscoveredTypedDataNode* unitlab_native_client_session_typed_data_node_at(const UnitLabNativeClientSessionState* session, size_t index)
+UnitLabNativeDiscoveredTypedDataNode* unitlab_native_client_session_typed_data_node_at(UnitLabNativeClientSessionState* session, size_t index)
 {
     if (session == NULL || index >= session->discovered_typed_data_node_count) {
         return NULL;

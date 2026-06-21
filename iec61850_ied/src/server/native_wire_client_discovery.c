@@ -751,6 +751,7 @@ static int collect_get_variable_access_attributes_components_from_frame(UnitLabN
     char root_display_reference[384U];
     size_t root_node_index = (size_t)-1;
     const char* root_type_kind;
+    size_t type_spec_offset = 0U;
 
     if (session == NULL || data_name == NULL || frame == NULL || frame_length == 0U) {
         return 0;
@@ -769,10 +770,15 @@ static int collect_get_variable_access_attributes_components_from_frame(UnitLabN
         return 0;
     }
     unitlab_mms_ber_element_init(&mms_deletable);
-    if (!unitlab_mms_ber_read(&mms_deletable, pdu.service_bytes, pdu.service_length, &consumed, &diagnostic) || consumed >= pdu.service_length) {
-        return 1;
+    if (unitlab_mms_ber_read(&mms_deletable, pdu.service_bytes, pdu.service_length, &consumed, &diagnostic)
+        && consumed > 0U
+        && consumed < pdu.service_length
+        && mms_deletable.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL
+        && mms_deletable.tag.tag_number == 1U
+        && !mms_deletable.tag.constructed) {
+        type_spec_offset = consumed;
     }
-    root_type_kind = gva_type_kind_from_bytes(&pdu.service_bytes[consumed], pdu.service_length - consumed);
+    root_type_kind = gva_type_kind_from_bytes(&pdu.service_bytes[type_spec_offset], pdu.service_length - type_spec_offset);
     unitlab_native_client_session_set_data_name_type(data_name, root_type_kind);
     derive_gva_fc_context(item_id, data_name->name, fc, sizeof(fc));
     printf(
@@ -829,7 +835,7 @@ static int collect_get_variable_access_attributes_components_from_frame(UnitLabN
         fflush(stdout);
         return 1;
     }
-    if (!collect_gva_components_from_bytes(session, io, data_name, item_id, fc, root_path, session->discovered_typed_data_node_count - 1U, &pdu.service_bytes[consumed], pdu.service_length - consumed, 0U, &component_count)) {
+    if (!collect_gva_components_from_bytes(session, io, data_name, item_id, fc, root_path, session->discovered_typed_data_node_count - 1U, &pdu.service_bytes[type_spec_offset], pdu.service_length - type_spec_offset, 0U, &component_count)) {
         return 0;
     }
     UnitLabNativeDiscoveredTypedDataNode* root_node = unitlab_native_client_session_typed_data_node_at(session, root_node_index);
