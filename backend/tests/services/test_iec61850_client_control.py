@@ -1079,7 +1079,7 @@ def test_external_mms_target_routes_discover_rptena_gi_to_external_probes(monkey
     assert disconnect_snapshot.ui_state["session"]["associated"] is False
 
     assert process_commands[0] == (
-        "/workspace/iec61850_ied/build-libiec61850/unitlab-iec61850-ied-sim",
+        "/workspace/iec61850_ied/build/unitlab-iec61850-ied-sim",
         "--scl",
         str(scl_path),
         "--ied",

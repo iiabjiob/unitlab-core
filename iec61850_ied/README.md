@@ -160,7 +160,7 @@ iec61850_ied/build-libiec61850/unitlab-iec61850-ied-sim \
 The debug client page can now target this external MMS endpoint before capture:
 
 1. Set host to `host.docker.internal`, port to `12447`, IED to `KINTE13LVC01`, and SCD path to `/workspace/.refs/sld-rev2.scd`.
-2. Click `Use external MMS`. The backend parses the SCD and selects the first ReportControl for the IED, currently `KINTE13LVC01CTRL/LLN0.brcbA` from DataSet `RCB1`.
+2. Click `Use external MMS`. The backend parses the SCD and selects the first ReportControl for the IED, currently `KINTE13LVC01CTRL/LLN0.brcbA` from DataSet `RCB1`. External probe mode prefers the current native build at `/workspace/iec61850_ied/build/unitlab-iec61850-ied-sim` when it exists; the libIEC61850 reference binary remains a fallback.
 3. Run `Discover`, `RptEna`, `GI`, and `Disconnect`. In external mode `Discover` and `RptEna` launch the libIEC61850-backed metadata probe against the configured endpoint, while `GI` launches the GI probe with the compiler report key, for example `KINTE13LVC01/P1/CTRL/LLN0/brcbA/buffered` for the selected `brcbA` control, and waits for the buffered enable report before requesting the GI report. `Start wire` is for the UnitLab native wire server path and should stay disabled for external MMS targets.
 4. Save the Wireshark capture as the golden artifact for the SCD-backed client flow.
 

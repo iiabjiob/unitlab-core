@@ -1093,15 +1093,16 @@ class Iec61850ClientControlService:
                 process.wait(timeout=2)
 
     def _external_probe_binary_path(self) -> str:
-        preferred = Path("/workspace/iec61850_ied/build-libiec61850/unitlab-iec61850-ied-sim")
-        if preferred.is_file():
-            return str(preferred)
-        relative_preferred = Path("iec61850_ied/build-libiec61850/unitlab-iec61850-ied-sim")
-        if relative_preferred.is_file():
-            return str(relative_preferred)
-        if self._live_wire_binary_path is not None and self._live_wire_binary_path.strip():
-            return self._live_wire_binary_path
-        return str(relative_preferred)
+        preferred_paths = (
+            Path("/workspace/iec61850_ied/build/unitlab-iec61850-ied-sim"),
+            Path("iec61850_ied/build/unitlab-iec61850-ied-sim"),
+            Path("/workspace/iec61850_ied/build-libiec61850/unitlab-iec61850-ied-sim"),
+            Path("iec61850_ied/build-libiec61850/unitlab-iec61850-ied-sim"),
+        )
+        for path in preferred_paths:
+            if path.is_file():
+                return str(path)
+        return str(preferred_paths[0])
 
     def _run_external_probe(self, probe: str):
         if self._endpoint.host is None or not self._endpoint.host.strip():

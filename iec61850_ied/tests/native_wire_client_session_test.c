@@ -393,6 +393,10 @@ static int test_fixture_backed_discover_sequence_preserves_health_structure(void
         passed &= expect_true(strcmp(health_st_val->node_kind, "leaf") == 0, "expected Health stVal node kind");
         passed &= expect_true(strcmp(health_q->node_kind, "leaf") == 0, "expected Health q node kind");
         passed &= expect_true(strcmp(health_t->node_kind, "leaf") == 0, "expected Health t node kind");
+        passed &= expect_true(strcmp(health_root->type_kind, "structure") == 0, "expected Health root type kind");
+        passed &= expect_true(strcmp(health_st_val->type_kind, "integer") == 0, "expected Health stVal type kind");
+        passed &= expect_true(strcmp(health_q->type_kind, "bit-string") == 0, "expected Health q type kind");
+        passed &= expect_true(strcmp(health_t->type_kind, "utc-time") == 0, "expected Health t type kind");
         passed &= expect_true(strcmp(health_st_val->mms_reference, "PROT/A50gPTOC2$ST$Health$stVal") == 0, "expected Health stVal MMS reference");
         passed &= expect_true(strcmp(health_q->mms_reference, "PROT/A50gPTOC2$ST$Health$q") == 0, "expected Health q MMS reference");
         passed &= expect_true(strcmp(health_t->mms_reference, "PROT/A50gPTOC2$ST$Health$t") == 0, "expected Health t MMS reference");
