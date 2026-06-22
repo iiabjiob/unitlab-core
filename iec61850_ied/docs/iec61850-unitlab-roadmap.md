@@ -91,10 +91,11 @@ Done when:
 
 ### PR2 - Subscription planner
 
-Status: not started.
+Status: in progress.
 
 Goal:
 - Turn requested verification targets into per-IED / per-RCB subscription plans.
+- The current planner uses the 61850 model plan for exact dataset matches, with a safe single-report fallback and explicit uncovered targets.
 
 Must do:
 - accept a list of requested targets;
@@ -102,7 +103,8 @@ Must do:
 - choose candidate RCBs;
 - explain each choice with a reason;
 - split uncovered targets into explicit reasons;
-- label each target source as `from SCD`, `from discovery`, `fallback`, or `not found`.
+- label each target source as `from SCD`, `from discovery`, `fallback`, or `not found`;
+- current slice may only resolve `from SCD`, `fallback`, and `not found` until a discovery snapshot resolver is wired in.
 
 Must not do:
 - do not execute MMS writes in the planner;
