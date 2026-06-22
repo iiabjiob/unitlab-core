@@ -158,6 +158,12 @@ If available, the session snapshot should also expose a compact report-health su
 - `degraded` when report health has been marked stale or unhealthy;
 - report-health reason text when degraded.
 
+If available, the session snapshot should also expose in-flight operation flags:
+- connect;
+- discover;
+- subscribe;
+- reconnect.
+
 ### Report stream / state update service
 
 Input:

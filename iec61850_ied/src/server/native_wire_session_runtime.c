@@ -796,6 +796,10 @@ int unitlab_native_session_runtime_copy_status(
     status->discovered = runtime->live.discovered;
     status->subscribed = runtime->live.subscribed;
     status->reporting = runtime->live.reporting;
+    status->connect_in_flight = runtime->live.connect_in_flight;
+    status->discover_in_flight = runtime->live.discover_in_flight;
+    status->subscribe_in_flight = runtime->live.subscribe_in_flight;
+    status->reconnect_in_flight = runtime->live.reconnect_in_flight;
     status->desired_endpoint_connected = runtime->desired.endpoint_connected;
     status->desired_discovery_available = runtime->desired.discovery_available;
     status->desired_subscription_active = runtime->desired.subscription_active;

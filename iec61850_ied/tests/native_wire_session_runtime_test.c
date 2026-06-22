@@ -286,6 +286,17 @@ int main(void)
         unitlab_native_session_manager_reset(&manager);
         return 1;
     }
+    {
+        UnitLabNativeSessionStatus status;
+        if (!expect_true(unitlab_native_session_runtime_copy_status(runtime, &status), "copy_status during connect failed")) {
+            unitlab_native_session_manager_reset(&manager);
+            return 1;
+        }
+        if (!expect_true(status.connect_in_flight == 1 && status.discover_in_flight == 0 && status.subscribe_in_flight == 0 && status.reconnect_in_flight == 0, "connect in-flight not recorded")) {
+            unitlab_native_session_manager_reset(&manager);
+            return 1;
+        }
+    }
     connect_generation = runtime->identity.connection_generation;
     if (!expect_true(unitlab_native_session_runtime_begin_operation(runtime, UNITLAB_NATIVE_SESSION_OPERATION_CONNECT), "duplicate connect should collapse")) {
         unitlab_native_session_manager_reset(&manager);
@@ -308,6 +319,17 @@ int main(void)
     if (!expect_true(unitlab_native_session_runtime_begin_operation(runtime, UNITLAB_NATIVE_SESSION_OPERATION_DISCOVER), "discover begin failed")) {
         unitlab_native_session_manager_reset(&manager);
         return 1;
+    }
+    {
+        UnitLabNativeSessionStatus status;
+        if (!expect_true(unitlab_native_session_runtime_copy_status(runtime, &status), "copy_status during discover failed")) {
+            unitlab_native_session_manager_reset(&manager);
+            return 1;
+        }
+        if (!expect_true(status.connect_in_flight == 0 && status.discover_in_flight == 1 && status.subscribe_in_flight == 0 && status.reconnect_in_flight == 0, "discover in-flight not recorded")) {
+            unitlab_native_session_manager_reset(&manager);
+            return 1;
+        }
     }
     memset(&snapshot, 0, sizeof(snapshot));
     snprintf(snapshot.snapshot_id, sizeof(snapshot.snapshot_id), "%s", "snapshot-a");
@@ -355,6 +377,17 @@ int main(void)
     if (!expect_true(unitlab_native_session_runtime_begin_operation(runtime, UNITLAB_NATIVE_SESSION_OPERATION_SUBSCRIBE), "subscribe begin failed")) {
         unitlab_native_session_manager_reset(&manager);
         return 1;
+    }
+    {
+        UnitLabNativeSessionStatus status;
+        if (!expect_true(unitlab_native_session_runtime_copy_status(runtime, &status), "copy_status during subscribe failed")) {
+            unitlab_native_session_manager_reset(&manager);
+            return 1;
+        }
+        if (!expect_true(status.connect_in_flight == 0 && status.discover_in_flight == 0 && status.subscribe_in_flight == 1 && status.reconnect_in_flight == 0, "subscribe in-flight not recorded")) {
+            unitlab_native_session_manager_reset(&manager);
+            return 1;
+        }
     }
     unitlab_native_session_runtime_complete_operation(runtime, UNITLAB_NATIVE_SESSION_OPERATION_SUBSCRIBE, 1, NULL, NULL);
     if (!expect_status(runtime, UNITLAB_NATIVE_SESSION_PHASE_REPORTING, "SESSION_RUNTIME_OK")) {
@@ -455,6 +488,17 @@ int main(void)
     if (!expect_true(unitlab_native_session_runtime_begin_operation(runtime, UNITLAB_NATIVE_SESSION_OPERATION_RECONNECT), "reconnect begin failed")) {
         unitlab_native_session_manager_reset(&manager);
         return 1;
+    }
+    {
+        UnitLabNativeSessionStatus status;
+        if (!expect_true(unitlab_native_session_runtime_copy_status(runtime, &status), "copy_status during reconnect failed")) {
+            unitlab_native_session_manager_reset(&manager);
+            return 1;
+        }
+        if (!expect_true(status.connect_in_flight == 0 && status.discover_in_flight == 0 && status.subscribe_in_flight == 0 && status.reconnect_in_flight == 1, "reconnect in-flight not recorded")) {
+            unitlab_native_session_manager_reset(&manager);
+            return 1;
+        }
     }
     reconnect_generation = runtime->identity.connection_generation;
     if (!expect_true(unitlab_native_session_runtime_begin_operation(runtime, UNITLAB_NATIVE_SESSION_OPERATION_RECONNECT), "duplicate reconnect should collapse")) {

@@ -96,6 +96,10 @@ typedef struct {
     int discovered;
     int subscribed;
     int reporting;
+    int connect_in_flight;
+    int discover_in_flight;
+    int subscribe_in_flight;
+    int reconnect_in_flight;
     int desired_endpoint_connected;
     int desired_discovery_available;
     int desired_subscription_active;
