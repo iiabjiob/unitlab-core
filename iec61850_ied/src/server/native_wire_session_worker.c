@@ -2,16 +2,20 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/time.h>
 #include <string.h>
-#include <time.h>
 
 static uint64_t worker_now_epoch_ms(void)
 {
-    time_t now = time(NULL);
-    if (now <= (time_t)0) {
+    struct timeval tv;
+
+    if (gettimeofday(&tv, NULL) != 0) {
         return 0U;
     }
-    return (uint64_t)now * 1000U;
+    if (tv.tv_sec <= 0) {
+        return 0U;
+    }
+    return (uint64_t)tv.tv_sec * 1000U + (uint64_t)(tv.tv_usec / 1000);
 }
 
 static const char* operation_label(UnitLabNativeSessionOperationKind operation_kind)
