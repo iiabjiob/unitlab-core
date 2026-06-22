@@ -9,6 +9,7 @@ This roadmap sits above the protocol/client/server audit:
 - slice-by-slice execution tracker lives in `docs/unitlab-product-slice-tracker.md`.
 - product operating model lives in `docs/unitlab-operating-model.md`.
 - verification dataflow lives in `docs/unitlab-verification-dataflow.md`.
+- contract glossary lives in `docs/unitlab-contract-glossary.md`.
 
 The goal here is the UnitLab product flow:
 - signal list with IEC 61850 endpoint references;
@@ -261,6 +262,7 @@ Done when:
 - `docs/unitlab-product-slice-tracker.md`
 - `docs/unitlab-operating-model.md`
 - `docs/unitlab-verification-dataflow.md`
+- `docs/unitlab-contract-glossary.md`
 - `docs/unitlab-signal-planning-contract.md`
 - `docs/unitlab-runtime-integration-contract.md`
 - `docs/unitlab-api-payload-shapes.md`
