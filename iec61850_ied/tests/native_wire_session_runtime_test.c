@@ -1,4 +1,5 @@
 #include "server/native_wire_session_runtime.h"
+#include "server/native_wire_client_session.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -23,6 +24,77 @@ static int expect_status(const UnitLabNativeSessionRuntime* runtime, UnitLabNati
         return 0;
     }
     if (!expect_true(strcmp(status.last_error_code, error_code) == 0, "unexpected error code")) {
+        return 0;
+    }
+    return 1;
+}
+
+static int test_report_sequence_policy_tracks_gaps_duplicates_and_generation_reset(void)
+{
+    UnitLabNativeClientSessionState session;
+    UnitLabNativeReportSequenceDisposition disposition;
+
+    memset(&session, 0, sizeof(session));
+    disposition = unitlab_native_client_session_observe_report_sequence(&session, 1U, 10U);
+    if (!expect_true(disposition == UNITLAB_NATIVE_REPORT_SEQUENCE_ACCEPTED, "first report sequence should be accepted")) {
+        return 0;
+    }
+    if (!expect_true(session.subscription_model.has_last_report_sequence_number == 1 && session.subscription_model.last_report_sequence_number == 10U, "first report sequence not recorded")) {
+        return 0;
+    }
+    if (!expect_true(session.subscription_model.last_report_sequence_generation == 1U, "first report sequence generation not recorded")) {
+        return 0;
+    }
+
+    disposition = unitlab_native_client_session_observe_report_sequence(&session, 1U, 10U);
+    if (!expect_true(disposition == UNITLAB_NATIVE_REPORT_SEQUENCE_DUPLICATE, "duplicate report sequence should be rejected")) {
+        return 0;
+    }
+    if (!expect_true(session.subscription_model.report_sequence_duplicate_count == 1U && session.subscription_model.report_sequence_drop_count == 1U, "duplicate report sequence counters not updated")) {
+        return 0;
+    }
+    if (!expect_true(session.subscription_model.last_report_sequence_number == 10U, "duplicate report sequence changed last sequence")) {
+        return 0;
+    }
+
+    disposition = unitlab_native_client_session_observe_report_sequence(&session, 1U, 9U);
+    if (!expect_true(disposition == UNITLAB_NATIVE_REPORT_SEQUENCE_OUT_OF_ORDER, "out-of-order report sequence should be rejected")) {
+        return 0;
+    }
+    if (!expect_true(session.subscription_model.report_sequence_out_of_order_count == 1U && session.subscription_model.report_sequence_drop_count == 2U, "out-of-order report sequence counters not updated")) {
+        return 0;
+    }
+    if (!expect_true(session.subscription_model.last_report_sequence_number == 10U, "out-of-order report sequence changed last sequence")) {
+        return 0;
+    }
+
+    disposition = unitlab_native_client_session_observe_report_sequence(&session, 1U, 13U);
+    if (!expect_true(disposition == UNITLAB_NATIVE_REPORT_SEQUENCE_GAP, "gap report sequence should be accepted with gap state")) {
+        return 0;
+    }
+    if (!expect_true(session.subscription_model.report_sequence_gap_count == 1U && session.subscription_model.report_sequence_missing_count == 2U, "gap report sequence counters not updated")) {
+        return 0;
+    }
+    if (!expect_true(session.subscription_model.last_report_sequence_number == 13U, "gap report sequence did not advance")) {
+        return 0;
+    }
+
+    disposition = unitlab_native_client_session_observe_report_sequence(&session, 2U, 1U);
+    if (!expect_true(disposition == UNITLAB_NATIVE_REPORT_SEQUENCE_ACCEPTED, "new generation report sequence should be accepted")) {
+        return 0;
+    }
+    if (!expect_true(session.subscription_model.last_report_sequence_generation == 2U, "new generation report sequence generation not recorded")) {
+        return 0;
+    }
+    if (!expect_true(session.subscription_model.last_report_sequence_number == 1U, "new generation report sequence not reset")) {
+        return 0;
+    }
+
+    unitlab_native_client_session_reset_report_sequence(&session);
+    if (!expect_true(session.subscription_model.has_last_report_sequence_number == 0 && session.subscription_model.last_report_sequence_generation == 0U, "report sequence reset did not clear state")) {
+        return 0;
+    }
+    if (!expect_true(session.subscription_model.report_sequence_gap_count == 0U && session.subscription_model.report_sequence_duplicate_count == 0U && session.subscription_model.report_sequence_out_of_order_count == 0U && session.subscription_model.report_sequence_drop_count == 0U && session.subscription_model.report_sequence_missing_count == 0U, "report sequence reset did not clear counters")) {
         return 0;
     }
     return 1;
@@ -269,6 +341,9 @@ int main(void)
     }
 
     unitlab_native_session_manager_reset(&manager);
+    if (!test_report_sequence_policy_tracks_gaps_duplicates_and_generation_reset()) {
+        return 1;
+    }
     printf("native session runtime test passed\n");
     return 0;
 }

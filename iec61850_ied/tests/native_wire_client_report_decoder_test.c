@@ -357,6 +357,9 @@ static void assert_synthetic_report_counts(size_t value_count, size_t reason_cou
     assert(session.discovered_model.last_report_extra_reason_count == extra_reasons);
     assert(session.discovered_model.last_report_dataset_mismatch_count == 0U);
     assert(session.discovered_model.last_report_unsupported_value_count == 0U);
+    assert(session.subscription_model.has_last_report_sequence_number == 1);
+    assert(session.subscription_model.last_report_sequence_number == 0U);
+    assert(session.subscription_model.last_report_sequence_generation == 0U);
     unitlab_native_client_session_reset(&session);
 }
 

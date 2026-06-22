@@ -757,6 +757,67 @@ void unitlab_native_client_session_reset_last_report(UnitLabNativeClientSessionS
     session->discovered_model.last_report_data_set[0] = '\0';
 }
 
+void unitlab_native_client_session_reset_report_sequence(UnitLabNativeClientSessionState* session)
+{
+    if (session == NULL) {
+        return;
+    }
+    session->subscription_model.last_report_sequence_generation = 0U;
+    session->subscription_model.last_report_sequence_number = 0U;
+    session->subscription_model.report_sequence_gap_count = 0U;
+    session->subscription_model.report_sequence_duplicate_count = 0U;
+    session->subscription_model.report_sequence_out_of_order_count = 0U;
+    session->subscription_model.report_sequence_drop_count = 0U;
+    session->subscription_model.report_sequence_missing_count = 0U;
+    session->subscription_model.has_last_report_sequence_number = 0;
+}
+
+UnitLabNativeReportSequenceDisposition unitlab_native_client_session_observe_report_sequence(
+    UnitLabNativeClientSessionState* session,
+    uint64_t connection_generation,
+    uint32_t sequence_number)
+{
+    UnitLabNativeSubscriptionModel* model;
+    uint32_t missing_count;
+
+    if (session == NULL) {
+        return UNITLAB_NATIVE_REPORT_SEQUENCE_ACCEPTED;
+    }
+    model = &session->subscription_model;
+    if (connection_generation != 0U && model->last_report_sequence_generation != connection_generation) {
+        model->last_report_sequence_generation = connection_generation;
+        model->has_last_report_sequence_number = 0;
+        model->last_report_sequence_number = 0U;
+    }
+    if (!model->has_last_report_sequence_number) {
+        model->has_last_report_sequence_number = 1;
+        model->last_report_sequence_number = sequence_number;
+        model->last_report_sequence_generation = connection_generation;
+        return UNITLAB_NATIVE_REPORT_SEQUENCE_ACCEPTED;
+    }
+    if (sequence_number == model->last_report_sequence_number) {
+        model->report_sequence_duplicate_count++;
+        model->report_sequence_drop_count++;
+        return UNITLAB_NATIVE_REPORT_SEQUENCE_DUPLICATE;
+    }
+    if (sequence_number < model->last_report_sequence_number) {
+        model->report_sequence_out_of_order_count++;
+        model->report_sequence_drop_count++;
+        return UNITLAB_NATIVE_REPORT_SEQUENCE_OUT_OF_ORDER;
+    }
+    missing_count = sequence_number - model->last_report_sequence_number - 1U;
+    if (missing_count > 0U) {
+        model->report_sequence_gap_count++;
+        model->report_sequence_missing_count += (uint64_t)missing_count;
+        model->last_report_sequence_number = sequence_number;
+        model->last_report_sequence_generation = connection_generation;
+        return UNITLAB_NATIVE_REPORT_SEQUENCE_GAP;
+    }
+    model->last_report_sequence_number = sequence_number;
+    model->last_report_sequence_generation = connection_generation;
+    return UNITLAB_NATIVE_REPORT_SEQUENCE_ACCEPTED;
+}
+
 UnitLabNativeLastReportEntry* unitlab_native_client_session_append_last_report_entry(UnitLabNativeClientSessionState* session, const char* data_reference, int dataset_match, size_t inclusion_index)
 {
     UnitLabNativeLastReportEntry* entry;

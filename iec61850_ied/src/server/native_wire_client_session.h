@@ -61,9 +61,24 @@ typedef struct {
     uint32_t last_rptena_invoke_id;
     uint32_t last_gi_invoke_id;
     size_t async_report_count;
+    uint64_t last_report_sequence_generation;
+    uint32_t last_report_sequence_number;
+    uint64_t report_sequence_gap_count;
+    uint64_t report_sequence_duplicate_count;
+    uint64_t report_sequence_out_of_order_count;
+    uint64_t report_sequence_drop_count;
+    uint64_t report_sequence_missing_count;
+    int has_last_report_sequence_number;
     char rcb_domain[128U];
     char rcb_item[320U];
 } UnitLabNativeSubscriptionModel;
+
+typedef enum {
+    UNITLAB_NATIVE_REPORT_SEQUENCE_ACCEPTED = 0,
+    UNITLAB_NATIVE_REPORT_SEQUENCE_DUPLICATE,
+    UNITLAB_NATIVE_REPORT_SEQUENCE_OUT_OF_ORDER,
+    UNITLAB_NATIVE_REPORT_SEQUENCE_GAP
+} UnitLabNativeReportSequenceDisposition;
 
 typedef struct {
     char name[128U];
@@ -265,6 +280,11 @@ int unitlab_native_client_session_leaf_ref_exists(const UnitLabNativeClientSessi
 const UnitLabNativeDiscoveredLeafRef* unitlab_native_client_session_find_leaf_ref(const UnitLabNativeClientSessionState* session, const char* mms_reference);
 int unitlab_native_client_session_resolve_read_reference(const UnitLabNativeClientSessionState* session, const char* reference, char* domain, size_t domain_size, char* item, size_t item_size, char* display, size_t display_size);
 void unitlab_native_client_session_reset_last_report(UnitLabNativeClientSessionState* session);
+void unitlab_native_client_session_reset_report_sequence(UnitLabNativeClientSessionState* session);
+UnitLabNativeReportSequenceDisposition unitlab_native_client_session_observe_report_sequence(
+    UnitLabNativeClientSessionState* session,
+    uint64_t connection_generation,
+    uint32_t sequence_number);
 UnitLabNativeLastReportEntry* unitlab_native_client_session_append_last_report_entry(UnitLabNativeClientSessionState* session, const char* data_reference, int dataset_match, size_t inclusion_index);
 int unitlab_native_client_session_data_set_member_exists(const UnitLabNativeClientSessionState* session, const char* reference);
 int unitlab_native_client_session_data_set_index_by_reference(const UnitLabNativeClientSessionState* session, const char* reference, size_t* data_set_index);

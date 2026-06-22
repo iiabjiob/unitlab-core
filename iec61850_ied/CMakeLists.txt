@@ -193,6 +193,7 @@ add_test(NAME unitlab-iec61850-native-wire-client-session COMMAND unitlab-iec618
 
 add_executable(unitlab-iec61850-native-wire-session-runtime-test
   src/server/native_wire_signal_runtime.c
+  src/server/native_wire_client_session.c
   src/server/native_wire_session_runtime.c
   tests/native_wire_session_runtime_test.c
 )

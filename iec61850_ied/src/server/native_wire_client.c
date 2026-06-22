@@ -105,7 +105,7 @@ static void emit_subscription_summary(const UnitLabNativeClientSessionState* ses
         return;
     }
     printf(
-        "native-wire-client: subscription-summary phase=%s rcb=%s/%s rcb-index=%zu rptEna=%s rptEna-invoke=%u giRequested=%s gi-invoke=%u lastReportReceived=%s asyncReports=%zu lastReportValues=%zu lastReportDataRefs=%zu lastReportMatchedDataRefs=%zu lastReportReasons=%zu lastReportDatasetMismatches=%zu lastReportMissingValues=%zu lastReportExtraValues=%zu lastReportMissingReasons=%zu lastReportExtraReasons=%zu lastReportUnsupportedValues=%zu\n",
+        "native-wire-client: subscription-summary phase=%s rcb=%s/%s rcb-index=%zu rptEna=%s rptEna-invoke=%u giRequested=%s gi-invoke=%u lastReportReceived=%s asyncReports=%zu lastReportSequenceKnown=%s lastReportSequence=%u lastReportSequenceGeneration=%llu seqGapCount=%llu seqDuplicateCount=%llu seqOutOfOrderCount=%llu seqDropCount=%llu seqMissingCount=%llu lastReportValues=%zu lastReportDataRefs=%zu lastReportMatchedDataRefs=%zu lastReportReasons=%zu lastReportDatasetMismatches=%zu lastReportMissingValues=%zu lastReportExtraValues=%zu lastReportMissingReasons=%zu lastReportExtraReasons=%zu lastReportUnsupportedValues=%zu\n",
         phase != NULL ? phase : "snapshot",
         session->subscription_model.rcb_domain[0] != '\0' ? session->subscription_model.rcb_domain : "<none>",
         session->subscription_model.rcb_item[0] != '\0' ? session->subscription_model.rcb_item : "<none>",
@@ -116,6 +116,14 @@ static void emit_subscription_summary(const UnitLabNativeClientSessionState* ses
         session->subscription_model.last_gi_invoke_id,
         session->subscription_model.last_report_received ? "true" : "false",
         session->subscription_model.async_report_count,
+        session->subscription_model.has_last_report_sequence_number ? "true" : "false",
+        session->subscription_model.has_last_report_sequence_number ? session->subscription_model.last_report_sequence_number : 0U,
+        (unsigned long long)session->subscription_model.last_report_sequence_generation,
+        (unsigned long long)session->subscription_model.report_sequence_gap_count,
+        (unsigned long long)session->subscription_model.report_sequence_duplicate_count,
+        (unsigned long long)session->subscription_model.report_sequence_out_of_order_count,
+        (unsigned long long)session->subscription_model.report_sequence_drop_count,
+        (unsigned long long)session->subscription_model.report_sequence_missing_count,
         session->discovered_model.last_report_value_count,
         session->discovered_model.last_report_data_ref_count,
         session->discovered_model.last_report_matched_data_ref_count,
@@ -322,6 +330,21 @@ static const char* access_result_label(const UnitLabMmsBerElement* element)
         return "failure";
     }
     return "success";
+}
+
+static const char* report_sequence_disposition_label(UnitLabNativeReportSequenceDisposition disposition)
+{
+    switch (disposition) {
+    case UNITLAB_NATIVE_REPORT_SEQUENCE_ACCEPTED:
+        return "accepted";
+    case UNITLAB_NATIVE_REPORT_SEQUENCE_DUPLICATE:
+        return "duplicate";
+    case UNITLAB_NATIVE_REPORT_SEQUENCE_OUT_OF_ORDER:
+        return "out-of-order";
+    case UNITLAB_NATIVE_REPORT_SEQUENCE_GAP:
+        return "gap";
+    }
+    return "unknown";
 }
 
 static void print_hex_value(const uint8_t* bytes, size_t length)
@@ -1327,7 +1350,10 @@ static int read_next_report_value(
     return 1;
 }
 
-static void emit_information_report_summary(UnitLabNativeClientSessionState* session, const UnitLabMmsPdu* pdu)
+static void emit_information_report_summary(
+    UnitLabNativeClientSessionState* session,
+    const UnitLabNativeSessionRuntime* session_runtime,
+    const UnitLabMmsPdu* pdu)
 {
     UnitLabMmsDiagnostic diagnostic;
     UnitLabMmsBerElement list_name_wrapper;
@@ -1355,12 +1381,12 @@ static void emit_information_report_summary(UnitLabNativeClientSessionState* ses
     int report_data_set_discovered = 0;
     const uint8_t* inclusion_bytes = NULL;
     size_t inclusion_length = 0U;
+    char report_rpt_id[160U] = { 0 };
 
     if (pdu == NULL || pdu->service_bytes == NULL || pdu->service_length == 0U) {
         return;
     }
     unitlab_mms_diagnostic_clear(&diagnostic);
-    unitlab_native_client_session_reset_last_report(session);
     unitlab_mms_ber_element_init(&list_name_wrapper);
     if (!unitlab_mms_ber_read(&list_name_wrapper, pdu->service_bytes, pdu->service_length, &consumed, &diagnostic)
         || list_name_wrapper.tag.tag_class != UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC
@@ -1388,7 +1414,7 @@ static void emit_information_report_summary(UnitLabNativeClientSessionState* ses
     if (!read_next_report_value(values_wrapper.value_bytes, values_wrapper.value_length, &values_offset, &value, &diagnostic)) {
         return;
     }
-    (void)copy_printable_value(&value, session->discovered_model.last_report_rpt_id, sizeof(session->discovered_model.last_report_rpt_id));
+    (void)copy_printable_value(&value, report_rpt_id, sizeof(report_rpt_id));
     printf("mms-summary: report.RptID=");
     print_report_value_summary(&value);
     printf("\n");
@@ -1405,10 +1431,38 @@ static void emit_information_report_summary(UnitLabNativeClientSessionState* ses
     printf(" dataRef=%s reason=%s\n", has_data_reference ? "true" : "false", has_reason ? "true" : "false");
 
     if (report_opt_bit_enabled(opt_flds, opt_flds_length, 1U) && read_next_report_value(values_wrapper.value_bytes, values_wrapper.value_length, &values_offset, &value, &diagnostic)) {
+        UnitLabNativeReportSequenceDisposition sequence_disposition;
+        uint32_t report_sequence_number;
+
         printf("mms-summary: report.SqNum=");
         print_report_value_summary(&value);
         printf("\n");
+        report_sequence_number = decode_unsigned_bytes(value.value_bytes, value.value_length);
+        sequence_disposition = unitlab_native_client_session_observe_report_sequence(
+            session,
+            session_runtime != NULL ? session_runtime->identity.connection_generation : 0U,
+            report_sequence_number);
+        if (sequence_disposition == UNITLAB_NATIVE_REPORT_SEQUENCE_DUPLICATE || sequence_disposition == UNITLAB_NATIVE_REPORT_SEQUENCE_OUT_OF_ORDER) {
+            printf(
+                "mms-summary: report.diagnostic code=%s sqNum=%u lastSqNum=%u generation=%llu\n",
+                sequence_disposition == UNITLAB_NATIVE_REPORT_SEQUENCE_DUPLICATE ? "DUPLICATE_REPORT_SEQUENCE" : "OUT_OF_ORDER_REPORT_SEQUENCE",
+                (unsigned)report_sequence_number,
+                (unsigned)session->subscription_model.last_report_sequence_number,
+                (unsigned long long)session->subscription_model.last_report_sequence_generation);
+            emit_subscription_summary(session, report_sequence_disposition_label(sequence_disposition));
+            return;
+        }
+        if (sequence_disposition == UNITLAB_NATIVE_REPORT_SEQUENCE_GAP) {
+            printf(
+                "mms-summary: report.diagnostic code=REPORT_SEQUENCE_GAP sqNum=%u lastSqNum=%u missing=%llu generation=%llu\n",
+                (unsigned)report_sequence_number,
+                (unsigned)session->subscription_model.last_report_sequence_number,
+                (unsigned long long)session->subscription_model.report_sequence_missing_count,
+                (unsigned long long)session->subscription_model.last_report_sequence_generation);
+        }
     }
+    unitlab_native_client_session_reset_last_report(session);
+    snprintf(session->discovered_model.last_report_rpt_id, sizeof(session->discovered_model.last_report_rpt_id), "%s", report_rpt_id);
     if (report_opt_bit_enabled(opt_flds, opt_flds_length, 2U) && read_next_report_value(values_wrapper.value_bytes, values_wrapper.value_length, &values_offset, &value, &diagnostic)) {
         printf("mms-summary: report.TimeOfEntry=");
         print_report_value_summary(&value);
@@ -1598,7 +1652,7 @@ static void emit_information_report_summary(UnitLabNativeClientSessionState* ses
     fflush(stdout);
 }
 
-static int emit_mms_frame_summary(UnitLabNativeClientSessionState* session, const uint8_t* frame, size_t frame_length)
+static int emit_mms_frame_summary(UnitLabNativeClientSessionState* session, const UnitLabNativeSessionRuntime* session_runtime, const uint8_t* frame, size_t frame_length)
 {
     UnitLabMmsAssociationFrame association_frame;
     UnitLabMmsPdu pdu;
@@ -1650,7 +1704,7 @@ static int emit_mms_frame_summary(UnitLabNativeClientSessionState* session, cons
         emit_get_named_variable_list_attributes_summary(&pdu);
     }
     if (pdu.kind == UNITLAB_MMS_PDU_UNCONFIRMED && pdu.service_kind == UNITLAB_MMS_SERVICE_INFORMATION_REPORT) {
-        emit_information_report_summary(session, &pdu);
+        emit_information_report_summary(session, session_runtime, &pdu);
         report_received = 1;
     }
     return report_received;
@@ -1664,7 +1718,7 @@ int unitlab_native_wire_client_decode_frame_summary(
     if (session == NULL || frame == NULL || frame_length == 0U) {
         return 0;
     }
-    emit_mms_frame_summary(session, frame, frame_length);
+    emit_mms_frame_summary(session, NULL, frame, frame_length);
     return session->subscription_model.last_report_received ? 1 : 0;
 }
 
@@ -2097,6 +2151,7 @@ int unitlab_native_wire_client_worker_subscribe(
         return 0;
     }
     context->session.subscription_model.rpt_enabled = 1;
+    unitlab_native_client_session_reset_report_sequence(&context->session);
     context->session.subscription_model.selected_rcb_index = selected_rcb_index;
     context->session.subscription_model.last_rptena_invoke_id = invoke_id;
     snprintf(context->session.subscription_model.rcb_domain, sizeof(context->session.subscription_model.rcb_domain), "%s", selected_rcb->domain);
@@ -2184,7 +2239,7 @@ static int emit_wire_frame_response(
     if (!format_hex_response(frame, frame_length, (char*)text_buffer, text_buffer_length) || !emit_text_response((const char*)text_buffer)) {
         return 0;
     }
-    if (emit_mms_frame_summary(session, frame, frame_length) && session_runtime != NULL) {
+    if (emit_mms_frame_summary(session, session_runtime, frame, frame_length) && session_runtime != NULL) {
         uint64_t report_timestamp_ms = native_wire_now_ms();
         unitlab_native_session_runtime_apply_last_report_to_signals(session_runtime, session, report_timestamp_ms);
         unitlab_native_session_runtime_mark_report_received(session_runtime, report_timestamp_ms);
@@ -3048,6 +3103,7 @@ static int native_wire_client_cleanup_selected_subscription(
     session->subscription_model.last_gi_invoke_id = 0U;
     session->subscription_model.rcb_domain[0] = '\0';
     session->subscription_model.rcb_item[0] = '\0';
+    unitlab_native_client_session_reset_report_sequence(session);
     return 1;
 }
 
