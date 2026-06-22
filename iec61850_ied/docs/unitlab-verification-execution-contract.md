@@ -2,7 +2,7 @@
 
 Status: draft execution contract for the Python/FastAPI product layer.
 
-This document defines the end-to-end control flow that turns selected signal-list rows into confirmed or verified test evidence.
+This document defines the end-to-end control flow that turns selected signal-list rows into observed evidence and derived verdict state.
 
 ## Ownership
 
@@ -13,7 +13,7 @@ Owns:
 - target normalization;
 - subscription planning;
 - execution orchestration;
-- verdict computation;
+- verdict state computation;
 - evidence persistence;
 - user-facing status.
 
@@ -42,9 +42,23 @@ The C runtime does not own test verdict policy.
 5. Python executes the selected test action.
 6. C runtime receives reports and updates live signal state.
 7. Python converts report updates into durable `SignalVerificationEvidence` records.
-8. Python computes a test verdict from evidence and timing policy.
+8. Python computes verdict state from evidence and timing policy.
 
-## PR4 - First auto verification flow
+For multi-IED runs, the source of truth for runtime health is the set of `session_snapshots`; any top-level runtime state should be treated only as a derived aggregate summary.
+
+The workflow should preserve the source `ExecutionContext` so the run remains reconstructable later.
+
+## Evidence immutability
+
+Evidence records should be append-only once created.
+
+Rules:
+- later report updates may create new evidence records or update aggregate summaries;
+- later report updates should not destructively overwrite the original evidence trail;
+- each evidence record must remain linked to source session, generation, report-control, and dataset identity;
+- a verdict may be recomputed from evidence + policy, but the original evidence remains intact.
+
+## PR4 - First auto evidence-driven flow
 
 The first auto flow should be the smallest end-to-end product loop:
 - a planned target set is armed;
@@ -56,11 +70,18 @@ The first auto flow should be the smallest end-to-end product loop:
 Required behavior:
 - the active session and plan must be visible before the trigger fires;
 - the runtime must keep waiting for confirmation until the allowed window expires or evidence arrives;
-- `confirmed` means the expected report path was observed;
-- `verified` means the confirmation arrived within the allowed window;
-- `timed_out` means no valid confirmation arrived in time;
-- `unconfirmed` means the path or evidence was insufficient even if some runtime activity existed;
-- `failed` means planning/runtime/evidence failed in a way that prevents a reliable verdict.
+- evidence status and verdict are distinct;
+- `observed` means the expected feedback path was seen;
+- `pass` means evidence satisfied timing, freshness, quality, and policy;
+- `late` means feedback was observed after the allowed window;
+- `timeout` means no valid confirmation arrived in time;
+- `stale` means the evidence source was not live enough to trust;
+- `invalid` means the evidence was malformed or not trustworthy;
+- `out_of_window` means the evidence was observed but failed timing policy;
+- `inconclusive` means evidence existed but was insufficient to decide;
+- `fail` means the overall verdict is negative;
+- `pending` is the state before enough evidence exists;
+- `aborted` means the operator or system stopped the workflow intentionally.
 
 The product layer should preserve the exact evidence trail used for the verdict.
 
@@ -88,26 +109,50 @@ Recovery hardening should make reconnect and stale handling boring and explicit:
 
 Recovery should remain a product-layer decision driven by runtime diagnostics, freshness, and session state.
 
-## Execution states
+## State taxonomy
 
-The product layer should expose explicit states rather than a single boolean:
+Do not collapse the following into one flat state field:
+
+### Workflow state
 
 - `draft`
 - `planned`
-- `connecting`
-- `discovering`
-- `subscribing`
+- `preparing`
 - `armed`
 - `running`
 - `awaiting_confirmation`
-- `confirmed`
-- `verified`
-- `stale`
-- `timed_out`
-- `unconfirmed`
-- `failed`
-- `aborted`
+- `completing`
 - `completed`
+- `aborted`
+- `failed`
+
+### Runtime/session state
+
+- `connecting`
+- `discovering`
+- `subscribing`
+- `reporting`
+- `reconnecting`
+- `degraded`
+- `closed`
+
+### Evidence status
+
+- `none`
+- `observed`
+- `stale`
+- `timeout`
+- `invalid`
+- `late`
+- `out_of_window`
+
+### Verdict state
+
+- `pending`
+- `pass`
+- `fail`
+- `inconclusive`
+- `aborted`
 
 ## State meaning
 
@@ -143,14 +188,6 @@ The simulated output or test action is active.
 
 The test action has fired and the system is waiting for report-based confirmation.
 
-### `confirmed`
-
-The expected IEC 61850 feedback was observed.
-
-### `verified`
-
-The feedback was observed inside the allowed timing window and is considered successful.
-
 ### `signal evidence`
 
 Evidence is a durable record, not a transient UI flag.
@@ -164,29 +201,20 @@ Each evidence record should preserve:
 - received timestamp;
 - timing window result;
 - freshness / stale context;
-- reason.
+- reason;
+- evidence status.
 
 Evidence must survive reconnect and stale transitions even when the live signal cache changes later.
 
-### `stale`
+## Step evidence accumulation
 
-The last known evidence exists, but the source session/report generation is no longer live.
+A verification step may accumulate multiple evidence records over time, including:
+- the first observed report;
+- a late report;
+- a stale or duplicate report;
+- a recovered report after reconnect.
 
-### `timed_out`
-
-No valid feedback arrived inside the allowed window.
-
-### `unconfirmed`
-
-A feedback path was expected, but evidence was insufficient or incomplete.
-
-### `failed`
-
-The workflow failed due to runtime, protocol, planning, or evidence error.
-
-### `aborted`
-
-The operator or system stopped the workflow intentionally.
+Step state should retain the evidence trail, not collapse it into one path-only field.
 
 ### `completed`
 
@@ -208,6 +236,21 @@ The workflow finished and the final verdict is stable.
 - Late or stale report updates must not rewrite a newer session generation.
 - Evidence must be reconstructable from runtime report updates and session provenance.
 - Verdicts must come from evidence and policy, not from UI convenience state.
+- `evidence_status` and `verdict_state` must remain separate and independently inspectable.
+- `ExecutionContext` must be carried with the run for later reconstruction.
+
+## Summary flow
+
+SignalListRow -> VerificationTarget -> SubscriptionPlan -> Runtime Session / Report Updates -> SignalVerificationEvidence -> Verdict -> UI/API
+
+Ownership:
+- SignalListRow: UI/persistence
+- VerificationTarget: Python/FastAPI product layer
+- SubscriptionPlan: Python/FastAPI product layer
+- Runtime Session / Report Updates: reusable IEC 61850 C runtime
+- SignalVerificationEvidence: Python/FastAPI product layer
+- Verdict: Python/FastAPI product layer
+- UI/API projection: Python/FastAPI product layer
 
 ## Runtime interaction points
 

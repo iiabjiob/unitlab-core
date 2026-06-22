@@ -2,7 +2,7 @@
 
 Status: draft product operating model for the Python/FastAPI layer above the reusable IEC 61850 C runtime.
 
-This document describes how the product should behave end-to-end when a user selects signals, requests verification, and waits for a verdict.
+This document describes how the product should behave end-to-end when a user selects signals, requests verification, and waits for evidence-driven verdict state.
 
 ## Core workflow
 
@@ -11,7 +11,7 @@ This document describes how the product should behave end-to-end when a user sel
 3. The planner groups targets into per-IED / per-RCB subscription plans.
 4. The runtime opens sessions, discovers where needed, subscribes, and waits for reports.
 5. The report stream is converted into signal/evidence state.
-6. The verdict engine marks the test as confirmed, verified, timed_out, failed, or stale.
+6. The verdict engine derives `pending`, `pass`, `fail`, `inconclusive`, or `aborted` from evidence, freshness, and policy.
 
 ## Ownership boundaries
 
@@ -26,7 +26,7 @@ This document describes how the product should behave end-to-end when a user sel
 
 - owns signal normalization;
 - owns subscription planning;
-- owns evidence and verdict models;
+- owns evidence and verdict-state models;
 - owns test-run state;
 - owns recovery policy above the reusable runtime;
 - owns persistence and API orchestration.
@@ -47,18 +47,47 @@ This document describes how the product should behave end-to-end when a user sel
 
 ## Product states
 
-The product should keep these states explicit:
+The product should keep these state axes explicit:
 
+### Workflow state
+
+- `draft`
 - `planned`
+- `preparing`
+- `armed`
+- `running`
+- `awaiting_confirmation`
+- `completing`
+- `completed`
+- `aborted`
+- `failed`
+
+### Runtime/session state
+
 - `connecting`
 - `discovering`
 - `subscribing`
 - `reporting`
-- `confirmed`
-- `verified`
+- `reconnecting`
+- `degraded`
+- `closed`
+
+### Evidence status
+
+- `none`
+- `observed`
 - `stale`
-- `timed_out`
-- `failed`
+- `timeout`
+- `invalid`
+- `late`
+- `out_of_window`
+
+### Verdict state
+
+- `pending`
+- `pass`
+- `fail`
+- `inconclusive`
 - `aborted`
 
 The runtime may use lower-level session and signal states internally, but the product layer should expose the higher-level state to the UI and API consumers.
@@ -70,6 +99,7 @@ The runtime may use lower-level session and signal states internally, but the pr
 - evidence must survive reconnect and stale transitions;
 - evidence must not be overwritten destructively by later updates;
 - verdicts must be explainable from stored evidence fields.
+- evidence status and verdict state must remain separate.
 
 ## Recovery rules
 

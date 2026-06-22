@@ -13,7 +13,10 @@ The C runtime provides:
 - report-control metadata;
 - session/connect/disconnect/reconnect primitives;
 - report ingestion and live signal freshness;
-- stable protocol references and diagnostics.
+- stable protocol references and diagnostics;
+- source generation protection;
+- report-health summaries;
+- low-level capability summaries for the discovered IEC 61850 model.
 
 ### Python/FastAPI responsibilities
 
@@ -23,7 +26,12 @@ The Python application provides:
 - subscription planning;
 - evidence generation;
 - verdict computation;
-- persistence and API orchestration.
+- persistence and API orchestration;
+- workflow state;
+- evidence status;
+- verdict state;
+- recovery policy;
+- operator-facing API status.
 
 ## Runtime objects
 
@@ -58,14 +66,22 @@ Required fields:
 - `signal_reference`;
 - `signal_path`;
 - `endpoint_id`;
-- `ied_name`;
-- `access_point_name`;
-- `logical_device_inst`;
-- `logical_node_name`;
 - `expected_feedback_path`;
 - `timeout_ms`;
 - `window_ms`;
 - optional source metadata from SCD or discovery.
+
+Top-level verification targets are protocol-neutral. Protocol-specific hints belong in `protocol_metadata`.
+For IEC 61850, the metadata may include:
+- `ied_name`;
+- `access_point_name`;
+- `logical_device_inst`;
+- `logical_node_name`;
+- `data_set_reference`;
+- `report_control_reference_hint`;
+- `fc`;
+- `do_name`;
+- `da_name`.
 
 The C runtime does not own this object, but it should be able to consume the endpoint / IED identity and report-control references that come out of the plan.
 
@@ -103,6 +119,8 @@ The C runtime should emit report updates with:
 
 The Python layer can then create evidence records and compute verdicts.
 
+The Python layer must not depend on raw MMS PDU or BER internals to make verdict decisions.
+
 ## Expected API shape
 
 The exact transport can be REST, queue, RPC, or direct service call, but the logical contract should remain stable.
@@ -125,11 +143,13 @@ Input:
 - signal-list selection;
 - discovery snapshot when available;
 - optional SCD-derived hints.
+- execution context.
 
 Output:
 - verification targets;
 - subscription plan;
 - uncovered items with reasons.
+- coverage summary.
 
 ### Session control service
 
@@ -184,6 +204,7 @@ Output:
 - Late or stale report updates must not overwrite the current live generation.
 - Report health and signal freshness must remain visible to Python.
 - Product verdict logic must not live inside the C runtime.
+- Product workflow state must remain in Python/FastAPI, not C.
 
 ## Current repository status
 

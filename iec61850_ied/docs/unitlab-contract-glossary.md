@@ -22,9 +22,11 @@ It should include:
 - source row identity;
 - `signal_id`;
 - `signal_path`;
-- endpoint / IED identity;
 - expected feedback path;
 - timeout / timing window policy.
+
+Top-level verification-target fields should be protocol-neutral.
+Protocol-specific hints belong in a `protocol_metadata` object.
 
 ### Signal path
 
@@ -56,13 +58,28 @@ The per-IED / per-RCB execution plan produced from verification targets.
 
 It tells the runtime what to connect to and what to enable.
 
+### Execution context
+
+The source inputs and policy versions used to produce a verification run.
+
+It should preserve:
+- project identity;
+- signal-list revision;
+- selected group identity;
+- discovery or SCD snapshot identity when available;
+- planner version;
+- runtime version;
+- policy version;
+- operator identity when available;
+- timestamps.
+
 ### Session
 
 The runtime-owned connection state for one endpoint/device identity.
 
-It includes desired state, live state, discovery snapshot, generation, diagnostics, and freshness summary.
+It includes desired state, live state, discovery snapshot, connection generation, diagnostics, and freshness summary.
 
-### Runtime generation
+### Connection generation
 
 A monotonically changing session generation token used to reject stale report updates from prior connections.
 
@@ -81,6 +98,19 @@ Typical values:
 - `stale`
 - `unknown`
 
+### Evidence status
+
+The observation state of a single evidence record.
+
+Typical values:
+- `none`
+- `observed`
+- `stale`
+- `timeout`
+- `invalid`
+- `late`
+- `out_of_window`
+
 ### Evidence
 
 A durable record that a report, signal update, or timing window observation occurred.
@@ -96,7 +126,37 @@ It binds:
 - the subscription plan used for execution;
 - session snapshots;
 - the durable evidence set;
-- the final verdict.
+- an optional runtime summary aggregate;
+- the final verdict state.
+
+### Workflow state
+
+The product-level execution lifecycle for a verification run.
+
+Typical values:
+- `draft`
+- `planned`
+- `preparing`
+- `armed`
+- `running`
+- `awaiting_confirmation`
+- `completing`
+- `completed`
+- `aborted`
+- `failed`
+
+### Runtime state
+
+The session lifecycle state returned by the reusable runtime.
+
+Typical values:
+- `connecting`
+- `discovering`
+- `subscribing`
+- `reporting`
+- `reconnecting`
+- `degraded`
+- `closed`
 
 ### Verification step
 
@@ -106,6 +166,13 @@ It remains traceable to:
 - one selected signal row;
 - one expected feedback path;
 - one runtime observation or timeout outcome.
+It may accumulate multiple evidence records over time.
+
+### Verification step state
+
+The lifecycle state for one executable verification step.
+
+It should remain separate from workflow, runtime, evidence, and verdict state.
 
 ### Recovery state
 
@@ -113,18 +180,24 @@ The observable product state while reconnect or recovery is in progress.
 
 It preserves:
 - desired work;
-- active generation;
+- active connection generation;
 - preserved evidence;
 - stale counts and diagnostics.
 
-### Verdict
+### Runtime summary
+
+An optional aggregate view of runtime health across one or more session snapshots.
+
+It should be derived from the underlying session snapshots rather than replace them.
+
+### Verdict state
 
 The product-level conclusion for a verification step or run, such as:
-- `confirmed`
-- `verified`
-- `timed_out`
-- `failed`
-- `stale`
+- `pending`
+- `pass`
+- `fail`
+- `inconclusive`
+- `aborted`
 
 ## Naming rules
 
@@ -133,11 +206,13 @@ The product-level conclusion for a verification step or run, such as:
 - Use `display_reference` only for operator-facing display.
 - Use `source_*` fields for provenance.
 - Use `snapshot_*` fields for discovery/session snapshots.
-- Use `generation` only for runtime generation tokens.
+- Use `connection_generation` for session generation tokens and `source_generation` for report provenance.
+- Use `evidence_status` for observed feedback state.
+- Use `verdict_state` for product-level decision state.
 
 ## Boundary rules
 
-- The reusable IEC 61850 runtime may emit `data_reference`, snapshot, generation, freshness, and diagnostics.
+- The reusable IEC 61850 runtime may emit `data_reference`, snapshot, connection_generation, freshness, and diagnostics.
 - The Python/FastAPI product layer owns `signal_path`, subscription planning, evidence, and verdicts.
 - Product-layer naming should stay protocol-independent where possible.
 

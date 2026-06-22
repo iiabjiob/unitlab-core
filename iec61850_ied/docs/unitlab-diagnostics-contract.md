@@ -86,6 +86,27 @@ Suggested categories:
 - `verdict`
 - `operator`
 
+## Stable reason codes
+
+Diagnostics used by the product layer should prefer a stable `code` or reason code from a known vocabulary.
+
+Suggested reason codes:
+- `no_matching_endpoint`
+- `no_matching_report_control`
+- `no_matching_dataset`
+- `discovery_failed`
+- `subscription_failed`
+- `report_timeout`
+- `stale_generation`
+- `report_out_of_order`
+- `report_gap`
+- `report_duplicate`
+- `quality_bad`
+- `evidence_out_of_window`
+- `runtime_degraded`
+
+Free text `message` and `details` are allowed, but they should supplement a stable code rather than replace it.
+
 ## Required behavior
 
 - Every failed or partial operation should leave a structured diagnostic.
@@ -93,6 +114,7 @@ Suggested categories:
 - Derived states like `stale` or `partial` must preserve the original diagnostic cause.
 - Old-generation report rejection should be diagnosable, not silent.
 - Uncovered planning targets should have a diagnostic reason, not just a missing plan entry.
+- UI-facing diagnostics should be able to map from stable codes to user messages without inspecting raw runtime internals.
 
 ## Severity
 
@@ -117,7 +139,7 @@ Diagnostics should feed, but not replace, runtime states:
 
 ## Evidence rules
 
-- Evidence must reference the originating diagnostic when a verdict is failed, timed out, or unconfirmed.
+- Evidence must reference the originating diagnostic when a verdict is failed, timed out, or otherwise does not satisfy the policy window.
 - Diagnostics should not be overwritten by a later successful update; they should remain part of the trace.
 - A successful recovery should add a new diagnostic/state transition rather than erasing the old one.
 
@@ -135,4 +157,3 @@ Diagnostics should feed, but not replace, runtime states:
 - `app/runtime/evidence.py`
 - `app/planning/subscriptions.py`
 - `app/planning/targets.py`
-

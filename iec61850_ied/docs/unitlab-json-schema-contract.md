@@ -26,8 +26,9 @@ These fields should appear consistently wherever applicable:
 - `id`
 - `session_id`
 - `endpoint_id`
-- `generation`
-- `state`
+- `workflow_state`
+- `runtime_state`
+- `verdict_state`
 - `status`
 - `reason`
 - `code`
@@ -47,18 +48,14 @@ Required:
 - `signal_reference`
 - `signal_path`
 - `endpoint_id`
-- `ied_name`
-- `access_point_name`
-- `logical_device_inst`
-- `logical_node_name`
 - `expected_feedback_path`
 - `timeout_ms`
 - `window_ms`
 
 Optional:
 - `source_row_index`
-- `data_set_reference`
-- `report_control_reference_hint`
+- `protocol`
+- `protocol_metadata`
 - `source_kind`
 - `source_reason`
 
@@ -69,6 +66,7 @@ Required:
 - `targets`
 - `groups`
 - `uncovered_targets`
+- `coverage`
 
 Group object required fields:
 - `group_id`
@@ -93,8 +91,8 @@ Uncovered object required fields:
 Required:
 - `session_id`
 - `endpoint_id`
-- `state`
-- `generation`
+- `runtime_state`
+- `connection_generation`
 - `discovery_status`
 - `subscription_status`
 - `report_health`
@@ -133,6 +131,7 @@ Optional:
 Required:
 - `evidence_id`
 - `signal_id`
+- `signal_path`
 - `expected_path`
 - `actual_report_path`
 - `source_ied`
@@ -142,15 +141,18 @@ Required:
 - `received_at`
 - `latency_ms`
 - `quality`
-- `freshness`
-- `verdict`
-- `reason`
+- `evidence_status`
+- `reason_code`
 
 Optional:
 - `source_generation`
+- `source_report_sequence_generation`
+- `source_report_sequence_number`
+- `source_report_sub_sequence_number`
 - `report_reason`
 - `signal_value`
 - `timestamp_summary`
+- `stale_reason`
 - `diagnostic_id`
 
 ### 6. `diagnostic`
@@ -167,7 +169,7 @@ Required:
 Optional:
 - `session_id`
 - `endpoint_id`
-- `generation`
+- `connection_generation`
 - `phase`
 - `report_control`
 - `data_set`
@@ -182,7 +184,7 @@ Required:
 - `occurred_at`
 - `session_id`
 - `endpoint_id`
-- `generation`
+- `connection_generation`
 - `payload`
 
 Optional:
@@ -192,9 +194,10 @@ Optional:
 
 - `session_id` should identify the product/runtime session, not the physical IED.
 - `endpoint_id` should identify the connection target, not the human display label.
-- `generation` should advance when transport/session ownership changes.
+- `runtime_state` should remain specific to the session lifecycle, not workflow or verdict state.
+- `connection_generation` should advance when transport/session ownership changes.
 - `signal_id` should stay stable across runtime refreshes.
-- `evidence_id` should be unique per observed confirmation record.
+- `evidence_id` should be unique per observed evidence record.
 - `diagnostic_id` should be unique per structured diagnostic.
 
 ## Error payload shape
@@ -220,4 +223,3 @@ Errors should use a stable envelope:
 - `app/runtime/events.py`
 - `app/runtime/evidence.py`
 - `app/planning/contracts.py`
-

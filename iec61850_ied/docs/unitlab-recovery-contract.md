@@ -11,7 +11,7 @@ This document defines how the product layer should react when an IEC 61850 sessi
 Owns:
 - recovery policy;
 - retry / reconnect decisions;
-- stale verdict policy;
+- stale evidence and verdict policy;
 - evidence preservation across reconnects;
 - user-visible degraded state.
 
@@ -47,6 +47,14 @@ When recovery is required, the product layer should:
 - request a new session generation if reconnect is performed;
 - mark previously live signals or evidence as stale when their generation is no longer valid;
 - suppress duplicate reconnect attempts for the same active session.
+
+If the recovery state is persisted or exposed, it should preserve desired work explicitly, such as:
+- `desired_subscription_plan_id`;
+- `desired_group_ids`;
+- `desired_report_controls`;
+- `desired_target_ids`;
+- `active_verification_run_id`;
+- `preserved_evidence_count`.
 
 ## Freshness rules
 

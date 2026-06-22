@@ -21,7 +21,7 @@ The C layer does not own:
 - signal-list UX;
 - verification target planning;
 - per-IED subscription grouping policy;
-- verdict/evidence policy;
+- evidence and verdict policy;
 - product-specific test orchestration.
 
 ### Python / FastAPI product layer
@@ -31,8 +31,11 @@ The Python application owns:
 - target normalization;
 - subscription planning;
 - reconciliation of desired test intent;
-- verdict/evidence generation;
+- evidence and verdict generation;
 - product-level API contracts and persistence.
+- workflow state;
+- execution context;
+- recovery policy;
 
 ## Planned product flow
 
@@ -41,7 +44,7 @@ The Python application owns:
 3. Python groups targets into per-IED / per-RCB subscription plans.
 4. Python asks the reusable IEC 61850 runtime to connect/discover/subscribe.
 5. Reports are mapped back into signal confirmation evidence.
-6. The test verdict is derived from evidence, timing, and freshness.
+6. The test verdict state is derived from evidence, timing, and freshness.
 
 ## Verification target contract
 
@@ -49,12 +52,19 @@ The Python layer should treat each selected row as a stable verification target 
 - `signal_id` or source row identity;
 - `signal_reference` from the signal list;
 - `signal_path` as the canonical stable path;
-- IEC 61850 endpoint identity;
-- logical device / logical node identity;
 - expected feedback path;
-- report/data-set hint if available;
 - timeout/window policy;
 - source row index or equivalent traceable identity.
+- protocol-neutral top-level fields.
+
+Protocol-specific metadata should live in `protocol_metadata`.
+For IEC 61850, that metadata may include:
+- endpoint identity;
+- logical device / logical node identity;
+- report/data-set hint if available;
+- `fc`;
+- `do_name`;
+- `da_name`.
 
 ### Required invariants
 
@@ -70,6 +80,7 @@ The Python planner should output a deterministic plan with:
 - chosen report-control candidate;
 - reason for the choice;
 - uncovered targets with explicit reasons.
+- explicit coverage summary.
 
 Suggested source labels:
 - `from SCD`
@@ -84,10 +95,11 @@ Suggested source labels:
 - fallback must be explicit and deterministic;
 - uncovered targets must not disappear;
 - planner must not execute MMS writes directly.
+- coverage must keep total, covered, uncovered, partially covered, group, and endpoint counts explicit.
 
 ## Evidence contract
 
-The Python layer should create an evidence record for each confirmed feedback path with:
+The Python layer should create an evidence record for each observed feedback path with:
 - target identity;
 - chosen endpoint / IED;
 - report control identifier;
@@ -95,10 +107,11 @@ The Python layer should create an evidence record for each confirmed feedback pa
 - received timestamp;
 - latency / timing window result;
 - freshness / stale status;
-- verdict;
+- evidence status;
 - reason.
 
 The evidence record should be reconstructable without relying on transient UI state.
+The verdict is derived separately from evidence and policy.
 
 ## Minimal data exchange with C
 
@@ -119,14 +132,14 @@ That means the next product-layer PRs should live in the FastAPI app repository 
 - `verification target` normalization;
 - `subscription plan` building;
 - `evidence` creation;
-- `verdict` computation.
+- `verdict state` computation.
 
 ## Recommended next slices in Python
 
 1. Signal-list row normalization into verification targets.
 2. Subscription planner from verification targets to per-IED groups.
 3. Evidence model and verdict states.
-4. First auto-confirmed test flow.
+4. First auto-observed test flow.
 5. Multi-IED group handling.
 
 ## Validation expectations
@@ -135,4 +148,3 @@ That means the next product-layer PRs should live in the FastAPI app repository 
 - Uncovered targets should remain visible.
 - No planner step should mutate the IEC 61850 core runtime directly.
 - C runtime tests should continue to cover discovery, session, report, freshness, and reconnect behavior independently of product planning.
-

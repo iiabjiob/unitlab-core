@@ -25,6 +25,7 @@ Request:
 - optional endpoint / IED context;
 - optional SCD/discovery hints;
 - optional timeout/window policy.
+- `execution_context` when available.
 
 Response:
 - `verification_target_normalization_result`;
@@ -40,12 +41,14 @@ Request:
 - `verification_targets[]`;
 - optional discovery snapshot;
 - optional SCD hints.
+- `execution_context`.
 
 Response:
 - `subscription_plan_result`;
 - `subscription_plan`;
 - `groups[]`;
 - `uncovered_targets[]`;
+- `coverage`;
 - planning diagnostics.
 
 ### 2. Runtime sessions
@@ -113,7 +116,7 @@ Response:
 - final `session_snapshot`;
 - diagnostics if cleanup was partial.
 
-### 3. Evidence and verdicts
+### 3. Evidence and verdict state
 
 #### `POST /api/v1/test-runs`
 
@@ -124,6 +127,7 @@ Request:
 - `subscription_plan`;
 - timing window policy;
 - optional operator metadata.
+- `execution_context`.
 
 Response:
 - `test_run_id`;
@@ -135,10 +139,12 @@ Response:
 Returns current run state.
 
 Response:
-- `execution_state`;
+- `workflow_state`;
+- `runtime_state` if an aggregate summary is available;
+- `runtime_summary` if the run spans multiple sessions;
+- `verdict_state`;
 - `signal_verification_evidence_set`;
 - `evidence[]`;
-- `verdict`;
 - `diagnostics`;
 - freshness / stale summary.
 

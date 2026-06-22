@@ -20,6 +20,8 @@ Output:
 - expected feedback path;
 - timeout/window policy.
 
+Target inputs should remain protocol-neutral at the top level. Protocol-specific details belong in metadata.
+
 Owner:
 - Python/FastAPI product layer.
 
@@ -34,6 +36,8 @@ Output:
 - per-IED / per-RCB subscription plan;
 - uncovered targets with reasons;
 - explicit source classification.
+
+Coverage, determinism, and uncovered-target visibility are part of the plan contract, not optional diagnostics.
 
 Owner:
 - Python/FastAPI product layer.
@@ -101,7 +105,7 @@ Input:
 - operator metadata.
 
 Output:
-- confirmed / verified / timed_out / failed / stale verdicts;
+- verdict states derived from evidence + policy;
 - explainable reason codes.
 
 Owner:
@@ -116,7 +120,9 @@ Owner:
 - Late frames from old generations must not corrupt current evidence.
 - Evidence must never erase the original report provenance.
 - Evidence capture must be reconstructable from runtime report updates plus persisted product state.
-- Verdicts must be computed from evidence, not from UI state.
+- Verdicts must be computed from evidence and policy, not from UI state.
+- Evidence status and verdict must remain separate concepts.
+- ExecutionContext must preserve the source inputs and policy versions for a run.
 
 ## Ownership summary
 
@@ -137,6 +143,19 @@ Owner:
 - persistence;
 - API orchestration;
 - UI-facing state projection.
+
+## End-to-end summary
+
+SignalListRow -> VerificationTarget -> SubscriptionPlan -> Runtime Session / Report Updates -> SignalVerificationEvidence -> Verdict -> UI/API
+
+Ownership:
+- SignalListRow: UI/persistence
+- VerificationTarget: Python/FastAPI product layer
+- SubscriptionPlan: Python/FastAPI product layer
+- Runtime Session / Report Updates: reusable IEC 61850 C runtime
+- SignalVerificationEvidence: Python/FastAPI product layer
+- Verdict: Python/FastAPI product layer
+- UI/API projection: Python/FastAPI product layer
 
 ## Related docs
 
