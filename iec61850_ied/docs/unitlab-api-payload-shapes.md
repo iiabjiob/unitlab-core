@@ -28,6 +28,36 @@ Optional fields:
 - `source_kind` (`scd`, `discovery`, `fallback`, `unknown`)
 - `source_reason`
 
+## 1.1 VerificationTargetNormalizationRequest
+
+Represents the product-layer request to convert selected signal-list rows into verification targets.
+
+Required fields:
+- `signal_ids`
+
+Optional fields:
+- `endpoint_context`
+- `scd_hints`
+- `discovery_hints`
+- `timeout_policy`
+- `window_policy`
+
+## 1.2 VerificationTargetNormalizationResult
+
+Represents the output of signal-list normalization before planning.
+
+Required fields:
+- `verification_targets`
+- `diagnostics`
+- `unresolved_rows`
+
+Each unresolved row should include:
+- `signal_id`
+- `reason`
+- `detail`
+
+Diagnostics should remain explicit and non-fatal when possible.
+
 Example:
 
 ```json
@@ -192,4 +222,3 @@ Optional fields:
 - `app/runtime/evidence.py`
 - `app/runtime/sessions.py`
 - `app/runtime/contracts.py`
-

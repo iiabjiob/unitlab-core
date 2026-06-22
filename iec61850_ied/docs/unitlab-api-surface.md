@@ -27,6 +27,7 @@ Request:
 - optional timeout/window policy.
 
 Response:
+- `verification_target_normalization_result`;
 - `verification_targets[]`;
 - normalization diagnostics;
 - source row identity.
@@ -210,4 +211,3 @@ Suggested response shape:
 - The API surface is intentionally thin.
 - Business logic should stay in service modules, not route handlers.
 - This document does not require any immediate C code change.
-
