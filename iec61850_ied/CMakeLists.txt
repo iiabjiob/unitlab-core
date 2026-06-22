@@ -159,6 +159,19 @@ add_test(
   COMMAND unitlab-iec61850-ied-model-plan-test
 )
 
+add_executable(unitlab-iec61850-ied-verification-target-test
+  src/app/planner/unitlab_verification_target.c
+  src/model/model_plan.c
+  tests/unitlab_verification_target_test.c
+)
+target_include_directories(unitlab-iec61850-ied-verification-target-test PRIVATE src)
+unitlab_iec61850_sim_warnings(unitlab-iec61850-ied-verification-target-test)
+
+add_test(
+  NAME unitlab-iec61850-ied-verification-target
+  COMMAND unitlab-iec61850-ied-verification-target-test
+)
+
 add_executable(unitlab-iec61850-ied-model-loader-test
   src/model/libiec61850_model_builder.c
   src/model/model_loader.c

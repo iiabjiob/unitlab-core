@@ -63,10 +63,11 @@ Rules:
 
 ### PR1 - Signal list to requested verification targets
 
-Status: not started.
+Status: in progress.
 
 Goal:
 - Convert selected signal-list rows into normalized verification targets.
+- The target normalization lives in the UnitLab planner layer, using the 61850 model plan only as source input.
 
 Must do:
 - normalize each selected row into a target object;
