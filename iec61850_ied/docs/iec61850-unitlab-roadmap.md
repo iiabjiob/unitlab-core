@@ -63,11 +63,11 @@ Rules:
 
 ### PR1 - Signal list to requested verification targets
 
-Status: in progress.
+Status: not started.
 
 Goal:
 - Convert selected signal-list rows into normalized verification targets.
-- The target normalization lives in the UnitLab planner layer, using the 61850 model plan only as source input.
+- This contract belongs to the Python/FastAPI product layer; the C repo only keeps reusable 61850 primitives and source model data.
 
 Must do:
 - normalize each selected row into a target object;
@@ -91,11 +91,11 @@ Done when:
 
 ### PR2 - Subscription planner
 
-Status: in progress.
+Status: not started.
 
 Goal:
 - Turn requested verification targets into per-IED / per-RCB subscription plans.
-- The current planner uses the 61850 model plan for exact dataset matches, with a safe single-report fallback and explicit uncovered targets.
+- This planner belongs to the Python/FastAPI product layer; the C repo only provides source model data and reusable 61850 primitives.
 
 Must do:
 - accept a list of requested targets;
