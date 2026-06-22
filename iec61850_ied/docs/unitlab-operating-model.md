@@ -39,6 +39,12 @@ This document describes how the product should behave end-to-end when a user sel
 - owns report ingestion and signal freshness;
 - owns protocol diagnostics and stable source identity.
 
+### Execution ownership decision
+
+- The product layer should use a backend-owned worker inside the Python/FastAPI process for long-lived verification orchestration.
+- A separate process is not required for the current slice and would add IPC, serialization, and duplicate ownership complexity without solving a known bottleneck yet.
+- Keep the process boundary available as a future deployment option if isolation or scale eventually requires it.
+
 ## Product states
 
 The product should keep these states explicit:
@@ -109,4 +115,3 @@ The runtime should return:
 - `docs/unitlab-recovery-contract.md`
 - `docs/unitlab-api-surface.md`
 - `docs/unitlab-api-payload-shapes.md`
-

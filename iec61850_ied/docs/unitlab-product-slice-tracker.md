@@ -7,6 +7,11 @@ This tracker is intentionally product-layer only:
 - the C runtime owns reusable IEC 61850 discovery/session/report primitives;
 - do not move product-specific heuristics into the C layer.
 
+Execution ownership:
+- use a backend-owned worker inside the Python/FastAPI process for long-lived verification orchestration;
+- do not introduce a separate process for the current slice;
+- revisit process isolation only if scale, crash containment, or socket ownership becomes a measured problem.
+
 ## Slice order
 
 The workflow should be built in this order:
@@ -156,4 +161,3 @@ Done when:
 - `docs/unitlab-verification-execution-contract.md`
 - `docs/unitlab-recovery-contract.md`
 - `docs/unitlab-diagnostics-contract.md`
-

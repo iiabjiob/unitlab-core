@@ -21,6 +21,11 @@ The goal here is the UnitLab product flow:
 - report-based confirmation that a simulated output actually reached the target IED;
 - verdicts based on real IEC 61850 feedback and timing windows.
 
+Execution model decision:
+- keep planning and orchestration in the Python/FastAPI backend;
+- run long-lived verification work through a backend-owned worker/task in the same process for now;
+- do not add a separate execution process until a measured bottleneck or isolation need justifies it.
+
 ## Product target
 
 The library and runtime must support this flow without engineer-heavy setup:
@@ -83,6 +88,7 @@ Must do:
 - include expected feedback path;
 - include timeout or verification window;
 - keep one signal-to-one target mapping explicit even when a later planner groups them.
+- allow the backend worker to consume normalized targets without rereading UI state.
 
 Must not do:
 - do not subscribe yet;

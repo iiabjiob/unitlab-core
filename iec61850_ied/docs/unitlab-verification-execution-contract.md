@@ -17,6 +17,11 @@ Owns:
 - evidence persistence;
 - user-facing status.
 
+Execution ownership:
+- use a backend-owned worker/task inside the Python/FastAPI process for long-lived verification orchestration;
+- keep the process boundary out of the product contract for now;
+- introduce a separate process only if a measured scale or isolation need appears later.
+
 ### C IEC 61850 runtime
 
 Provides:
@@ -173,4 +178,3 @@ Failure states should remain inspectable in the product API.
 - `app/runtime/verdicts.py`
 - `app/planning/targets.py`
 - `app/planning/subscriptions.py`
-
