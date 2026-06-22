@@ -107,6 +107,15 @@ static void runtime_set_error(UnitLabNativeSessionRuntime* runtime, const char* 
     copy_text(runtime->live.last_error_message, sizeof(runtime->live.last_error_message), error_message != NULL && error_message[0] != '\0' ? error_message : "");
 }
 
+static void runtime_set_report_health(UnitLabNativeSessionRuntime* runtime, const char* report_health, const char* report_health_reason)
+{
+    if (runtime == NULL) {
+        return;
+    }
+    copy_text(runtime->live.report_health, sizeof(runtime->live.report_health), report_health != NULL && report_health[0] != '\0' ? report_health : "unknown");
+    copy_text(runtime->live.report_health_reason, sizeof(runtime->live.report_health_reason), report_health_reason != NULL ? report_health_reason : "");
+}
+
 static void runtime_mark_signals_stale(
     UnitLabNativeSessionRuntime* runtime,
     const char* reason,
@@ -142,6 +151,7 @@ void unitlab_native_session_runtime_init(UnitLabNativeSessionRuntime* runtime)
     memset(runtime, 0, sizeof(*runtime));
     unitlab_native_signal_runtime_init(&runtime->signal_runtime);
     runtime->live.phase = UNITLAB_NATIVE_SESSION_PHASE_IDLE;
+    runtime_set_report_health(runtime, "unknown", NULL);
     runtime_set_error(runtime, "SESSION_RUNTIME_OK", NULL);
 }
 
@@ -187,6 +197,7 @@ void unitlab_native_session_runtime_set_identity(
         runtime->identity.endpoint_id,
         runtime->identity.device_key);
     unitlab_native_signal_runtime_set_current_connection_generation(&runtime->signal_runtime, runtime->identity.connection_generation);
+    runtime_set_report_health(runtime, "unknown", NULL);
     log_runtime_event(runtime, "session-configured", NULL);
 }
 
@@ -556,6 +567,7 @@ void unitlab_native_session_runtime_mark_report_received(
         runtime->live.subscribed = 1;
     }
     runtime->live.last_report_timestamp_ms = timestamp_ms != 0U ? timestamp_ms : session_runtime_now_ms();
+    runtime_set_report_health(runtime, "live", NULL);
     runtime->live.phase = UNITLAB_NATIVE_SESSION_PHASE_REPORTING;
     log_runtime_event(runtime, "report-received", NULL);
 }
@@ -684,6 +696,10 @@ void unitlab_native_session_runtime_mark_report_health_stale(
     if (report_health_reason != NULL && strcmp(report_health_reason, "stale-generation") == 0) {
         return;
     }
+    runtime_set_report_health(
+        runtime,
+        "degraded",
+        report_health_reason != NULL && report_health_reason[0] != '\0' ? report_health_reason : "report-degraded");
     runtime_mark_signals_stale(
         runtime,
         report_health_reason != NULL && report_health_reason[0] != '\0' ? report_health_reason : "report-degraded",
@@ -716,6 +732,7 @@ void unitlab_native_session_runtime_mark_degraded(
     runtime_mark_signals_stale(runtime, error_message != NULL && error_message[0] != '\0' ? error_message : error_code, session_runtime_now_ms(), 0U);
     runtime_set_error(runtime, error_code, error_message);
     runtime->live.phase = UNITLAB_NATIVE_SESSION_PHASE_DEGRADED;
+    runtime_set_report_health(runtime, "degraded", error_message != NULL && error_message[0] != '\0' ? error_message : error_code);
     log_runtime_event(runtime, "session-degraded", runtime->live.last_error_message);
 }
 
@@ -730,6 +747,7 @@ void unitlab_native_session_runtime_mark_failed(
     runtime_mark_signals_stale(runtime, error_message != NULL && error_message[0] != '\0' ? error_message : error_code, session_runtime_now_ms(), 0U);
     runtime_set_error(runtime, error_code, error_message);
     runtime->live.phase = UNITLAB_NATIVE_SESSION_PHASE_FAILED;
+    runtime_set_report_health(runtime, "degraded", error_message != NULL && error_message[0] != '\0' ? error_message : error_code);
     log_runtime_event(runtime, "session-failed", runtime->live.last_error_message);
 }
 
@@ -748,6 +766,7 @@ void unitlab_native_session_runtime_mark_closed(UnitLabNativeSessionRuntime* run
     runtime->live.subscribed = 0;
     runtime->live.reporting = 0;
     runtime->live.phase = UNITLAB_NATIVE_SESSION_PHASE_CLOSED;
+    runtime_set_report_health(runtime, "unknown", NULL);
     runtime_set_error(runtime, "SESSION_RUNTIME_OK", NULL);
     log_runtime_event(runtime, "session-closed", NULL);
 }
@@ -771,6 +790,8 @@ int unitlab_native_session_runtime_copy_status(
     copy_text(status->phase, sizeof(status->phase), unitlab_native_session_phase_label(runtime->live.phase));
     copy_text(status->last_error_code, sizeof(status->last_error_code), runtime->live.last_error_code);
     copy_text(status->last_error_message, sizeof(status->last_error_message), runtime->live.last_error_message);
+    copy_text(status->report_health, sizeof(status->report_health), runtime->live.report_health);
+    copy_text(status->report_health_reason, sizeof(status->report_health_reason), runtime->live.report_health_reason);
     status->associated = runtime->live.associated;
     status->discovered = runtime->live.discovered;
     status->subscribed = runtime->live.subscribed;

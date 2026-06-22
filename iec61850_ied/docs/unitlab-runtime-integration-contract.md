@@ -150,6 +150,12 @@ The session snapshot may also expose a compact signal-cache summary:
 
 If the runtime has an explicit subscription intent, the snapshot should also expose the selected RCB key used for recovery/re-subscription.
 
+If available, the session snapshot should also expose a compact report-health summary:
+- `unknown` while no valid report has been observed;
+- `live` when the report stream is healthy;
+- `degraded` when report health has been marked stale or unhealthy;
+- report-health reason text when degraded.
+
 ### Report stream / state update service
 
 Input:

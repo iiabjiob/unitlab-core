@@ -74,6 +74,8 @@ typedef struct {
     int subscribe_in_flight;
     int reconnect_in_flight;
     uint64_t last_report_timestamp_ms;
+    char report_health[16U];
+    char report_health_reason[64U];
     char last_error_code[64U];
     char last_error_message[256U];
 } UnitLabNativeSessionLiveState;
@@ -88,6 +90,8 @@ typedef struct {
     char phase[32U];
     char last_error_code[64U];
     char last_error_message[256U];
+    char report_health[16U];
+    char report_health_reason[64U];
     int associated;
     int discovered;
     int subscribed;

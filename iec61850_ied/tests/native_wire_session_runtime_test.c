@@ -183,6 +183,7 @@ static int test_report_health_staleness_updates_live_signal_cache(void)
     UnitLabNativeSignalUpdate signal_update;
     UnitLabNativeSignalChange signal_change;
     const UnitLabNativeSignalState* signal_state;
+    UnitLabNativeSessionStatus status;
 
     unitlab_native_session_manager_init(&manager);
     runtime = unitlab_native_session_manager_get_or_create(&manager, "session-c", "mms:IED3@127.0.0.1:102", "IED3");
@@ -209,6 +210,14 @@ static int test_report_health_staleness_updates_live_signal_cache(void)
     }
     unitlab_native_session_runtime_mark_report_health_stale(runtime, "missing-sequence");
     if (!expect_true(signal_state->freshness == UNITLAB_NATIVE_SIGNAL_FRESHNESS_STALE, "degraded report health did not stale signal")) {
+        unitlab_native_session_manager_reset(&manager);
+        return 0;
+    }
+    if (!expect_true(unitlab_native_session_runtime_copy_status(runtime, &status), "copy_status after health stale failed")) {
+        unitlab_native_session_manager_reset(&manager);
+        return 0;
+    }
+    if (!expect_true(strcmp(status.report_health, "degraded") == 0 && strcmp(status.report_health_reason, "missing-sequence") == 0, "report health summary not degraded")) {
         unitlab_native_session_manager_reset(&manager);
         return 0;
     }
@@ -260,6 +269,10 @@ int main(void)
             return 1;
         }
         if (!expect_true(status.desired_endpoint_connected == 1 && status.desired_discovery_available == 1 && status.desired_subscription_active == 1 && status.desired_reporting_active == 1, "desired state not recorded")) {
+            unitlab_native_session_manager_reset(&manager);
+            return 1;
+        }
+        if (!expect_true(strcmp(status.report_health, "unknown") == 0, "initial report health not unknown")) {
             unitlab_native_session_manager_reset(&manager);
             return 1;
         }
@@ -351,6 +364,10 @@ int main(void)
             unitlab_native_session_manager_reset(&manager);
             return 1;
         }
+        if (!expect_true(strcmp(status.report_health, "live") == 0, "report health not live after report receipt")) {
+            unitlab_native_session_manager_reset(&manager);
+            return 1;
+        }
     }
 
     {
@@ -398,6 +415,10 @@ int main(void)
             return 1;
         }
         if (!expect_true(status.signal_cache_count == 1U && status.live_signal_count == 0U && status.stale_signal_count == 1U && status.unknown_signal_count == 0U, "stale signal cache summary incorrect")) {
+            unitlab_native_session_manager_reset(&manager);
+            return 1;
+        }
+        if (!expect_true(strcmp(status.report_health, "unknown") == 0, "closed session report health not reset")) {
             unitlab_native_session_manager_reset(&manager);
             return 1;
         }
