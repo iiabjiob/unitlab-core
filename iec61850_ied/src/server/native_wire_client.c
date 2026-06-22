@@ -145,7 +145,7 @@ static void emit_discovered_model_summary(const UnitLabNativeClientSessionState*
         }
     }
     printf(
-        "native-wire-client: model-summary phase=%s domain=%s logical-devices=%zu logical-nodes=%zu data-names=%zu typed-data-names=%zu data-components=%zu typed-data-components=%zu typed-data-nodes=%zu leaf-refs=%zu datasets=%zu dataset-members=%zu brcbs=%zu last-report-entries=%zu last-report-dataRefs=%zu last-report-values=%zu last-report-reasons=%zu last-report-matched-dataRefs=%zu last-report-dataset-mismatches=%zu last-report-missing-values=%zu last-report-extra-values=%zu last-report-missing-reasons=%zu last-report-extra-reasons=%zu last-report-unsupported-values=%zu last-report-rptId=%s last-report-datSet=%s\n",
+        "native-wire-client: model-summary phase=%s domain=%s logical-devices=%zu logical-nodes=%zu data-names=%zu typed-data-names=%zu data-components=%zu typed-data-components=%zu typed-data-nodes=%zu typed-leaf-nodes=%zu leaf-refs=%zu datasets=%zu dataset-members=%zu brcbs=%zu gva-success-count=%zu gva-failed-count=%zu unsupported-type-count=%zu skipped-branch-count=%zu max-depth-seen=%zu array-count=%zu quality-like-count=%zu timestamp-like-count=%zu last-report-entries=%zu last-report-dataRefs=%zu last-report-values=%zu last-report-reasons=%zu last-report-matched-dataRefs=%zu last-report-dataset-mismatches=%zu last-report-missing-values=%zu last-report-extra-values=%zu last-report-missing-reasons=%zu last-report-extra-reasons=%zu last-report-unsupported-values=%zu last-report-rptId=%s last-report-datSet=%s\n",
         phase != NULL ? phase : "snapshot",
         session->discovered_model.domain[0] != '\0' ? session->discovered_model.domain : "<none>",
         session->discovered_model.logical_device_count,
@@ -155,10 +155,19 @@ static void emit_discovered_model_summary(const UnitLabNativeClientSessionState*
         session->discovered_model.data_component_count,
         typed_data_component_count,
         session->discovered_model.typed_data_node_count,
+        session->discovered_model.typed_leaf_count,
         session->discovered_model.leaf_ref_count,
         session->discovered_model.data_set_count,
         session->discovered_model.data_set_member_count,
         session->discovered_model.brcb_count,
+        session->discovered_model.gva_success_count,
+        session->discovered_model.gva_failed_count,
+        session->discovered_model.unsupported_type_count,
+        session->discovered_model.skipped_branch_count,
+        session->discovered_model.max_depth_seen,
+        session->discovered_model.array_count,
+        session->discovered_model.quality_like_count,
+        session->discovered_model.timestamp_like_count,
         session->last_report_entry_count,
         session->discovered_model.last_report_data_ref_count,
         session->discovered_model.last_report_value_count,

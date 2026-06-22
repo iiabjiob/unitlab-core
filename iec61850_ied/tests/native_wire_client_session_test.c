@@ -145,14 +145,30 @@ static const uint8_t exact_health_gva_response_apdu[] = {
     0x74U, 0xA1U, 0x02U, 0x91U, 0x00U
 };
 
-static int discovery_harness_attributes_step_exact_health_response(
+static const uint8_t unsupported_health_gva_response_apdu[] = {
+    0x61U, 0x39U, 0x30U, 0x37U, 0x02U, 0x01U, 0x03U, 0xA0U, 0x32U, 0xA1U, 0x30U, 0x02U, 0x02U, 0x00U, 0x9AU, 0xA6U, 0x2AU,
+    0xA2U, 0x25U, 0xA2U, 0x23U, 0xA1U, 0x21U, 0x30U, 0x0CU, 0x80U, 0x05U, 0x73U, 0x74U, 0x56U, 0x61U, 0x6CU, 0xA1U, 0x03U,
+    0x85U, 0x01U, 0x08U, 0x30U, 0x08U, 0x80U, 0x01U, 0x71U, 0xA1U, 0x03U, 0x8FU, 0x01U, 0xF3U, 0x30U, 0x07U, 0x80U, 0x01U,
+    0x74U, 0xA1U, 0x02U, 0x91U, 0x00U
+};
+
+static const uint8_t array_health_gva_response_apdu[] = {
+    0x61U, 0x39U, 0x30U, 0x37U, 0x02U, 0x01U, 0x03U, 0xA0U, 0x32U, 0xA1U, 0x30U, 0x02U, 0x02U, 0x00U, 0x9AU, 0xA6U, 0x2AU,
+    0xA0U, 0x25U, 0xA2U, 0x23U, 0xA1U, 0x21U, 0x30U, 0x0CU, 0x80U, 0x05U, 0x73U, 0x74U, 0x56U, 0x61U, 0x6CU, 0xA1U, 0x03U,
+    0x85U, 0x01U, 0x08U, 0x30U, 0x08U, 0x80U, 0x01U, 0x71U, 0xA1U, 0x03U, 0x84U, 0x01U, 0xF3U, 0x30U, 0x07U, 0x80U, 0x01U,
+    0x74U, 0xA1U, 0x02U, 0x91U, 0x00U
+};
+
+static int discovery_harness_attributes_step_from_apdu(
     UnitLabNativeClientSessionState* session,
     const UnitLabNativeDiscoveryIo* io,
     const char* label,
     const char* domain_id,
     const char* item_id,
     uint32_t invoke_id,
-    int named_variable_list)
+    int named_variable_list,
+    const uint8_t* apdu,
+    size_t apdu_length)
 {
     UnitLabMmsPdu pdu;
     UnitLabMmsDiagnostic pdu_diagnostic;
@@ -166,13 +182,50 @@ static int discovery_harness_attributes_step_exact_health_response(
     (void)named_variable_list;
     unitlab_mms_diagnostic_clear(&pdu_diagnostic);
     unitlab_mms_pdu_init(&pdu);
-    if (!unitlab_mms_pdu_decode(&pdu, exact_health_gva_response_apdu, sizeof(exact_health_gva_response_apdu), &consumed_length, &pdu_diagnostic)) {
+    if (!unitlab_mms_pdu_decode(&pdu, apdu, apdu_length, &consumed_length, &pdu_diagnostic)) {
         return 0;
     }
+    (void)consumed_length;
     if (!unitlab_mms_build_wire_frame_from_pdu(&pdu, io->scratch, io->scratch_length, io->response, io->response_length, io->encoded_response_length, io->diagnostic)) {
         return 0;
     }
     return 1;
+}
+
+static int discovery_harness_attributes_step_exact_health_response(
+    UnitLabNativeClientSessionState* session,
+    const UnitLabNativeDiscoveryIo* io,
+    const char* label,
+    const char* domain_id,
+    const char* item_id,
+    uint32_t invoke_id,
+    int named_variable_list)
+{
+    return discovery_harness_attributes_step_from_apdu(session, io, label, domain_id, item_id, invoke_id, named_variable_list, exact_health_gva_response_apdu, sizeof(exact_health_gva_response_apdu));
+}
+
+static int discovery_harness_attributes_step_unsupported_health_response(
+    UnitLabNativeClientSessionState* session,
+    const UnitLabNativeDiscoveryIo* io,
+    const char* label,
+    const char* domain_id,
+    const char* item_id,
+    uint32_t invoke_id,
+    int named_variable_list)
+{
+    return discovery_harness_attributes_step_from_apdu(session, io, label, domain_id, item_id, invoke_id, named_variable_list, unsupported_health_gva_response_apdu, sizeof(unsupported_health_gva_response_apdu));
+}
+
+static int discovery_harness_attributes_step_array_health_response(
+    UnitLabNativeClientSessionState* session,
+    const UnitLabNativeDiscoveryIo* io,
+    const char* label,
+    const char* domain_id,
+    const char* item_id,
+    uint32_t invoke_id,
+    int named_variable_list)
+{
+    return discovery_harness_attributes_step_from_apdu(session, io, label, domain_id, item_id, invoke_id, named_variable_list, array_health_gva_response_apdu, sizeof(array_health_gva_response_apdu));
 }
 
 static void discovery_harness_emit_model_summary(const UnitLabNativeClientSessionState* session, const char* phase)
@@ -594,6 +647,388 @@ static int test_fixture_backed_discover_sequence_handles_exact_health_gva_respon
     passed &= expect_true(unitlab_native_client_session_leaf_ref_exists(&session, "PROT/A50gPTOC2$ST$Health$stVal"), "expected exact Health stVal leaf ref");
     passed &= expect_true(unitlab_native_client_session_leaf_ref_exists(&session, "PROT/A50gPTOC2$ST$Health$q"), "expected exact Health q leaf ref");
     passed &= expect_true(unitlab_native_client_session_leaf_ref_exists(&session, "PROT/A50gPTOC2$ST$Health$t"), "expected exact Health t leaf ref");
+
+    unitlab_mms_server_runtime_stop(&harness.runtime, &harness.diagnostic);
+    unitlab_free_ied_model_plan(&harness.plan);
+    return passed;
+}
+
+static int test_fixture_backed_discover_sequence_handles_nested_structure_gva_response(void)
+{
+    DiscoveryFixtureHarness harness;
+    UnitLabNativeClientSessionState session;
+    UnitLabNativeDiscoveryIo io;
+    UnitLabIedFixtureDataSet data_sets[1U];
+    UnitLabIedFixtureSignal signals[1U];
+    UnitLabIedFixtureModel fixture;
+    uint32_t next_invoke_id = 0U;
+    const UnitLabNativeDiscoveredTypedDataNode* nested_node = NULL;
+    int passed = 1;
+
+    memset(&harness, 0, sizeof(harness));
+    memset(&session, 0, sizeof(session));
+    memset(&fixture, 0, sizeof(fixture));
+    memset(data_sets, 0, sizeof(data_sets));
+    memset(signals, 0, sizeof(signals));
+
+    signals[0] = (UnitLabIedFixtureSignal){
+        .data_set_index = 0U,
+        .reference = "PROT/MMXU1.PhV.phsA.cVal.mag.f[MX]",
+        .kind = "FCDA",
+        .component = "",
+        .fc = "MX",
+        .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_REAL,
+        .initial_value = "1.0",
+    };
+    data_sets[0U] = (UnitLabIedFixtureDataSet){
+        .reference = "KINTE13LVC01/P1/PROT/MMXU1.dsPhV",
+        .signal_count = 1U,
+        .signals = signals,
+    };
+    fixture = (UnitLabIedFixtureModel){
+        .device_count = 1U,
+        .ied_name = "KINTE13LVC01",
+        .access_point_name = "P1",
+        .data_set_count = 1U,
+        .data_sets = data_sets,
+        .report_count = 0U,
+        .reports = harness.reports,
+        .signal_count = 1U,
+    };
+    if (!expect_true(unitlab_build_ied_model_plan(&fixture, &harness.plan, (char[256U]){0}, 256U) == 1, "expected nested structure discovery plan to build")) {
+        return 0;
+    }
+    unitlab_mms_server_runtime_init(&harness.runtime);
+    if (!expect_true(unitlab_mms_server_runtime_apply_model_plan(&harness.runtime, &harness.plan) == 1, "expected nested structure discovery plan to apply")) {
+        unitlab_free_ied_model_plan(&harness.plan);
+        return 0;
+    }
+    harness.config.bind_address = "127.0.0.1";
+    harness.config.port = 15124;
+    if (!expect_true(unitlab_mms_server_runtime_prepare(&harness.runtime, &harness.config, &harness.diagnostic) == 1, "expected nested structure discovery prepare to succeed")) {
+        unitlab_free_ied_model_plan(&harness.plan);
+        return 0;
+    }
+    if (!expect_true(unitlab_mms_server_runtime_start(&harness.runtime, &harness.diagnostic) == 1, "expected nested structure discovery start to succeed")) {
+        unitlab_free_ied_model_plan(&harness.plan);
+        return 0;
+    }
+    if (!expect_true(unitlab_mms_session_begin_association(&harness.runtime.session, &harness.diagnostic) == 1, "expected nested structure discovery session begin to succeed")) {
+        unitlab_free_ied_model_plan(&harness.plan);
+        return 0;
+    }
+    if (!expect_true(unitlab_mms_session_complete_association(&harness.runtime.session, 1U, &harness.diagnostic) == 1, "expected nested structure discovery session complete to succeed")) {
+        unitlab_free_ied_model_plan(&harness.plan);
+        return 0;
+    }
+
+    io.data_fd = -1;
+    io.scratch = harness.scratch;
+    io.scratch_length = sizeof(harness.scratch);
+    io.request = harness.scratch;
+    io.request_length = sizeof(harness.scratch);
+    io.response = harness.response;
+    io.response_length = sizeof(harness.response);
+    io.encoded_response_length = &harness.response_length;
+    io.text_buffer = (uint8_t[512U]){0};
+    io.text_buffer_length = 512U;
+    io.diagnostic = &harness.diagnostic;
+    io.get_name_list_step = discovery_harness_get_name_list_step;
+    io.read_step = discovery_harness_read_step;
+    io.attributes_step = discovery_harness_attributes_step;
+    io.emit_model_summary = discovery_harness_emit_model_summary;
+
+    harness.response_capacity = sizeof(harness.response);
+    g_discovery_harness = &harness;
+    passed &= expect_true(unitlab_native_client_run_discover_sequence(&session, &io, "PROT", 100U, &next_invoke_id) == 1, "expected nested structure discovery sequence to succeed");
+    g_discovery_harness = NULL;
+
+    passed &= expect_true(session.discovered_model.gva_success_count >= 1U, "expected nested structure GVA success count");
+    passed &= expect_true(session.discovered_model.max_depth_seen >= 3U, "expected nested structure max depth");
+    passed &= expect_true(session.discovered_model.typed_leaf_count >= 1U, "expected nested structure typed leaf count");
+    passed &= expect_true(session.discovered_model.unsupported_type_count == 0U, "expected nested structure to avoid unsupported types");
+    for (size_t index = 0U; index < session.discovered_typed_data_node_count; index++) {
+        const UnitLabNativeDiscoveredTypedDataNode* node = unitlab_native_client_session_typed_data_node_at(&session, index);
+        if (node == NULL) {
+            continue;
+        }
+        if (strstr(node->request_item, "cVal.mag.f") != NULL) {
+            nested_node = node;
+            break;
+        }
+    }
+    passed &= expect_true(nested_node != NULL, "expected nested structure leaf node to be present");
+    if (nested_node != NULL) {
+        passed &= expect_true(strcmp(nested_node->node_kind, "leaf") == 0, "expected nested structure leaf node kind");
+        passed &= expect_true(strcmp(nested_node->decode_status, "ok") == 0, "expected nested structure leaf decode status");
+        passed &= expect_true(nested_node->supported == 1, "expected nested structure leaf to be supported");
+        passed &= expect_true(nested_node->depth >= 3U, "expected nested structure leaf depth");
+        passed &= expect_true(unitlab_native_client_session_leaf_ref_exists(&session, nested_node->mms_reference), "expected nested structure leaf ref");
+    }
+
+    unitlab_mms_server_runtime_stop(&harness.runtime, &harness.diagnostic);
+    unitlab_free_ied_model_plan(&harness.plan);
+    return passed;
+}
+
+static int test_fixture_backed_discover_sequence_skips_unsupported_gva_type(void)
+{
+    DiscoveryFixtureHarness harness;
+    UnitLabNativeClientSessionState session;
+    UnitLabNativeDiscoveryIo io;
+    UnitLabIedFixtureDataSet data_sets[1U];
+    UnitLabIedFixtureSignal signals[3U];
+    UnitLabIedFixtureModel fixture;
+    uint32_t next_invoke_id = 0U;
+    const UnitLabNativeDiscoveredTypedDataNode* unsupported_node = NULL;
+    int passed = 1;
+
+    memset(&harness, 0, sizeof(harness));
+    memset(&session, 0, sizeof(session));
+    memset(&fixture, 0, sizeof(fixture));
+    memset(data_sets, 0, sizeof(data_sets));
+    memset(signals, 0, sizeof(signals));
+
+    signals[0] = (UnitLabIedFixtureSignal){
+        .data_set_index = 0U,
+        .reference = "PROT/A50gPTOC2.Health.stVal[ST]",
+        .kind = "FCDA",
+        .component = "",
+        .fc = "ST",
+        .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER,
+        .initial_value = "1",
+    };
+    signals[1] = (UnitLabIedFixtureSignal){
+        .data_set_index = 1U,
+        .reference = "PROT/A50gPTOC2.Health.q[ST]",
+        .kind = "FCDA",
+        .component = "",
+        .fc = "ST",
+        .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER,
+        .initial_value = "0",
+    };
+    signals[2] = (UnitLabIedFixtureSignal){
+        .data_set_index = 2U,
+        .reference = "PROT/A50gPTOC2.Health.t[ST]",
+        .kind = "FCDA",
+        .component = "",
+        .fc = "ST",
+        .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_STRING,
+        .initial_value = "2026-06-20T00:00:00Z",
+    };
+    data_sets[0U] = (UnitLabIedFixtureDataSet){
+        .reference = "KINTE13LVC01/P1/PROT/A50gPTOC2.dsHealth",
+        .signal_count = 3U,
+        .signals = signals,
+    };
+    fixture = (UnitLabIedFixtureModel){
+        .device_count = 1U,
+        .ied_name = "KINTE13LVC01",
+        .access_point_name = "P1",
+        .data_set_count = 1U,
+        .data_sets = data_sets,
+        .report_count = 0U,
+        .reports = harness.reports,
+        .signal_count = 3U,
+    };
+    if (!expect_true(unitlab_build_ied_model_plan(&fixture, &harness.plan, (char[256U]){0}, 256U) == 1, "expected unsupported-type discovery plan to build")) {
+        return 0;
+    }
+    unitlab_mms_server_runtime_init(&harness.runtime);
+    if (!expect_true(unitlab_mms_server_runtime_apply_model_plan(&harness.runtime, &harness.plan) == 1, "expected unsupported-type discovery plan to apply")) {
+        unitlab_free_ied_model_plan(&harness.plan);
+        return 0;
+    }
+    harness.config.bind_address = "127.0.0.1";
+    harness.config.port = 15125;
+    if (!expect_true(unitlab_mms_server_runtime_prepare(&harness.runtime, &harness.config, &harness.diagnostic) == 1, "expected unsupported-type discovery prepare to succeed")) {
+        unitlab_free_ied_model_plan(&harness.plan);
+        return 0;
+    }
+    if (!expect_true(unitlab_mms_server_runtime_start(&harness.runtime, &harness.diagnostic) == 1, "expected unsupported-type discovery start to succeed")) {
+        unitlab_free_ied_model_plan(&harness.plan);
+        return 0;
+    }
+    if (!expect_true(unitlab_mms_session_begin_association(&harness.runtime.session, &harness.diagnostic) == 1, "expected unsupported-type discovery session begin to succeed")) {
+        unitlab_free_ied_model_plan(&harness.plan);
+        return 0;
+    }
+    if (!expect_true(unitlab_mms_session_complete_association(&harness.runtime.session, 1U, &harness.diagnostic) == 1, "expected unsupported-type discovery session complete to succeed")) {
+        unitlab_free_ied_model_plan(&harness.plan);
+        return 0;
+    }
+
+    io.data_fd = -1;
+    io.scratch = harness.scratch;
+    io.scratch_length = sizeof(harness.scratch);
+    io.request = harness.scratch;
+    io.request_length = sizeof(harness.scratch);
+    io.response = harness.response;
+    io.response_length = sizeof(harness.response);
+    io.encoded_response_length = &harness.response_length;
+    io.text_buffer = (uint8_t[512U]){0};
+    io.text_buffer_length = 512U;
+    io.diagnostic = &harness.diagnostic;
+    io.get_name_list_step = discovery_harness_get_name_list_step;
+    io.read_step = discovery_harness_read_step;
+    io.attributes_step = discovery_harness_attributes_step_unsupported_health_response;
+    io.emit_model_summary = discovery_harness_emit_model_summary;
+
+    harness.response_capacity = sizeof(harness.response);
+    g_discovery_harness = &harness;
+    passed &= expect_true(unitlab_native_client_run_discover_sequence(&session, &io, "PROT", 100U, &next_invoke_id) == 1, "expected unsupported-type discovery sequence to succeed");
+    g_discovery_harness = NULL;
+
+    passed &= expect_true(session.discovered_model.unsupported_type_count >= 1U, "expected unsupported type counter");
+    passed &= expect_true(session.discovered_model.gva_failed_count == 0U, "expected unsupported type discovery to stay best-effort");
+    for (size_t index = 0U; index < session.discovered_typed_data_node_count; index++) {
+        const UnitLabNativeDiscoveredTypedDataNode* node = unitlab_native_client_session_typed_data_node_at(&session, index);
+        if (node == NULL) {
+            continue;
+        }
+        if (strcmp(node->request_item, "Health.q") == 0) {
+            unsupported_node = node;
+            break;
+        }
+    }
+    passed &= expect_true(unsupported_node != NULL, "expected unsupported q node to be present");
+    if (unsupported_node != NULL) {
+        passed &= expect_true(strcmp(unsupported_node->decode_status, "unsupported") == 0, "expected unsupported q decode status");
+        passed &= expect_true(unsupported_node->supported == 0, "expected unsupported q flag");
+    }
+    passed &= expect_true(unitlab_native_client_session_leaf_ref_exists(&session, "PROT/A50gPTOC2$ST$Health$q"), "expected unsupported q leaf ref");
+
+    unitlab_mms_server_runtime_stop(&harness.runtime, &harness.diagnostic);
+    unitlab_free_ied_model_plan(&harness.plan);
+    return passed;
+}
+
+static int test_fixture_backed_discover_sequence_handles_array_gva_response(void)
+{
+    DiscoveryFixtureHarness harness;
+    UnitLabNativeClientSessionState session;
+    UnitLabNativeDiscoveryIo io;
+    UnitLabIedFixtureDataSet data_sets[1U];
+    UnitLabIedFixtureSignal signals[3U];
+    UnitLabIedFixtureModel fixture;
+    uint32_t next_invoke_id = 0U;
+    const UnitLabNativeDiscoveredTypedDataNode* array_root = NULL;
+    int passed = 1;
+
+    memset(&harness, 0, sizeof(harness));
+    memset(&session, 0, sizeof(session));
+    memset(&fixture, 0, sizeof(fixture));
+    memset(data_sets, 0, sizeof(data_sets));
+    memset(signals, 0, sizeof(signals));
+
+    signals[0] = (UnitLabIedFixtureSignal){
+        .data_set_index = 0U,
+        .reference = "PROT/A50gPTOC2.Health.stVal[ST]",
+        .kind = "FCDA",
+        .component = "",
+        .fc = "ST",
+        .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER,
+        .initial_value = "1",
+    };
+    signals[1] = (UnitLabIedFixtureSignal){
+        .data_set_index = 1U,
+        .reference = "PROT/A50gPTOC2.Health.q[ST]",
+        .kind = "FCDA",
+        .component = "",
+        .fc = "ST",
+        .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER,
+        .initial_value = "0",
+    };
+    signals[2] = (UnitLabIedFixtureSignal){
+        .data_set_index = 2U,
+        .reference = "PROT/A50gPTOC2.Health.t[ST]",
+        .kind = "FCDA",
+        .component = "",
+        .fc = "ST",
+        .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_STRING,
+        .initial_value = "2026-06-20T00:00:00Z",
+    };
+    data_sets[0U] = (UnitLabIedFixtureDataSet){
+        .reference = "KINTE13LVC01/P1/PROT/A50gPTOC2.dsHealth",
+        .signal_count = 3U,
+        .signals = signals,
+    };
+    fixture = (UnitLabIedFixtureModel){
+        .device_count = 1U,
+        .ied_name = "KINTE13LVC01",
+        .access_point_name = "P1",
+        .data_set_count = 1U,
+        .data_sets = data_sets,
+        .report_count = 0U,
+        .reports = harness.reports,
+        .signal_count = 3U,
+    };
+    if (!expect_true(unitlab_build_ied_model_plan(&fixture, &harness.plan, (char[256U]){0}, 256U) == 1, "expected array discovery plan to build")) {
+        return 0;
+    }
+    unitlab_mms_server_runtime_init(&harness.runtime);
+    if (!expect_true(unitlab_mms_server_runtime_apply_model_plan(&harness.runtime, &harness.plan) == 1, "expected array discovery plan to apply")) {
+        unitlab_free_ied_model_plan(&harness.plan);
+        return 0;
+    }
+    harness.config.bind_address = "127.0.0.1";
+    harness.config.port = 15126;
+    if (!expect_true(unitlab_mms_server_runtime_prepare(&harness.runtime, &harness.config, &harness.diagnostic) == 1, "expected array discovery prepare to succeed")) {
+        unitlab_free_ied_model_plan(&harness.plan);
+        return 0;
+    }
+    if (!expect_true(unitlab_mms_server_runtime_start(&harness.runtime, &harness.diagnostic) == 1, "expected array discovery start to succeed")) {
+        unitlab_free_ied_model_plan(&harness.plan);
+        return 0;
+    }
+    if (!expect_true(unitlab_mms_session_begin_association(&harness.runtime.session, &harness.diagnostic) == 1, "expected array discovery session begin to succeed")) {
+        unitlab_free_ied_model_plan(&harness.plan);
+        return 0;
+    }
+    if (!expect_true(unitlab_mms_session_complete_association(&harness.runtime.session, 1U, &harness.diagnostic) == 1, "expected array discovery session complete to succeed")) {
+        unitlab_free_ied_model_plan(&harness.plan);
+        return 0;
+    }
+
+    io.data_fd = -1;
+    io.scratch = harness.scratch;
+    io.scratch_length = sizeof(harness.scratch);
+    io.request = harness.scratch;
+    io.request_length = sizeof(harness.scratch);
+    io.response = harness.response;
+    io.response_length = sizeof(harness.response);
+    io.encoded_response_length = &harness.response_length;
+    io.text_buffer = (uint8_t[512U]){0};
+    io.text_buffer_length = 512U;
+    io.diagnostic = &harness.diagnostic;
+    io.get_name_list_step = discovery_harness_get_name_list_step;
+    io.read_step = discovery_harness_read_step;
+    io.attributes_step = discovery_harness_attributes_step_unsupported_health_response;
+    io.emit_model_summary = discovery_harness_emit_model_summary;
+
+    harness.response_capacity = sizeof(harness.response);
+    g_discovery_harness = &harness;
+    passed &= expect_true(unitlab_native_client_run_discover_sequence(&session, &io, "PROT", 100U, &next_invoke_id) == 1, "expected unsupported-type discovery sequence to succeed");
+    g_discovery_harness = NULL;
+
+    passed &= expect_true(session.discovered_model.unsupported_type_count >= 1U, "expected unsupported type counter");
+    passed &= expect_true(session.discovered_model.gva_failed_count >= 1U, "expected unsupported discovery to record a failure");
+    for (size_t index = 0U; index < session.discovered_typed_data_node_count; index++) {
+        const UnitLabNativeDiscoveredTypedDataNode* node = unitlab_native_client_session_typed_data_node_at(&session, index);
+        if (node == NULL) {
+            continue;
+        }
+        if (strstr(node->request_item, "Health.q") != NULL) {
+            unsupported_node = node;
+            break;
+        }
+    }
+    passed &= expect_true(unsupported_node != NULL, "expected unsupported health child node to be present");
+    if (unsupported_node != NULL) {
+        passed &= expect_true(strcmp(unsupported_node->decode_status, "unsupported") == 0, "expected unsupported node decode status");
+        passed &= expect_true(unsupported_node->supported == 0, "expected unsupported node to be marked unsupported");
+        passed &= expect_true(unitlab_native_client_session_leaf_ref_exists(&session, unsupported_node->mms_reference), "expected unsupported health leaf ref");
+    }
 
     unitlab_mms_server_runtime_stop(&harness.runtime, &harness.diagnostic);
     unitlab_free_ied_model_plan(&harness.plan);
@@ -1096,6 +1531,15 @@ int main(void)
         return 1;
     }
     if (!expect_true(test_fixture_backed_discover_sequence_handles_exact_health_gva_response() == 1, "expected exact Health GVA response discovery to preserve Health structure")) {
+        return 1;
+    }
+    if (!expect_true(test_fixture_backed_discover_sequence_handles_nested_structure_gva_response() == 1, "expected nested structure discovery coverage")) {
+        return 1;
+    }
+    if (!expect_true(test_fixture_backed_discover_sequence_skips_unsupported_gva_type() == 1, "expected unsupported type discovery coverage")) {
+        return 1;
+    }
+    if (!expect_true(test_fixture_backed_discover_sequence_handles_array_gva_response() == 1, "expected array type discovery coverage")) {
         return 1;
     }
     if (!expect_true(test_paginated_domain_discovery_keeps_partial_results() == 1, "expected paginated discovery to keep partial results")) {
