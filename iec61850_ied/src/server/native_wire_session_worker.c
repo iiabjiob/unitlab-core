@@ -1,10 +1,11 @@
 #include "native_wire_session_worker.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
-static uint64_t worker_now_ms(void)
+static uint64_t worker_now_epoch_ms(void)
 {
     time_t now = time(NULL);
     if (now <= (time_t)0) {
@@ -16,6 +17,8 @@ static uint64_t worker_now_ms(void)
 static const char* operation_label(UnitLabNativeSessionOperationKind operation_kind)
 {
     switch (operation_kind) {
+    case UNITLAB_NATIVE_SESSION_OPERATION_NONE:
+        return "none";
     case UNITLAB_NATIVE_SESSION_OPERATION_CONNECT:
         return "connect";
     case UNITLAB_NATIVE_SESSION_OPERATION_DISCOVER:
@@ -39,6 +42,90 @@ static void copy_text(char* destination, size_t destination_size, const char* so
     }
 }
 
+static size_t manager_runtime_index(const UnitLabNativeSessionManager* manager, const UnitLabNativeSessionRuntime* runtime)
+{
+    size_t index;
+
+    if (manager == NULL || runtime == NULL) {
+        return (size_t)-1;
+    }
+    for (index = 0U; index < manager->item_count; index++) {
+        if (&manager->items[index] == runtime) {
+            return index;
+        }
+    }
+    return (size_t)-1;
+}
+
+static int ensure_worker_owner_capacity(UnitLabNativeSessionManager* manager, size_t required)
+{
+    UnitLabNativeSessionWorker** resized;
+    size_t new_capacity;
+
+    if (manager == NULL) {
+        return 0;
+    }
+    if (required <= manager->worker_owner_capacity) {
+        return 1;
+    }
+    new_capacity = manager->worker_owner_capacity != 0U ? manager->worker_owner_capacity : 1U;
+    while (new_capacity < required) {
+        if (new_capacity > ((size_t)-1) / 2U) {
+            return 0;
+        }
+        new_capacity *= 2U;
+    }
+    resized = (UnitLabNativeSessionWorker**)realloc(manager->worker_owners, new_capacity * sizeof(manager->worker_owners[0]));
+    if (resized == NULL) {
+        return 0;
+    }
+    if (new_capacity > manager->worker_owner_capacity) {
+        memset(&resized[manager->worker_owner_capacity], 0, (new_capacity - manager->worker_owner_capacity) * sizeof(resized[0]));
+    }
+    manager->worker_owners = resized;
+    manager->worker_owner_capacity = new_capacity;
+    return 1;
+}
+
+static int manager_claim_worker(UnitLabNativeSessionWorker* worker)
+{
+    size_t runtime_index;
+    UnitLabNativeSessionWorker* existing;
+
+    if (worker == NULL || worker->manager == NULL || worker->runtime == NULL) {
+        return 0;
+    }
+    runtime_index = manager_runtime_index(worker->manager, worker->runtime);
+    if (runtime_index == (size_t)-1) {
+        return 0;
+    }
+    if (!ensure_worker_owner_capacity(worker->manager, worker->manager->item_count)) {
+        return 0;
+    }
+    existing = worker->manager->worker_owners[runtime_index];
+    if (existing != NULL && existing != worker) {
+        return 0;
+    }
+    worker->manager->worker_owners[runtime_index] = worker;
+    return 1;
+}
+
+static void manager_release_worker(UnitLabNativeSessionWorker* worker)
+{
+    size_t runtime_index;
+
+    if (worker == NULL || worker->manager == NULL || worker->runtime == NULL || worker->manager->worker_owners == NULL) {
+        return;
+    }
+    runtime_index = manager_runtime_index(worker->manager, worker->runtime);
+    if (runtime_index == (size_t)-1 || runtime_index >= worker->manager->worker_owner_capacity) {
+        return;
+    }
+    if (worker->manager->worker_owners[runtime_index] == worker) {
+        worker->manager->worker_owners[runtime_index] = NULL;
+    }
+}
+
 static void worker_log(const UnitLabNativeSessionWorker* worker, const char* event, const char* detail, UnitLabNativeSessionOperationKind operation_kind)
 {
     if (worker == NULL || worker->runtime == NULL || event == NULL || event[0] == '\0') {
@@ -51,9 +138,7 @@ static void worker_log(const UnitLabNativeSessionWorker* worker, const char* eve
         worker->runtime->identity.endpoint_id[0] != '\0' ? worker->runtime->identity.endpoint_id : "<none>",
         (unsigned long long)worker->runtime->identity.connection_generation,
         unitlab_native_session_phase_label(worker->runtime->live.phase),
-        operation_kind == UNITLAB_NATIVE_SESSION_OPERATION_CONNECT || operation_kind == UNITLAB_NATIVE_SESSION_OPERATION_DISCOVER || operation_kind == UNITLAB_NATIVE_SESSION_OPERATION_SUBSCRIBE || operation_kind == UNITLAB_NATIVE_SESSION_OPERATION_RECONNECT
-            ? operation_label(operation_kind)
-            : "<none>",
+        operation_label(operation_kind),
         detail != NULL && detail[0] != '\0' ? detail : "<none>");
     fflush(stdout);
 }
@@ -79,6 +164,9 @@ static int invoke_handler(
         return 0;
     }
     switch (operation_kind) {
+    case UNITLAB_NATIVE_SESSION_OPERATION_NONE:
+        handler = NULL;
+        break;
     case UNITLAB_NATIVE_SESSION_OPERATION_CONNECT:
         handler = worker->handlers.connect;
         break;
@@ -146,11 +234,16 @@ int unitlab_native_session_worker_start(UnitLabNativeSessionWorker* worker)
         return 0;
     }
     if (worker->running) {
-        worker_log(worker, "worker-start-collapsed", NULL, UNITLAB_NATIVE_SESSION_OPERATION_CONNECT);
+        worker_log(worker, "worker-start-collapsed", NULL, UNITLAB_NATIVE_SESSION_OPERATION_NONE);
         return 1;
     }
+    if (!manager_claim_worker(worker)) {
+        worker_log(worker, "worker-owner-conflict", NULL, UNITLAB_NATIVE_SESSION_OPERATION_NONE);
+        return 0;
+    }
+    worker->stop_requested = 0;
     worker->running = 1;
-    worker_log(worker, "worker-started", NULL, UNITLAB_NATIVE_SESSION_OPERATION_CONNECT);
+    worker_log(worker, "worker-started", NULL, UNITLAB_NATIVE_SESSION_OPERATION_NONE);
     return 1;
 }
 
@@ -159,11 +252,13 @@ void unitlab_native_session_worker_stop(UnitLabNativeSessionWorker* worker)
     if (worker == NULL) {
         return;
     }
+    worker->stop_requested = 1;
     if (worker->runtime != NULL) {
         unitlab_native_session_runtime_mark_closed(worker->runtime);
     }
     worker->running = 0;
-    worker_log(worker, "worker-stopped", NULL, UNITLAB_NATIVE_SESSION_OPERATION_CONNECT);
+    manager_release_worker(worker);
+    worker_log(worker, "worker-stopped", NULL, UNITLAB_NATIVE_SESSION_OPERATION_NONE);
 }
 
 int unitlab_native_session_worker_reconcile_once(UnitLabNativeSessionWorker* worker)
@@ -173,7 +268,7 @@ int unitlab_native_session_worker_reconcile_once(UnitLabNativeSessionWorker* wor
     char error_message[256U];
     int success;
 
-    if (worker == NULL || worker->runtime == NULL || !worker->running) {
+    if (worker == NULL || worker->runtime == NULL || !worker->running || worker->stop_requested) {
         return 0;
     }
     if (!unitlab_native_session_runtime_next_desired_operation(worker->runtime, &operation_kind)) {
@@ -199,7 +294,7 @@ int unitlab_native_session_worker_reconcile_once(UnitLabNativeSessionWorker* wor
         success ? NULL : error_message);
     worker_log(worker, success ? "operation-completed" : "operation-failed", success ? unitlab_native_session_phase_label(worker->runtime->live.phase) : worker->runtime->live.last_error_message, operation_kind);
     if (success && operation_kind == UNITLAB_NATIVE_SESSION_OPERATION_DISCOVER) {
-        worker->runtime->discovery_snapshot.created_at_ms = worker_now_ms();
+        worker->runtime->discovery_snapshot.created_at_ms = worker_now_epoch_ms();
     }
     worker->reconcile_count++;
     return 1;
@@ -208,12 +303,16 @@ int unitlab_native_session_worker_reconcile_once(UnitLabNativeSessionWorker* wor
 size_t unitlab_native_session_worker_run_until_idle(UnitLabNativeSessionWorker* worker, size_t max_steps)
 {
     size_t steps = 0U;
+    UnitLabNativeSessionOperationKind pending_operation = UNITLAB_NATIVE_SESSION_OPERATION_NONE;
 
     if (worker == NULL) {
         return 0U;
     }
     while (steps < max_steps && unitlab_native_session_worker_reconcile_once(worker)) {
         steps++;
+    }
+    if (steps == max_steps && worker->runtime != NULL && unitlab_native_session_runtime_next_desired_operation(worker->runtime, &pending_operation)) {
+        worker_log(worker, "reconcile-step-limit-reached", NULL, UNITLAB_NATIVE_SESSION_OPERATION_NONE);
     }
     return steps;
 }

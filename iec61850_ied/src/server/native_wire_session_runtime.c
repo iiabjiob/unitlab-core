@@ -134,6 +134,7 @@ void unitlab_native_session_manager_reset(UnitLabNativeSessionManager* manager)
     if (manager == NULL) {
         return;
     }
+    free(manager->worker_owners);
     free(manager->items);
     memset(manager, 0, sizeof(*manager));
 }
@@ -302,6 +303,8 @@ static int operation_in_flight(const UnitLabNativeSessionRuntime* runtime, UnitL
         return 0;
     }
     switch (operation_kind) {
+    case UNITLAB_NATIVE_SESSION_OPERATION_NONE:
+        return 0;
     case UNITLAB_NATIVE_SESSION_OPERATION_CONNECT:
         return runtime->live.connect_in_flight;
     case UNITLAB_NATIVE_SESSION_OPERATION_DISCOVER:
@@ -320,6 +323,8 @@ static int* operation_in_flight_slot(UnitLabNativeSessionRuntime* runtime, UnitL
         return NULL;
     }
     switch (operation_kind) {
+    case UNITLAB_NATIVE_SESSION_OPERATION_NONE:
+        return NULL;
     case UNITLAB_NATIVE_SESSION_OPERATION_CONNECT:
         return &runtime->live.connect_in_flight;
     case UNITLAB_NATIVE_SESSION_OPERATION_DISCOVER:
@@ -338,6 +343,8 @@ static void update_phase_for_begin(UnitLabNativeSessionRuntime* runtime, UnitLab
         return;
     }
     switch (operation_kind) {
+    case UNITLAB_NATIVE_SESSION_OPERATION_NONE:
+        break;
     case UNITLAB_NATIVE_SESSION_OPERATION_CONNECT:
         runtime->live.phase = UNITLAB_NATIVE_SESSION_PHASE_CONNECTING;
         break;
@@ -381,6 +388,9 @@ int unitlab_native_session_runtime_begin_operation(
     *inflight_slot = 1;
     update_phase_for_begin(runtime, operation_kind);
     switch (operation_kind) {
+    case UNITLAB_NATIVE_SESSION_OPERATION_NONE:
+        event_name = "operation-none";
+        break;
     case UNITLAB_NATIVE_SESSION_OPERATION_CONNECT:
         event_name = "connect-started";
         break;
@@ -412,6 +422,8 @@ static void mark_operation_success(UnitLabNativeSessionRuntime* runtime, UnitLab
         return;
     }
     switch (operation_kind) {
+    case UNITLAB_NATIVE_SESSION_OPERATION_NONE:
+        break;
     case UNITLAB_NATIVE_SESSION_OPERATION_CONNECT:
         runtime->live.associated = 1;
         runtime->live.phase = UNITLAB_NATIVE_SESSION_PHASE_ASSOCIATED;
@@ -450,6 +462,8 @@ static void mark_operation_failure(UnitLabNativeSessionRuntime* runtime, UnitLab
         runtime->live.phase = UNITLAB_NATIVE_SESSION_PHASE_FAILED;
     }
     switch (operation_kind) {
+    case UNITLAB_NATIVE_SESSION_OPERATION_NONE:
+        break;
     case UNITLAB_NATIVE_SESSION_OPERATION_CONNECT:
         runtime->live.associated = 0;
         break;

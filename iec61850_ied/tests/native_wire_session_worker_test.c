@@ -126,12 +126,14 @@ int main(void)
 {
     UnitLabNativeSessionManager manager;
     UnitLabNativeSessionWorker worker;
+    UnitLabNativeSessionWorker second_worker;
     UnitLabNativeSessionWorkerHandlers handlers;
     WorkerTestContext context;
     UnitLabNativeSessionOperationKind next_operation;
     size_t steps;
 
     memset(&context, 0, sizeof(context));
+    memset(&second_worker, 0, sizeof(second_worker));
     memset(&handlers, 0, sizeof(handlers));
     handlers.connect = connect_handler;
     handlers.discover = discover_handler;
@@ -172,6 +174,15 @@ int main(void)
         return 1;
     }
 
+    if (!expect_true(unitlab_native_session_manager_open_worker(&manager, &second_worker, "session-worker", "mms:IED1@127.0.0.1:102", "IED1", &handlers, &context), "second worker open failed")) {
+        unitlab_native_session_manager_reset(&manager);
+        return 1;
+    }
+    if (!expect_true(!unitlab_native_session_worker_start(&second_worker), "duplicate worker owner should be rejected")) {
+        unitlab_native_session_manager_reset(&manager);
+        return 1;
+    }
+
     unitlab_native_session_worker_stop(&worker);
     if (!expect_true(worker.runtime->live.phase == UNITLAB_NATIVE_SESSION_PHASE_CLOSED, "worker stop did not close runtime")) {
         unitlab_native_session_manager_reset(&manager);
@@ -182,11 +193,11 @@ int main(void)
         return 1;
     }
 
-    if (!expect_true(unitlab_native_session_worker_start(&worker), "worker restart failed")) {
+    if (!expect_true(unitlab_native_session_worker_start(&second_worker), "worker restart after release failed")) {
         unitlab_native_session_manager_reset(&manager);
         return 1;
     }
-    if (!expect_true(unitlab_native_session_worker_reconcile_once(&worker), "worker reconnect reconcile failed")) {
+    if (!expect_true(unitlab_native_session_worker_reconcile_once(&second_worker), "worker reconnect reconcile failed")) {
         unitlab_native_session_manager_reset(&manager);
         return 1;
     }
@@ -194,12 +205,12 @@ int main(void)
         unitlab_native_session_manager_reset(&manager);
         return 1;
     }
-    if (!expect_true(worker.runtime->live.phase == UNITLAB_NATIVE_SESSION_PHASE_ASSOCIATED, "reconnect did not restore associated phase")) {
+    if (!expect_true(second_worker.runtime->live.phase == UNITLAB_NATIVE_SESSION_PHASE_ASSOCIATED, "reconnect did not restore associated phase")) {
         unitlab_native_session_manager_reset(&manager);
         return 1;
     }
 
-    unitlab_native_session_worker_stop(&worker);
+    unitlab_native_session_worker_stop(&second_worker);
     unitlab_native_session_manager_reset(&manager);
     printf("native session worker test passed\n");
     return 0;

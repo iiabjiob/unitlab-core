@@ -19,6 +19,7 @@ typedef enum {
 } UnitLabNativeSessionPhase;
 
 typedef enum {
+    UNITLAB_NATIVE_SESSION_OPERATION_NONE = -1,
     UNITLAB_NATIVE_SESSION_OPERATION_CONNECT = 0,
     UNITLAB_NATIVE_SESSION_OPERATION_DISCOVER,
     UNITLAB_NATIVE_SESSION_OPERATION_SUBSCRIBE,
@@ -75,6 +76,8 @@ typedef struct {
     char last_error_message[256U];
 } UnitLabNativeSessionLiveState;
 
+typedef struct UnitLabNativeSessionWorker UnitLabNativeSessionWorker;
+
 typedef struct {
     char session_id[128U];
     char endpoint_id[160U];
@@ -115,8 +118,10 @@ typedef struct {
 
 typedef struct {
     UnitLabNativeSessionRuntime* items;
+    UnitLabNativeSessionWorker** worker_owners;
     size_t item_count;
     size_t item_capacity;
+    size_t worker_owner_capacity;
 } UnitLabNativeSessionManager;
 
 void unitlab_native_session_manager_init(UnitLabNativeSessionManager* manager);

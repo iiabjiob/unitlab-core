@@ -20,12 +20,13 @@ typedef struct {
     UnitLabNativeSessionWorkerOperationHandler reconnect;
 } UnitLabNativeSessionWorkerHandlers;
 
-typedef struct {
+typedef struct UnitLabNativeSessionWorker {
     UnitLabNativeSessionManager* manager;
     UnitLabNativeSessionRuntime* runtime;
     UnitLabNativeSessionWorkerHandlers handlers;
     void* user_data;
     int running;
+    int stop_requested;
     uint64_t reconcile_count;
 } UnitLabNativeSessionWorker;
 
