@@ -87,6 +87,36 @@ A durable record that a report, signal update, or timing window observation occu
 
 Evidence preserves provenance and should survive reconnects and stale transitions.
 
+### Verification run
+
+The product-level container for one auto verification attempt.
+
+It binds:
+- selected verification targets;
+- the subscription plan used for execution;
+- session snapshots;
+- the durable evidence set;
+- the final verdict.
+
+### Verification step
+
+A single executable observation inside a verification run.
+
+It remains traceable to:
+- one selected signal row;
+- one expected feedback path;
+- one runtime observation or timeout outcome.
+
+### Recovery state
+
+The observable product state while reconnect or recovery is in progress.
+
+It preserves:
+- desired work;
+- active generation;
+- preserved evidence;
+- stale counts and diagnostics.
+
 ### Verdict
 
 The product-level conclusion for a verification step or run, such as:
@@ -121,4 +151,3 @@ The product-level conclusion for a verification step or run, such as:
 - `docs/unitlab-json-schema-contract.md`
 - `docs/unitlab-runtime-integration-contract.md`
 - `docs/unitlab-api-payload-shapes.md`
-

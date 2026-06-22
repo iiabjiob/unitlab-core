@@ -264,11 +264,80 @@ Optional fields:
 - `stale_signal_count`
 - `diagnostic_code`
 
+## 5. VerificationRun
+
+Represents one product-level auto verification execution.
+
+Required fields:
+- `test_run_id`
+- `state`
+- `verification_targets`
+- `subscription_plan`
+- `session_snapshots`
+- `evidence_set`
+
+Optional fields:
+- `selected_group_id`
+- `operator_id`
+- `triggered_at`
+- `completed_at`
+- `verdict`
+- `reason`
+- `diagnostics`
+
+## 6. VerificationStep
+
+Represents one executable observation inside a verification run.
+
+Required fields:
+- `step_id`
+- `signal_id`
+- `target_index`
+- `state`
+- `expected_path`
+- `expected_window_ms`
+- `freshness`
+- `verdict`
+
+Optional fields:
+- `actual_report_path`
+- `source_session_id`
+- `source_generation`
+- `source_report_rpt_id`
+- `source_report_dat_set`
+- `triggered_at`
+- `confirmed_at`
+- `latency_ms`
+- `reason`
+- `diagnostics`
+
+## 7. RecoveryState
+
+Represents the observable recovery state for a session during reconnect/hardening.
+
+Required fields:
+- `session_id`
+- `endpoint_id`
+- `state`
+- `desired_state`
+- `active_generation`
+- `recovery_reason`
+
+Optional fields:
+- `in_flight`
+- `preserved_verification_targets`
+- `preserved_evidence_count`
+- `stale_signal_count`
+- `diagnostics`
+
 ## Contract rules
 
 - A `VerificationTarget` must exist before a `SubscriptionPlan`.
 - A `SubscriptionPlan` must exist before MMS execution.
 - A `SignalVerificationEvidence` must be derived from observed runtime data, not guessed in the UI.
+- A `VerificationRun` should bind the target, plan, session snapshots, and evidence set into one traceable product object.
+- A `VerificationStep` should remain traceable to one selected signal and one expected feedback path.
+- A `RecoveryState` should preserve desired work and evidence while recovery is in flight.
 - `SessionSnapshot` should describe runtime state, not product verdicts.
 - `source_kind` and `reason` should stay explicit, even for fallback cases.
 

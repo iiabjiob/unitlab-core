@@ -185,6 +185,7 @@ Done when:
 - a single simulated output can be verified against a real report path;
 - time-window violations are visible;
 - the verdict is backed by recorded evidence.
+- the full run is describable as one `VerificationRun` and one or more `VerificationStep` records.
 
 ### PR5 - Multi-IED selected group flow
 
@@ -208,6 +209,7 @@ Done when:
 - one selected group can produce multiple subscription sessions;
 - each IED can confirm or fail independently;
 - the product still presents one coherent test result.
+- per-IED evidence remains separate even when the UI shows one selected group.
 
 ### PR6 - Hardening
 
@@ -233,6 +235,7 @@ Done when:
 - the first auto test flow survives real disconnect/reconnect edges;
 - stale and gap conditions are visible and non-ambiguous;
 - partial failures remain explainable.
+- reconnect and recovery preserve the original verification intent and durable evidence set.
 
 ## PR tracking checklist
 

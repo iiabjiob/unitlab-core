@@ -43,6 +43,7 @@ When recovery is required, the product layer should:
 - preserve the existing desired plan;
 - preserve the original verification targets;
 - preserve prior evidence;
+- preserve per-IED / per-session isolation when a group spans multiple devices;
 - request a new session generation if reconnect is performed;
 - mark previously live signals or evidence as stale when their generation is no longer valid;
 - suppress duplicate reconnect attempts for the same active session.
@@ -80,11 +81,13 @@ A new valid report update after reconnect should:
 - Stale evidence must remain visible and explainable.
 - A reconnect must not erase prior confirmation/verification evidence.
 - A new confirmation after reconnect should be recorded as new evidence, not as a rewrite of the old evidence.
+- Old-generation evidence may remain in the durable history, but it must not be treated as current live evidence.
 
 ## Suggested state transitions
 
 - `running` -> `stale`
 - `running` -> `reconnecting`
+- `running` -> `degraded`
 - `reconnecting` -> `discovering`
 - `discovering` -> `subscribing`
 - `subscribing` -> `running`
@@ -109,4 +112,4 @@ The product layer should distinguish:
 - Old-generation report updates must not change live evidence.
 - Stale signals should keep their last known good value while being visibly non-live.
 - Reconnect should be visible in product state as a separate recovery phase.
-
+- One IED recovery must not invalidate other IED sessions in the same selected group.

@@ -102,6 +102,8 @@ Output:
 Done when:
 - a single signal can complete the full feedback loop;
 - the verdict is explained by stored evidence.
+- the run remains inspectable as a single `VerificationRun`.
+- the step state remains traceable back to the originating signal row.
 
 ### PR5 - Multi-IED selected-group flow
 
@@ -117,6 +119,7 @@ Output:
 Done when:
 - the planner and runtime keep per-IED failure detail;
 - single-IED behavior does not regress.
+- each IED/session keeps its own evidence trail and verdict explanation.
 
 ### PR6 - Recovery hardening
 
@@ -136,6 +139,8 @@ Output:
 Done when:
 - reconnect does not corrupt current evidence;
 - stale and gap conditions remain visible.
+- old-generation frames are rejected and diagnosable.
+- one IED reconnect does not invalidate other IED sessions in the same selected group.
 
 ## Mandatory vs optional
 

@@ -44,6 +44,50 @@ The C runtime does not own test verdict policy.
 7. Python converts report updates into durable `SignalVerificationEvidence` records.
 8. Python computes a test verdict from evidence and timing policy.
 
+## PR4 - First auto verification flow
+
+The first auto flow should be the smallest end-to-end product loop:
+- a planned target set is armed;
+- the output trigger fires;
+- the runtime waits for a report-based confirmation;
+- evidence is collected;
+- the verdict is derived from evidence plus timing policy.
+
+Required behavior:
+- the active session and plan must be visible before the trigger fires;
+- the runtime must keep waiting for confirmation until the allowed window expires or evidence arrives;
+- `confirmed` means the expected report path was observed;
+- `verified` means the confirmation arrived within the allowed window;
+- `timed_out` means no valid confirmation arrived in time;
+- `unconfirmed` means the path or evidence was insufficient even if some runtime activity existed;
+- `failed` means planning/runtime/evidence failed in a way that prevents a reliable verdict.
+
+The product layer should preserve the exact evidence trail used for the verdict.
+
+## PR5 - Multi-IED selected-group flow
+
+One selected group may span multiple IEDs and therefore multiple sessions or report controls.
+
+Required behavior:
+- split the group into per-IED execution tracks;
+- keep each session isolated;
+- preserve evidence per IED and per report-control path;
+- aggregate the user-visible result without collapsing per-IED detail;
+- keep the single-IED case unchanged.
+
+The final verdict for the group should be explainable from per-IED evidence, not from a merged boolean.
+
+## PR6 - Recovery hardening
+
+Recovery hardening should make reconnect and stale handling boring and explicit:
+- preserve desired work while recovery is in flight;
+- keep prior evidence and stale signals visible;
+- reject late frames from old generations;
+- keep reconnect idempotent for one session at a time;
+- avoid corrupting current evidence when recovery overlaps active confirmation windows.
+
+Recovery should remain a product-layer decision driven by runtime diagnostics, freshness, and session state.
+
 ## Execution states
 
 The product layer should expose explicit states rather than a single boolean:
@@ -147,6 +191,13 @@ The operator or system stopped the workflow intentionally.
 ### `completed`
 
 The workflow finished and the final verdict is stable.
+
+## Verification / recovery invariants
+
+- A verification run should not lose the evidence trail when one session reconnects.
+- A multi-IED group should not hide one IED failure behind a successful peer.
+- Recovery should preserve prior targets and evidence while restoring live confirmation ability.
+- Late or old-generation report updates must remain rejected and diagnosable.
 
 ## Contract invariants
 
