@@ -108,6 +108,35 @@ Each uncovered target should include:
 - `reason`
 - `detail`
 
+## 2.1 SubscriptionPlanRequest
+
+Represents the product-layer request to group verification targets into executable subscription plans.
+
+Required fields:
+- `verification_targets`
+
+Optional fields:
+- `discovery_snapshot`
+- `scd_hints`
+- `planning_policy`
+
+## 2.2 SubscriptionPlanResult
+
+Represents the output of subscription planning before execution.
+
+Required fields:
+- `subscription_plan`
+- `planning_diagnostics`
+- `uncovered_targets`
+
+Each grouped plan item should keep the source classification explicit:
+- `from SCD`
+- `from discovery`
+- `fallback`
+- `not found`
+
+Source classification should be stable and deterministic for the same inputs.
+
 Example:
 
 ```json

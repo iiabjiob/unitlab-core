@@ -62,6 +62,7 @@ Done when:
 - the same input produces the same plan;
 - multi-IED groups are split cleanly;
 - uncovered targets are not hidden.
+- each grouped target keeps a stable source classification.
 
 ### PR3 - Verification evidence model
 

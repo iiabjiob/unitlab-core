@@ -42,6 +42,7 @@ Request:
 - optional SCD hints.
 
 Response:
+- `subscription_plan_result`;
 - `subscription_plan`;
 - `groups[]`;
 - `uncovered_targets[]`;

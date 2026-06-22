@@ -107,6 +107,7 @@ Owner:
 ## Invariants
 
 - The same signal-list input must produce the same normalized target identity.
+- The same verification-target input must produce the same subscription-plan grouping and source classification.
 - Planning must not hide uncovered targets.
 - Runtime sessions must preserve source identity and generation.
 - Late frames from old generations must not corrupt current evidence.
@@ -145,4 +146,3 @@ Owner:
 - `docs/unitlab-verification-execution-contract.md`
 - `docs/unitlab-recovery-contract.md`
 - `docs/unitlab-diagnostics-contract.md`
-
