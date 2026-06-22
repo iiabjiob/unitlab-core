@@ -148,6 +148,8 @@ The session snapshot may also expose a compact signal-cache summary:
 - unknown-freshness signal count;
 - stale-generation drop count.
 
+If the runtime has an explicit subscription intent, the snapshot should also expose the selected RCB key used for recovery/re-subscription.
+
 ### Report stream / state update service
 
 Input:

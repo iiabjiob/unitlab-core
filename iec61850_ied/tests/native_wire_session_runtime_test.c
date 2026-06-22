@@ -337,6 +337,21 @@ int main(void)
         unitlab_native_session_manager_reset(&manager);
         return 1;
     }
+    {
+        UnitLabNativeSessionStatus status;
+        if (!expect_true(unitlab_native_session_runtime_copy_status(runtime, &status), "copy_status after subscription failed")) {
+            unitlab_native_session_manager_reset(&manager);
+            return 1;
+        }
+        if (!expect_true(strcmp(status.rcb_key, "IED1LD0/LLN0.brcbA") == 0, "subscription RCB key not recorded")) {
+            unitlab_native_session_manager_reset(&manager);
+            return 1;
+        }
+        if (!expect_true(status.wants_subscription == 1 && status.wants_gi == 1, "subscription intent not recorded")) {
+            unitlab_native_session_manager_reset(&manager);
+            return 1;
+        }
+    }
 
     {
         UnitLabNativeSignalUpdate signal_update;

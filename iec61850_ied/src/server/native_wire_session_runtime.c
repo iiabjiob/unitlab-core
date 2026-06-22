@@ -763,6 +763,7 @@ int unitlab_native_session_runtime_copy_status(
     copy_text(status->session_id, sizeof(status->session_id), runtime->identity.session_id);
     copy_text(status->endpoint_id, sizeof(status->endpoint_id), runtime->identity.endpoint_id);
     copy_text(status->device_key, sizeof(status->device_key), runtime->identity.device_key);
+    copy_text(status->rcb_key, sizeof(status->rcb_key), runtime->identity.rcb_key);
     copy_text(status->phase, sizeof(status->phase), unitlab_native_session_phase_label(runtime->live.phase));
     copy_text(status->last_error_code, sizeof(status->last_error_code), runtime->live.last_error_code);
     copy_text(status->last_error_message, sizeof(status->last_error_message), runtime->live.last_error_message);

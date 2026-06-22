@@ -84,6 +84,7 @@ typedef struct {
     char session_id[128U];
     char endpoint_id[160U];
     char device_key[160U];
+    char rcb_key[160U];
     char phase[32U];
     char last_error_code[64U];
     char last_error_message[256U];
