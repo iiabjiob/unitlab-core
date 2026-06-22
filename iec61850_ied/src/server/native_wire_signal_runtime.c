@@ -178,39 +178,109 @@ static void copy_signal_payload(UnitLabNativeSignalState* state, const UnitLabNa
         copy_text(state->timestamp_summary, sizeof(state->timestamp_summary), update->timestamp_summary);
         state->has_timestamp = 1;
     }
-    state->last_changed_ms = update->observed_at_ms;
     state->update_count++;
-    state->version++;
 }
 
-static int update_changed(const UnitLabNativeSignalState* state, const UnitLabNativeSignalUpdate* update)
+static int update_changed(
+    const UnitLabNativeSignalState* previous,
+    const UnitLabNativeSignalRuntime* runtime,
+    const UnitLabNativeSignalUpdate* update)
 {
-    if (state == NULL || update == NULL) {
+    if (previous == NULL || update == NULL) {
         return 0;
     }
-    if (!same_text(state->data_reference, update->data_reference) || !same_text(state->display_reference, update->display_reference) || !same_text(state->leaf_name, update->leaf_name)) {
+    if (!same_text(previous->data_reference, update->data_reference)
+        || !same_text(previous->display_reference, update->display_reference)
+        || !same_text(previous->leaf_name, update->leaf_name)) {
         return 1;
     }
-    if (state->leaf_role != update->leaf_role || state->reason_code != update->reason_code || !same_text(state->reason_labels, update->reason_labels)) {
+    if (!same_text(previous->source_session_id, runtime != NULL ? runtime->session_id : NULL)
+        || !same_text(previous->source_endpoint_id, runtime != NULL ? runtime->endpoint_id : NULL)
+        || !same_text(previous->source_device_key, runtime != NULL ? runtime->device_key : NULL)
+        || previous->source_connection_generation != update->source_connection_generation
+        || !same_text(previous->source_report_rpt_id, update->source_report_rpt_id)
+        || !same_text(previous->source_report_dat_set, update->source_report_dat_set)) {
+        return 1;
+    }
+    if (previous->leaf_role != update->leaf_role || previous->reason_code != update->reason_code || !same_text(previous->reason_labels, update->reason_labels)) {
         return 1;
     }
     if (update->leaf_role == UNITLAB_NATIVE_SIGNAL_LEAF_ROLE_VALUE) {
-        if (state->value_kind != update->value_kind || state->unsigned_value != update->unsigned_value || state->integer_value != update->integer_value || state->floating_value != update->floating_value || state->bool_value != update->bool_value || !same_text(state->value_summary, update->value_summary)) {
+        if (previous->value_kind != update->value_kind
+            || previous->unsigned_value != update->unsigned_value
+            || previous->integer_value != update->integer_value
+            || previous->floating_value != update->floating_value
+            || previous->bool_value != update->bool_value
+            || !same_text(previous->value_summary, update->value_summary)) {
             return 1;
         }
     } else if (update->leaf_role == UNITLAB_NATIVE_SIGNAL_LEAF_ROLE_QUALITY) {
-        if (state->quality_code != update->quality_code || !same_text(state->quality_validity, update->quality_validity) || !same_text(state->quality_summary, update->quality_summary)) {
+        if (previous->quality_code != update->quality_code
+            || !same_text(previous->quality_validity, update->quality_validity)
+            || !same_text(previous->quality_summary, update->quality_summary)) {
             return 1;
         }
     } else if (update->leaf_role == UNITLAB_NATIVE_SIGNAL_LEAF_ROLE_TIMESTAMP) {
-        if (!same_text(state->timestamp_summary, update->timestamp_summary)) {
+        if (!same_text(previous->timestamp_summary, update->timestamp_summary)) {
             return 1;
         }
     }
-    if (state->observed_at_ms != update->observed_at_ms || state->source_connection_generation != update->source_connection_generation) {
+    return 0;
+}
+
+static int signal_value_changed(const UnitLabNativeSignalState* previous, const UnitLabNativeSignalUpdate* update)
+{
+    if (update == NULL || update->leaf_role != UNITLAB_NATIVE_SIGNAL_LEAF_ROLE_VALUE) {
+        return 0;
+    }
+    if (previous == NULL || previous->has_value == 0) {
         return 1;
     }
-    return 0;
+    return previous->value_kind != update->value_kind
+        || previous->unsigned_value != update->unsigned_value
+        || previous->integer_value != update->integer_value
+        || previous->floating_value != update->floating_value
+        || previous->bool_value != update->bool_value
+        || !same_text(previous->value_summary, update->value_summary);
+}
+
+static int signal_quality_changed(const UnitLabNativeSignalState* previous, const UnitLabNativeSignalUpdate* update)
+{
+    if (update == NULL || update->leaf_role != UNITLAB_NATIVE_SIGNAL_LEAF_ROLE_QUALITY) {
+        return 0;
+    }
+    if (previous == NULL || previous->has_quality == 0) {
+        return 1;
+    }
+    return previous->quality_code != update->quality_code
+        || !same_text(previous->quality_validity, update->quality_validity)
+        || !same_text(previous->quality_summary, update->quality_summary);
+}
+
+static int signal_timestamp_changed(const UnitLabNativeSignalState* previous, const UnitLabNativeSignalUpdate* update)
+{
+    if (update == NULL || update->leaf_role != UNITLAB_NATIVE_SIGNAL_LEAF_ROLE_TIMESTAMP) {
+        return 0;
+    }
+    if (previous == NULL || previous->has_timestamp == 0) {
+        return 1;
+    }
+    return !same_text(previous->timestamp_summary, update->timestamp_summary);
+}
+
+static void fill_change_flags(
+    const UnitLabNativeSignalState* previous,
+    const UnitLabNativeSignalUpdate* update,
+    int is_new,
+    UnitLabNativeSignalChange* change)
+{
+    if (change == NULL || update == NULL) {
+        return;
+    }
+    change->is_new = is_new;
+    change->value_changed = signal_value_changed(previous, update) || (is_new && update->leaf_role == UNITLAB_NATIVE_SIGNAL_LEAF_ROLE_VALUE);
+    change->quality_changed = signal_quality_changed(previous, update) || (is_new && update->leaf_role == UNITLAB_NATIVE_SIGNAL_LEAF_ROLE_QUALITY);
+    change->timestamp_changed = signal_timestamp_changed(previous, update) || (is_new && update->leaf_role == UNITLAB_NATIVE_SIGNAL_LEAF_ROLE_TIMESTAMP);
 }
 
 UnitLabNativeSignalState* unitlab_native_signal_runtime_apply_update(
@@ -220,14 +290,20 @@ UnitLabNativeSignalState* unitlab_native_signal_runtime_apply_update(
 {
     UnitLabNativeSignalState* state = NULL;
     UnitLabNativeSignalState previous;
+    UnitLabNativeSignalChange local_change;
+    UnitLabNativeSignalChange* emitted_change = change;
     size_t index;
     int changed;
     int is_new = 0;
 
-    zero_change(change);
+    if (emitted_change == NULL) {
+        emitted_change = &local_change;
+    }
+    zero_change(emitted_change);
     if (runtime == NULL || update == NULL || update->signal_path[0] == '\0') {
         return NULL;
     }
+    memset(&previous, 0, sizeof(previous));
     index = find_index(runtime, update->signal_path);
     if (index == (size_t)-1) {
         if (!ensure_capacity(runtime, runtime->item_count + 1U)) {
@@ -242,40 +318,17 @@ UnitLabNativeSignalState* unitlab_native_signal_runtime_apply_update(
         state = &runtime->items[index];
         previous = *state;
     }
-    changed = is_new || update_changed(state, update);
+    changed = is_new ? 1 : update_changed(&previous, runtime, update);
     copy_signal_source(state, runtime, update);
     copy_signal_payload(state, update);
     runtime->update_count++;
     if (changed) {
         runtime->change_count++;
-        if (change != NULL) {
-            change->is_new = is_new;
-            change->value_changed = update->leaf_role == UNITLAB_NATIVE_SIGNAL_LEAF_ROLE_VALUE
-                && (is_new
-                    || previous.value_kind != update->value_kind
-                    || previous.bool_value != update->bool_value
-                    || previous.integer_value != update->integer_value
-                    || previous.unsigned_value != update->unsigned_value
-                    || previous.floating_value != update->floating_value
-                    || !same_text(previous.value_summary, update->value_summary))
-                ? 1
-                : 0;
-            change->quality_changed = update->leaf_role == UNITLAB_NATIVE_SIGNAL_LEAF_ROLE_QUALITY
-                && (is_new
-                    || previous.quality_code != update->quality_code
-                    || !same_text(previous.quality_validity, update->quality_validity)
-                    || !same_text(previous.quality_summary, update->quality_summary))
-                ? 1
-                : 0;
-            change->timestamp_changed = update->leaf_role == UNITLAB_NATIVE_SIGNAL_LEAF_ROLE_TIMESTAMP
-                && (is_new
-                    || previous.observed_at_ms != update->observed_at_ms
-                    || !same_text(previous.timestamp_summary, update->timestamp_summary))
-                ? 1
-                : 0;
-        }
+        state->last_changed_ms = update->observed_at_ms;
+        state->version++;
+        fill_change_flags(is_new ? NULL : &previous, update, is_new, emitted_change);
         if (runtime->observer != NULL) {
-            runtime->observer(state, change, runtime->observer_user_data);
+            runtime->observer(state, emitted_change, runtime->observer_user_data);
         }
     }
     return state;

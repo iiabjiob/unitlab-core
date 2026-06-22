@@ -33,12 +33,17 @@ typedef struct {
 } UnitLabNativeSignalChange;
 
 typedef struct {
+    /* Canonical stable signal key used by the live cache and downstream runtime layers. */
     char signal_path[384U];
+    /* Raw protocol source reference, for example mapped report DataRef or dataset member ref. */
     char data_reference[384U];
+    /* Human-readable debug reference; never use this as the primary cache key. */
     char display_reference[384U];
+    /* Last leaf component name, for example stVal, q, t, ctlVal. */
     char leaf_name[64U];
     char value_summary[160U];
     char quality_summary[160U];
+    /* Runtime/report receipt time. This is not normalized IEC 61850 UTC_TIME. */
     char timestamp_summary[160U];
     char source_session_id[128U];
     char source_endpoint_id[160U];
@@ -47,8 +52,10 @@ typedef struct {
     char source_report_dat_set[160U];
     uint64_t source_connection_generation;
     uint64_t observed_at_ms;
+    /* Last time a meaningful field changed. Identical updates must not move this forward. */
     uint64_t last_changed_ms;
     uint64_t update_count;
+    /* Monotonic version for meaningful signal changes only. */
     uint64_t version;
     UnitLabNativeSignalLeafRole leaf_role;
     UnitLabNativeSignalValueKind value_kind;
