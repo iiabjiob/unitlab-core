@@ -334,6 +334,17 @@ int main(void)
         unitlab_native_session_manager_reset(&manager);
         return 1;
     }
+    {
+        UnitLabNativeSessionStatus status;
+        if (!expect_true(unitlab_native_session_runtime_copy_status(runtime, &status), "copy_status after discovery failed")) {
+            unitlab_native_session_manager_reset(&manager);
+            return 1;
+        }
+        if (!expect_true(status.has_discovery_snapshot == 1 && status.discovery_created_at_ms == 1234U, "discovery created_at not copied")) {
+            unitlab_native_session_manager_reset(&manager);
+            return 1;
+        }
+    }
 
     unitlab_native_session_runtime_set_subscription_intent(runtime, "IED1LD0/LLN0.brcbA", 1, 1);
     if (!expect_true(unitlab_native_session_runtime_begin_operation(runtime, UNITLAB_NATIVE_SESSION_OPERATION_SUBSCRIBE), "subscribe begin failed")) {

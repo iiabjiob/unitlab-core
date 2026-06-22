@@ -828,6 +828,7 @@ int unitlab_native_session_runtime_copy_status(
     status->unknown_signal_count = unknown_signal_count;
     if (runtime->has_discovery_snapshot) {
         copy_text(status->snapshot_id, sizeof(status->snapshot_id), runtime->discovery_snapshot.snapshot_id);
+        status->discovery_created_at_ms = runtime->discovery_snapshot.created_at_ms;
         status->logical_device_count = runtime->discovery_snapshot.logical_device_count;
         status->logical_node_count = runtime->discovery_snapshot.logical_node_count;
         status->data_set_count = runtime->discovery_snapshot.data_set_count;

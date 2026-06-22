@@ -106,6 +106,7 @@ typedef struct {
     uint64_t last_report_timestamp_ms;
     int has_discovery_snapshot;
     char snapshot_id[96U];
+    uint64_t discovery_created_at_ms;
     size_t logical_device_count;
     size_t logical_node_count;
     size_t data_set_count;

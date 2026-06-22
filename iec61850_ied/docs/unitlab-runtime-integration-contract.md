@@ -32,6 +32,7 @@ The Python application provides:
 The C runtime should expose a snapshot with:
 - endpoint identity;
 - discovery version / snapshot id;
+- discovery `created_at_ms` or equivalent freshness marker;
 - logical devices;
 - logical nodes;
 - data sets;
