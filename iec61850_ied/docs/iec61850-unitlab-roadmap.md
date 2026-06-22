@@ -261,3 +261,4 @@ Done when:
 - `docs/unitlab-diagnostics-contract.md`
 - `docs/unitlab-api-surface.md`
 - `docs/unitlab-event-stream-contract.md`
+- `docs/unitlab-state-machine-contract.md`
