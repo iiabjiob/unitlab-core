@@ -256,3 +256,4 @@ Done when:
 - `docs/unitlab-signal-planning-contract.md`
 - `docs/unitlab-runtime-integration-contract.md`
 - `docs/unitlab-api-payload-shapes.md`
+- `docs/unitlab-verification-execution-contract.md`
