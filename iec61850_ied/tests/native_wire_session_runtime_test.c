@@ -313,6 +313,7 @@ int main(void)
     snprintf(snapshot.snapshot_id, sizeof(snapshot.snapshot_id), "%s", "snapshot-a");
     snprintf(snapshot.endpoint_id, sizeof(snapshot.endpoint_id), "%s", "mms:IED1@127.0.0.1:102");
     snprintf(snapshot.device_key, sizeof(snapshot.device_key), "%s", "IED1PROT");
+    snprintf(snapshot.source_hash, sizeof(snapshot.source_hash), "%s", "hash-a");
     snapshot.created_at_ms = 1234U;
     snapshot.logical_device_count = 1U;
     snapshot.logical_node_count = 2U;
@@ -341,6 +342,10 @@ int main(void)
             return 1;
         }
         if (!expect_true(status.has_discovery_snapshot == 1 && status.discovery_created_at_ms == 1234U, "discovery created_at not copied")) {
+            unitlab_native_session_manager_reset(&manager);
+            return 1;
+        }
+        if (!expect_true(strcmp(status.discovery_source_hash, "hash-a") == 0, "discovery source hash not copied")) {
             unitlab_native_session_manager_reset(&manager);
             return 1;
         }

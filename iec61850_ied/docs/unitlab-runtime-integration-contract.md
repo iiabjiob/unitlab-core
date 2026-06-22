@@ -33,6 +33,7 @@ The C runtime should expose a snapshot with:
 - endpoint identity;
 - discovery version / snapshot id;
 - discovery `created_at_ms` or equivalent freshness marker;
+- discovery source hash or equivalent stable fingerprint when available;
 - logical devices;
 - logical nodes;
 - data sets;
