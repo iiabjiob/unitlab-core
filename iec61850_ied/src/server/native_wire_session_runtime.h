@@ -74,6 +74,8 @@ typedef struct {
     int subscribe_in_flight;
     int reconnect_in_flight;
     uint64_t last_report_timestamp_ms;
+    char last_report_rpt_id[160U];
+    char last_report_data_set[160U];
     char report_health[16U];
     char report_health_reason[64U];
     char last_error_code[64U];
@@ -90,6 +92,8 @@ typedef struct {
     char phase[32U];
     char last_error_code[64U];
     char last_error_message[256U];
+    char last_report_rpt_id[160U];
+    char last_report_data_set[160U];
     char report_health[16U];
     char report_health_reason[64U];
     int associated;

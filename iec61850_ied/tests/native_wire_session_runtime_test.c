@@ -409,6 +409,14 @@ int main(void)
             unitlab_native_session_manager_reset(&manager);
             return 1;
         }
+        if (!expect_true(strcmp(status.last_report_rpt_id, "IED1LD0/LLN0.brcbA") == 0, "last report rpt id not recorded")) {
+            unitlab_native_session_manager_reset(&manager);
+            return 1;
+        }
+        if (!expect_true(strcmp(status.last_report_data_set, "IED1LD0/LLN0.RCB1") == 0, "last report data set not recorded")) {
+            unitlab_native_session_manager_reset(&manager);
+            return 1;
+        }
         if (!expect_true(status.wants_subscription == 1 && status.wants_gi == 1, "subscription intent not recorded")) {
             unitlab_native_session_manager_reset(&manager);
             return 1;

@@ -116,6 +116,15 @@ static void runtime_set_report_health(UnitLabNativeSessionRuntime* runtime, cons
     copy_text(runtime->live.report_health_reason, sizeof(runtime->live.report_health_reason), report_health_reason != NULL ? report_health_reason : "");
 }
 
+static void runtime_clear_last_report_identity(UnitLabNativeSessionRuntime* runtime)
+{
+    if (runtime == NULL) {
+        return;
+    }
+    runtime->live.last_report_rpt_id[0] = '\0';
+    runtime->live.last_report_data_set[0] = '\0';
+}
+
 static void runtime_mark_signals_stale(
     UnitLabNativeSessionRuntime* runtime,
     const char* reason,
@@ -153,6 +162,7 @@ void unitlab_native_session_runtime_init(UnitLabNativeSessionRuntime* runtime)
     runtime->live.phase = UNITLAB_NATIVE_SESSION_PHASE_IDLE;
     runtime_set_report_health(runtime, "unknown", NULL);
     runtime_set_error(runtime, "SESSION_RUNTIME_OK", NULL);
+    runtime_clear_last_report_identity(runtime);
 }
 
 void unitlab_native_session_manager_init(UnitLabNativeSessionManager* manager)
@@ -198,6 +208,7 @@ void unitlab_native_session_runtime_set_identity(
         runtime->identity.device_key);
     unitlab_native_signal_runtime_set_current_connection_generation(&runtime->signal_runtime, runtime->identity.connection_generation);
     runtime_set_report_health(runtime, "unknown", NULL);
+    runtime_clear_last_report_identity(runtime);
     log_runtime_event(runtime, "session-configured", NULL);
 }
 
@@ -567,6 +578,14 @@ void unitlab_native_session_runtime_mark_report_received(
         runtime->live.subscribed = 1;
     }
     runtime->live.last_report_timestamp_ms = timestamp_ms != 0U ? timestamp_ms : session_runtime_now_ms();
+    copy_text(
+        runtime->live.last_report_rpt_id,
+        sizeof(runtime->live.last_report_rpt_id),
+        session != NULL ? session->discovered_model.last_report_rpt_id : "");
+    copy_text(
+        runtime->live.last_report_data_set,
+        sizeof(runtime->live.last_report_data_set),
+        session != NULL ? session->discovered_model.last_report_data_set : "");
     runtime_set_report_health(runtime, "live", NULL);
     runtime->live.phase = UNITLAB_NATIVE_SESSION_PHASE_REPORTING;
     log_runtime_event(runtime, "report-received", NULL);
@@ -790,6 +809,8 @@ int unitlab_native_session_runtime_copy_status(
     copy_text(status->phase, sizeof(status->phase), unitlab_native_session_phase_label(runtime->live.phase));
     copy_text(status->last_error_code, sizeof(status->last_error_code), runtime->live.last_error_code);
     copy_text(status->last_error_message, sizeof(status->last_error_message), runtime->live.last_error_message);
+    copy_text(status->last_report_rpt_id, sizeof(status->last_report_rpt_id), runtime->live.last_report_rpt_id);
+    copy_text(status->last_report_data_set, sizeof(status->last_report_data_set), runtime->live.last_report_data_set);
     copy_text(status->report_health, sizeof(status->report_health), runtime->live.report_health);
     copy_text(status->report_health_reason, sizeof(status->report_health_reason), runtime->live.report_health_reason);
     status->associated = runtime->live.associated;
