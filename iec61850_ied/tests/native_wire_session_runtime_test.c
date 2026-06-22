@@ -450,6 +450,10 @@ int main(void)
             unitlab_native_session_manager_reset(&manager);
             return 1;
         }
+        if (!expect_true(status.signal_update_count == 1U && status.signal_change_count == 1U, "live signal counts not recorded")) {
+            unitlab_native_session_manager_reset(&manager);
+            return 1;
+        }
         unitlab_native_session_runtime_mark_closed(runtime);
         if (!expect_true(signal_state->freshness == UNITLAB_NATIVE_SIGNAL_FRESHNESS_STALE, "closed session did not mark signal stale")) {
             unitlab_native_session_manager_reset(&manager);
@@ -464,6 +468,10 @@ int main(void)
             return 1;
         }
         if (!expect_true(status.signal_cache_count == 1U && status.live_signal_count == 0U && status.stale_signal_count == 1U && status.unknown_signal_count == 0U, "stale signal cache summary incorrect")) {
+            unitlab_native_session_manager_reset(&manager);
+            return 1;
+        }
+        if (!expect_true(status.signal_update_count == 1U && status.signal_change_count == 2U, "stale signal counts not recorded")) {
             unitlab_native_session_manager_reset(&manager);
             return 1;
         }

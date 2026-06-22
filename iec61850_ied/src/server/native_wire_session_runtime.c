@@ -830,6 +830,8 @@ int unitlab_native_session_runtime_copy_status(
     status->live_signal_count = live_signal_count;
     status->stale_signal_count = stale_signal_count;
     status->unknown_signal_count = unknown_signal_count;
+    status->signal_update_count = runtime->signal_runtime.update_count;
+    status->signal_change_count = runtime->signal_runtime.change_count;
     if (runtime->has_discovery_snapshot) {
         copy_text(status->snapshot_id, sizeof(status->snapshot_id), runtime->discovery_snapshot.snapshot_id);
         copy_text(status->discovery_source_hash, sizeof(status->discovery_source_hash), runtime->discovery_snapshot.source_hash);

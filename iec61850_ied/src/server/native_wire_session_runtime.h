@@ -123,6 +123,8 @@ typedef struct {
     size_t live_signal_count;
     size_t stale_signal_count;
     size_t unknown_signal_count;
+    uint64_t signal_update_count;
+    uint64_t signal_change_count;
     uint64_t stale_generation_drop_count;
 } UnitLabNativeSessionStatus;
 
