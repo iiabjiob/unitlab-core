@@ -149,6 +149,26 @@ void unitlab_native_session_runtime_set_identity(
     log_runtime_event(runtime, "session-configured", NULL);
 }
 
+void unitlab_native_session_runtime_set_desired_state(
+    UnitLabNativeSessionRuntime* runtime,
+    int endpoint_connected,
+    int discovery_available,
+    int subscription_active,
+    int reporting_active,
+    int reconnect_pending)
+{
+    if (runtime == NULL) {
+        return;
+    }
+    runtime->desired.endpoint_connected = endpoint_connected ? 1 : 0;
+    runtime->desired.discovery_available = discovery_available ? 1 : 0;
+    runtime->desired.subscription_active = subscription_active ? 1 : 0;
+    runtime->desired.reporting_active = reporting_active ? 1 : 0;
+    runtime->desired.reconnect_pending = reconnect_pending ? 1 : 0;
+    runtime->intent.wants_reconnect = runtime->desired.reconnect_pending;
+    log_runtime_event(runtime, "desired-state-updated", NULL);
+}
+
 void unitlab_native_session_runtime_set_subscription_intent(
     UnitLabNativeSessionRuntime* runtime,
     const char* rcb_key,
@@ -161,6 +181,10 @@ void unitlab_native_session_runtime_set_subscription_intent(
     copy_text(runtime->identity.rcb_key, sizeof(runtime->identity.rcb_key), rcb_key);
     runtime->intent.wants_subscription = wants_subscription ? 1 : 0;
     runtime->intent.wants_gi = wants_gi ? 1 : 0;
+    runtime->desired.endpoint_connected = 1;
+    runtime->desired.discovery_available = 1;
+    runtime->desired.subscription_active = runtime->intent.wants_subscription;
+    runtime->desired.reporting_active = runtime->intent.wants_subscription || runtime->intent.wants_gi;
     log_runtime_event(runtime, "subscription-intent", runtime->identity.rcb_key[0] != '\0' ? runtime->identity.rcb_key : NULL);
 }
 
@@ -218,6 +242,40 @@ const char* unitlab_native_session_phase_label(UnitLabNativeSessionPhase phase)
         return "closed";
     }
     return "unknown";
+}
+
+int unitlab_native_session_runtime_next_desired_operation(
+    const UnitLabNativeSessionRuntime* runtime,
+    UnitLabNativeSessionOperationKind* operation_kind)
+{
+    if (operation_kind == NULL) {
+        return 0;
+    }
+    *operation_kind = UNITLAB_NATIVE_SESSION_OPERATION_CONNECT;
+    if (runtime == NULL) {
+        return 0;
+    }
+    if (runtime->desired.reconnect_pending && (!runtime->live.associated || runtime->live.phase == UNITLAB_NATIVE_SESSION_PHASE_FAILED || runtime->live.phase == UNITLAB_NATIVE_SESSION_PHASE_DEGRADED || runtime->live.phase == UNITLAB_NATIVE_SESSION_PHASE_CLOSED)) {
+        *operation_kind = UNITLAB_NATIVE_SESSION_OPERATION_RECONNECT;
+        return 1;
+    }
+    if (runtime->desired.endpoint_connected && !runtime->live.associated) {
+        *operation_kind = UNITLAB_NATIVE_SESSION_OPERATION_CONNECT;
+        return 1;
+    }
+    if (runtime->desired.discovery_available && !runtime->live.discovered) {
+        *operation_kind = UNITLAB_NATIVE_SESSION_OPERATION_DISCOVER;
+        return 1;
+    }
+    if (runtime->desired.subscription_active && (!runtime->live.subscribed || !runtime->live.reporting)) {
+        *operation_kind = UNITLAB_NATIVE_SESSION_OPERATION_SUBSCRIBE;
+        return 1;
+    }
+    if (runtime->desired.reporting_active && !runtime->live.reporting) {
+        *operation_kind = UNITLAB_NATIVE_SESSION_OPERATION_SUBSCRIBE;
+        return 1;
+    }
+    return 0;
 }
 
 static int operation_in_flight(const UnitLabNativeSessionRuntime* runtime, UnitLabNativeSessionOperationKind operation_kind)
@@ -506,6 +564,11 @@ int unitlab_native_session_runtime_copy_status(
     status->discovered = runtime->live.discovered;
     status->subscribed = runtime->live.subscribed;
     status->reporting = runtime->live.reporting;
+    status->desired_endpoint_connected = runtime->desired.endpoint_connected;
+    status->desired_discovery_available = runtime->desired.discovery_available;
+    status->desired_subscription_active = runtime->desired.subscription_active;
+    status->desired_reporting_active = runtime->desired.reporting_active;
+    status->desired_reconnect_pending = runtime->desired.reconnect_pending;
     status->wants_subscription = runtime->intent.wants_subscription;
     status->wants_gi = runtime->intent.wants_gi;
     status->wants_reconnect = runtime->intent.wants_reconnect;

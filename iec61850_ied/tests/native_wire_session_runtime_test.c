@@ -33,6 +33,7 @@ int main(void)
     UnitLabNativeSessionManager manager;
     UnitLabNativeSessionRuntime* runtime;
     UnitLabNativeDiscoverySnapshot snapshot;
+    UnitLabNativeSessionOperationKind next_operation;
     uint64_t connect_generation;
     uint64_t reconnect_generation;
 
@@ -45,6 +46,30 @@ int main(void)
     if (!expect_status(runtime, UNITLAB_NATIVE_SESSION_PHASE_IDLE, "SESSION_RUNTIME_OK")) {
         unitlab_native_session_manager_reset(&manager);
         return 1;
+    }
+    unitlab_native_session_runtime_set_desired_state(runtime, 1, 1, 1, 1, 0);
+    if (!expect_true(unitlab_native_session_runtime_next_desired_operation(runtime, &next_operation), "next desired operation missing")) {
+        unitlab_native_session_manager_reset(&manager);
+        return 1;
+    }
+    if (!expect_true(next_operation == UNITLAB_NATIVE_SESSION_OPERATION_CONNECT, "next desired operation should connect first")) {
+        unitlab_native_session_manager_reset(&manager);
+        return 1;
+    }
+    {
+        UnitLabNativeSessionStatus status;
+        if (!expect_true(unitlab_native_session_runtime_copy_status(runtime, &status), "copy_status failed")) {
+            unitlab_native_session_manager_reset(&manager);
+            return 1;
+        }
+        if (!expect_true(status.desired_endpoint_connected == 1 && status.desired_discovery_available == 1 && status.desired_subscription_active == 1 && status.desired_reporting_active == 1, "desired state not recorded")) {
+            unitlab_native_session_manager_reset(&manager);
+            return 1;
+        }
+        if (!expect_true(status.associated == 0 && status.reporting == 0, "actual state should remain idle")) {
+            unitlab_native_session_manager_reset(&manager);
+            return 1;
+        }
     }
 
     if (!expect_true(unitlab_native_session_runtime_begin_operation(runtime, UNITLAB_NATIVE_SESSION_OPERATION_CONNECT), "connect begin failed")) {

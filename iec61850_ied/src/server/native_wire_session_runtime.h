@@ -41,6 +41,14 @@ typedef struct {
 } UnitLabNativeSessionIntent;
 
 typedef struct {
+    int endpoint_connected;
+    int discovery_available;
+    int subscription_active;
+    int reporting_active;
+    int reconnect_pending;
+} UnitLabNativeSessionDesiredState;
+
+typedef struct {
     char snapshot_id[96U];
     char endpoint_id[160U];
     char device_key[160U];
@@ -80,6 +88,11 @@ typedef struct {
     int discovered;
     int subscribed;
     int reporting;
+    int desired_endpoint_connected;
+    int desired_discovery_available;
+    int desired_subscription_active;
+    int desired_reporting_active;
+    int desired_reconnect_pending;
     int wants_subscription;
     int wants_gi;
     int wants_reconnect;
@@ -97,6 +110,7 @@ typedef struct {
 
 typedef struct {
     UnitLabNativeSessionIdentity identity;
+    UnitLabNativeSessionDesiredState desired;
     UnitLabNativeSessionIntent intent;
     UnitLabNativeSessionLiveState live;
     UnitLabNativeDiscoverySnapshot discovery_snapshot;
@@ -123,6 +137,13 @@ void unitlab_native_session_runtime_set_identity(
     const char* session_id,
     const char* endpoint_id,
     const char* device_key);
+void unitlab_native_session_runtime_set_desired_state(
+    UnitLabNativeSessionRuntime* runtime,
+    int endpoint_connected,
+    int discovery_available,
+    int subscription_active,
+    int reporting_active,
+    int reconnect_pending);
 void unitlab_native_session_runtime_set_subscription_intent(
     UnitLabNativeSessionRuntime* runtime,
     const char* rcb_key,
@@ -153,6 +174,9 @@ void unitlab_native_session_runtime_mark_failed(
     const char* error_message);
 void unitlab_native_session_runtime_mark_closed(UnitLabNativeSessionRuntime* runtime);
 const char* unitlab_native_session_phase_label(UnitLabNativeSessionPhase phase);
+int unitlab_native_session_runtime_next_desired_operation(
+    const UnitLabNativeSessionRuntime* runtime,
+    UnitLabNativeSessionOperationKind* operation_kind);
 int unitlab_native_session_runtime_copy_status(
     const UnitLabNativeSessionRuntime* runtime,
     UnitLabNativeSessionStatus* status);
