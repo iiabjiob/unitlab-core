@@ -37,7 +37,6 @@ typedef struct {
     int wants_discovery;
     int wants_subscription;
     int wants_gi;
-    int wants_reconnect;
 } UnitLabNativeSessionIntent;
 
 typedef struct {
@@ -45,7 +44,6 @@ typedef struct {
     int discovery_available;
     int subscription_active;
     int reporting_active;
-    int reconnect_pending;
 } UnitLabNativeSessionDesiredState;
 
 typedef struct {
@@ -92,10 +90,8 @@ typedef struct {
     int desired_discovery_available;
     int desired_subscription_active;
     int desired_reporting_active;
-    int desired_reconnect_pending;
     int wants_subscription;
     int wants_gi;
-    int wants_reconnect;
     uint64_t connection_generation;
     uint64_t last_report_timestamp_ms;
     int has_discovery_snapshot;
@@ -142,13 +138,15 @@ void unitlab_native_session_runtime_set_desired_state(
     int endpoint_connected,
     int discovery_available,
     int subscription_active,
-    int reporting_active,
-    int reconnect_pending);
+    int reporting_active);
 void unitlab_native_session_runtime_set_subscription_intent(
     UnitLabNativeSessionRuntime* runtime,
     const char* rcb_key,
     int wants_subscription,
     int wants_gi);
+int unitlab_native_session_runtime_operation_is_in_flight(
+    const UnitLabNativeSessionRuntime* runtime,
+    UnitLabNativeSessionOperationKind operation_kind);
 int unitlab_native_session_runtime_begin_operation(
     UnitLabNativeSessionRuntime* runtime,
     UnitLabNativeSessionOperationKind operation_kind);

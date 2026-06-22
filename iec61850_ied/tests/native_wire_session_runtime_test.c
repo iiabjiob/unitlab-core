@@ -47,7 +47,7 @@ int main(void)
         unitlab_native_session_manager_reset(&manager);
         return 1;
     }
-    unitlab_native_session_runtime_set_desired_state(runtime, 1, 1, 1, 1, 0);
+    unitlab_native_session_runtime_set_desired_state(runtime, 1, 1, 1, 1);
     if (!expect_true(unitlab_native_session_runtime_next_desired_operation(runtime, &next_operation), "next desired operation missing")) {
         unitlab_native_session_manager_reset(&manager);
         return 1;
@@ -126,7 +126,6 @@ int main(void)
     }
 
     unitlab_native_session_runtime_set_subscription_intent(runtime, "IED1LD0/LLN0.brcbA", 1, 1);
-    runtime->intent.wants_reconnect = 1;
     if (!expect_true(unitlab_native_session_runtime_begin_operation(runtime, UNITLAB_NATIVE_SESSION_OPERATION_SUBSCRIBE), "subscribe begin failed")) {
         unitlab_native_session_manager_reset(&manager);
         return 1;
@@ -142,6 +141,19 @@ int main(void)
         return 1;
     }
 
+    unitlab_native_session_runtime_mark_closed(runtime);
+    if (!expect_status(runtime, UNITLAB_NATIVE_SESSION_PHASE_CLOSED, "SESSION_RUNTIME_OK")) {
+        unitlab_native_session_manager_reset(&manager);
+        return 1;
+    }
+    if (!expect_true(unitlab_native_session_runtime_next_desired_operation(runtime, &next_operation), "next desired operation missing after close")) {
+        unitlab_native_session_manager_reset(&manager);
+        return 1;
+    }
+    if (!expect_true(next_operation == UNITLAB_NATIVE_SESSION_OPERATION_RECONNECT, "closed session should reconnect when desired state is still active")) {
+        unitlab_native_session_manager_reset(&manager);
+        return 1;
+    }
     if (!expect_true(unitlab_native_session_runtime_begin_operation(runtime, UNITLAB_NATIVE_SESSION_OPERATION_RECONNECT), "reconnect begin failed")) {
         unitlab_native_session_manager_reset(&manager);
         return 1;
@@ -156,13 +168,7 @@ int main(void)
         return 1;
     }
     unitlab_native_session_runtime_complete_operation(runtime, UNITLAB_NATIVE_SESSION_OPERATION_RECONNECT, 1, NULL, NULL);
-    if (!expect_status(runtime, UNITLAB_NATIVE_SESSION_PHASE_REPORTING, "SESSION_RUNTIME_OK")) {
-        unitlab_native_session_manager_reset(&manager);
-        return 1;
-    }
-
-    unitlab_native_session_runtime_mark_closed(runtime);
-    if (!expect_status(runtime, UNITLAB_NATIVE_SESSION_PHASE_CLOSED, "SESSION_RUNTIME_OK")) {
+    if (!expect_status(runtime, UNITLAB_NATIVE_SESSION_PHASE_ASSOCIATED, "SESSION_RUNTIME_OK")) {
         unitlab_native_session_manager_reset(&manager);
         return 1;
     }

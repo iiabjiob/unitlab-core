@@ -101,6 +101,16 @@ static void runtime_set_error(UnitLabNativeSessionRuntime* runtime, const char* 
     copy_text(runtime->live.last_error_message, sizeof(runtime->live.last_error_message), error_message != NULL && error_message[0] != '\0' ? error_message : "");
 }
 
+static int runtime_has_active_desired_state(const UnitLabNativeSessionRuntime* runtime)
+{
+    if (runtime == NULL) {
+        return 0;
+    }
+    return runtime->desired.endpoint_connected || runtime->desired.discovery_available || runtime->desired.subscription_active || runtime->desired.reporting_active;
+}
+
+static int operation_in_flight(const UnitLabNativeSessionRuntime* runtime, UnitLabNativeSessionOperationKind operation_kind);
+
 void unitlab_native_session_runtime_init(UnitLabNativeSessionRuntime* runtime)
 {
     if (runtime == NULL) {
@@ -154,8 +164,7 @@ void unitlab_native_session_runtime_set_desired_state(
     int endpoint_connected,
     int discovery_available,
     int subscription_active,
-    int reporting_active,
-    int reconnect_pending)
+    int reporting_active)
 {
     if (runtime == NULL) {
         return;
@@ -164,8 +173,6 @@ void unitlab_native_session_runtime_set_desired_state(
     runtime->desired.discovery_available = discovery_available ? 1 : 0;
     runtime->desired.subscription_active = subscription_active ? 1 : 0;
     runtime->desired.reporting_active = reporting_active ? 1 : 0;
-    runtime->desired.reconnect_pending = reconnect_pending ? 1 : 0;
-    runtime->intent.wants_reconnect = runtime->desired.reconnect_pending;
     log_runtime_event(runtime, "desired-state-updated", NULL);
 }
 
@@ -255,7 +262,11 @@ int unitlab_native_session_runtime_next_desired_operation(
     if (runtime == NULL) {
         return 0;
     }
-    if (runtime->desired.reconnect_pending && (!runtime->live.associated || runtime->live.phase == UNITLAB_NATIVE_SESSION_PHASE_FAILED || runtime->live.phase == UNITLAB_NATIVE_SESSION_PHASE_DEGRADED || runtime->live.phase == UNITLAB_NATIVE_SESSION_PHASE_CLOSED)) {
+    if (runtime_has_active_desired_state(runtime) && (runtime->live.phase == UNITLAB_NATIVE_SESSION_PHASE_FAILED || runtime->live.phase == UNITLAB_NATIVE_SESSION_PHASE_DEGRADED || runtime->live.phase == UNITLAB_NATIVE_SESSION_PHASE_CLOSED)) {
+        *operation_kind = UNITLAB_NATIVE_SESSION_OPERATION_RECONNECT;
+        return 1;
+    }
+    if (!runtime->live.associated && runtime->identity.connection_generation > 0U && runtime_has_active_desired_state(runtime)) {
         *operation_kind = UNITLAB_NATIVE_SESSION_OPERATION_RECONNECT;
         return 1;
     }
@@ -276,6 +287,13 @@ int unitlab_native_session_runtime_next_desired_operation(
         return 1;
     }
     return 0;
+}
+
+int unitlab_native_session_runtime_operation_is_in_flight(
+    const UnitLabNativeSessionRuntime* runtime,
+    UnitLabNativeSessionOperationKind operation_kind)
+{
+    return operation_in_flight(runtime, operation_kind);
 }
 
 static int operation_in_flight(const UnitLabNativeSessionRuntime* runtime, UnitLabNativeSessionOperationKind operation_kind)
@@ -412,7 +430,10 @@ static void mark_operation_success(UnitLabNativeSessionRuntime* runtime, UnitLab
         break;
     case UNITLAB_NATIVE_SESSION_OPERATION_RECONNECT:
         runtime->live.associated = 1;
-        runtime->live.phase = runtime->intent.wants_subscription ? UNITLAB_NATIVE_SESSION_PHASE_REPORTING : UNITLAB_NATIVE_SESSION_PHASE_ASSOCIATED;
+        runtime->live.discovered = 0;
+        runtime->live.subscribed = 0;
+        runtime->live.reporting = 0;
+        runtime->live.phase = UNITLAB_NATIVE_SESSION_PHASE_ASSOCIATED;
         break;
     }
 }
@@ -441,6 +462,8 @@ static void mark_operation_failure(UnitLabNativeSessionRuntime* runtime, UnitLab
         break;
     case UNITLAB_NATIVE_SESSION_OPERATION_RECONNECT:
         runtime->live.associated = 0;
+        runtime->live.discovered = 0;
+        runtime->live.subscribed = 0;
         runtime->live.reporting = 0;
         break;
     }
@@ -568,10 +591,8 @@ int unitlab_native_session_runtime_copy_status(
     status->desired_discovery_available = runtime->desired.discovery_available;
     status->desired_subscription_active = runtime->desired.subscription_active;
     status->desired_reporting_active = runtime->desired.reporting_active;
-    status->desired_reconnect_pending = runtime->desired.reconnect_pending;
     status->wants_subscription = runtime->intent.wants_subscription;
     status->wants_gi = runtime->intent.wants_gi;
-    status->wants_reconnect = runtime->intent.wants_reconnect;
     status->connection_generation = runtime->identity.connection_generation;
     status->last_report_timestamp_ms = runtime->live.last_report_timestamp_ms;
     status->has_discovery_snapshot = runtime->has_discovery_snapshot;
