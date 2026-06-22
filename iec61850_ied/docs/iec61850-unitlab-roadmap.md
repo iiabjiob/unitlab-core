@@ -259,3 +259,4 @@ Done when:
 - `docs/unitlab-verification-execution-contract.md`
 - `docs/unitlab-recovery-contract.md`
 - `docs/unitlab-diagnostics-contract.md`
+- `docs/unitlab-api-surface.md`
