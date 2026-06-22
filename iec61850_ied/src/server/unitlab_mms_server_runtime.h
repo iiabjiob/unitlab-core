@@ -88,6 +88,7 @@ typedef struct UnitLabMmsServerRuntime {
     uint8_t brcb_trigger_options_mask_known;
     uint8_t brcb_trigger_options_mask;
     uint32_t brcb_sq_num;
+    uint32_t brcb_sub_sq_num;
     uint64_t brcb_entry_id_counter;
     uint8_t brcb_entry_id[8];
     uint8_t brcb_time_of_entry[6];

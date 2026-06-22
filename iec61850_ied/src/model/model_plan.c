@@ -973,6 +973,7 @@ static int append_report_variable_prefixes_for_logical_device(
         "OptFlds",
         "BufTm",
         "SqNum",
+        "SubSqNum",
         "TrgOps",
         "IntgPd",
         "GI",
@@ -990,6 +991,7 @@ static int append_report_variable_prefixes_for_logical_device(
         "OptFlds",
         "BufTm",
         "SqNum",
+        "SubSqNum",
         "TrgOps",
         "IntgPd",
         "GI"
@@ -1479,4 +1481,3 @@ void unitlab_free_ied_model_name_list(char** names, size_t count)
     }
     free(names);
 }
-

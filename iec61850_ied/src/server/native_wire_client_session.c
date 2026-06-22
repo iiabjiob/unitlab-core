@@ -392,6 +392,55 @@ static int ensure_discovered_rcb_capacity(UnitLabNativeClientSessionState* sessi
     return 1;
 }
 
+static UnitLabNativeDiscoveredRcb* find_selected_report_control_block(UnitLabNativeClientSessionState* session)
+{
+    if (session == NULL || session->subscription_model.rcb_domain[0] == '\0' || session->subscription_model.rcb_item[0] == '\0') {
+        return NULL;
+    }
+    for (size_t index = 0U; index < session->discovered_rcb_count; index++) {
+        UnitLabNativeDiscoveredRcb* rcb = &session->discovered_rcbs[index];
+        if (strcmp(rcb->domain, session->subscription_model.rcb_domain) == 0 && strcmp(rcb->item, session->subscription_model.rcb_item) == 0) {
+            return rcb;
+        }
+    }
+    return NULL;
+}
+
+static const char* report_health_label(UnitLabNativeReportHealthState health)
+{
+    switch (health) {
+    case UNITLAB_NATIVE_REPORT_HEALTH_LIVE:
+        return "live";
+    case UNITLAB_NATIVE_REPORT_HEALTH_DEGRADED:
+        return "degraded";
+    case UNITLAB_NATIVE_REPORT_HEALTH_UNKNOWN:
+    default:
+        return "unknown";
+    }
+}
+
+static void copy_report_sequence_state_to_subscription(
+    UnitLabNativeSubscriptionModel* subscription_model,
+    const UnitLabNativeDiscoveredRcb* rcb)
+{
+    if (subscription_model == NULL || rcb == NULL) {
+        return;
+    }
+    subscription_model->last_report_sequence_generation = rcb->last_report_sequence_generation;
+    subscription_model->last_report_sequence_number = rcb->last_report_sequence_number;
+    subscription_model->last_report_sub_sequence_number = rcb->last_report_sub_sequence_number;
+    subscription_model->report_sequence_gap_count = rcb->report_sequence_gap_count;
+    subscription_model->report_sequence_duplicate_count = rcb->report_sequence_duplicate_count;
+    subscription_model->report_sequence_out_of_order_count = rcb->report_sequence_out_of_order_count;
+    subscription_model->report_sequence_drop_count = rcb->report_sequence_drop_count;
+    subscription_model->report_sequence_missing_count = rcb->report_sequence_missing_count;
+    subscription_model->report_sequence_wrap_count = rcb->report_sequence_wrap_count;
+    subscription_model->has_last_report_sequence_number = rcb->has_last_report_sequence_number;
+    subscription_model->has_last_report_sub_sequence_number = rcb->has_last_report_sub_sequence_number;
+    snprintf(subscription_model->report_health, sizeof(subscription_model->report_health), "%s", report_health_label(rcb->report_health));
+    snprintf(subscription_model->report_health_reason, sizeof(subscription_model->report_health_reason), "%s", rcb->report_health_reason);
+}
+
 void unitlab_native_client_session_reset(UnitLabNativeClientSessionState* session)
 {
     if (session == NULL) {
@@ -759,11 +808,32 @@ void unitlab_native_client_session_reset_last_report(UnitLabNativeClientSessionS
 
 void unitlab_native_client_session_reset_report_sequence(UnitLabNativeClientSessionState* session)
 {
+    UnitLabNativeDiscoveredRcb* rcb = NULL;
+
     if (session == NULL) {
+        return;
+    }
+    rcb = find_selected_report_control_block(session);
+    if (rcb != NULL) {
+        rcb->last_report_sequence_generation = 0U;
+        rcb->last_report_sequence_number = 0U;
+        rcb->last_report_sub_sequence_number = 0U;
+        rcb->report_sequence_gap_count = 0U;
+        rcb->report_sequence_duplicate_count = 0U;
+        rcb->report_sequence_out_of_order_count = 0U;
+        rcb->report_sequence_drop_count = 0U;
+        rcb->report_sequence_missing_count = 0U;
+        rcb->report_sequence_wrap_count = 0U;
+        rcb->has_last_report_sequence_number = 0;
+        rcb->has_last_report_sub_sequence_number = 0;
+        rcb->report_health = UNITLAB_NATIVE_REPORT_HEALTH_UNKNOWN;
+        rcb->report_health_reason[0] = '\0';
+        copy_report_sequence_state_to_subscription(&session->subscription_model, rcb);
         return;
     }
     session->subscription_model.last_report_sequence_generation = 0U;
     session->subscription_model.last_report_sequence_number = 0U;
+    session->subscription_model.last_report_sub_sequence_number = 0U;
     session->subscription_model.report_sequence_gap_count = 0U;
     session->subscription_model.report_sequence_duplicate_count = 0U;
     session->subscription_model.report_sequence_out_of_order_count = 0U;
@@ -771,57 +841,282 @@ void unitlab_native_client_session_reset_report_sequence(UnitLabNativeClientSess
     session->subscription_model.report_sequence_missing_count = 0U;
     session->subscription_model.report_sequence_wrap_count = 0U;
     session->subscription_model.has_last_report_sequence_number = 0;
+    session->subscription_model.has_last_report_sub_sequence_number = 0;
+    snprintf(session->subscription_model.report_health, sizeof(session->subscription_model.report_health), "%s", report_health_label(UNITLAB_NATIVE_REPORT_HEALTH_UNKNOWN));
+    session->subscription_model.report_health_reason[0] = '\0';
 }
 
 UnitLabNativeReportSequenceDisposition unitlab_native_client_session_observe_report_sequence(
     UnitLabNativeClientSessionState* session,
     uint64_t connection_generation,
-    uint32_t sequence_number)
+    uint32_t sequence_number,
+    int has_sub_sequence_number,
+    uint32_t sub_sequence_number)
 {
     UnitLabNativeSubscriptionModel* model;
+    UnitLabNativeDiscoveredRcb* rcb;
     uint32_t missing_count;
 
     if (session == NULL) {
         return UNITLAB_NATIVE_REPORT_SEQUENCE_ACCEPTED;
     }
     model = &session->subscription_model;
-    if (connection_generation != 0U && model->last_report_sequence_generation != connection_generation) {
-        model->last_report_sequence_generation = connection_generation;
-        model->has_last_report_sequence_number = 0;
-        model->last_report_sequence_number = 0U;
-    }
-    if (!model->has_last_report_sequence_number) {
-        model->has_last_report_sequence_number = 1;
+    rcb = find_selected_report_control_block(session);
+    if (rcb == NULL) {
+        if (connection_generation != 0U && model->last_report_sequence_generation != 0U) {
+            if (connection_generation < model->last_report_sequence_generation) {
+                model->report_sequence_out_of_order_count++;
+                model->report_sequence_drop_count++;
+                snprintf(model->report_health, sizeof(model->report_health), "%s", report_health_label(UNITLAB_NATIVE_REPORT_HEALTH_DEGRADED));
+                snprintf(model->report_health_reason, sizeof(model->report_health_reason), "%s", "stale-generation");
+                return UNITLAB_NATIVE_REPORT_SEQUENCE_OUT_OF_ORDER;
+            }
+            if (connection_generation > model->last_report_sequence_generation) {
+                model->last_report_sequence_generation = connection_generation;
+                model->has_last_report_sequence_number = 0;
+                model->has_last_report_sub_sequence_number = 0;
+                model->last_report_sequence_number = 0U;
+                model->last_report_sub_sequence_number = 0U;
+                snprintf(model->report_health, sizeof(model->report_health), "%s", report_health_label(UNITLAB_NATIVE_REPORT_HEALTH_UNKNOWN));
+                model->report_health_reason[0] = '\0';
+            }
+        } else if (connection_generation != 0U && model->last_report_sequence_generation != connection_generation) {
+            model->last_report_sequence_generation = connection_generation;
+            model->has_last_report_sequence_number = 0;
+            model->has_last_report_sub_sequence_number = 0;
+            model->last_report_sequence_number = 0U;
+            model->last_report_sub_sequence_number = 0U;
+            snprintf(model->report_health, sizeof(model->report_health), "%s", report_health_label(UNITLAB_NATIVE_REPORT_HEALTH_UNKNOWN));
+            model->report_health_reason[0] = '\0';
+        }
+        if (!model->has_last_report_sequence_number) {
+            model->has_last_report_sequence_number = 1;
+            model->last_report_sequence_number = sequence_number;
+            model->last_report_sub_sequence_number = has_sub_sequence_number ? sub_sequence_number : 0U;
+            model->has_last_report_sub_sequence_number = has_sub_sequence_number ? 1 : 0;
+            model->last_report_sequence_generation = connection_generation;
+            snprintf(model->report_health, sizeof(model->report_health), "%s", report_health_label(UNITLAB_NATIVE_REPORT_HEALTH_LIVE));
+            model->report_health_reason[0] = '\0';
+            return UNITLAB_NATIVE_REPORT_SEQUENCE_ACCEPTED;
+        }
+        if (sequence_number == model->last_report_sequence_number) {
+            if (has_sub_sequence_number) {
+                if (!model->has_last_report_sub_sequence_number) {
+                    if (sub_sequence_number == 0U) {
+                        model->report_sequence_duplicate_count++;
+                        model->report_sequence_drop_count++;
+                        snprintf(model->report_health, sizeof(model->report_health), "%s", report_health_label(UNITLAB_NATIVE_REPORT_HEALTH_DEGRADED));
+                        snprintf(model->report_health_reason, sizeof(model->report_health_reason), "%s", "duplicate-sequence");
+                        return UNITLAB_NATIVE_REPORT_SEQUENCE_DUPLICATE;
+                    }
+                    model->last_report_sub_sequence_number = sub_sequence_number;
+                    model->has_last_report_sub_sequence_number = 1;
+                    model->last_report_sequence_generation = connection_generation;
+                    snprintf(model->report_health, sizeof(model->report_health), "%s", report_health_label(UNITLAB_NATIVE_REPORT_HEALTH_LIVE));
+                    model->report_health_reason[0] = '\0';
+                    return UNITLAB_NATIVE_REPORT_SEQUENCE_ACCEPTED;
+                }
+                if (sub_sequence_number > model->last_report_sub_sequence_number) {
+                    if (model->has_last_report_sub_sequence_number && sub_sequence_number > model->last_report_sub_sequence_number + 1U) {
+                        model->report_sequence_gap_count++;
+                        model->report_sequence_missing_count += (uint64_t)(sub_sequence_number - model->last_report_sub_sequence_number - 1U);
+                        snprintf(model->report_health, sizeof(model->report_health), "%s", report_health_label(UNITLAB_NATIVE_REPORT_HEALTH_DEGRADED));
+                        snprintf(model->report_health_reason, sizeof(model->report_health_reason), "%s", "missing-subsequence");
+                        model->last_report_sub_sequence_number = sub_sequence_number;
+                        model->last_report_sequence_generation = connection_generation;
+                        model->has_last_report_sub_sequence_number = 1;
+                        return UNITLAB_NATIVE_REPORT_SEQUENCE_GAP;
+                    }
+                    model->last_report_sub_sequence_number = sub_sequence_number;
+                    model->has_last_report_sub_sequence_number = 1;
+                    model->last_report_sequence_generation = connection_generation;
+                    snprintf(model->report_health, sizeof(model->report_health), "%s", report_health_label(UNITLAB_NATIVE_REPORT_HEALTH_LIVE));
+                    model->report_health_reason[0] = '\0';
+                    return UNITLAB_NATIVE_REPORT_SEQUENCE_ACCEPTED;
+                }
+                if (model->has_last_report_sub_sequence_number && sub_sequence_number < model->last_report_sub_sequence_number) {
+                    model->report_sequence_out_of_order_count++;
+                    model->report_sequence_drop_count++;
+                    snprintf(model->report_health, sizeof(model->report_health), "%s", report_health_label(UNITLAB_NATIVE_REPORT_HEALTH_DEGRADED));
+                    snprintf(model->report_health_reason, sizeof(model->report_health_reason), "%s", "out-of-order-subsequence");
+                    return UNITLAB_NATIVE_REPORT_SEQUENCE_OUT_OF_ORDER;
+                }
+            }
+            model->report_sequence_duplicate_count++;
+            model->report_sequence_drop_count++;
+            snprintf(model->report_health, sizeof(model->report_health), "%s", report_health_label(UNITLAB_NATIVE_REPORT_HEALTH_DEGRADED));
+            snprintf(model->report_health_reason, sizeof(model->report_health_reason), "%s", "duplicate-sequence");
+            return UNITLAB_NATIVE_REPORT_SEQUENCE_DUPLICATE;
+        }
+        if (model->last_report_sequence_number == UINT32_MAX && sequence_number == 0U) {
+            model->report_sequence_wrap_count++;
+            model->last_report_sequence_number = sequence_number;
+            model->last_report_sub_sequence_number = has_sub_sequence_number ? sub_sequence_number : 0U;
+            model->has_last_report_sub_sequence_number = has_sub_sequence_number ? 1 : 0;
+            model->last_report_sequence_generation = connection_generation;
+            snprintf(model->report_health, sizeof(model->report_health), "%s", report_health_label(UNITLAB_NATIVE_REPORT_HEALTH_LIVE));
+            model->report_health_reason[0] = '\0';
+            return UNITLAB_NATIVE_REPORT_SEQUENCE_ACCEPTED;
+        }
+        if (sequence_number < model->last_report_sequence_number) {
+            model->report_sequence_out_of_order_count++;
+            model->report_sequence_drop_count++;
+            snprintf(model->report_health, sizeof(model->report_health), "%s", report_health_label(UNITLAB_NATIVE_REPORT_HEALTH_DEGRADED));
+            snprintf(model->report_health_reason, sizeof(model->report_health_reason), "%s", "out-of-order-sequence");
+            return UNITLAB_NATIVE_REPORT_SEQUENCE_OUT_OF_ORDER;
+        }
+        missing_count = sequence_number - model->last_report_sequence_number - 1U;
+        if (missing_count > 0U) {
+            model->report_sequence_gap_count++;
+            model->report_sequence_missing_count += (uint64_t)missing_count;
+            model->last_report_sequence_number = sequence_number;
+            model->last_report_sub_sequence_number = has_sub_sequence_number ? sub_sequence_number : 0U;
+            model->has_last_report_sub_sequence_number = has_sub_sequence_number ? 1 : 0;
+            model->last_report_sequence_generation = connection_generation;
+            snprintf(model->report_health, sizeof(model->report_health), "%s", report_health_label(UNITLAB_NATIVE_REPORT_HEALTH_DEGRADED));
+            snprintf(model->report_health_reason, sizeof(model->report_health_reason), "%s", "missing-sequence");
+            return UNITLAB_NATIVE_REPORT_SEQUENCE_GAP;
+        }
         model->last_report_sequence_number = sequence_number;
+        model->last_report_sub_sequence_number = has_sub_sequence_number ? sub_sequence_number : 0U;
+        model->has_last_report_sub_sequence_number = has_sub_sequence_number ? 1 : 0;
         model->last_report_sequence_generation = connection_generation;
+        snprintf(model->report_health, sizeof(model->report_health), "%s", report_health_label(UNITLAB_NATIVE_REPORT_HEALTH_LIVE));
+        model->report_health_reason[0] = '\0';
         return UNITLAB_NATIVE_REPORT_SEQUENCE_ACCEPTED;
     }
-    if (sequence_number == model->last_report_sequence_number) {
-        model->report_sequence_duplicate_count++;
-        model->report_sequence_drop_count++;
+    if (connection_generation != 0U && rcb->last_report_sequence_generation != 0U) {
+        if (connection_generation < rcb->last_report_sequence_generation) {
+            rcb->report_sequence_out_of_order_count++;
+            rcb->report_sequence_drop_count++;
+            rcb->report_health = UNITLAB_NATIVE_REPORT_HEALTH_DEGRADED;
+            snprintf(rcb->report_health_reason, sizeof(rcb->report_health_reason), "%s", "stale-generation");
+            copy_report_sequence_state_to_subscription(model, rcb);
+            return UNITLAB_NATIVE_REPORT_SEQUENCE_OUT_OF_ORDER;
+        }
+        if (connection_generation > rcb->last_report_sequence_generation) {
+            rcb->last_report_sequence_generation = connection_generation;
+            rcb->has_last_report_sequence_number = 0;
+            rcb->has_last_report_sub_sequence_number = 0;
+            rcb->last_report_sequence_number = 0U;
+            rcb->last_report_sub_sequence_number = 0U;
+            rcb->report_health = UNITLAB_NATIVE_REPORT_HEALTH_UNKNOWN;
+            rcb->report_health_reason[0] = '\0';
+        }
+    } else if (connection_generation != 0U && rcb->last_report_sequence_generation != connection_generation) {
+        rcb->last_report_sequence_generation = connection_generation;
+        rcb->has_last_report_sequence_number = 0;
+        rcb->has_last_report_sub_sequence_number = 0;
+        rcb->last_report_sequence_number = 0U;
+        rcb->last_report_sub_sequence_number = 0U;
+        rcb->report_health = UNITLAB_NATIVE_REPORT_HEALTH_UNKNOWN;
+        rcb->report_health_reason[0] = '\0';
+    }
+    if (!rcb->has_last_report_sequence_number) {
+        rcb->has_last_report_sequence_number = 1;
+        rcb->last_report_sequence_number = sequence_number;
+        rcb->last_report_sub_sequence_number = has_sub_sequence_number ? sub_sequence_number : 0U;
+        rcb->has_last_report_sub_sequence_number = has_sub_sequence_number ? 1 : 0;
+        rcb->last_report_sequence_generation = connection_generation;
+        rcb->report_health = UNITLAB_NATIVE_REPORT_HEALTH_LIVE;
+        rcb->report_health_reason[0] = '\0';
+        copy_report_sequence_state_to_subscription(model, rcb);
+        return UNITLAB_NATIVE_REPORT_SEQUENCE_ACCEPTED;
+    }
+    if (sequence_number == rcb->last_report_sequence_number) {
+        if (has_sub_sequence_number) {
+            if (!rcb->has_last_report_sub_sequence_number) {
+                if (sub_sequence_number == 0U) {
+                    rcb->report_sequence_duplicate_count++;
+                    rcb->report_sequence_drop_count++;
+                    rcb->report_health = UNITLAB_NATIVE_REPORT_HEALTH_DEGRADED;
+                    snprintf(rcb->report_health_reason, sizeof(rcb->report_health_reason), "%s", "duplicate-sequence");
+                    copy_report_sequence_state_to_subscription(model, rcb);
+                    return UNITLAB_NATIVE_REPORT_SEQUENCE_DUPLICATE;
+                }
+                rcb->last_report_sub_sequence_number = sub_sequence_number;
+                rcb->has_last_report_sub_sequence_number = 1;
+                rcb->last_report_sequence_generation = connection_generation;
+                rcb->report_health = UNITLAB_NATIVE_REPORT_HEALTH_LIVE;
+                rcb->report_health_reason[0] = '\0';
+                copy_report_sequence_state_to_subscription(model, rcb);
+                return UNITLAB_NATIVE_REPORT_SEQUENCE_ACCEPTED;
+            }
+            if (sub_sequence_number > rcb->last_report_sub_sequence_number) {
+                if (rcb->has_last_report_sub_sequence_number && sub_sequence_number > rcb->last_report_sub_sequence_number + 1U) {
+                    rcb->report_sequence_gap_count++;
+                    rcb->report_sequence_missing_count += (uint64_t)(sub_sequence_number - rcb->last_report_sub_sequence_number - 1U);
+                    rcb->report_health = UNITLAB_NATIVE_REPORT_HEALTH_DEGRADED;
+                    snprintf(rcb->report_health_reason, sizeof(rcb->report_health_reason), "%s", "missing-subsequence");
+                    rcb->last_report_sub_sequence_number = sub_sequence_number;
+                    rcb->last_report_sequence_generation = connection_generation;
+                    rcb->has_last_report_sub_sequence_number = 1;
+                    copy_report_sequence_state_to_subscription(model, rcb);
+                    return UNITLAB_NATIVE_REPORT_SEQUENCE_GAP;
+                }
+                rcb->last_report_sub_sequence_number = sub_sequence_number;
+                rcb->has_last_report_sub_sequence_number = 1;
+                rcb->last_report_sequence_generation = connection_generation;
+                rcb->report_health = UNITLAB_NATIVE_REPORT_HEALTH_LIVE;
+                rcb->report_health_reason[0] = '\0';
+                copy_report_sequence_state_to_subscription(model, rcb);
+                return UNITLAB_NATIVE_REPORT_SEQUENCE_ACCEPTED;
+            }
+            if (rcb->has_last_report_sub_sequence_number && sub_sequence_number < rcb->last_report_sub_sequence_number) {
+                rcb->report_sequence_out_of_order_count++;
+                rcb->report_sequence_drop_count++;
+                rcb->report_health = UNITLAB_NATIVE_REPORT_HEALTH_DEGRADED;
+                snprintf(rcb->report_health_reason, sizeof(rcb->report_health_reason), "%s", "out-of-order-subsequence");
+                copy_report_sequence_state_to_subscription(model, rcb);
+                return UNITLAB_NATIVE_REPORT_SEQUENCE_OUT_OF_ORDER;
+            }
+        }
+        rcb->report_sequence_duplicate_count++;
+        rcb->report_sequence_drop_count++;
+        rcb->report_health = UNITLAB_NATIVE_REPORT_HEALTH_DEGRADED;
+        snprintf(rcb->report_health_reason, sizeof(rcb->report_health_reason), "%s", "duplicate-sequence");
+        copy_report_sequence_state_to_subscription(model, rcb);
         return UNITLAB_NATIVE_REPORT_SEQUENCE_DUPLICATE;
     }
-    if (model->last_report_sequence_number == UINT32_MAX && sequence_number == 0U) {
-        model->report_sequence_wrap_count++;
-        model->last_report_sequence_number = sequence_number;
-        model->last_report_sequence_generation = connection_generation;
+    if (rcb->last_report_sequence_number == UINT32_MAX && sequence_number == 0U) {
+        rcb->report_sequence_wrap_count++;
+        rcb->last_report_sequence_number = sequence_number;
+        rcb->last_report_sub_sequence_number = has_sub_sequence_number ? sub_sequence_number : 0U;
+        rcb->has_last_report_sub_sequence_number = has_sub_sequence_number ? 1 : 0;
+        rcb->last_report_sequence_generation = connection_generation;
+        rcb->report_health = UNITLAB_NATIVE_REPORT_HEALTH_LIVE;
+        rcb->report_health_reason[0] = '\0';
+        copy_report_sequence_state_to_subscription(model, rcb);
         return UNITLAB_NATIVE_REPORT_SEQUENCE_ACCEPTED;
     }
-    if (sequence_number < model->last_report_sequence_number) {
-        model->report_sequence_out_of_order_count++;
-        model->report_sequence_drop_count++;
+    if (sequence_number < rcb->last_report_sequence_number) {
+        rcb->report_sequence_out_of_order_count++;
+        rcb->report_sequence_drop_count++;
+        rcb->report_health = UNITLAB_NATIVE_REPORT_HEALTH_DEGRADED;
+        snprintf(rcb->report_health_reason, sizeof(rcb->report_health_reason), "%s", "out-of-order-sequence");
+        copy_report_sequence_state_to_subscription(model, rcb);
         return UNITLAB_NATIVE_REPORT_SEQUENCE_OUT_OF_ORDER;
     }
-    missing_count = sequence_number - model->last_report_sequence_number - 1U;
+    missing_count = sequence_number - rcb->last_report_sequence_number - 1U;
     if (missing_count > 0U) {
-        model->report_sequence_gap_count++;
-        model->report_sequence_missing_count += (uint64_t)missing_count;
-        model->last_report_sequence_number = sequence_number;
-        model->last_report_sequence_generation = connection_generation;
+        rcb->report_sequence_gap_count++;
+        rcb->report_sequence_missing_count += (uint64_t)missing_count;
+        rcb->last_report_sequence_number = sequence_number;
+        rcb->last_report_sub_sequence_number = has_sub_sequence_number ? sub_sequence_number : 0U;
+        rcb->has_last_report_sub_sequence_number = has_sub_sequence_number ? 1 : 0;
+        rcb->last_report_sequence_generation = connection_generation;
+        rcb->report_health = UNITLAB_NATIVE_REPORT_HEALTH_DEGRADED;
+        snprintf(rcb->report_health_reason, sizeof(rcb->report_health_reason), "%s", "missing-sequence");
+        copy_report_sequence_state_to_subscription(model, rcb);
         return UNITLAB_NATIVE_REPORT_SEQUENCE_GAP;
     }
-    model->last_report_sequence_number = sequence_number;
-    model->last_report_sequence_generation = connection_generation;
+    rcb->last_report_sequence_number = sequence_number;
+    rcb->last_report_sub_sequence_number = has_sub_sequence_number ? sub_sequence_number : 0U;
+    rcb->has_last_report_sub_sequence_number = has_sub_sequence_number ? 1 : 0;
+    rcb->last_report_sequence_generation = connection_generation;
+    rcb->report_health = UNITLAB_NATIVE_REPORT_HEALTH_LIVE;
+    rcb->report_health_reason[0] = '\0';
+    copy_report_sequence_state_to_subscription(model, rcb);
     return UNITLAB_NATIVE_REPORT_SEQUENCE_ACCEPTED;
 }
 
@@ -969,6 +1264,7 @@ UnitLabNativeDiscoveredRcb* unitlab_native_client_session_append_discovered_rcb(
     memset(rcb, 0, sizeof(*rcb));
     snprintf(rcb->domain, sizeof(rcb->domain), "%s", domain);
     snprintf(rcb->item, sizeof(rcb->item), "%s", item);
+    rcb->report_health = UNITLAB_NATIVE_REPORT_HEALTH_UNKNOWN;
     session->discovered_rcb_count++;
     session->discovered_model.brcb_count = session->discovered_rcb_count;
     return rcb;

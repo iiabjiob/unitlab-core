@@ -137,6 +137,7 @@ static int build_synthetic_report_frame_ex(size_t value_count, size_t reason_cou
     size_t service_length = 0U;
     const uint8_t opt_flds[3U] = { 0x06U, 0x7fU, 0x80U };
     const uint8_t sq_num[1U] = { 0x00U };
+    const uint8_t sub_sq_num[1U] = { 0x01U };
     const uint8_t time_of_entry[6U] = { 0x02U, 0xfcU, 0x40U, 0x70U, 0x3cU, 0x94U };
     const uint8_t bool_false[1U] = { 0x00U };
     const uint8_t entry_id[8U] = { 0x00U, 0x00U, 0x01U, 0x9eU, 0xd5U, 0xdcU, 0xecU, 0x70U };
@@ -159,6 +160,7 @@ static int build_synthetic_report_frame_ex(size_t value_count, size_t reason_cou
         || !append_test_ber(report_values, sizeof(report_values), &report_values_length, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 10U, (const uint8_t*)"IED1LD0/LLN0.BR.Events", strlen("IED1LD0/LLN0.BR.Events"), &diagnostic)
         || !append_test_ber(report_values, sizeof(report_values), &report_values_length, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 4U, opt_flds, sizeof(opt_flds), &diagnostic)
         || !append_test_ber(report_values, sizeof(report_values), &report_values_length, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 6U, sq_num, sizeof(sq_num), &diagnostic)
+        || !append_test_ber(report_values, sizeof(report_values), &report_values_length, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 7U, sub_sq_num, sizeof(sub_sq_num), &diagnostic)
         || !append_test_ber(report_values, sizeof(report_values), &report_values_length, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 12U, time_of_entry, sizeof(time_of_entry), &diagnostic)
         || !append_test_ber(report_values, sizeof(report_values), &report_values_length, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 10U, (const uint8_t*)"IED1LD0/LLN0$dsEvents", strlen("IED1LD0/LLN0$dsEvents"), &diagnostic)
         || !append_test_ber(report_values, sizeof(report_values), &report_values_length, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 3U, bool_false, sizeof(bool_false), &diagnostic)
@@ -359,7 +361,10 @@ static void assert_synthetic_report_counts(size_t value_count, size_t reason_cou
     assert(session.discovered_model.last_report_unsupported_value_count == 0U);
     assert(session.subscription_model.has_last_report_sequence_number == 1);
     assert(session.subscription_model.last_report_sequence_number == 0U);
+    assert(session.subscription_model.has_last_report_sub_sequence_number == 1);
+    assert(session.subscription_model.last_report_sub_sequence_number == 1U);
     assert(session.subscription_model.last_report_sequence_generation == 0U);
+    assert(strcmp(session.subscription_model.report_health, "live") == 0);
     unitlab_native_client_session_reset(&session);
 }
 

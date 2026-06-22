@@ -105,7 +105,7 @@ static void emit_subscription_summary(const UnitLabNativeClientSessionState* ses
         return;
     }
     printf(
-        "native-wire-client: subscription-summary phase=%s rcb=%s/%s rcb-index=%zu rptEna=%s rptEna-invoke=%u giRequested=%s gi-invoke=%u lastReportReceived=%s asyncReports=%zu lastReportSequenceKnown=%s lastReportSequence=%u lastReportSequenceGeneration=%llu seqGapCount=%llu seqDuplicateCount=%llu seqOutOfOrderCount=%llu seqDropCount=%llu seqMissingCount=%llu seqWrapCount=%llu lastReportValues=%zu lastReportDataRefs=%zu lastReportMatchedDataRefs=%zu lastReportReasons=%zu lastReportDatasetMismatches=%zu lastReportMissingValues=%zu lastReportExtraValues=%zu lastReportMissingReasons=%zu lastReportExtraReasons=%zu lastReportUnsupportedValues=%zu\n",
+        "native-wire-client: subscription-summary phase=%s rcb=%s/%s rcb-index=%zu rptEna=%s rptEna-invoke=%u giRequested=%s gi-invoke=%u lastReportReceived=%s asyncReports=%zu lastReportSequenceKnown=%s lastReportSequence=%u lastReportSubSequenceKnown=%s lastReportSubSequence=%u lastReportSequenceGeneration=%llu seqGapCount=%llu seqDuplicateCount=%llu seqOutOfOrderCount=%llu seqDropCount=%llu seqMissingCount=%llu seqWrapCount=%llu reportHealth=%s reportHealthReason=%s lastReportValues=%zu lastReportDataRefs=%zu lastReportMatchedDataRefs=%zu lastReportReasons=%zu lastReportDatasetMismatches=%zu lastReportMissingValues=%zu lastReportExtraValues=%zu lastReportMissingReasons=%zu lastReportExtraReasons=%zu lastReportUnsupportedValues=%zu\n",
         phase != NULL ? phase : "snapshot",
         session->subscription_model.rcb_domain[0] != '\0' ? session->subscription_model.rcb_domain : "<none>",
         session->subscription_model.rcb_item[0] != '\0' ? session->subscription_model.rcb_item : "<none>",
@@ -118,6 +118,8 @@ static void emit_subscription_summary(const UnitLabNativeClientSessionState* ses
         session->subscription_model.async_report_count,
         session->subscription_model.has_last_report_sequence_number ? "true" : "false",
         session->subscription_model.has_last_report_sequence_number ? session->subscription_model.last_report_sequence_number : 0U,
+        session->subscription_model.has_last_report_sub_sequence_number ? "true" : "false",
+        session->subscription_model.has_last_report_sub_sequence_number ? session->subscription_model.last_report_sub_sequence_number : 0U,
         (unsigned long long)session->subscription_model.last_report_sequence_generation,
         (unsigned long long)session->subscription_model.report_sequence_gap_count,
         (unsigned long long)session->subscription_model.report_sequence_duplicate_count,
@@ -125,6 +127,8 @@ static void emit_subscription_summary(const UnitLabNativeClientSessionState* ses
         (unsigned long long)session->subscription_model.report_sequence_drop_count,
         (unsigned long long)session->subscription_model.report_sequence_missing_count,
         (unsigned long long)session->subscription_model.report_sequence_wrap_count,
+        session->subscription_model.report_health[0] != '\0' ? session->subscription_model.report_health : "<none>",
+        session->subscription_model.report_health_reason[0] != '\0' ? session->subscription_model.report_health_reason : "<none>",
         session->discovered_model.last_report_value_count,
         session->discovered_model.last_report_data_ref_count,
         session->discovered_model.last_report_matched_data_ref_count,
@@ -1383,6 +1387,8 @@ static void emit_information_report_summary(
     const uint8_t* inclusion_bytes = NULL;
     size_t inclusion_length = 0U;
     char report_rpt_id[160U] = { 0 };
+    uint32_t report_sub_sequence_number = 0U;
+    int has_sub_sequence_number = 0;
 
     if (pdu == NULL || pdu->service_bytes == NULL || pdu->service_length == 0U) {
         return;
@@ -1439,25 +1445,48 @@ static void emit_information_report_summary(
         print_report_value_summary(&value);
         printf("\n");
         report_sequence_number = decode_unsigned_bytes(value.value_bytes, value.value_length);
+        {
+            size_t sub_sequence_checkpoint = values_offset;
+            UnitLabMmsBerElement sub_sequence_value;
+            unitlab_mms_ber_element_init(&sub_sequence_value);
+            if (read_next_report_value(values_wrapper.value_bytes, values_wrapper.value_length, &values_offset, &sub_sequence_value, &diagnostic)
+                && sub_sequence_value.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC
+                && !sub_sequence_value.tag.constructed
+                && sub_sequence_value.tag.tag_number == 7U) {
+                report_sub_sequence_number = decode_unsigned_bytes(sub_sequence_value.value_bytes, sub_sequence_value.value_length);
+                has_sub_sequence_number = 1;
+                printf("mms-summary: report.SubSqNum=");
+                print_report_value_summary(&sub_sequence_value);
+                printf("\n");
+            } else {
+                values_offset = sub_sequence_checkpoint;
+            }
+        }
         sequence_disposition = unitlab_native_client_session_observe_report_sequence(
             session,
             session_runtime != NULL ? session_runtime->identity.connection_generation : 0U,
-            report_sequence_number);
+            report_sequence_number,
+            has_sub_sequence_number,
+            report_sub_sequence_number);
         if (sequence_disposition == UNITLAB_NATIVE_REPORT_SEQUENCE_DUPLICATE || sequence_disposition == UNITLAB_NATIVE_REPORT_SEQUENCE_OUT_OF_ORDER) {
             printf(
-                "mms-summary: report.diagnostic code=%s sqNum=%u lastSqNum=%u generation=%llu\n",
+                "mms-summary: report.diagnostic code=%s sqNum=%u subSqNum=%u lastSqNum=%u lastSubSqNum=%u generation=%llu\n",
                 sequence_disposition == UNITLAB_NATIVE_REPORT_SEQUENCE_DUPLICATE ? "DUPLICATE_REPORT_SEQUENCE" : "OUT_OF_ORDER_REPORT_SEQUENCE",
                 (unsigned)report_sequence_number,
+                (unsigned)report_sub_sequence_number,
                 (unsigned)session->subscription_model.last_report_sequence_number,
+                (unsigned)session->subscription_model.last_report_sub_sequence_number,
                 (unsigned long long)session->subscription_model.last_report_sequence_generation);
             emit_subscription_summary(session, report_sequence_disposition_label(sequence_disposition));
             return;
         }
         if (sequence_disposition == UNITLAB_NATIVE_REPORT_SEQUENCE_GAP) {
             printf(
-                "mms-summary: report.diagnostic code=REPORT_SEQUENCE_GAP sqNum=%u lastSqNum=%u missing=%llu generation=%llu\n",
+                "mms-summary: report.diagnostic code=REPORT_SEQUENCE_GAP sqNum=%u subSqNum=%u lastSqNum=%u lastSubSqNum=%u missing=%llu generation=%llu\n",
                 (unsigned)report_sequence_number,
+                (unsigned)report_sub_sequence_number,
                 (unsigned)session->subscription_model.last_report_sequence_number,
+                (unsigned)session->subscription_model.last_report_sub_sequence_number,
                 (unsigned long long)session->subscription_model.report_sequence_missing_count,
                 (unsigned long long)session->subscription_model.last_report_sequence_generation);
         }

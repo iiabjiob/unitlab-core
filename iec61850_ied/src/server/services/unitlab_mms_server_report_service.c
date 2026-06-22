@@ -8,13 +8,13 @@
 /* Report service owns BRCB value encoding and unconfirmed InformationReport construction. */
 
 static const char* const buffered_report_control_block_fields[] = {
-    "RptID", "RptEna", "DatSet", "ConfRev", "OptFlds", "BufTm", "SqNum",
+    "RptID", "RptEna", "DatSet", "ConfRev", "OptFlds", "BufTm", "SqNum", "SubSqNum",
     "TrgOps", "IntgPd", "GI", "PurgeBuf", "EntryID", "TimeofEntry", "ResvTms"
 };
 
 static const char* const unbuffered_report_control_block_fields[] = {
     "RptID", "RptEna", "Resv", "DatSet", "ConfRev", "OptFlds", "BufTm",
-    "SqNum", "TrgOps", "IntgPd", "GI"
+    "SqNum", "SubSqNum", "TrgOps", "IntgPd", "GI"
 };
 
 const char* const* server_runtime_report_control_block_fields(size_t* field_count)
@@ -288,6 +288,7 @@ static void server_runtime_update_report_sequence(UnitLabMmsServerRuntime* serve
     }
 
     server_runtime->brcb_sq_num++;
+    server_runtime->brcb_sub_sq_num = 0U;
     server_runtime->brcb_entry_id_counter = timestamp_ms;
     for (size_t index = 0U; index < sizeof(server_runtime->brcb_entry_id); index++) {
         unsigned int shift = (unsigned int)((sizeof(server_runtime->brcb_entry_id) - index - 1U) * 8U);
@@ -530,6 +531,16 @@ static int server_runtime_encode_report_control_block_structure_field_value(
     }
     else if (strcmp(field_name, "SqNum") == 0) {
         if (!server_runtime_encode_unsigned_value(server_runtime != NULL ? server_runtime->brcb_sq_num : 0U, unsigned_value, sizeof(unsigned_value), &unsigned_value_length, diagnostic)) {
+            return 0;
+        }
+        value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+        value_element.tag.constructed = 0;
+        value_element.tag.tag_number = 6U;
+        value_element.value_bytes = unsigned_value;
+        value_element.value_length = unsigned_value_length;
+    }
+    else if (strcmp(field_name, "SubSqNum") == 0) {
+        if (!server_runtime_encode_unsigned_value(server_runtime != NULL ? server_runtime->brcb_sub_sq_num : 0U, unsigned_value, sizeof(unsigned_value), &unsigned_value_length, diagnostic)) {
             return 0;
         }
         value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
@@ -875,6 +886,10 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
             || !server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 6U, unsigned_value, unsigned_value_length, report_values, sizeof(report_values), &report_values_length, diagnostic)) {
             return 0;
         }
+    }
+    if (!server_runtime_encode_unsigned_value(server_runtime != NULL ? server_runtime->brcb_sub_sq_num : 0U, unsigned_value, sizeof(unsigned_value), &unsigned_value_length, diagnostic)
+        || !server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 7U, unsigned_value, unsigned_value_length, report_values, sizeof(report_values), &report_values_length, diagnostic)) {
+        return 0;
     }
     if (server_runtime_report_optional_field_enabled(server_runtime, report, UNITLAB_IED_MODEL_RPT_OPT_TIME_STAMP)) {
         if (!server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 12U, server_runtime->brcb_time_of_entry, sizeof(server_runtime->brcb_time_of_entry), report_values, sizeof(report_values), &report_values_length, diagnostic)) {

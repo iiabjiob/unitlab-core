@@ -35,18 +35,21 @@ static int test_report_sequence_policy_tracks_gaps_duplicates_and_generation_res
     UnitLabNativeReportSequenceDisposition disposition;
 
     memset(&session, 0, sizeof(session));
-    disposition = unitlab_native_client_session_observe_report_sequence(&session, 1U, 10U);
+    disposition = unitlab_native_client_session_observe_report_sequence(&session, 1U, 10U, 0, 0U);
     if (!expect_true(disposition == UNITLAB_NATIVE_REPORT_SEQUENCE_ACCEPTED, "first report sequence should be accepted")) {
         return 0;
     }
     if (!expect_true(session.subscription_model.has_last_report_sequence_number == 1 && session.subscription_model.last_report_sequence_number == 10U, "first report sequence not recorded")) {
         return 0;
     }
+    if (!expect_true(session.subscription_model.has_last_report_sub_sequence_number == 0 && strcmp(session.subscription_model.report_health, "live") == 0, "first report sequence health not recorded")) {
+        return 0;
+    }
     if (!expect_true(session.subscription_model.last_report_sequence_generation == 1U, "first report sequence generation not recorded")) {
         return 0;
     }
 
-    disposition = unitlab_native_client_session_observe_report_sequence(&session, 1U, 10U);
+    disposition = unitlab_native_client_session_observe_report_sequence(&session, 1U, 10U, 0, 0U);
     if (!expect_true(disposition == UNITLAB_NATIVE_REPORT_SEQUENCE_DUPLICATE, "duplicate report sequence should be rejected")) {
         return 0;
     }
@@ -56,8 +59,11 @@ static int test_report_sequence_policy_tracks_gaps_duplicates_and_generation_res
     if (!expect_true(session.subscription_model.last_report_sequence_number == 10U, "duplicate report sequence changed last sequence")) {
         return 0;
     }
+    if (!expect_true(strcmp(session.subscription_model.report_health, "degraded") == 0, "duplicate report sequence health not degraded")) {
+        return 0;
+    }
 
-    disposition = unitlab_native_client_session_observe_report_sequence(&session, 1U, 9U);
+    disposition = unitlab_native_client_session_observe_report_sequence(&session, 1U, 9U, 0, 0U);
     if (!expect_true(disposition == UNITLAB_NATIVE_REPORT_SEQUENCE_OUT_OF_ORDER, "out-of-order report sequence should be rejected")) {
         return 0;
     }
@@ -68,7 +74,7 @@ static int test_report_sequence_policy_tracks_gaps_duplicates_and_generation_res
         return 0;
     }
 
-    disposition = unitlab_native_client_session_observe_report_sequence(&session, 1U, 13U);
+    disposition = unitlab_native_client_session_observe_report_sequence(&session, 1U, 13U, 0, 0U);
     if (!expect_true(disposition == UNITLAB_NATIVE_REPORT_SEQUENCE_GAP, "gap report sequence should be accepted with gap state")) {
         return 0;
     }
@@ -78,8 +84,22 @@ static int test_report_sequence_policy_tracks_gaps_duplicates_and_generation_res
     if (!expect_true(session.subscription_model.last_report_sequence_number == 13U, "gap report sequence did not advance")) {
         return 0;
     }
+    if (!expect_true(strcmp(session.subscription_model.report_health, "degraded") == 0, "gap report sequence health not degraded")) {
+        return 0;
+    }
 
-    disposition = unitlab_native_client_session_observe_report_sequence(&session, 2U, 1U);
+    disposition = unitlab_native_client_session_observe_report_sequence(&session, 1U, 13U, 1, 1U);
+    if (!expect_true(disposition == UNITLAB_NATIVE_REPORT_SEQUENCE_ACCEPTED, "subsequence report should be accepted")) {
+        return 0;
+    }
+    if (!expect_true(session.subscription_model.has_last_report_sub_sequence_number == 1 && session.subscription_model.last_report_sub_sequence_number == 1U, "subsequence report not recorded")) {
+        return 0;
+    }
+    if (!expect_true(strcmp(session.subscription_model.report_health, "live") == 0, "subsequence report health not live")) {
+        return 0;
+    }
+
+    disposition = unitlab_native_client_session_observe_report_sequence(&session, 2U, 1U, 0, 0U);
     if (!expect_true(disposition == UNITLAB_NATIVE_REPORT_SEQUENCE_ACCEPTED, "new generation report sequence should be accepted")) {
         return 0;
     }
@@ -93,7 +113,7 @@ static int test_report_sequence_policy_tracks_gaps_duplicates_and_generation_res
     session.subscription_model.last_report_sequence_generation = 2U;
     session.subscription_model.last_report_sequence_number = UINT32_MAX;
     session.subscription_model.has_last_report_sequence_number = 1;
-    disposition = unitlab_native_client_session_observe_report_sequence(&session, 2U, 0U);
+    disposition = unitlab_native_client_session_observe_report_sequence(&session, 2U, 0U, 0, 0U);
     if (!expect_true(disposition == UNITLAB_NATIVE_REPORT_SEQUENCE_ACCEPTED, "wrap-around report sequence should be accepted")) {
         return 0;
     }
@@ -104,11 +124,53 @@ static int test_report_sequence_policy_tracks_gaps_duplicates_and_generation_res
         return 0;
     }
 
+    {
+        UnitLabNativeDiscoveredRcb* report_rcb_a;
+        UnitLabNativeDiscoveredRcb* report_rcb_b;
+
+        report_rcb_a = unitlab_native_client_session_append_discovered_rcb(&session, "RCB-A", "LLN0$BR$brcbA01");
+        report_rcb_b = unitlab_native_client_session_append_discovered_rcb(&session, "RCB-B", "LLN0$BR$brcbB01");
+        if (!expect_true(report_rcb_a != NULL && report_rcb_b != NULL, "per-RCB sequence state allocation failed")) {
+            return 0;
+        }
+        snprintf(session.subscription_model.rcb_domain, sizeof(session.subscription_model.rcb_domain), "%s", "RCB-A");
+        snprintf(session.subscription_model.rcb_item, sizeof(session.subscription_model.rcb_item), "%s", "LLN0$BR$brcbA01");
+        disposition = unitlab_native_client_session_observe_report_sequence(&session, 3U, 40U, 0, 0U);
+        if (!expect_true(disposition == UNITLAB_NATIVE_REPORT_SEQUENCE_ACCEPTED, "RCB A report should be accepted")) {
+            return 0;
+        }
+        snprintf(session.subscription_model.rcb_domain, sizeof(session.subscription_model.rcb_domain), "%s", "RCB-B");
+        snprintf(session.subscription_model.rcb_item, sizeof(session.subscription_model.rcb_item), "%s", "LLN0$BR$brcbB01");
+        disposition = unitlab_native_client_session_observe_report_sequence(&session, 3U, 7U, 0, 0U);
+        if (!expect_true(disposition == UNITLAB_NATIVE_REPORT_SEQUENCE_ACCEPTED, "RCB B report should be accepted")) {
+            return 0;
+        }
+        snprintf(session.subscription_model.rcb_domain, sizeof(session.subscription_model.rcb_domain), "%s", "RCB-A");
+        snprintf(session.subscription_model.rcb_item, sizeof(session.subscription_model.rcb_item), "%s", "LLN0$BR$brcbA01");
+        disposition = unitlab_native_client_session_observe_report_sequence(&session, 2U, 41U, 0, 0U);
+        if (!expect_true(disposition == UNITLAB_NATIVE_REPORT_SEQUENCE_OUT_OF_ORDER, "stale generation should be rejected")) {
+            return 0;
+        }
+        if (!expect_true(strcmp(session.subscription_model.report_health, "degraded") == 0, "stale generation did not degrade health")) {
+            return 0;
+        }
+        unitlab_native_client_session_reset_report_sequence(&session);
+        if (!expect_true(report_rcb_a->has_last_report_sequence_number == 0, "RCB A reset did not clear selected state")) {
+            return 0;
+        }
+        if (!expect_true(report_rcb_b->has_last_report_sequence_number == 1 && report_rcb_b->last_report_sequence_number == 7U, "RCB B state should remain independent across reconnect")) {
+            return 0;
+        }
+    }
+
     unitlab_native_client_session_reset_report_sequence(&session);
     if (!expect_true(session.subscription_model.has_last_report_sequence_number == 0 && session.subscription_model.last_report_sequence_generation == 0U, "report sequence reset did not clear state")) {
         return 0;
     }
     if (!expect_true(session.subscription_model.report_sequence_gap_count == 0U && session.subscription_model.report_sequence_duplicate_count == 0U && session.subscription_model.report_sequence_out_of_order_count == 0U && session.subscription_model.report_sequence_drop_count == 0U && session.subscription_model.report_sequence_missing_count == 0U && session.subscription_model.report_sequence_wrap_count == 0U, "report sequence reset did not clear counters")) {
+        return 0;
+    }
+    if (!expect_true(strcmp(session.subscription_model.report_health, "unknown") == 0, "report sequence reset did not restore health unknown")) {
         return 0;
     }
     return 1;

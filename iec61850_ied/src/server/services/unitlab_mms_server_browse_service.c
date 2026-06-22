@@ -193,6 +193,7 @@ static const char* const lln0_br_rcb_children[] = {
     "OptFlds",
     "BufTm",
     "SqNum",
+    "SubSqNum",
     "TrgOps",
     "IntgPd",
     "GI",
@@ -210,6 +211,7 @@ static const char* const lln0_rp_rcb_children[] = {
     "OptFlds",
     "BufTm",
     "SqNum",
+    "SubSqNum",
     "TrgOps",
     "IntgPd",
     "GI"
@@ -303,6 +305,12 @@ static int server_runtime_encode_gva_leaf_type_spec(
     }
     else if (strcmp(component_name, "SqNum") == 0) {
         value_single[0] = 0x10U;
+        tag_number = 6U;
+        value_bytes = value_single;
+        value_length = sizeof(value_single);
+    }
+    else if (strcmp(component_name, "SubSqNum") == 0) {
+        value_single[0] = 0x00U;
         tag_number = 6U;
         value_bytes = value_single;
         value_length = sizeof(value_single);
@@ -2711,4 +2719,3 @@ int server_runtime_build_get_named_variable_list_attributes_response_service(
     server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     return 1;
 }
-

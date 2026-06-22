@@ -1867,6 +1867,7 @@ void unitlab_mms_server_runtime_init(UnitLabMmsServerRuntime* server_runtime)
     server_runtime->brcb_trigger_options_mask_known = 0U;
     server_runtime->brcb_trigger_options_mask = 0U;
     server_runtime->brcb_sq_num = 0U;
+    server_runtime->brcb_sub_sq_num = 0U;
     server_runtime->brcb_entry_id_counter = 0U;
     memset(server_runtime->brcb_entry_id, 0, sizeof(server_runtime->brcb_entry_id));
     memset(server_runtime->brcb_time_of_entry, 0, sizeof(server_runtime->brcb_time_of_entry));
