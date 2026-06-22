@@ -206,7 +206,7 @@ typedef struct {
     char item[320U];
 } UnitLabNativeDiscoveredRcb;
 
-typedef struct {
+typedef struct UnitLabNativeClientSessionState {
     UnitLabNativeDiscoveredDeviceModel discovered_model;
     UnitLabNativeSubscriptionModel subscription_model;
     UnitLabNativeDiscoveredLogicalDevice* discovered_logical_devices;

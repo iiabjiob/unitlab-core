@@ -2185,7 +2185,9 @@ static int emit_wire_frame_response(
         return 0;
     }
     if (emit_mms_frame_summary(session, frame, frame_length) && session_runtime != NULL) {
-        unitlab_native_session_runtime_mark_report_received(session_runtime, native_wire_now_ms());
+        uint64_t report_timestamp_ms = native_wire_now_ms();
+        unitlab_native_session_runtime_apply_last_report_to_signals(session_runtime, session, report_timestamp_ms);
+        unitlab_native_session_runtime_mark_report_received(session_runtime, report_timestamp_ms);
     }
     return 1;
 }

@@ -89,6 +89,7 @@ add_executable(unitlab-iec61850-ied-sim
   src/server/native_wire_client.c
   src/server/native_wire_client_discovery.c
   src/server/native_wire_client_session.c
+  src/server/native_wire_signal_runtime.c
   src/server/native_wire_session_runtime.c
   src/server/native_wire_session_worker.c
   src/server/native_wire_server.c
@@ -191,6 +192,7 @@ unitlab_iec61850_sim_warnings(unitlab-iec61850-native-wire-client-session-test)
 add_test(NAME unitlab-iec61850-native-wire-client-session COMMAND unitlab-iec61850-native-wire-client-session-test)
 
 add_executable(unitlab-iec61850-native-wire-session-runtime-test
+  src/server/native_wire_signal_runtime.c
   src/server/native_wire_session_runtime.c
   tests/native_wire_session_runtime_test.c
 )
@@ -198,7 +200,18 @@ target_include_directories(unitlab-iec61850-native-wire-session-runtime-test PRI
 unitlab_iec61850_sim_warnings(unitlab-iec61850-native-wire-session-runtime-test)
 add_test(NAME unitlab-iec61850-native-wire-session-runtime COMMAND unitlab-iec61850-native-wire-session-runtime-test)
 
+add_executable(unitlab-iec61850-native-wire-signal-runtime-test
+  src/server/native_wire_client_session.c
+  src/server/native_wire_signal_runtime.c
+  src/server/native_wire_session_runtime.c
+  tests/native_wire_signal_runtime_test.c
+)
+target_include_directories(unitlab-iec61850-native-wire-signal-runtime-test PRIVATE src)
+unitlab_iec61850_sim_warnings(unitlab-iec61850-native-wire-signal-runtime-test)
+add_test(NAME unitlab-iec61850-native-wire-signal-runtime COMMAND unitlab-iec61850-native-wire-signal-runtime-test)
+
 add_executable(unitlab-iec61850-native-wire-session-worker-test
+  src/server/native_wire_signal_runtime.c
   src/server/native_wire_session_runtime.c
   src/server/native_wire_session_worker.c
   src/server/native_wire_client_session.c
@@ -213,6 +226,9 @@ add_executable(unitlab-iec61850-native-wire-client-report-decoder-test
   src/server/native_wire_client.c
   src/server/native_wire_client_discovery.c
   src/server/native_wire_client_session.c
+  src/server/native_wire_signal_runtime.c
+  src/server/native_wire_session_runtime.c
+  src/server/native_wire_session_worker.c
   src/model/model_loader.c
   tests/native_wire_client_report_decoder_test.c
 )

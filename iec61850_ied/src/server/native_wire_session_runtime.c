@@ -1,5 +1,7 @@
 #include "native_wire_session_runtime.h"
 
+#include "native_wire_client_session.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -117,6 +119,7 @@ void unitlab_native_session_runtime_init(UnitLabNativeSessionRuntime* runtime)
         return;
     }
     memset(runtime, 0, sizeof(*runtime));
+    unitlab_native_signal_runtime_init(&runtime->signal_runtime);
     runtime->live.phase = UNITLAB_NATIVE_SESSION_PHASE_IDLE;
     runtime_set_error(runtime, "SESSION_RUNTIME_OK", NULL);
 }
@@ -157,6 +160,11 @@ void unitlab_native_session_runtime_set_identity(
     if (runtime->identity.device_key[0] == '\0') {
         copy_text(runtime->identity.device_key, sizeof(runtime->identity.device_key), runtime->identity.endpoint_id);
     }
+    unitlab_native_signal_runtime_set_source_identity(
+        &runtime->signal_runtime,
+        runtime->identity.session_id,
+        runtime->identity.endpoint_id,
+        runtime->identity.device_key);
     log_runtime_event(runtime, "session-configured", NULL);
 }
 
@@ -523,6 +531,119 @@ void unitlab_native_session_runtime_mark_report_received(
     runtime->live.last_report_timestamp_ms = timestamp_ms != 0U ? timestamp_ms : session_runtime_now_ms();
     runtime->live.phase = UNITLAB_NATIVE_SESSION_PHASE_REPORTING;
     log_runtime_event(runtime, "report-received", NULL);
+}
+
+static void build_signal_update(
+    const UnitLabNativeSessionRuntime* runtime,
+    const UnitLabNativeClientSessionState* session,
+    const UnitLabNativeLastReportEntry* entry,
+    uint64_t timestamp_ms,
+    UnitLabNativeSignalUpdate* update)
+{
+    char reference[384U];
+    char* last_dot;
+
+    if (update == NULL) {
+        return;
+    }
+    memset(update, 0, sizeof(*update));
+    if (entry == NULL) {
+        return;
+    }
+    if (entry->display_reference[0] != '\0') {
+        snprintf(reference, sizeof(reference), "%s", entry->display_reference);
+    } else {
+        snprintf(reference, sizeof(reference), "%s", entry->data_reference);
+    }
+    for (size_t index = 0U; reference[index] != '\0'; index++) {
+        if (reference[index] == '$') {
+            reference[index] = '.';
+        }
+    }
+    last_dot = strrchr(reference, '.');
+    if (last_dot != NULL && last_dot[1] != '\0') {
+        snprintf(update->leaf_name, sizeof(update->leaf_name), "%s", last_dot + 1);
+        *last_dot = '\0';
+    }
+    snprintf(update->data_reference, sizeof(update->data_reference), "%s", entry->data_reference);
+    snprintf(update->display_reference, sizeof(update->display_reference), "%s", entry->display_reference);
+    snprintf(update->signal_path, sizeof(update->signal_path), "%s", reference);
+    snprintf(update->value_summary, sizeof(update->value_summary), "%s", entry->value_summary);
+    snprintf(update->quality_summary, sizeof(update->quality_summary), "%s", entry->quality_validity);
+    snprintf(update->reason_labels, sizeof(update->reason_labels), "%s", entry->reason_labels);
+    snprintf(update->source_report_rpt_id, sizeof(update->source_report_rpt_id), "%s", session != NULL ? session->discovered_model.last_report_rpt_id : "");
+    snprintf(update->source_report_dat_set, sizeof(update->source_report_dat_set), "%s", session != NULL ? session->discovered_model.last_report_data_set : "");
+    update->leaf_role = UNITLAB_NATIVE_SIGNAL_LEAF_ROLE_OTHER;
+    if (strcmp(update->leaf_name, "q") == 0) {
+        update->leaf_role = UNITLAB_NATIVE_SIGNAL_LEAF_ROLE_QUALITY;
+    } else if (strcmp(update->leaf_name, "t") == 0) {
+        update->leaf_role = UNITLAB_NATIVE_SIGNAL_LEAF_ROLE_TIMESTAMP;
+    } else {
+        update->leaf_role = UNITLAB_NATIVE_SIGNAL_LEAF_ROLE_VALUE;
+    }
+    switch (entry->value_kind) {
+    case UNITLAB_NATIVE_REPORT_VALUE_BOOL:
+        update->value_kind = UNITLAB_NATIVE_SIGNAL_VALUE_KIND_BOOL;
+        update->bool_value = entry->bool_value;
+        break;
+    case UNITLAB_NATIVE_REPORT_VALUE_UNSIGNED:
+        update->value_kind = UNITLAB_NATIVE_SIGNAL_VALUE_KIND_UNSIGNED;
+        update->unsigned_value = entry->unsigned_value;
+        break;
+    case UNITLAB_NATIVE_REPORT_VALUE_INTEGER:
+        update->value_kind = UNITLAB_NATIVE_SIGNAL_VALUE_KIND_INTEGER;
+        update->integer_value = entry->integer_value;
+        break;
+    case UNITLAB_NATIVE_REPORT_VALUE_FLOAT:
+        update->value_kind = UNITLAB_NATIVE_SIGNAL_VALUE_KIND_FLOAT;
+        update->floating_value = entry->floating_value;
+        break;
+    case UNITLAB_NATIVE_REPORT_VALUE_STRING:
+        update->value_kind = UNITLAB_NATIVE_SIGNAL_VALUE_KIND_STRING;
+        break;
+    case UNITLAB_NATIVE_REPORT_VALUE_OCTETS:
+        update->value_kind = UNITLAB_NATIVE_SIGNAL_VALUE_KIND_OCTETS;
+        break;
+    case UNITLAB_NATIVE_REPORT_VALUE_BIT_STRING:
+        update->value_kind = UNITLAB_NATIVE_SIGNAL_VALUE_KIND_BIT_STRING;
+        update->quality_code = entry->quality_code;
+        break;
+    case UNITLAB_NATIVE_REPORT_VALUE_STRUCTURE:
+        update->value_kind = UNITLAB_NATIVE_SIGNAL_VALUE_KIND_STRUCTURE;
+        break;
+    case UNITLAB_NATIVE_REPORT_VALUE_EMPTY:
+    case UNITLAB_NATIVE_REPORT_VALUE_UNSUPPORTED:
+    default:
+        update->value_kind = UNITLAB_NATIVE_SIGNAL_VALUE_KIND_UNKNOWN;
+        break;
+    }
+    update->quality_code = entry->quality_code;
+    snprintf(update->quality_validity, sizeof(update->quality_validity), "%s", entry->quality_validity);
+    update->reason_code = entry->reason_code;
+    update->observed_at_ms = timestamp_ms;
+    update->source_connection_generation = runtime != NULL ? runtime->identity.connection_generation : 0U;
+}
+
+void unitlab_native_session_runtime_apply_last_report_to_signals(
+    UnitLabNativeSessionRuntime* runtime,
+    const UnitLabNativeClientSessionState* session,
+    uint64_t timestamp_ms)
+{
+    if (runtime == NULL || session == NULL) {
+        return;
+    }
+    unitlab_native_signal_runtime_set_source_identity(
+        &runtime->signal_runtime,
+        runtime->identity.session_id,
+        runtime->identity.endpoint_id,
+        runtime->identity.device_key);
+    for (size_t index = 0U; index < session->last_report_entry_count; index++) {
+        UnitLabNativeSignalUpdate update;
+        UnitLabNativeSignalChange change;
+
+        build_signal_update(runtime, session, &session->last_report_entries[index], timestamp_ms, &update);
+        (void)unitlab_native_signal_runtime_apply_update(&runtime->signal_runtime, &update, &change);
+    }
 }
 
 void unitlab_native_session_runtime_update_discovery_snapshot(

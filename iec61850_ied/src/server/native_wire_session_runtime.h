@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "server/native_wire_signal_runtime.h"
+
 typedef enum {
     UNITLAB_NATIVE_SESSION_PHASE_IDLE = 0,
     UNITLAB_NATIVE_SESSION_PHASE_CONNECTING,
@@ -107,12 +109,15 @@ typedef struct {
     size_t signal_count;
 } UnitLabNativeSessionStatus;
 
+typedef struct UnitLabNativeClientSessionState UnitLabNativeClientSessionState;
+
 typedef struct {
     UnitLabNativeSessionIdentity identity;
     UnitLabNativeSessionDesiredState desired;
     UnitLabNativeSessionIntent intent;
     UnitLabNativeSessionLiveState live;
     UnitLabNativeDiscoverySnapshot discovery_snapshot;
+    UnitLabNativeSignalRuntime signal_runtime;
     int has_discovery_snapshot;
 } UnitLabNativeSessionRuntime;
 
@@ -163,6 +168,10 @@ void unitlab_native_session_runtime_complete_operation(
     const char* error_message);
 void unitlab_native_session_runtime_mark_report_received(
     UnitLabNativeSessionRuntime* runtime,
+    uint64_t timestamp_ms);
+void unitlab_native_session_runtime_apply_last_report_to_signals(
+    UnitLabNativeSessionRuntime* runtime,
+    const UnitLabNativeClientSessionState* session,
     uint64_t timestamp_ms);
 void unitlab_native_session_runtime_update_discovery_snapshot(
     UnitLabNativeSessionRuntime* runtime,
