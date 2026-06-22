@@ -1,8 +1,8 @@
 #include "app/cli/commands/unitlab_cmd_mms_client.h"
 
 /*
- * Persistent native MMS client CLI command. It owns the stdin-driven client
- * runtime and emits the current compatibility diagnostics.
+ * Persistent native MMS client CLI command. It starts the backend-owned
+ * session runner and emits compatibility diagnostics for the live session.
  */
 
 #include <stdio.h>

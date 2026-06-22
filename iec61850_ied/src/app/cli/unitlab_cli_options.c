@@ -46,7 +46,7 @@ void unitlab_cli_print_usage(const char* program_name)
     printf("  --native-smoke-start Exercise the native server-runtime boundary once, then exit.\n");
     printf("  --native-wire-start  Start a native wire server that can emit live reports over TCP.\n");
     printf("  --native-wire-client-start  Start a native wire client that connects and emits wire frames.\n");
-    printf("  --mms-client-start  Start a persistent native wire MMS client controlled by stdin. Can run without --fixture/--scl.\n");
+    printf("  --mms-client-start  Start a persistent native wire MMS client session. Can run without --fixture/--scl.\n");
     printf("  --native-client-read-domain DOMAIN  Optional startup native wire client Read domain.\n");
     printf("  --native-client-read-item ITEM      Optional startup native wire client Read item.\n");
     printf("  --native-client-read-invoke-id ID   Optional startup native wire client Read invokeId. Default when enabled: 3.\n");
