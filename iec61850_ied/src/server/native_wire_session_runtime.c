@@ -123,6 +123,11 @@ static void runtime_clear_last_report_identity(UnitLabNativeSessionRuntime* runt
     }
     runtime->live.last_report_rpt_id[0] = '\0';
     runtime->live.last_report_data_set[0] = '\0';
+    runtime->live.last_report_sequence_generation = 0U;
+    runtime->live.last_report_sequence_number = 0U;
+    runtime->live.last_report_sub_sequence_number = 0U;
+    runtime->live.has_last_report_sequence_number = 0;
+    runtime->live.has_last_report_sub_sequence_number = 0;
 }
 
 static void runtime_mark_signals_stale(
@@ -568,6 +573,7 @@ void unitlab_native_session_runtime_complete_operation(
 
 void unitlab_native_session_runtime_mark_report_received(
     UnitLabNativeSessionRuntime* runtime,
+    const UnitLabNativeClientSessionState* session,
     uint64_t timestamp_ms)
 {
     if (runtime == NULL) {
@@ -586,6 +592,19 @@ void unitlab_native_session_runtime_mark_report_received(
         runtime->live.last_report_data_set,
         sizeof(runtime->live.last_report_data_set),
         session != NULL ? session->discovered_model.last_report_data_set : "");
+    if (session != NULL) {
+        runtime->live.last_report_sequence_generation = session->subscription_model.last_report_sequence_generation;
+        runtime->live.last_report_sequence_number = session->subscription_model.last_report_sequence_number;
+        runtime->live.last_report_sub_sequence_number = session->subscription_model.last_report_sub_sequence_number;
+        runtime->live.has_last_report_sequence_number = session->subscription_model.has_last_report_sequence_number;
+        runtime->live.has_last_report_sub_sequence_number = session->subscription_model.has_last_report_sub_sequence_number;
+    } else {
+        runtime->live.last_report_sequence_generation = 0U;
+        runtime->live.last_report_sequence_number = 0U;
+        runtime->live.last_report_sub_sequence_number = 0U;
+        runtime->live.has_last_report_sequence_number = 0;
+        runtime->live.has_last_report_sub_sequence_number = 0;
+    }
     runtime_set_report_health(runtime, "live", NULL);
     runtime->live.phase = UNITLAB_NATIVE_SESSION_PHASE_REPORTING;
     log_runtime_event(runtime, "report-received", NULL);
@@ -696,6 +715,11 @@ void unitlab_native_session_runtime_apply_last_report_to_signals(
         runtime->identity.endpoint_id,
         runtime->identity.device_key);
     unitlab_native_signal_runtime_set_current_connection_generation(&runtime->signal_runtime, runtime->identity.connection_generation);
+    runtime->live.last_report_sequence_generation = session->subscription_model.last_report_sequence_generation;
+    runtime->live.last_report_sequence_number = session->subscription_model.last_report_sequence_number;
+    runtime->live.last_report_sub_sequence_number = session->subscription_model.last_report_sub_sequence_number;
+    runtime->live.has_last_report_sequence_number = session->subscription_model.has_last_report_sequence_number;
+    runtime->live.has_last_report_sub_sequence_number = session->subscription_model.has_last_report_sub_sequence_number;
     for (size_t index = 0U; index < session->last_report_entry_count; index++) {
         UnitLabNativeSignalUpdate update;
         UnitLabNativeSignalChange change;
@@ -811,6 +835,11 @@ int unitlab_native_session_runtime_copy_status(
     copy_text(status->last_error_message, sizeof(status->last_error_message), runtime->live.last_error_message);
     copy_text(status->last_report_rpt_id, sizeof(status->last_report_rpt_id), runtime->live.last_report_rpt_id);
     copy_text(status->last_report_data_set, sizeof(status->last_report_data_set), runtime->live.last_report_data_set);
+    status->last_report_sequence_generation = runtime->live.last_report_sequence_generation;
+    status->last_report_sequence_number = runtime->live.last_report_sequence_number;
+    status->last_report_sub_sequence_number = runtime->live.last_report_sub_sequence_number;
+    status->has_last_report_sequence_number = runtime->live.has_last_report_sequence_number;
+    status->has_last_report_sub_sequence_number = runtime->live.has_last_report_sub_sequence_number;
     copy_text(status->report_health, sizeof(status->report_health), runtime->live.report_health);
     copy_text(status->report_health_reason, sizeof(status->report_health_reason), runtime->live.report_health_reason);
     status->associated = runtime->live.associated;

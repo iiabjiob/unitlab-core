@@ -76,6 +76,11 @@ typedef struct {
     uint64_t last_report_timestamp_ms;
     char last_report_rpt_id[160U];
     char last_report_data_set[160U];
+    uint64_t last_report_sequence_generation;
+    uint32_t last_report_sequence_number;
+    uint32_t last_report_sub_sequence_number;
+    int has_last_report_sequence_number;
+    int has_last_report_sub_sequence_number;
     char report_health[16U];
     char report_health_reason[64U];
     char last_error_code[64U];
@@ -94,6 +99,11 @@ typedef struct {
     char last_error_message[256U];
     char last_report_rpt_id[160U];
     char last_report_data_set[160U];
+    uint64_t last_report_sequence_generation;
+    uint32_t last_report_sequence_number;
+    uint32_t last_report_sub_sequence_number;
+    int has_last_report_sequence_number;
+    int has_last_report_sub_sequence_number;
     char report_health[16U];
     char report_health_reason[64U];
     int associated;
@@ -191,6 +201,7 @@ void unitlab_native_session_runtime_complete_operation(
     const char* error_message);
 void unitlab_native_session_runtime_mark_report_received(
     UnitLabNativeSessionRuntime* runtime,
+    const UnitLabNativeClientSessionState* session,
     uint64_t timestamp_ms);
 void unitlab_native_session_runtime_apply_last_report_to_signals(
     UnitLabNativeSessionRuntime* runtime,

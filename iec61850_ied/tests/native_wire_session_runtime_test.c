@@ -394,7 +394,19 @@ int main(void)
         unitlab_native_session_manager_reset(&manager);
         return 1;
     }
-    unitlab_native_session_runtime_mark_report_received(runtime, 4567U);
+    {
+        UnitLabNativeClientSessionState report_session;
+
+        memset(&report_session, 0, sizeof(report_session));
+        snprintf(report_session.discovered_model.last_report_rpt_id, sizeof(report_session.discovered_model.last_report_rpt_id), "%s", "IED1LD0/LLN0.brcbA");
+        snprintf(report_session.discovered_model.last_report_data_set, sizeof(report_session.discovered_model.last_report_data_set), "%s", "IED1LD0/LLN0.RCB1");
+        report_session.subscription_model.last_report_sequence_generation = runtime->identity.connection_generation;
+        report_session.subscription_model.last_report_sequence_number = 27U;
+        report_session.subscription_model.last_report_sub_sequence_number = 3U;
+        report_session.subscription_model.has_last_report_sequence_number = 1;
+        report_session.subscription_model.has_last_report_sub_sequence_number = 1;
+        unitlab_native_session_runtime_mark_report_received(runtime, &report_session, 4567U);
+    }
     if (!expect_true(runtime->live.reporting && runtime->live.last_report_timestamp_ms == 4567U, "report timestamp not updated")) {
         unitlab_native_session_manager_reset(&manager);
         return 1;
@@ -414,6 +426,14 @@ int main(void)
             return 1;
         }
         if (!expect_true(strcmp(status.last_report_data_set, "IED1LD0/LLN0.RCB1") == 0, "last report data set not recorded")) {
+            unitlab_native_session_manager_reset(&manager);
+            return 1;
+        }
+        if (!expect_true(status.has_last_report_sequence_number == 1 && status.last_report_sequence_generation == runtime->identity.connection_generation && status.last_report_sequence_number == 27U, "last report sequence provenance not recorded")) {
+            unitlab_native_session_manager_reset(&manager);
+            return 1;
+        }
+        if (!expect_true(status.has_last_report_sub_sequence_number == 1 && status.last_report_sub_sequence_number == 3U, "last report subsequence provenance not recorded")) {
             unitlab_native_session_manager_reset(&manager);
             return 1;
         }
