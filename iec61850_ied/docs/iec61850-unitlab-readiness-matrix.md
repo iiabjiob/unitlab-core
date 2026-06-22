@@ -105,12 +105,15 @@ Remaining bottlenecks:
 
 ### UnitLab product layer
 
-Not implemented in this repository:
-- Python/FastAPI signal normalization;
-- subscription planner;
+Partially implemented in the backend layer in this repository:
+- signal normalization preview for selected signal-list rows;
+- basic verification target materialization for test-run preview;
+- early subscription-plan scaffolding.
+
+Still pending:
 - verification evidence model;
 - verdict engine;
-- API/event orchestration;
+- API/event orchestration for the full verification flow;
 - UI integration.
 
 This is a deliberate boundary, not a gap in the C runtime.

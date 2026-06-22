@@ -19,6 +19,9 @@ class VerificationTargetSource:
     signal_reference: str
     signal_path: str
     signal_metadata: dict[str, Any]
+    source_row_index: int | None
+    source_kind: str | None
+    source_reason: str | None
     allocation_id: int | None
     allocation_status: str
     allocation_health: dict[str, bool]
@@ -47,12 +50,18 @@ def build_verification_target_sources(
         signal_reference = str(signal.name).strip() if signal is not None and str(signal.name).strip() else f"Signal {signal_id}"
         signal_path = str(signal.key).strip() if signal is not None and str(signal.key).strip() else f"signal-{signal_id}"
         signal_metadata = dict(signal.signal_metadata or {}) if signal is not None else {}
+        source_row_index = _resolve_source_row_index(signal_metadata)
+        source_kind = _resolve_source_kind(signal_metadata)
+        source_reason = _resolve_source_reason(signal_metadata)
         sources.append(
             VerificationTargetSource(
                 signal_id=signal_id,
                 signal_reference=signal_reference,
                 signal_path=signal_path,
                 signal_metadata=signal_metadata,
+                source_row_index=source_row_index,
+                source_kind=source_kind,
+                source_reason=source_reason,
                 allocation_id=row.allocation_id if row is not None else None,
                 allocation_status=str(row.allocation_status or "unassigned") if row is not None else "unassigned",
                 allocation_health=dict(row.allocation_health or {}) if row is not None else {},
@@ -103,6 +112,9 @@ def build_verification_subscription_plan(
             protocol_metadata=protocol_metadata,
             coverage_state=coverage_state,
             coverage_reason=coverage_reason,
+            source_row_index=source.source_row_index,
+            source_kind=source.source_kind,
+            source_reason=source.source_reason,
             allocation_id=source.allocation_id,
             channel_id=source.channel_id,
             channel_label=source.channel_label,
@@ -181,6 +193,49 @@ def _resolve_protocol_name(
     return default
 
 
+def _resolve_source_row_index(signal_metadata: dict[str, Any]) -> int | None:
+    for candidate in (
+        signal_metadata.get("source_row_index"),
+        signal_metadata.get("row_index"),
+        signal_metadata.get("row", {}).get("row_index") if isinstance(signal_metadata.get("row"), dict) else None,
+    ):
+        if isinstance(candidate, int) and candidate >= 0:
+            return candidate
+        if isinstance(candidate, str):
+            value = candidate.strip()
+            if value.isdigit():
+                return int(value)
+    return None
+
+
+def _resolve_source_kind(signal_metadata: dict[str, Any]) -> str | None:
+    for candidate in (
+        signal_metadata.get("source_kind"),
+        signal_metadata.get("protocol_metadata", {}).get("source_kind")
+        if isinstance(signal_metadata.get("protocol_metadata"), dict)
+        else None,
+    ):
+        if isinstance(candidate, str):
+            value = candidate.strip()
+            if value:
+                return value
+    return None
+
+
+def _resolve_source_reason(signal_metadata: dict[str, Any]) -> str | None:
+    for candidate in (
+        signal_metadata.get("source_reason"),
+        signal_metadata.get("protocol_metadata", {}).get("source_reason")
+        if isinstance(signal_metadata.get("protocol_metadata"), dict)
+        else None,
+    ):
+        if isinstance(candidate, str):
+            value = candidate.strip()
+            if value:
+                return value
+    return None
+
+
 def _resolve_expected_feedback_path(
     *,
     signal_path: str,
@@ -227,4 +282,3 @@ def _resolve_coverage_state(
     if expected_feedback_path_source != "protocol_metadata":
         return "partial", "fallback_expected_feedback_path"
     return "exact", None
-

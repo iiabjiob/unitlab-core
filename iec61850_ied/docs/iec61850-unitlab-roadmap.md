@@ -74,7 +74,7 @@ Rules:
 
 ### PR1 - Signal list to requested verification targets
 
-Status: not started.
+Status: completed.
 
 Goal:
 - Convert selected signal-list rows into normalized verification targets.
@@ -100,6 +100,7 @@ Done when:
 - selected signal-list rows become stable verification-target objects;
 - each target can be inspected in tests and logs;
 - targets carry enough data for later planning without re-reading the UI.
+- the backend preview path materializes normalized targets for signal test runs.
 
 ### PR2 - Subscription planner
 
@@ -239,7 +240,7 @@ Done when:
 
 ## PR tracking checklist
 
-- [ ] PR1 - Signal list to requested verification targets
+- [x] PR1 - Signal list to requested verification targets
 - [ ] PR2 - Subscription planner
 - [ ] PR3 - Verification evidence model
 - [ ] PR4 - First auto test flow

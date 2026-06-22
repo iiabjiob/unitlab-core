@@ -11,6 +11,9 @@ class VerificationTargetSchema(BaseModel):
     signal_path: str
     endpoint_id: str | None = None
     expected_feedback_path: str | None = None
+    source_row_index: int | None = None
+    source_kind: str | None = None
+    source_reason: str | None = None
     timeout_ms: int = Field(default=5000, ge=1)
     window_ms: int = Field(default=1000, ge=0)
     protocol: str | None = None
@@ -38,4 +41,3 @@ class VerificationSubscriptionPlanSchema(BaseModel):
     selected_signal_ids: list[int] = Field(default_factory=list)
     targets: list[VerificationTargetSchema] = Field(default_factory=list)
     coverage: VerificationSubscriptionPlanCoverageSchema
-

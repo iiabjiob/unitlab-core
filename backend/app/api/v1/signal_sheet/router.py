@@ -596,6 +596,7 @@ async def enqueue_signal_test_run_job(
             str(job_state.get("job_id") or ""),
             status="queued",
             result={
+                "verification_targets": [target.model_dump(mode="json") for target in plan.targets],
                 "verification_plan": plan.model_dump(mode="json"),
                 "verification_coverage": plan.coverage.model_dump(mode="json"),
             },

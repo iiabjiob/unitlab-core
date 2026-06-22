@@ -26,7 +26,7 @@ The workflow should be built in this order:
 
 ### PR1 - Signal list to verification targets
 
-Status: not started.
+Status: completed.
 
 Input:
 - selected signal-list rows;
@@ -43,6 +43,7 @@ Done when:
 - a selected row becomes a deterministic target object;
 - the target can be logged and inspected without re-reading the UI state;
 - SCD remains optional.
+- current backend preview path emits normalized verification targets from the signal test-run job preview.
 
 ### PR2 - Subscription planner
 
