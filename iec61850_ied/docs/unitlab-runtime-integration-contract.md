@@ -141,6 +141,13 @@ Output:
 - diagnostics;
 - current freshness summary.
 
+The session snapshot may also expose a compact signal-cache summary:
+- total cached signals;
+- live signal count;
+- stale signal count;
+- unknown-freshness signal count;
+- stale-generation drop count.
+
 ### Report stream / state update service
 
 Input:
@@ -165,4 +172,3 @@ Output:
 This repository currently implements the reusable C runtime and its docs, but not the Python/FastAPI service layer.
 
 The Python application should implement this contract before product-level verification work resumes.
-

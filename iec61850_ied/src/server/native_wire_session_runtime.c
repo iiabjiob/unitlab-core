@@ -752,6 +752,10 @@ int unitlab_native_session_runtime_copy_status(
     const UnitLabNativeSessionRuntime* runtime,
     UnitLabNativeSessionStatus* status)
 {
+    size_t live_signal_count = 0U;
+    size_t stale_signal_count = 0U;
+    size_t unknown_signal_count = 0U;
+
     if (runtime == NULL || status == NULL) {
         return 0;
     }
@@ -775,6 +779,27 @@ int unitlab_native_session_runtime_copy_status(
     status->connection_generation = runtime->identity.connection_generation;
     status->last_report_timestamp_ms = runtime->live.last_report_timestamp_ms;
     status->has_discovery_snapshot = runtime->has_discovery_snapshot;
+    status->signal_cache_count = runtime->signal_runtime.item_count;
+    status->stale_generation_drop_count = runtime->signal_runtime.stale_generation_drop_count;
+    for (size_t index = 0U; index < runtime->signal_runtime.item_count; index++) {
+        const UnitLabNativeSignalState* signal = &runtime->signal_runtime.items[index];
+
+        switch (signal->freshness) {
+        case UNITLAB_NATIVE_SIGNAL_FRESHNESS_LIVE:
+            live_signal_count++;
+            break;
+        case UNITLAB_NATIVE_SIGNAL_FRESHNESS_STALE:
+            stale_signal_count++;
+            break;
+        case UNITLAB_NATIVE_SIGNAL_FRESHNESS_UNKNOWN:
+        default:
+            unknown_signal_count++;
+            break;
+        }
+    }
+    status->live_signal_count = live_signal_count;
+    status->stale_signal_count = stale_signal_count;
+    status->unknown_signal_count = unknown_signal_count;
     if (runtime->has_discovery_snapshot) {
         copy_text(status->snapshot_id, sizeof(status->snapshot_id), runtime->discovery_snapshot.snapshot_id);
         status->logical_device_count = runtime->discovery_snapshot.logical_device_count;

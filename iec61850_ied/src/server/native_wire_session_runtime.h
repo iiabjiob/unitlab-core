@@ -107,6 +107,12 @@ typedef struct {
     size_t data_set_member_count;
     size_t report_control_count;
     size_t signal_count;
+    /* Runtime signal cache summary, independent from discovery counts. */
+    size_t signal_cache_count;
+    size_t live_signal_count;
+    size_t stale_signal_count;
+    size_t unknown_signal_count;
+    uint64_t stale_generation_drop_count;
 } UnitLabNativeSessionStatus;
 
 typedef struct UnitLabNativeClientSessionState UnitLabNativeClientSessionState;
