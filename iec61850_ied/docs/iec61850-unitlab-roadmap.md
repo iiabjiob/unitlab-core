@@ -253,3 +253,4 @@ Done when:
 
 - `docs/iec61850-native-runtime-audit.md`
 - `docs/mms-client-roadmap.md`
+- `docs/unitlab-signal-planning-contract.md`
