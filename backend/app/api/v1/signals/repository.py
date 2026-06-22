@@ -30,6 +30,27 @@ class SignalsRepository:
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 
+    async def list_by_ids(self, workspace_id: int, signal_ids: Sequence[int]) -> list[Signal]:
+        normalized_ids = {
+            int(signal_id)
+            for signal_id in signal_ids
+            if isinstance(signal_id, int) and int(signal_id) > 0
+        }
+        if not normalized_ids:
+            return []
+
+        stmt = (
+            select(Signal)
+            .where(
+                Signal.workspace_id == workspace_id,
+                Signal.deleted_at.is_(None),
+                Signal.id.in_(normalized_ids),
+            )
+            .order_by(Signal.id.asc())
+        )
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
+
     async def get(self, signal_id: int) -> Signal | None:
         stmt = select(Signal).where(Signal.id == signal_id)
         result = await self.db.execute(stmt)

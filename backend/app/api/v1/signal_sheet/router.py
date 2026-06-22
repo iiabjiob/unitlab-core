@@ -41,15 +41,21 @@ from app.schemas.signal_sheet_schema import (
     SignalSheetImportPreviewResponseSchema,
     SignalSheetImportPreviewSheetSchema,
 )
+from app.schemas.verification_schema import VerificationSubscriptionPlanSchema
 from app.services.signal_job_service import (
     control_signal_job,
     create_signal_job,
     get_signal_job,
+    update_signal_job,
 )
 from app.schemas.ws.events import build_signal_job_event
 from app.core.events.ws_event_publisher import WsEventPublisher
 from app.services.signal_sheet_import_service import SignalSheetImportService
 from app.services.signal_sheet_write_service import SignalSheetWriteService
+from app.services.verification_planner import (
+    build_verification_subscription_plan,
+    build_verification_target_sources,
+)
 
 router = APIRouter(prefix="/api/v1", tags=["Signal Sheet"])
 settings = get_settings()
@@ -556,6 +562,7 @@ async def enqueue_signal_test_run_job(
     workspace_id: int,
     payload: SignalTestRunJobSchema,
     repo: SignalSheetRepository = Depends(get_repo),
+    signals_repo: SignalsRepository = Depends(get_signals_repo),
 ):
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -574,6 +581,34 @@ async def enqueue_signal_test_run_job(
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    try:
+        signals = await signals_repo.list_by_ids(workspace_id, payload.signal_ids)
+        signals_by_id = {signal.id: signal for signal in signals}
+        allocation_rows = await repo.list_allocation_rows_by_signal_ids(workspace_id, payload.signal_ids)
+        allocation_rows_by_signal_id = {row.signal_id: row for row in allocation_rows}
+        sources = build_verification_target_sources(
+            requested_signal_ids=payload.signal_ids,
+            signals_by_id=signals_by_id,
+            allocation_rows_by_signal_id=allocation_rows_by_signal_id,
+        )
+        plan: VerificationSubscriptionPlanSchema = build_verification_subscription_plan(sources)
+        job_state = await update_signal_job(
+            str(job_state.get("job_id") or ""),
+            status="queued",
+            result={
+                "verification_plan": plan.model_dump(mode="json"),
+                "verification_coverage": plan.coverage.model_dump(mode="json"),
+            },
+        ) or job_state
+    except Exception as exc:  # noqa: BLE001
+        logger.exception(
+            "Failed to build verification target preview | workspace=%s job_id=%s",
+            workspace_id,
+            str(job_state.get("job_id") or ""),
+        )
+        job_state = dict(job_state)
+        job_state.setdefault("result", {})
+        job_state["result"]["verification_plan_error"] = str(exc)
     await WsEventPublisher.publish(build_signal_job_event(job_state))
     return SignalJobStatusSchema.model_validate(job_state)
 
