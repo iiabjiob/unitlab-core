@@ -6,6 +6,7 @@ This roadmap sits above the protocol/client/server audit:
 - protocol/client/server detail lives in `docs/iec61850-native-runtime-audit.md`;
 - lower-level client discovery/report work stays in `docs/mms-client-roadmap.md`.
 - cross-layer readiness and product-layer boundary summary live in `docs/iec61850-unitlab-readiness-matrix.md`.
+- slice-by-slice execution tracker lives in `docs/unitlab-product-slice-tracker.md`.
 
 The goal here is the UnitLab product flow:
 - signal list with IEC 61850 endpoint references;
@@ -255,6 +256,7 @@ Done when:
 - `docs/iec61850-native-runtime-audit.md`
 - `docs/mms-client-roadmap.md`
 - `docs/iec61850-unitlab-readiness-matrix.md`
+- `docs/unitlab-product-slice-tracker.md`
 - `docs/unitlab-signal-planning-contract.md`
 - `docs/unitlab-runtime-integration-contract.md`
 - `docs/unitlab-api-payload-shapes.md`
