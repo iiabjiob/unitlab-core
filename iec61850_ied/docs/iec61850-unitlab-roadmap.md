@@ -260,3 +260,4 @@ Done when:
 - `docs/unitlab-recovery-contract.md`
 - `docs/unitlab-diagnostics-contract.md`
 - `docs/unitlab-api-surface.md`
+- `docs/unitlab-event-stream-contract.md`
