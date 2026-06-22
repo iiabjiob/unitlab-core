@@ -670,6 +670,23 @@ void unitlab_native_session_runtime_apply_last_report_to_signals(
     }
 }
 
+void unitlab_native_session_runtime_mark_report_health_stale(
+    UnitLabNativeSessionRuntime* runtime,
+    const char* report_health_reason)
+{
+    if (runtime == NULL) {
+        return;
+    }
+    if (report_health_reason != NULL && strcmp(report_health_reason, "stale-generation") == 0) {
+        return;
+    }
+    runtime_mark_signals_stale(
+        runtime,
+        report_health_reason != NULL && report_health_reason[0] != '\0' ? report_health_reason : "report-degraded",
+        session_runtime_now_ms(),
+        runtime->identity.connection_generation);
+}
+
 void unitlab_native_session_runtime_update_discovery_snapshot(
     UnitLabNativeSessionRuntime* runtime,
     const UnitLabNativeDiscoverySnapshot* snapshot)

@@ -173,6 +173,9 @@ void unitlab_native_session_runtime_apply_last_report_to_signals(
     UnitLabNativeSessionRuntime* runtime,
     const UnitLabNativeClientSessionState* session,
     uint64_t timestamp_ms);
+void unitlab_native_session_runtime_mark_report_health_stale(
+    UnitLabNativeSessionRuntime* runtime,
+    const char* report_health_reason);
 void unitlab_native_session_runtime_update_discovery_snapshot(
     UnitLabNativeSessionRuntime* runtime,
     const UnitLabNativeDiscoverySnapshot* snapshot);

@@ -176,6 +176,55 @@ static int test_report_sequence_policy_tracks_gaps_duplicates_and_generation_res
     return 1;
 }
 
+static int test_report_health_staleness_updates_live_signal_cache(void)
+{
+    UnitLabNativeSessionManager manager;
+    UnitLabNativeSessionRuntime* runtime;
+    UnitLabNativeSignalUpdate signal_update;
+    UnitLabNativeSignalChange signal_change;
+    const UnitLabNativeSignalState* signal_state;
+
+    unitlab_native_session_manager_init(&manager);
+    runtime = unitlab_native_session_manager_get_or_create(&manager, "session-c", "mms:IED3@127.0.0.1:102", "IED3");
+    if (!expect_true(runtime != NULL, "staleness runtime allocation failed")) {
+        unitlab_native_session_manager_reset(&manager);
+        return 0;
+    }
+    unitlab_native_signal_runtime_set_current_connection_generation(&runtime->signal_runtime, 3U);
+    memset(&signal_update, 0, sizeof(signal_update));
+    snprintf(signal_update.signal_path, sizeof(signal_update.signal_path), "%s", "IED3LD0/XCBR1.Pos");
+    snprintf(signal_update.data_reference, sizeof(signal_update.data_reference), "%s", "IED3LD0/XCBR1$ST$Pos$stVal");
+    snprintf(signal_update.display_reference, sizeof(signal_update.display_reference), "%s", "IED3LD0/XCBR1.Pos.stVal");
+    snprintf(signal_update.leaf_name, sizeof(signal_update.leaf_name), "%s", "stVal");
+    snprintf(signal_update.value_summary, sizeof(signal_update.value_summary), "%s", "true");
+    signal_update.leaf_role = UNITLAB_NATIVE_SIGNAL_LEAF_ROLE_VALUE;
+    signal_update.value_kind = UNITLAB_NATIVE_SIGNAL_VALUE_KIND_BOOL;
+    signal_update.bool_value = 1;
+    signal_update.observed_at_ms = 1000U;
+    signal_update.source_connection_generation = 3U;
+    signal_state = unitlab_native_signal_runtime_apply_update(&runtime->signal_runtime, &signal_update, &signal_change);
+    if (!expect_true(signal_state != NULL && signal_state->freshness == UNITLAB_NATIVE_SIGNAL_FRESHNESS_LIVE, "signal should start live")) {
+        unitlab_native_session_manager_reset(&manager);
+        return 0;
+    }
+    unitlab_native_session_runtime_mark_report_health_stale(runtime, "missing-sequence");
+    if (!expect_true(signal_state->freshness == UNITLAB_NATIVE_SIGNAL_FRESHNESS_STALE, "degraded report health did not stale signal")) {
+        unitlab_native_session_manager_reset(&manager);
+        return 0;
+    }
+    if (!expect_true(strcmp(signal_state->stale_reason, "missing-sequence") == 0, "stale reason not preserved")) {
+        unitlab_native_session_manager_reset(&manager);
+        return 0;
+    }
+    unitlab_native_session_runtime_mark_report_health_stale(runtime, "stale-generation");
+    if (!expect_true(strcmp(signal_state->stale_reason, "missing-sequence") == 0, "stale-generation should not restale current cache")) {
+        unitlab_native_session_manager_reset(&manager);
+        return 0;
+    }
+    unitlab_native_session_manager_reset(&manager);
+    return 1;
+}
+
 int main(void)
 {
     UnitLabNativeSessionManager manager;
@@ -417,6 +466,9 @@ int main(void)
     }
 
     unitlab_native_session_manager_reset(&manager);
+    if (!test_report_health_staleness_updates_live_signal_cache()) {
+        return 1;
+    }
     if (!test_report_sequence_policy_tracks_gaps_duplicates_and_generation_reset()) {
         return 1;
     }

@@ -1357,7 +1357,7 @@ static int read_next_report_value(
 
 static void emit_information_report_summary(
     UnitLabNativeClientSessionState* session,
-    const UnitLabNativeSessionRuntime* session_runtime,
+    UnitLabNativeSessionRuntime* session_runtime,
     const UnitLabMmsPdu* pdu)
 {
     UnitLabMmsDiagnostic diagnostic;
@@ -1469,6 +1469,11 @@ static void emit_information_report_summary(
             has_sub_sequence_number,
             report_sub_sequence_number);
         if (sequence_disposition == UNITLAB_NATIVE_REPORT_SEQUENCE_DUPLICATE || sequence_disposition == UNITLAB_NATIVE_REPORT_SEQUENCE_OUT_OF_ORDER) {
+            if (session_runtime != NULL) {
+                unitlab_native_session_runtime_mark_report_health_stale(
+                    session_runtime,
+                    session->subscription_model.report_health_reason);
+            }
             printf(
                 "mms-summary: report.diagnostic code=%s sqNum=%u subSqNum=%u lastSqNum=%u lastSubSqNum=%u generation=%llu\n",
                 sequence_disposition == UNITLAB_NATIVE_REPORT_SEQUENCE_DUPLICATE ? "DUPLICATE_REPORT_SEQUENCE" : "OUT_OF_ORDER_REPORT_SEQUENCE",
@@ -1481,6 +1486,11 @@ static void emit_information_report_summary(
             return;
         }
         if (sequence_disposition == UNITLAB_NATIVE_REPORT_SEQUENCE_GAP) {
+            if (session_runtime != NULL) {
+                unitlab_native_session_runtime_mark_report_health_stale(
+                    session_runtime,
+                    session->subscription_model.report_health_reason);
+            }
             printf(
                 "mms-summary: report.diagnostic code=REPORT_SEQUENCE_GAP sqNum=%u subSqNum=%u lastSqNum=%u lastSubSqNum=%u missing=%llu generation=%llu\n",
                 (unsigned)report_sequence_number,
@@ -1682,7 +1692,7 @@ static void emit_information_report_summary(
     fflush(stdout);
 }
 
-static int emit_mms_frame_summary(UnitLabNativeClientSessionState* session, const UnitLabNativeSessionRuntime* session_runtime, const uint8_t* frame, size_t frame_length)
+static int emit_mms_frame_summary(UnitLabNativeClientSessionState* session, UnitLabNativeSessionRuntime* session_runtime, const uint8_t* frame, size_t frame_length)
 {
     UnitLabMmsAssociationFrame association_frame;
     UnitLabMmsPdu pdu;
