@@ -47,56 +47,78 @@ Suggested states:
 
 ## Verification execution states
 
-Suggested states:
+Suggested state axes:
+
+### Workflow state
+
 - `draft`
 - `planned`
-- `connecting`
-- `discovering`
-- `subscribing`
+- `preparing`
 - `armed`
 - `running`
 - `awaiting_confirmation`
-- `confirmed`
-- `verified`
-- `stale`
-- `timed_out`
-- `unconfirmed`
-- `failed`
-- `aborted`
+- `completing`
 - `completed`
+- `aborted`
+- `failed`
 
-### Verification execution transition rules
+### Evidence status
+
+- `none`
+- `observed`
+- `stale`
+- `timeout`
+- `invalid`
+- `late`
+- `out_of_window`
+
+### Verdict state
+
+- `pending`
+- `pass`
+- `fail`
+- `inconclusive`
+- `aborted`
+
+### Workflow transition rules
 
 - `draft` -> `planned`
-- `planned` -> `connecting`
-- `connecting` -> `discovering`
-- `discovering` -> `subscribing`
-- `subscribing` -> `armed`
+- `planned` -> `preparing`
+- `preparing` -> `armed`
 - `armed` -> `running`
 - `running` -> `awaiting_confirmation`
-- `awaiting_confirmation` -> `confirmed`
-- `confirmed` -> `verified`
-- `confirmed` -> `stale`
-- `awaiting_confirmation` -> `stale`
-- `awaiting_confirmation` -> `timed_out`
-- `awaiting_confirmation` -> `unconfirmed`
-- any non-final active state -> `failed`
+- `awaiting_confirmation` -> `completing`
+- `completing` -> `completed`
+- any active state -> `failed` on unrecoverable error
 - any active state -> `aborted`
-- any terminal state -> `completed`
+
+### Evidence / verdict rules
+
+- `observed` means the expected feedback path was seen;
+- `pass` means evidence satisfied timing, freshness, quality, and policy;
+- `late` means feedback was observed after the allowed window;
+- `timeout` means no valid evidence arrived in time;
+- `stale` means the evidence source was not live enough to trust;
+- `invalid` means the evidence was malformed or not trustworthy;
+- `out_of_window` means the evidence was observed but failed timing policy;
+- `inconclusive` means evidence existed but was insufficient to decide;
+- `fail` means the overall verdict is negative;
+- `pending` is the state before enough evidence exists;
+- `aborted` means the operator or system stopped the workflow intentionally.
 
 ## Coupling rules
 
-- Runtime `reconnecting` should usually force verification execution into `stale` or `awaiting_recovery`, not silent success.
-- Runtime `failed` should typically propagate into execution `failed` unless the Python layer explicitly masks it as a recoverable interruption.
+- Runtime `reconnecting` should usually force execution evidence into `stale` or `awaiting_confirmation` again, not silent success.
+- Runtime `failed` should typically propagate into workflow `failed` unless the Python layer explicitly masks it as a recoverable interruption.
 - Runtime `closed` should invalidate live evidence but must not delete existing evidence records.
 - Runtime `discovered` does not imply execution `planned`.
-- Runtime `reporting` does not imply execution `verified`.
+- Runtime `reporting` does not imply verdict `pass`.
 
 ## Freshness interaction
 
 - A signal can be `live` while execution is `awaiting_confirmation`.
 - A signal can be `stale` while evidence remains preserved.
-- A session reconnect can move signals from `stale` back to `live`, but the execution state should still require confirmation.
+- A session reconnect can move signals from `stale` back to `live`, but the execution state should still require fresh evidence.
 
 ## Failure mapping
 
@@ -115,14 +137,14 @@ Suggested execution failure causes:
 - `no_matching_report_control`
 - `runtime_failed`
 - `timeout`
-- `confirmation_missing`
+- `evidence_missing`
 - `evidence_mismatch`
 - `aborted_by_operator`
 
 ## Invariants
 
-- No state should jump directly from `draft` to `verified`.
-- No stale update should automatically become verified.
+- No state should jump directly from `draft` to `pass`.
+- No stale update should automatically become `pass`.
 - A terminal state should not be silently overwritten by a new active state without an explicit new run or reconnect.
 - State transitions must be explicit in events and diagnostics.
 
@@ -132,4 +154,3 @@ Suggested execution failure causes:
 - `app/runtime/sessions.py`
 - `app/runtime/execution.py`
 - `app/runtime/events.py`
-

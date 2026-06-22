@@ -95,7 +95,7 @@ Input:
 - test trigger from UnitLab.
 
 Output:
-- confirmed / verified / timed_out / failed result;
+- observed / pass / timeout / fail result;
 - evidence-backed decision;
 - visible timing window result.
 
@@ -147,10 +147,10 @@ Done when:
 ### Mandatory
 
 - signal-list to IED/report planning without manual tuning;
-- report confirmation in the verdict path;
+- report evidence in the verdict path;
 - reconnect preserving desired work;
 - stale/late frames not corrupting current evidence;
-- explicit explanation for confirmed / verified / stale / failed.
+- explicit explanation for observed / pass / stale / timeout / fail.
 
 ### Optional
 

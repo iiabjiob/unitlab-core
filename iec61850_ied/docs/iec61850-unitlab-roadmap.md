@@ -18,8 +18,8 @@ The goal here is the UnitLab product flow:
 - automatic grouping of signals into per-device subscription plans;
 - automatic selection of candidate report controls;
 - automatic subscribe / reconnect / recovery;
-- report-based confirmation that a simulated output actually reached the target IED;
-- verdicts based on real IEC 61850 feedback and timing windows.
+- report-based evidence that a simulated output actually reached the target IED;
+- verdict states based on real IEC 61850 feedback, freshness, and timing windows.
 
 Execution model decision:
 - keep planning and orchestration in the Python/FastAPI backend;
@@ -36,10 +36,10 @@ The library and runtime must support this flow without engineer-heavy setup:
 - UnitLab subscribes to the right report controls.
 - UnitLab triggers outputs.
 - The target IED reports back through MMS.
-- UnitLab marks the test step as:
-  - `confirmed` when the report is received and valid;
-  - `verified` when the feedback returned through IEC 61850 and is inside the timing window;
-  - `stale` / `timed_out` / `unconfirmed` / `failed` when evidence is missing or invalid.
+- UnitLab marks the test step with evidence status and verdict state:
+  - `observed` when the expected feedback path is seen;
+  - `pass` when evidence satisfies timing, freshness, quality, and policy;
+  - `late`, `timeout`, `stale`, `invalid`, `out_of_window`, or `fail` when evidence is missing, stale, late, or invalid.
 
 ## Current strengths
 
@@ -54,8 +54,8 @@ The library and runtime must support this flow without engineer-heavy setup:
 
 - No first-class planner yet turns signal-list rows into a subscription plan across one or more IEDs.
 - SCD is still a hint path, not a fully integrated optional input layer for the product workflow.
-- Test-step confirmation and verdict logic are not yet a first-class contract above the runtime.
-- The product does not yet have a visible runtime model for `confirmed`, `verified`, `timed_out`, `unconfirmed`, and `stale`.
+- Test-step evidence and verdict logic are not yet a first-class contract above the runtime.
+- The product does not yet have a visible runtime model for evidence status, verdict state, and recovery state.
 - Multi-IED coordination is not yet a product-level operating model.
 - Evidence reconstruction still leans too much on runtime state instead of a durable product trace.
 
@@ -148,7 +148,7 @@ Must do:
 - store `latency_ms`;
 - store `quality`;
 - store `freshness`;
-- store `verdict`;
+- store evidence and verdict state;
 - store `reason`;
 - preserve provenance across reconnect and stale transitions.
 
@@ -167,22 +167,22 @@ Done when:
 Status: not started.
 
 Goal:
-- Implement the simplest end-to-end verified flow.
+- Implement the simplest end-to-end evidence-driven flow.
 
 Must do:
 - activate UnitLab output;
-- wait for IEC 61850 confirmation;
+- wait for IEC 61850 evidence;
 - compare against the allowed time window;
-- mark the signal as `tested`, `verified`, `failed`, or `timeout`;
+- mark the signal with evidence status and verdict state;
 - use the evidence model instead of ad hoc booleans.
 
 Must not do:
 - do not require manual per-device tweaking for the happy path;
 - do not introduce fleet orchestration yet;
-- do not shortcut report confirmation with local UI-only state.
+- do not shortcut report evidence with local UI-only state.
 
 Done when:
-- a single simulated output can be verified against a real report path;
+- a single simulated output can be observed against a real report path;
 - time-window violations are visible;
 - the verdict is backed by recorded evidence.
 - the full run is describable as one `VerificationRun` and one or more `VerificationStep` records.
@@ -250,10 +250,10 @@ Done when:
 
 - Signal-list to IED/report planning must work without manual engineer tuning.
 - SCD must remain optional and functional, not mandatory.
-- Report confirmation must be part of the verdict path.
+- Report evidence must be part of the verdict path.
 - Reconnect must preserve desired work, not just transport state.
 - Late or stale frames must not corrupt current evidence.
-- The product must explain why a signal was marked confirmed, verified, stale, or failed.
+- The product must explain why a signal was marked observed, pass, stale, late, timeout, or failed.
 
 ## What is desirable but not mandatory yet
 

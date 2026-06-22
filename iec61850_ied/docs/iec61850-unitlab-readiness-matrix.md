@@ -130,7 +130,7 @@ This is a deliberate boundary, not a gap in the C runtime.
 - turn selected signal-list rows into normalized verification targets;
 - build a deterministic subscription planner per IED/report control;
 - persist verification evidence with clear provenance;
-- compute verified/confirmed/timed_out/failed verdicts from evidence, not from UI state;
+- compute pass/fail/inconclusive/aborted verdict states from evidence, not from UI state;
 - support multi-IED groups without collapsing them into one shared runtime;
 - make reconnect recovery preserve desired work and evidence.
 
@@ -177,4 +177,3 @@ That sequence keeps the reusable IEC 61850 layer isolated while letting the Pyth
 - `docs/unitlab-event-stream-contract.md`
 - `docs/unitlab-state-machine-contract.md`
 - `docs/unitlab-json-schema-contract.md`
-
