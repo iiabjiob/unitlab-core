@@ -105,7 +105,7 @@ static void emit_subscription_summary(const UnitLabNativeClientSessionState* ses
         return;
     }
     printf(
-        "native-wire-client: subscription-summary phase=%s rcb=%s/%s rcb-index=%zu rptEna=%s rptEna-invoke=%u giRequested=%s gi-invoke=%u lastReportReceived=%s asyncReports=%zu lastReportSequenceKnown=%s lastReportSequence=%u lastReportSequenceGeneration=%llu seqGapCount=%llu seqDuplicateCount=%llu seqOutOfOrderCount=%llu seqDropCount=%llu seqMissingCount=%llu lastReportValues=%zu lastReportDataRefs=%zu lastReportMatchedDataRefs=%zu lastReportReasons=%zu lastReportDatasetMismatches=%zu lastReportMissingValues=%zu lastReportExtraValues=%zu lastReportMissingReasons=%zu lastReportExtraReasons=%zu lastReportUnsupportedValues=%zu\n",
+        "native-wire-client: subscription-summary phase=%s rcb=%s/%s rcb-index=%zu rptEna=%s rptEna-invoke=%u giRequested=%s gi-invoke=%u lastReportReceived=%s asyncReports=%zu lastReportSequenceKnown=%s lastReportSequence=%u lastReportSequenceGeneration=%llu seqGapCount=%llu seqDuplicateCount=%llu seqOutOfOrderCount=%llu seqDropCount=%llu seqMissingCount=%llu seqWrapCount=%llu lastReportValues=%zu lastReportDataRefs=%zu lastReportMatchedDataRefs=%zu lastReportReasons=%zu lastReportDatasetMismatches=%zu lastReportMissingValues=%zu lastReportExtraValues=%zu lastReportMissingReasons=%zu lastReportExtraReasons=%zu lastReportUnsupportedValues=%zu\n",
         phase != NULL ? phase : "snapshot",
         session->subscription_model.rcb_domain[0] != '\0' ? session->subscription_model.rcb_domain : "<none>",
         session->subscription_model.rcb_item[0] != '\0' ? session->subscription_model.rcb_item : "<none>",
@@ -124,6 +124,7 @@ static void emit_subscription_summary(const UnitLabNativeClientSessionState* ses
         (unsigned long long)session->subscription_model.report_sequence_out_of_order_count,
         (unsigned long long)session->subscription_model.report_sequence_drop_count,
         (unsigned long long)session->subscription_model.report_sequence_missing_count,
+        (unsigned long long)session->subscription_model.report_sequence_wrap_count,
         session->discovered_model.last_report_value_count,
         session->discovered_model.last_report_data_ref_count,
         session->discovered_model.last_report_matched_data_ref_count,

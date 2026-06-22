@@ -769,6 +769,7 @@ void unitlab_native_client_session_reset_report_sequence(UnitLabNativeClientSess
     session->subscription_model.report_sequence_out_of_order_count = 0U;
     session->subscription_model.report_sequence_drop_count = 0U;
     session->subscription_model.report_sequence_missing_count = 0U;
+    session->subscription_model.report_sequence_wrap_count = 0U;
     session->subscription_model.has_last_report_sequence_number = 0;
 }
 
@@ -799,6 +800,12 @@ UnitLabNativeReportSequenceDisposition unitlab_native_client_session_observe_rep
         model->report_sequence_duplicate_count++;
         model->report_sequence_drop_count++;
         return UNITLAB_NATIVE_REPORT_SEQUENCE_DUPLICATE;
+    }
+    if (model->last_report_sequence_number == UINT32_MAX && sequence_number == 0U) {
+        model->report_sequence_wrap_count++;
+        model->last_report_sequence_number = sequence_number;
+        model->last_report_sequence_generation = connection_generation;
+        return UNITLAB_NATIVE_REPORT_SEQUENCE_ACCEPTED;
     }
     if (sequence_number < model->last_report_sequence_number) {
         model->report_sequence_out_of_order_count++;

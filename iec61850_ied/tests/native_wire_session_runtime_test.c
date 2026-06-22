@@ -90,11 +90,25 @@ static int test_report_sequence_policy_tracks_gaps_duplicates_and_generation_res
         return 0;
     }
 
+    session.subscription_model.last_report_sequence_generation = 2U;
+    session.subscription_model.last_report_sequence_number = UINT32_MAX;
+    session.subscription_model.has_last_report_sequence_number = 1;
+    disposition = unitlab_native_client_session_observe_report_sequence(&session, 2U, 0U);
+    if (!expect_true(disposition == UNITLAB_NATIVE_REPORT_SEQUENCE_ACCEPTED, "wrap-around report sequence should be accepted")) {
+        return 0;
+    }
+    if (!expect_true(session.subscription_model.report_sequence_wrap_count == 1U, "wrap-around report sequence counter not updated")) {
+        return 0;
+    }
+    if (!expect_true(session.subscription_model.last_report_sequence_number == 0U, "wrap-around report sequence not reset to zero")) {
+        return 0;
+    }
+
     unitlab_native_client_session_reset_report_sequence(&session);
     if (!expect_true(session.subscription_model.has_last_report_sequence_number == 0 && session.subscription_model.last_report_sequence_generation == 0U, "report sequence reset did not clear state")) {
         return 0;
     }
-    if (!expect_true(session.subscription_model.report_sequence_gap_count == 0U && session.subscription_model.report_sequence_duplicate_count == 0U && session.subscription_model.report_sequence_out_of_order_count == 0U && session.subscription_model.report_sequence_drop_count == 0U && session.subscription_model.report_sequence_missing_count == 0U, "report sequence reset did not clear counters")) {
+    if (!expect_true(session.subscription_model.report_sequence_gap_count == 0U && session.subscription_model.report_sequence_duplicate_count == 0U && session.subscription_model.report_sequence_out_of_order_count == 0U && session.subscription_model.report_sequence_drop_count == 0U && session.subscription_model.report_sequence_missing_count == 0U && session.subscription_model.report_sequence_wrap_count == 0U, "report sequence reset did not clear counters")) {
         return 0;
     }
     return 1;

@@ -68,6 +68,7 @@ typedef struct {
     uint64_t report_sequence_out_of_order_count;
     uint64_t report_sequence_drop_count;
     uint64_t report_sequence_missing_count;
+    uint64_t report_sequence_wrap_count;
     int has_last_report_sequence_number;
     char rcb_domain[128U];
     char rcb_item[320U];
