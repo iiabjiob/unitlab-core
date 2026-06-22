@@ -103,6 +103,23 @@ static void runtime_set_error(UnitLabNativeSessionRuntime* runtime, const char* 
     copy_text(runtime->live.last_error_message, sizeof(runtime->live.last_error_message), error_message != NULL && error_message[0] != '\0' ? error_message : "");
 }
 
+static void runtime_mark_signals_stale(
+    UnitLabNativeSessionRuntime* runtime,
+    const char* reason,
+    uint64_t stale_at_ms,
+    uint64_t connection_generation)
+{
+    if (runtime == NULL) {
+        return;
+    }
+    (void)unitlab_native_signal_runtime_mark_source_stale(
+        &runtime->signal_runtime,
+        runtime->identity.session_id,
+        connection_generation,
+        reason,
+        stale_at_ms);
+}
+
 static int runtime_has_active_desired_state(const UnitLabNativeSessionRuntime* runtime)
 {
     if (runtime == NULL) {
@@ -165,6 +182,7 @@ void unitlab_native_session_runtime_set_identity(
         runtime->identity.session_id,
         runtime->identity.endpoint_id,
         runtime->identity.device_key);
+    unitlab_native_signal_runtime_set_current_connection_generation(&runtime->signal_runtime, runtime->identity.connection_generation);
     log_runtime_event(runtime, "session-configured", NULL);
 }
 
@@ -386,12 +404,16 @@ int unitlab_native_session_runtime_begin_operation(
     if (inflight_slot == NULL) {
         return 0;
     }
-    if (runtime->live.phase == UNITLAB_NATIVE_SESSION_PHASE_CLOSED || runtime->live.phase == UNITLAB_NATIVE_SESSION_PHASE_FAILED) {
+    if (operation_kind == UNITLAB_NATIVE_SESSION_OPERATION_RECONNECT) {
+        runtime_mark_signals_stale(runtime, "reconnecting", session_runtime_now_ms(), 0U);
         runtime->identity.connection_generation++;
-    } else if (operation_kind == UNITLAB_NATIVE_SESSION_OPERATION_RECONNECT) {
+        unitlab_native_signal_runtime_set_current_connection_generation(&runtime->signal_runtime, runtime->identity.connection_generation);
+    } else if (runtime->live.phase == UNITLAB_NATIVE_SESSION_PHASE_CLOSED || runtime->live.phase == UNITLAB_NATIVE_SESSION_PHASE_FAILED) {
         runtime->identity.connection_generation++;
+        unitlab_native_signal_runtime_set_current_connection_generation(&runtime->signal_runtime, runtime->identity.connection_generation);
     } else if (operation_kind == UNITLAB_NATIVE_SESSION_OPERATION_CONNECT && !runtime->live.associated) {
         runtime->identity.connection_generation++;
+        unitlab_native_signal_runtime_set_current_connection_generation(&runtime->signal_runtime, runtime->identity.connection_generation);
     }
     *inflight_slot = 1;
     update_phase_for_begin(runtime, operation_kind);
@@ -463,6 +485,7 @@ static void mark_operation_failure(UnitLabNativeSessionRuntime* runtime, UnitLab
     if (runtime == NULL) {
         return;
     }
+    runtime_mark_signals_stale(runtime, error_message != NULL && error_message[0] != '\0' ? error_message : error_code, session_runtime_now_ms(), 0U);
     runtime_set_error(runtime, error_code, error_message);
     if (degraded) {
         runtime->live.phase = UNITLAB_NATIVE_SESSION_PHASE_DEGRADED;
@@ -637,6 +660,7 @@ void unitlab_native_session_runtime_apply_last_report_to_signals(
         runtime->identity.session_id,
         runtime->identity.endpoint_id,
         runtime->identity.device_key);
+    unitlab_native_signal_runtime_set_current_connection_generation(&runtime->signal_runtime, runtime->identity.connection_generation);
     for (size_t index = 0U; index < session->last_report_entry_count; index++) {
         UnitLabNativeSignalUpdate update;
         UnitLabNativeSignalChange change;
@@ -668,6 +692,7 @@ void unitlab_native_session_runtime_mark_degraded(
     if (runtime == NULL) {
         return;
     }
+    runtime_mark_signals_stale(runtime, error_message != NULL && error_message[0] != '\0' ? error_message : error_code, session_runtime_now_ms(), 0U);
     runtime_set_error(runtime, error_code, error_message);
     runtime->live.phase = UNITLAB_NATIVE_SESSION_PHASE_DEGRADED;
     log_runtime_event(runtime, "session-degraded", runtime->live.last_error_message);
@@ -681,6 +706,7 @@ void unitlab_native_session_runtime_mark_failed(
     if (runtime == NULL) {
         return;
     }
+    runtime_mark_signals_stale(runtime, error_message != NULL && error_message[0] != '\0' ? error_message : error_code, session_runtime_now_ms(), 0U);
     runtime_set_error(runtime, error_code, error_message);
     runtime->live.phase = UNITLAB_NATIVE_SESSION_PHASE_FAILED;
     log_runtime_event(runtime, "session-failed", runtime->live.last_error_message);
@@ -691,6 +717,7 @@ void unitlab_native_session_runtime_mark_closed(UnitLabNativeSessionRuntime* run
     if (runtime == NULL) {
         return;
     }
+    runtime_mark_signals_stale(runtime, "session-closed", session_runtime_now_ms(), 0U);
     runtime->live.connect_in_flight = 0;
     runtime->live.discover_in_flight = 0;
     runtime->live.subscribe_in_flight = 0;

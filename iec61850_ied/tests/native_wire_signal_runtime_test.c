@@ -13,6 +13,9 @@ typedef struct {
     int last_value_changed;
     int last_quality_changed;
     int last_timestamp_changed;
+    int last_freshness_changed;
+    int last_became_stale;
+    int last_became_live;
 } SignalObserverState;
 
 static void signal_observer(
@@ -31,6 +34,9 @@ static void signal_observer(
     state->last_value_changed = change->value_changed;
     state->last_quality_changed = change->quality_changed;
     state->last_timestamp_changed = change->timestamp_changed;
+    state->last_freshness_changed = change->freshness_changed;
+    state->last_became_stale = change->became_stale;
+    state->last_became_live = change->became_live;
 }
 
 static void set_text(char* destination, size_t destination_size, const char* value)
@@ -118,16 +124,22 @@ static void assert_change_flags(
     int is_new,
     int value_changed,
     int quality_changed,
-    int timestamp_changed)
+    int timestamp_changed,
+    int freshness_changed,
+    int became_stale,
+    int became_live)
 {
     assert(change != NULL);
     assert(change->is_new == is_new);
     assert(change->value_changed == value_changed);
     assert(change->quality_changed == quality_changed);
     assert(change->timestamp_changed == timestamp_changed);
+    assert(change->freshness_changed == freshness_changed);
+    assert(change->became_stale == became_stale);
+    assert(change->became_live == became_live);
 }
 
-static void test_signal_runtime_contract_and_notifications(void)
+static void test_signal_freshness_and_observer_notifications(void)
 {
     UnitLabNativeSignalRuntime runtime;
     UnitLabNativeSignalUpdate update;
@@ -140,6 +152,7 @@ static void test_signal_runtime_contract_and_notifications(void)
     memset(&observer_state, 0, sizeof(observer_state));
     unitlab_native_signal_runtime_init(&runtime);
     unitlab_native_signal_runtime_set_source_identity(&runtime, "session-a", "mms:IED1@127.0.0.1:102", "IED1");
+    unitlab_native_signal_runtime_set_current_connection_generation(&runtime, 1U);
     unitlab_native_signal_runtime_set_observer(&runtime, signal_observer, &observer_state);
 
     populate_value_update(
@@ -151,7 +164,7 @@ static void test_signal_runtime_contract_and_notifications(void)
         "true",
         1,
         1000U,
-        3U);
+        1U);
 
     signal = unitlab_native_signal_runtime_apply_update(&runtime, &update, &change);
     assert(signal != NULL);
@@ -163,12 +176,13 @@ static void test_signal_runtime_contract_and_notifications(void)
     assert(strcmp(signal->source_session_id, "session-a") == 0);
     assert(strcmp(signal->source_endpoint_id, "mms:IED1@127.0.0.1:102") == 0);
     assert(strcmp(signal->source_device_key, "IED1") == 0);
+    assert(signal->freshness == UNITLAB_NATIVE_SIGNAL_FRESHNESS_LIVE);
     assert(signal->bool_value == 1);
     assert(signal->has_value == 1);
     assert(signal->observed_at_ms == 1000U);
     assert(signal->last_changed_ms == 1000U);
     assert(signal->version == 1U);
-    assert_change_flags(&change, 1, 1, 0, 0);
+    assert_change_flags(&change, 1, 1, 0, 0, 1, 0, 1);
     initial_version = signal->version;
     initial_last_changed = signal->last_changed_ms;
 
@@ -181,7 +195,7 @@ static void test_signal_runtime_contract_and_notifications(void)
         "true",
         1,
         2000U,
-        3U);
+        1U);
 
     signal = unitlab_native_signal_runtime_apply_update(&runtime, &update, &change);
     assert(signal != NULL);
@@ -192,31 +206,8 @@ static void test_signal_runtime_contract_and_notifications(void)
     assert(signal->observed_at_ms == 2000U);
     assert(signal->last_changed_ms == initial_last_changed);
     assert(signal->version == initial_version);
-    assert_change_flags(&change, 0, 0, 0, 0);
-
-    populate_value_update(
-        &update,
-        "IED1LD0/XCBR1.Pos",
-        "IED1LD0/XCBR1$ST$Pos$stVal",
-        "IED1LD0/XCBR1.Pos.stVal",
-        "stVal",
-        "false",
-        0,
-        3000U,
-        3U);
-
-    signal = unitlab_native_signal_runtime_apply_update(&runtime, &update, &change);
-    assert(signal != NULL);
-    assert(runtime.item_count == 1U);
-    assert(runtime.update_count == 3U);
-    assert(runtime.change_count == 2U);
-    assert(observer_state.call_count == 2U);
-    assert(signal->bool_value == 0);
-    assert(signal->has_value == 1);
-    assert(signal->observed_at_ms == 3000U);
-    assert(signal->last_changed_ms == 3000U);
-    assert(signal->version == initial_version + 1U);
-    assert_change_flags(&change, 0, 1, 0, 0);
+    assert(signal->freshness == UNITLAB_NATIVE_SIGNAL_FRESHNESS_LIVE);
+    assert_change_flags(&change, 0, 0, 0, 0, 0, 0, 0);
 
     populate_quality_update(
         &update,
@@ -227,22 +218,19 @@ static void test_signal_runtime_contract_and_notifications(void)
         "0x0001",
         "questionable",
         0x0001U,
-        4000U,
-        3U);
+        2500U,
+        1U);
 
     signal = unitlab_native_signal_runtime_apply_update(&runtime, &update, &change);
     assert(signal != NULL);
-    assert(runtime.item_count == 1U);
-    assert(runtime.update_count == 4U);
-    assert(runtime.change_count == 3U);
-    assert(observer_state.call_count == 3U);
+    assert(runtime.update_count == 3U);
+    assert(runtime.change_count == 2U);
+    assert(observer_state.call_count == 2U);
+    assert(signal->freshness == UNITLAB_NATIVE_SIGNAL_FRESHNESS_LIVE);
     assert(signal->quality_code == 0x0001U);
     assert(strcmp(signal->quality_validity, "questionable") == 0);
     assert(signal->has_quality == 1);
-    assert(signal->observed_at_ms == 4000U);
-    assert(signal->last_changed_ms == 4000U);
-    assert(signal->version == initial_version + 2U);
-    assert_change_flags(&change, 0, 0, 1, 0);
+    assert_change_flags(&change, 0, 0, 1, 0, 0, 0, 0);
 
     populate_timestamp_update(
         &update,
@@ -251,23 +239,48 @@ static void test_signal_runtime_contract_and_notifications(void)
         "IED1LD0/XCBR1.Pos.t",
         "t",
         "2026-06-22T00:00:00Z",
-        5000U,
-        3U);
+        2600U,
+        1U);
 
     signal = unitlab_native_signal_runtime_apply_update(&runtime, &update, &change);
     assert(signal != NULL);
-    assert(runtime.item_count == 1U);
-    assert(runtime.update_count == 5U);
-    assert(runtime.change_count == 4U);
-    assert(observer_state.call_count == 4U);
+    assert(runtime.update_count == 4U);
+    assert(runtime.change_count == 3U);
+    assert(observer_state.call_count == 3U);
+    assert(signal->freshness == UNITLAB_NATIVE_SIGNAL_FRESHNESS_LIVE);
     assert(signal->has_timestamp == 1);
     assert(strcmp(signal->timestamp_summary, "2026-06-22T00:00:00Z") == 0);
-    assert(signal->observed_at_ms == 5000U);
-    assert(signal->last_changed_ms == 5000U);
-    assert(signal->version == initial_version + 3U);
-    assert_change_flags(&change, 0, 0, 0, 1);
+    assert_change_flags(&change, 0, 0, 0, 1, 0, 0, 0);
 
-    unitlab_native_signal_runtime_set_source_identity(&runtime, "session-b", "mms:IED2@127.0.0.1:102", "IED2");
+    {
+        size_t stale_count = unitlab_native_signal_runtime_mark_source_stale(&runtime, "session-a", 0U, "transport-lost", 3000U);
+        assert(stale_count == 1U);
+    }
+    assert(runtime.change_count == 4U);
+    assert(observer_state.call_count == 4U);
+    signal = unitlab_native_signal_runtime_find(&runtime, "IED1LD0/XCBR1.Pos");
+    assert(signal != NULL);
+    assert(signal->freshness == UNITLAB_NATIVE_SIGNAL_FRESHNESS_STALE);
+    assert(strcmp(signal->stale_reason, "transport-lost") == 0);
+    assert(signal->stale_at_ms == 3000U);
+    assert(signal->stale_generation == 1U);
+    assert(signal->bool_value == 1);
+    assert(signal->quality_code == 0x0001U);
+    assert(signal->has_quality == 1);
+    assert(signal->has_timestamp == 1);
+    assert(strcmp(signal->timestamp_summary, "2026-06-22T00:00:00Z") == 0);
+    assert(signal->last_changed_ms == 3000U);
+    assert(observer_state.last_freshness_changed == 1);
+    assert(observer_state.last_became_stale == 1);
+    assert(observer_state.last_became_live == 0);
+
+    {
+        size_t stale_count = unitlab_native_signal_runtime_mark_source_stale(&runtime, "session-a", 0U, "transport-lost", 3000U);
+        assert(stale_count == 0U);
+    }
+    assert(runtime.change_count == 4U);
+    assert(observer_state.call_count == 4U);
+
     populate_value_update(
         &update,
         "IED1LD0/XCBR1.Pos",
@@ -276,28 +289,30 @@ static void test_signal_runtime_contract_and_notifications(void)
         "stVal",
         "false",
         0,
-        6000U,
-        4U);
+        4000U,
+        1U);
 
     signal = unitlab_native_signal_runtime_apply_update(&runtime, &update, &change);
     assert(signal != NULL);
-    assert(runtime.item_count == 1U);
-    assert(runtime.update_count == 6U);
+    assert(runtime.update_count == 5U);
     assert(runtime.change_count == 5U);
     assert(observer_state.call_count == 5U);
-    assert(strcmp(signal->source_session_id, "session-b") == 0);
-    assert(strcmp(signal->source_endpoint_id, "mms:IED2@127.0.0.1:102") == 0);
-    assert(strcmp(signal->source_device_key, "IED2") == 0);
-    assert(signal->source_connection_generation == 4U);
-    assert(signal->observed_at_ms == 6000U);
-    assert(signal->last_changed_ms == 6000U);
+    assert(signal->freshness == UNITLAB_NATIVE_SIGNAL_FRESHNESS_LIVE);
+    assert(signal->bool_value == 0);
+    assert(signal->quality_code == 0x0001U);
+    assert(signal->has_quality == 1);
+    assert(signal->has_timestamp == 1);
+    assert(strcmp(signal->timestamp_summary, "2026-06-22T00:00:00Z") == 0);
+    assert(signal->stale_reason[0] == '\0');
+    assert(signal->stale_at_ms == 0U);
+    assert(signal->stale_generation == 0U);
     assert(signal->version == initial_version + 4U);
-    assert_change_flags(&change, 0, 0, 0, 0);
+    assert_change_flags(&change, 0, 1, 0, 0, 1, 0, 1);
 
     unitlab_native_signal_runtime_reset(&runtime);
 }
 
-static void test_signal_runtime_cache_key_and_find(void)
+static void test_signal_generation_guard_and_cache_key(void)
 {
     UnitLabNativeSignalRuntime runtime;
     UnitLabNativeSignalUpdate update;
@@ -305,7 +320,8 @@ static void test_signal_runtime_cache_key_and_find(void)
     const UnitLabNativeSignalState* second;
 
     unitlab_native_signal_runtime_init(&runtime);
-    unitlab_native_signal_runtime_set_source_identity(&runtime, "session-c", "mms:IED1@127.0.0.1:102", "IED1");
+    unitlab_native_signal_runtime_set_source_identity(&runtime, "session-b", "mms:IED1@127.0.0.1:102", "IED1");
+    unitlab_native_signal_runtime_set_current_connection_generation(&runtime, 1U);
 
     populate_value_update(
         &update,
@@ -313,9 +329,9 @@ static void test_signal_runtime_cache_key_and_find(void)
         "IED1LD0/MMXU1$MX$PhV$phsA$cVal$mag$f",
         "IED1LD0/MMXU1.PhV.phsA.cVal.mag.f",
         "f",
-        "1.0",
+        "1",
         1,
-        7000U,
+        500U,
         1U);
     assert(unitlab_native_signal_runtime_apply_update(&runtime, &update, NULL) != NULL);
 
@@ -325,9 +341,9 @@ static void test_signal_runtime_cache_key_and_find(void)
         "IED1LD0/MMXU1$MX$PhV$phsA$cVal$mag$f$alt",
         "IED1LD0/MMXU1.PhV.phsA.cVal.mag.f.alt",
         "f",
-        "1.0",
+        "1",
         1,
-        7100U,
+        600U,
         1U);
     assert(unitlab_native_signal_runtime_apply_update(&runtime, &update, NULL) != NULL);
     assert(runtime.item_count == 1U);
@@ -338,9 +354,9 @@ static void test_signal_runtime_cache_key_and_find(void)
         "IED1LD0/MMXU1$MX$PhV$phsB$cVal$mag$f",
         "IED1LD0/MMXU1.PhV.phsB.cVal.mag.f",
         "f",
-        "2.0",
+        "2",
         1,
-        7200U,
+        700U,
         1U);
     assert(unitlab_native_signal_runtime_apply_update(&runtime, &update, NULL) != NULL);
 
@@ -352,6 +368,47 @@ static void test_signal_runtime_cache_key_and_find(void)
     assert(runtime.item_count == 2U);
     assert(strcmp(first->data_reference, "IED1LD0/MMXU1$MX$PhV$phsA$cVal$mag$f$alt") == 0);
     assert(strcmp(second->signal_path, "IED1LD0/MMXU1.PhV.phsB.cVal.mag.f") == 0);
+
+    unitlab_native_signal_runtime_set_current_connection_generation(&runtime, 2U);
+    {
+        size_t stale_count = unitlab_native_signal_runtime_mark_source_stale(&runtime, "session-b", 0U, "reconnecting", 800U);
+        assert(stale_count == 2U);
+    }
+    assert(runtime.change_count == 5U);
+    assert(runtime.stale_generation_drop_count == 0U);
+    assert(first->freshness == UNITLAB_NATIVE_SIGNAL_FRESHNESS_STALE);
+    assert(second->freshness == UNITLAB_NATIVE_SIGNAL_FRESHNESS_STALE);
+
+    populate_value_update(
+        &update,
+        "IED1LD0/MMXU1.PhV.phsA.cVal.mag.f",
+        "IED1LD0/MMXU1$MX$PhV$phsA$cVal$mag$f",
+        "IED1LD0/MMXU1.PhV.phsA.cVal.mag.f",
+        "f",
+        "3",
+        1,
+        900U,
+        1U);
+    assert(unitlab_native_signal_runtime_apply_update(&runtime, &update, NULL) == first);
+    assert(runtime.stale_generation_drop_count == 1U);
+    assert(first->freshness == UNITLAB_NATIVE_SIGNAL_FRESHNESS_STALE);
+    assert(strcmp(first->value_summary, "1") == 0);
+
+    populate_value_update(
+        &update,
+        "IED1LD0/MMXU1.PhV.phsA.cVal.mag.f",
+        "IED1LD0/MMXU1$MX$PhV$phsA$cVal$mag$f",
+        "IED1LD0/MMXU1.PhV.phsA.cVal.mag.f",
+        "f",
+        "3",
+        1,
+        1000U,
+        2U);
+    assert(unitlab_native_signal_runtime_apply_update(&runtime, &update, NULL) == first);
+    assert(first->freshness == UNITLAB_NATIVE_SIGNAL_FRESHNESS_LIVE);
+    assert(first->source_connection_generation == 2U);
+    assert(strcmp(first->stale_reason, "") == 0);
+    assert(first->stale_at_ms == 0U);
 
     unitlab_native_signal_runtime_reset(&runtime);
 }
@@ -365,7 +422,7 @@ static void test_runtime_adapts_report_entries_to_one_signal(void)
     const UnitLabNativeSignalState* signal;
 
     unitlab_native_session_runtime_init(&runtime);
-    unitlab_native_session_runtime_set_identity(&runtime, "session-d", "mms:IED1@127.0.0.1:102", "IED1");
+    unitlab_native_session_runtime_set_identity(&runtime, "session-c", "mms:IED1@127.0.0.1:102", "IED1");
     memset(&session, 0, sizeof(session));
     leaf_ref = unitlab_native_client_session_append_leaf_ref(&session, "IED1LD0/XCBR1$ST$Pos$stVal");
     assert(leaf_ref != NULL);
@@ -391,10 +448,11 @@ static void test_runtime_adapts_report_entries_to_one_signal(void)
     assert(runtime.signal_runtime.item_count == 1U);
     signal = unitlab_native_signal_runtime_find(&runtime.signal_runtime, runtime.signal_runtime.items[0].signal_path);
     assert(signal != NULL);
+    assert(signal->freshness == UNITLAB_NATIVE_SIGNAL_FRESHNESS_LIVE);
     assert(signal->has_value == 1);
     assert(signal->has_quality == 1);
     assert(signal->has_timestamp == 1);
-    assert(strcmp(signal->source_session_id, "session-d") == 0);
+    assert(strcmp(signal->source_session_id, "session-c") == 0);
     assert(signal->observed_at_ms == 4242U);
     assert(signal->update_count >= 3U);
 
@@ -403,8 +461,8 @@ static void test_runtime_adapts_report_entries_to_one_signal(void)
 
 int main(void)
 {
-    test_signal_runtime_contract_and_notifications();
-    test_signal_runtime_cache_key_and_find();
+    test_signal_freshness_and_observer_notifications();
+    test_signal_generation_guard_and_cache_key();
     test_runtime_adapts_report_entries_to_one_signal();
     return 0;
 }

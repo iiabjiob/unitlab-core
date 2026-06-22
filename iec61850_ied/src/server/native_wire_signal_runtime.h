@@ -14,6 +14,12 @@ typedef enum {
 } UnitLabNativeSignalLeafRole;
 
 typedef enum {
+    UNITLAB_NATIVE_SIGNAL_FRESHNESS_UNKNOWN = 0,
+    UNITLAB_NATIVE_SIGNAL_FRESHNESS_LIVE,
+    UNITLAB_NATIVE_SIGNAL_FRESHNESS_STALE
+} UnitLabNativeSignalFreshness;
+
+typedef enum {
     UNITLAB_NATIVE_SIGNAL_VALUE_KIND_UNKNOWN = 0,
     UNITLAB_NATIVE_SIGNAL_VALUE_KIND_BOOL,
     UNITLAB_NATIVE_SIGNAL_VALUE_KIND_INTEGER,
@@ -30,6 +36,10 @@ typedef struct {
     int value_changed;
     int quality_changed;
     int timestamp_changed;
+    /* Freshness changes cover LIVE <-> STALE transitions and stale metadata refreshes. */
+    int freshness_changed;
+    int became_stale;
+    int became_live;
 } UnitLabNativeSignalChange;
 
 typedef struct {
@@ -45,6 +55,7 @@ typedef struct {
     char quality_summary[160U];
     /* Runtime/report receipt time. This is not normalized IEC 61850 UTC_TIME. */
     char timestamp_summary[160U];
+    char stale_reason[128U];
     char source_session_id[128U];
     char source_endpoint_id[160U];
     char source_device_key[160U];
@@ -52,11 +63,15 @@ typedef struct {
     char source_report_dat_set[160U];
     uint64_t source_connection_generation;
     uint64_t observed_at_ms;
+    /* Runtime freshness metadata. Stale signals keep last good value/quality/timestamp. */
+    uint64_t stale_at_ms;
+    uint64_t stale_generation;
     /* Last time a meaningful field changed. Identical updates must not move this forward. */
     uint64_t last_changed_ms;
     uint64_t update_count;
     /* Monotonic version for meaningful signal changes only. */
     uint64_t version;
+    UnitLabNativeSignalFreshness freshness;
     UnitLabNativeSignalLeafRole leaf_role;
     UnitLabNativeSignalValueKind value_kind;
     uint64_t unsigned_value;
@@ -105,6 +120,10 @@ typedef struct {
     char session_id[128U];
     char endpoint_id[160U];
     char device_key[160U];
+    /* Current active generation for the session/source. Older updates are ignored. */
+    uint64_t current_connection_generation;
+    /* Stale updates dropped because their generation was older than current_connection_generation. */
+    uint64_t stale_generation_drop_count;
     UnitLabNativeSignalState* items;
     size_t item_count;
     size_t item_capacity;
@@ -121,10 +140,20 @@ void unitlab_native_signal_runtime_set_source_identity(
     const char* session_id,
     const char* endpoint_id,
     const char* device_key);
+void unitlab_native_signal_runtime_set_current_connection_generation(
+    UnitLabNativeSignalRuntime* runtime,
+    uint64_t connection_generation);
 void unitlab_native_signal_runtime_set_observer(
     UnitLabNativeSignalRuntime* runtime,
     UnitLabNativeSignalObserver observer,
     void* user_data);
+/* generation == 0 marks all signals owned by the session; otherwise the generation must match exactly. */
+size_t unitlab_native_signal_runtime_mark_source_stale(
+    UnitLabNativeSignalRuntime* runtime,
+    const char* session_id,
+    uint64_t connection_generation,
+    const char* reason,
+    uint64_t stale_at_ms);
 UnitLabNativeSignalState* unitlab_native_signal_runtime_apply_update(
     UnitLabNativeSignalRuntime* runtime,
     const UnitLabNativeSignalUpdate* update,

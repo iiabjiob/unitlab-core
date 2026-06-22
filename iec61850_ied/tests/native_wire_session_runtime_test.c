@@ -141,7 +141,39 @@ int main(void)
         return 1;
     }
 
-    unitlab_native_session_runtime_mark_closed(runtime);
+    {
+        UnitLabNativeSignalUpdate signal_update;
+        UnitLabNativeSignalChange signal_change;
+        const UnitLabNativeSignalState* signal_state;
+
+        memset(&signal_update, 0, sizeof(signal_update));
+        snprintf(signal_update.signal_path, sizeof(signal_update.signal_path), "%s", "IED1LD0/XCBR1.Pos");
+        snprintf(signal_update.data_reference, sizeof(signal_update.data_reference), "%s", "IED1LD0/XCBR1$ST$Pos$stVal");
+        snprintf(signal_update.display_reference, sizeof(signal_update.display_reference), "%s", "IED1LD0/XCBR1.Pos.stVal");
+        snprintf(signal_update.leaf_name, sizeof(signal_update.leaf_name), "%s", "stVal");
+        snprintf(signal_update.value_summary, sizeof(signal_update.value_summary), "%s", "true");
+        signal_update.leaf_role = UNITLAB_NATIVE_SIGNAL_LEAF_ROLE_VALUE;
+        signal_update.value_kind = UNITLAB_NATIVE_SIGNAL_VALUE_KIND_BOOL;
+        signal_update.bool_value = 1;
+        signal_update.observed_at_ms = 5000U;
+        signal_update.source_connection_generation = runtime->identity.connection_generation;
+
+        signal_state = unitlab_native_signal_runtime_apply_update(&runtime->signal_runtime, &signal_update, &signal_change);
+        if (!expect_true(signal_state != NULL && signal_state->freshness == UNITLAB_NATIVE_SIGNAL_FRESHNESS_LIVE, "signal did not become live")) {
+            unitlab_native_session_manager_reset(&manager);
+            return 1;
+        }
+        unitlab_native_session_runtime_mark_closed(runtime);
+        if (!expect_true(signal_state->freshness == UNITLAB_NATIVE_SIGNAL_FRESHNESS_STALE, "closed session did not mark signal stale")) {
+            unitlab_native_session_manager_reset(&manager);
+            return 1;
+        }
+        if (!expect_true(signal_state->has_value == 1 && strcmp(signal_state->stale_reason, "session-closed") == 0, "stale signal lost provenance")) {
+            unitlab_native_session_manager_reset(&manager);
+            return 1;
+        }
+    }
+
     if (!expect_status(runtime, UNITLAB_NATIVE_SESSION_PHASE_CLOSED, "SESSION_RUNTIME_OK")) {
         unitlab_native_session_manager_reset(&manager);
         return 1;
@@ -171,6 +203,33 @@ int main(void)
     if (!expect_status(runtime, UNITLAB_NATIVE_SESSION_PHASE_ASSOCIATED, "SESSION_RUNTIME_OK")) {
         unitlab_native_session_manager_reset(&manager);
         return 1;
+    }
+    {
+        UnitLabNativeSignalUpdate signal_update;
+        UnitLabNativeSignalChange signal_change;
+        const UnitLabNativeSignalState* signal_state;
+
+        memset(&signal_update, 0, sizeof(signal_update));
+        snprintf(signal_update.signal_path, sizeof(signal_update.signal_path), "%s", "IED1LD0/XCBR1.Pos");
+        snprintf(signal_update.data_reference, sizeof(signal_update.data_reference), "%s", "IED1LD0/XCBR1$ST$Pos$stVal");
+        snprintf(signal_update.display_reference, sizeof(signal_update.display_reference), "%s", "IED1LD0/XCBR1.Pos.stVal");
+        snprintf(signal_update.leaf_name, sizeof(signal_update.leaf_name), "%s", "stVal");
+        snprintf(signal_update.value_summary, sizeof(signal_update.value_summary), "%s", "false");
+        signal_update.leaf_role = UNITLAB_NATIVE_SIGNAL_LEAF_ROLE_VALUE;
+        signal_update.value_kind = UNITLAB_NATIVE_SIGNAL_VALUE_KIND_BOOL;
+        signal_update.bool_value = 0;
+        signal_update.observed_at_ms = 6000U;
+        signal_update.source_connection_generation = runtime->identity.connection_generation;
+
+        signal_state = unitlab_native_signal_runtime_apply_update(&runtime->signal_runtime, &signal_update, &signal_change);
+        if (!expect_true(signal_state != NULL && signal_state->freshness == UNITLAB_NATIVE_SIGNAL_FRESHNESS_LIVE, "reconnected signal did not become live")) {
+            unitlab_native_session_manager_reset(&manager);
+            return 1;
+        }
+        if (!expect_true(signal_state->bool_value == 0 && signal_state->stale_reason[0] == '\0', "reconnected signal did not replace stale value")) {
+            unitlab_native_session_manager_reset(&manager);
+            return 1;
+        }
     }
 
     {
