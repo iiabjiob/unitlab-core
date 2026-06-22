@@ -89,6 +89,7 @@ add_executable(unitlab-iec61850-ied-sim
   src/server/native_wire_client.c
   src/server/native_wire_client_discovery.c
   src/server/native_wire_client_session.c
+  src/server/native_wire_session_runtime.c
   src/server/native_wire_server.c
   src/model/model_loader.c
 )
@@ -187,6 +188,14 @@ target_include_directories(unitlab-iec61850-native-wire-client-session-test PRIV
 target_link_libraries(unitlab-iec61850-native-wire-client-session-test PRIVATE unitlab-iec61850-mms)
 unitlab_iec61850_sim_warnings(unitlab-iec61850-native-wire-client-session-test)
 add_test(NAME unitlab-iec61850-native-wire-client-session COMMAND unitlab-iec61850-native-wire-client-session-test)
+
+add_executable(unitlab-iec61850-native-wire-session-runtime-test
+  src/server/native_wire_session_runtime.c
+  tests/native_wire_session_runtime_test.c
+)
+target_include_directories(unitlab-iec61850-native-wire-session-runtime-test PRIVATE src)
+unitlab_iec61850_sim_warnings(unitlab-iec61850-native-wire-session-runtime-test)
+add_test(NAME unitlab-iec61850-native-wire-session-runtime COMMAND unitlab-iec61850-native-wire-session-runtime-test)
 
 add_executable(unitlab-iec61850-native-wire-client-report-decoder-test
   src/server/native_wire_client_ber_helpers.c

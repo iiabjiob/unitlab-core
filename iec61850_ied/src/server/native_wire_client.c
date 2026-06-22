@@ -3,6 +3,7 @@
 #include "native_wire_client_ber_helpers.h"
 #include "native_wire_client_session.h"
 #include "native_wire_client_discovery.h"
+#include "native_wire_session_runtime.h"
 
 #include <arpa/inet.h>
 #include <errno.h>
@@ -13,6 +14,7 @@
 #include <sys/select.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <time.h>
 #include <unistd.h>
 
 #ifndef MSG_NOSIGNAL
@@ -236,6 +238,40 @@ static int connect_socket(const char* host, int port)
 
     freeaddrinfo(info);
     return fd;
+}
+
+static uint64_t native_wire_now_ms(void)
+{
+    time_t now = time(NULL);
+    if (now <= (time_t)0) {
+        return 0U;
+    }
+    return (uint64_t)now * 1000U;
+}
+
+static void native_wire_format_endpoint_id(const UnitLabIedServerConfig* config, char* buffer, size_t buffer_length)
+{
+    if (buffer == NULL || buffer_length == 0U) {
+        return;
+    }
+    buffer[0] = '\0';
+    if (config == NULL || config->bind_address == NULL || config->bind_address[0] == '\0' || config->port <= 0) {
+        return;
+    }
+    snprintf(buffer, buffer_length, "mms:%s:%d", config->bind_address, config->port);
+}
+
+static void native_wire_copy_text(char* destination, size_t destination_size, const char* source)
+{
+    if (destination == NULL || destination_size == 0U) {
+        return;
+    }
+    if (source == NULL) {
+        destination[0] = '\0';
+        return;
+    }
+    strncpy(destination, source, destination_size - 1U);
+    destination[destination_size - 1U] = '\0';
 }
 
 static const char* pdu_kind_label(UnitLabMmsPduKind kind)
@@ -1561,27 +1597,28 @@ static void emit_information_report_summary(UnitLabNativeClientSessionState* ses
     fflush(stdout);
 }
 
-static void emit_mms_frame_summary(UnitLabNativeClientSessionState* session, const uint8_t* frame, size_t frame_length)
+static int emit_mms_frame_summary(UnitLabNativeClientSessionState* session, const uint8_t* frame, size_t frame_length)
 {
     UnitLabMmsAssociationFrame association_frame;
     UnitLabMmsPdu pdu;
     UnitLabMmsDiagnostic diagnostic;
     size_t consumed = 0U;
+    int report_received = 0;
 
     if (session == NULL || frame == NULL || frame_length == 0U) {
-        return;
+        return 0;
     }
     unitlab_mms_diagnostic_clear(&diagnostic);
     unitlab_mms_association_frame_init(&association_frame);
     if (!unitlab_mms_association_frame_decode(&association_frame, frame, frame_length, &consumed, &diagnostic)) {
-        return;
+        return 0;
     }
     if (association_frame.presentation.payload_bytes == NULL || association_frame.presentation.payload_length == 0U) {
-        return;
+        return 0;
     }
     unitlab_mms_pdu_init(&pdu);
     if (!unitlab_mms_pdu_decode(&pdu, association_frame.presentation.payload_bytes, association_frame.presentation.payload_length, &consumed, &diagnostic)) {
-        return;
+        return 0;
     }
     printf(
         "mms-summary: pdu=%s invoke=%u service=%s serviceTag=%u serviceLength=%zu\n",
@@ -1613,7 +1650,9 @@ static void emit_mms_frame_summary(UnitLabNativeClientSessionState* session, con
     }
     if (pdu.kind == UNITLAB_MMS_PDU_UNCONFIRMED && pdu.service_kind == UNITLAB_MMS_SERVICE_INFORMATION_REPORT) {
         emit_information_report_summary(session, &pdu);
+        report_received = 1;
     }
+    return report_received;
 }
 
 int unitlab_native_wire_client_decode_frame_summary(
@@ -1659,12 +1698,20 @@ static int emit_text_response(const char* text)
     return 1;
 }
 
-static int emit_wire_frame_response(UnitLabNativeClientSessionState* session, const uint8_t* frame, size_t frame_length, uint8_t* text_buffer, size_t text_buffer_length)
+static int emit_wire_frame_response(
+    UnitLabNativeClientSessionState* session,
+    UnitLabNativeSessionRuntime* session_runtime,
+    const uint8_t* frame,
+    size_t frame_length,
+    uint8_t* text_buffer,
+    size_t text_buffer_length)
 {
     if (!format_hex_response(frame, frame_length, (char*)text_buffer, text_buffer_length) || !emit_text_response((const char*)text_buffer)) {
         return 0;
     }
-    emit_mms_frame_summary(session, frame, frame_length);
+    if (emit_mms_frame_summary(session, frame, frame_length) && session_runtime != NULL) {
+        unitlab_native_session_runtime_mark_report_received(session_runtime, native_wire_now_ms());
+    }
     return 1;
 }
 
@@ -1892,6 +1939,7 @@ static int send_report_control_command(int control_fd, const char* command)
 
 static int emit_async_data_frame_if_ready(
     UnitLabNativeClientSessionState* session,
+    UnitLabNativeSessionRuntime* session_runtime,
     int data_fd,
     uint8_t* response,
     size_t response_length,
@@ -1912,7 +1960,7 @@ static int emit_async_data_frame_if_ready(
         return 0;
     }
     printf("native-wire-client: async-report\n");
-    if (encoded_response_length == NULL || !emit_wire_frame_response(session, response, *encoded_response_length, text_buffer, text_buffer_length)) {
+    if (encoded_response_length == NULL || !emit_wire_frame_response(session, session_runtime, response, *encoded_response_length, text_buffer, text_buffer_length)) {
         if (diagnostic != NULL) {
             diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL;
             snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Native wire client could not format the async data frame.");
@@ -1944,7 +1992,7 @@ static int emit_confirmed_response(
         }
         return 0;
     }
-    if (encoded_response_length == NULL || !emit_wire_frame_response(session, response, *encoded_response_length, text_buffer, text_buffer_length)) {
+    if (encoded_response_length == NULL || !emit_wire_frame_response(session, NULL, response, *encoded_response_length, text_buffer, text_buffer_length)) {
         if (diagnostic != NULL) {
             diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL;
             snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Native wire client could not format the confirmed response.");
@@ -2008,6 +2056,7 @@ static int emit_read_response(
 
 static int emit_write_bool_response(
     UnitLabNativeClientSessionState* session,
+    UnitLabNativeSessionRuntime* session_runtime,
     int data_fd,
     const char* domain_id,
     const char* item_id,
@@ -2191,6 +2240,7 @@ static int emit_discover_read_step(
 
 static int emit_discovered_rcb_bool_step(
     UnitLabNativeClientSessionState* session,
+    UnitLabNativeSessionRuntime* session_runtime,
     int data_fd,
     const char* label,
     const char* domain_id,
@@ -2237,6 +2287,7 @@ static int emit_discovered_rcb_bool_step(
     fflush(stdout);
     return emit_write_bool_response(
         session,
+        session_runtime,
         data_fd,
         domain_id,
         item_id,
@@ -2256,6 +2307,7 @@ static int emit_discovered_rcb_bool_step(
 
 static int emit_write_element_response(
     UnitLabNativeClientSessionState* session,
+    UnitLabNativeSessionRuntime* session_runtime,
     int data_fd,
     const char* domain_id,
     const char* item_id,
@@ -2294,6 +2346,7 @@ static int emit_get_attributes_response(
 
 static int emit_immediate_post_write_frame_if_available(
     UnitLabNativeClientSessionState* session,
+    UnitLabNativeSessionRuntime* session_runtime,
     int data_fd,
     uint8_t* response,
     size_t response_length,
@@ -2315,7 +2368,7 @@ static int emit_immediate_post_write_frame_if_available(
         return 1;
     }
     had_report = session != NULL && session->subscription_model.last_report_received;
-    if (encoded_response_length == NULL || !emit_wire_frame_response(session, response, *encoded_response_length, text_buffer, text_buffer_length)) {
+    if (encoded_response_length == NULL || !emit_wire_frame_response(session, session_runtime, response, *encoded_response_length, text_buffer, text_buffer_length)) {
         if (diagnostic != NULL) {
             diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL;
             snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Native wire client could not format the immediate post-write frame.");
@@ -2462,6 +2515,7 @@ static int emit_discovered_rcb_unsigned_step(
     fflush(stdout);
     return emit_write_element_response(
         session,
+        NULL,
         data_fd,
         domain_id,
         item_id,
@@ -2523,7 +2577,7 @@ static int native_wire_client_cleanup_selected_subscription(
     }
     if (session->subscription_model.rpt_enabled) {
         invoke_id = unitlab_native_client_session_reserve_invoke_id(session);
-        if (!emit_discovered_rcb_bool_step(session, data_fd, "cleanup-rptena", domain_id, rcb_item, "RptEna", 0U, invoke_id, scratch, scratch_length, request, request_length, response, response_length, encoded_response_length, text_buffer, text_buffer_length, diagnostic)) {
+        if (!emit_discovered_rcb_bool_step(session, NULL, data_fd, "cleanup-rptena", domain_id, rcb_item, "RptEna", 0U, invoke_id, scratch, scratch_length, request, request_length, response, response_length, encoded_response_length, text_buffer, text_buffer_length, diagnostic)) {
             return 0;
         }
     }
@@ -2534,7 +2588,7 @@ static int native_wire_client_cleanup_selected_subscription(
         }
     } else if (native_wire_client_subscription_is_unbuffered_rcb(session)) {
         invoke_id = unitlab_native_client_session_reserve_invoke_id(session);
-        if (!emit_discovered_rcb_bool_step(session, data_fd, "cleanup-resv", domain_id, rcb_item, "Resv", 0U, invoke_id, scratch, scratch_length, request, request_length, response, response_length, encoded_response_length, text_buffer, text_buffer_length, diagnostic)) {
+        if (!emit_discovered_rcb_bool_step(session, NULL, data_fd, "cleanup-resv", domain_id, rcb_item, "Resv", 0U, invoke_id, scratch, scratch_length, request, request_length, response, response_length, encoded_response_length, text_buffer, text_buffer_length, diagnostic)) {
             return 0;
         }
     }
@@ -2754,6 +2808,7 @@ static int emit_get_attributes_response(
 
 static int emit_write_bool_response(
     UnitLabNativeClientSessionState* session,
+    UnitLabNativeSessionRuntime* session_runtime,
     int data_fd,
     const char* domain_id,
     const char* item_id,
@@ -2821,6 +2876,7 @@ static int emit_write_bool_response(
 
     if (!emit_immediate_post_write_frame_if_available(
             session,
+            session_runtime,
             data_fd,
             response,
             response_length,
@@ -2835,6 +2891,7 @@ static int emit_write_bool_response(
 
 static int emit_write_element_response(
     UnitLabNativeClientSessionState* session,
+    UnitLabNativeSessionRuntime* session_runtime,
     int data_fd,
     const char* domain_id,
     const char* item_id,
@@ -2904,6 +2961,7 @@ static int emit_write_element_response(
 
     if (!emit_immediate_post_write_frame_if_available(
             session,
+            session_runtime,
             data_fd,
             response,
             response_length,
@@ -3084,11 +3142,17 @@ int unitlab_run_native_wire_client_with_options(
     const UnitLabNativeDiscoveredRcb* selected_rcb = NULL;
     UnitLabMmsDiagnostic diagnostic;
     UnitLabNativeClientSessionState session = {0};
+    UnitLabNativeSessionManager session_manager;
+    UnitLabNativeSessionRuntime* session_runtime = NULL;
     const char* initial_read_domain = NULL;
     const char* initial_read_item = NULL;
     uint32_t initial_read_invoke_id = 3U;
     uint32_t next_invoke_id = 4U;
     UnitLabNativeWireClientState state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_INIT;
+    char endpoint_id[192U];
+    char discovery_device_key[160U];
+    UnitLabNativeSessionOperationKind active_runtime_operation = UNITLAB_NATIVE_SESSION_OPERATION_CONNECT;
+    int active_runtime_operation_set = 0;
 
     if (result != NULL) {
         memset(result, 0, sizeof(*result));
@@ -3097,13 +3161,24 @@ int unitlab_run_native_wire_client_with_options(
         set_result(result, "NATIVE_WIRE_CLIENT_INVALID_ARGUMENT", "Native wire client requires config and result.");
         return 0;
     }
+    unitlab_native_session_manager_init(&session_manager);
     unitlab_native_client_session_reset(&session);
+    native_wire_format_endpoint_id(config, endpoint_id, sizeof(endpoint_id));
+    native_wire_copy_text(discovery_device_key, sizeof(discovery_device_key), endpoint_id[0] != '\0' ? endpoint_id : "native-wire-client");
+    session_runtime = unitlab_native_session_manager_get_or_create(&session_manager, "native-wire-client", endpoint_id, discovery_device_key);
+    if (session_runtime == NULL) {
+        set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not allocate session runtime.");
+        unitlab_native_session_manager_reset(&session_manager);
+        return 0;
+    }
     if (config->bind_address == NULL || config->bind_address[0] == '\0') {
         set_result(result, "NATIVE_WIRE_CLIENT_HOST_REQUIRED", "Native wire client requires a target host.");
+        unitlab_native_session_manager_reset(&session_manager);
         return 0;
     }
     if (config->port <= 0 || config->port > 65535 || config->control_port < 0 || config->control_port > 65535) {
         set_result(result, "NATIVE_WIRE_CLIENT_PORT_INVALID", "Native wire client target ports are invalid.");
+        unitlab_native_session_manager_reset(&session_manager);
         return 0;
     }
     if (options != NULL && options->initial_read_enabled) {
@@ -3128,6 +3203,13 @@ int unitlab_run_native_wire_client_with_options(
     }
 
     unitlab_mms_diagnostic_clear(&diagnostic);
+    if (!unitlab_native_session_runtime_begin_operation(session_runtime, UNITLAB_NATIVE_SESSION_OPERATION_CONNECT)) {
+        set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not start session connect runtime.");
+        unitlab_native_session_manager_reset(&session_manager);
+        return 0;
+    }
+    active_runtime_operation = UNITLAB_NATIVE_SESSION_OPERATION_CONNECT;
+    active_runtime_operation_set = 1;
     data_fd = connect_socket(config->bind_address, config->port);
     if (data_fd < 0) {
         state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
@@ -3194,6 +3276,8 @@ int unitlab_run_native_wire_client_with_options(
         state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
         goto fail;
     }
+    unitlab_native_session_runtime_complete_operation(session_runtime, UNITLAB_NATIVE_SESSION_OPERATION_CONNECT, 1, NULL, NULL);
+    active_runtime_operation_set = 0;
     state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_ASSOCIATED;
     if (!emit_state_response(state)) {
         set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its associated state.");
@@ -3261,7 +3345,7 @@ int unitlab_run_native_wire_client_with_options(
             goto fail;
         }
         if (data_fd >= 0 && FD_ISSET(data_fd, &read_set)) {
-            int async_frame = emit_async_data_frame_if_ready(&session, data_fd, report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic);
+            int async_frame = emit_async_data_frame_if_ready(&session, session_runtime, data_fd, report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic);
             if (async_frame < 0) {
                 state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
                 set_result(result, "NATIVE_WIRE_CLIENT_ASYNC_REPORT_FAILED", diagnostic.message);
@@ -3306,6 +3390,12 @@ int unitlab_run_native_wire_client_with_options(
                 set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its discover state.");
                 goto fail;
             }
+            if (!unitlab_native_session_runtime_begin_operation(session_runtime, UNITLAB_NATIVE_SESSION_OPERATION_DISCOVER)) {
+                set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not start session discovery runtime.");
+                goto fail;
+            }
+            active_runtime_operation = UNITLAB_NATIVE_SESSION_OPERATION_DISCOVER;
+            active_runtime_operation_set = 1;
             {
                 UnitLabNativeDiscoveryIo discovery_io = {
                     .data_fd = data_fd,
@@ -3331,6 +3421,33 @@ int unitlab_run_native_wire_client_with_options(
                     state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
                     set_result(result, "NATIVE_WIRE_CLIENT_DISCOVER_FAILED", diagnostic.message);
                     goto fail;
+                }
+                {
+                    UnitLabNativeDiscoverySnapshot discovery_snapshot;
+                    char snapshot_endpoint[40U];
+                    char snapshot_source[40U];
+
+                    memset(&discovery_snapshot, 0, sizeof(discovery_snapshot));
+                    native_wire_copy_text(snapshot_endpoint, sizeof(snapshot_endpoint), endpoint_id[0] != '\0' ? endpoint_id : "native-wire-client");
+                    native_wire_copy_text(snapshot_source, sizeof(snapshot_source), session.discovered_model.domain[0] != '\0' ? session.discovered_model.domain : endpoint_id);
+                    snprintf(discovery_snapshot.snapshot_id, sizeof(discovery_snapshot.snapshot_id), "%s:%llu:%zu", snapshot_endpoint, (unsigned long long)session_runtime->identity.connection_generation, session.discovered_model.logical_device_count + session.discovered_model.logical_node_count + session.discovered_model.data_set_count + session.discovered_model.brcb_count);
+                    native_wire_copy_text(discovery_snapshot.endpoint_id, sizeof(discovery_snapshot.endpoint_id), endpoint_id[0] != '\0' ? endpoint_id : "native-wire-client");
+                    native_wire_copy_text(discovery_snapshot.device_key, sizeof(discovery_snapshot.device_key), session.discovered_model.domain[0] != '\0' ? session.discovered_model.domain : discovery_device_key);
+                    native_wire_copy_text(discovery_snapshot.source_hash, sizeof(discovery_snapshot.source_hash), snapshot_source);
+                    discovery_snapshot.created_at_ms = native_wire_now_ms();
+                    discovery_snapshot.logical_device_count = session.discovered_model.logical_device_count;
+                    discovery_snapshot.logical_node_count = session.discovered_model.logical_node_count;
+                    discovery_snapshot.data_set_count = session.discovered_model.data_set_count;
+                    discovery_snapshot.data_set_member_count = session.discovered_model.data_set_member_count;
+                    discovery_snapshot.report_control_count = session.discovered_model.brcb_count;
+                    discovery_snapshot.signal_count = session.discovered_model.data_component_count;
+                    unitlab_native_session_runtime_update_discovery_snapshot(session_runtime, &discovery_snapshot);
+                    unitlab_native_session_runtime_complete_operation(session_runtime, UNITLAB_NATIVE_SESSION_OPERATION_DISCOVER, 1, NULL, NULL);
+                    active_runtime_operation_set = 0;
+                    if (session.discovered_model.domain[0] != '\0') {
+                        native_wire_copy_text(discovery_device_key, sizeof(discovery_device_key), session.discovered_model.domain);
+                        native_wire_copy_text(session_runtime->identity.device_key, sizeof(session_runtime->identity.device_key), discovery_device_key);
+                    }
                 }
             }
             state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_READY;
@@ -3647,6 +3764,13 @@ int unitlab_run_native_wire_client_with_options(
                 set_result(result, "NATIVE_WIRE_CLIENT_RPTENA_NO_DISCOVERED_RCB", "Run discover first and select an existing discovered BRCB index.");
                 goto fail;
             }
+            unitlab_native_session_runtime_set_subscription_intent(session_runtime, selected_rcb->item, 1, 0);
+            if (!unitlab_native_session_runtime_begin_operation(session_runtime, UNITLAB_NATIVE_SESSION_OPERATION_SUBSCRIBE)) {
+                set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not start session subscribe runtime.");
+                goto fail;
+            }
+            active_runtime_operation = UNITLAB_NATIVE_SESSION_OPERATION_SUBSCRIBE;
+            active_runtime_operation_set = 1;
             {
                 uint32_t preflight_invoke_id = unitlab_native_client_session_reserve_invoke_id(&session);
                 state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_ATTRIBUTES_REQUESTED;
@@ -3667,13 +3791,13 @@ int unitlab_run_native_wire_client_with_options(
             }
             if (native_wire_client_subscription_is_unbuffered_rcb(&session)) {
                 uint32_t reserve_invoke_id = unitlab_native_client_session_reserve_invoke_id(&session);
-                if (!emit_discovered_rcb_bool_step(&session, data_fd, "reserve", selected_rcb->domain, selected_rcb->item, "Resv", 1U, reserve_invoke_id, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
+                if (!emit_discovered_rcb_bool_step(&session, session_runtime, data_fd, "reserve", selected_rcb->domain, selected_rcb->item, "Resv", 1U, reserve_invoke_id, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
                     state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
                     set_result(result, "NATIVE_WIRE_CLIENT_RPTENA_RESERVE_FAILED", diagnostic.message);
                     goto fail;
                 }
             }
-            if (!emit_discovered_rcb_bool_step(&session, data_fd, "rptena", selected_rcb->domain, selected_rcb->item, "RptEna", 1U, invoke_id, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
+            if (!emit_discovered_rcb_bool_step(&session, session_runtime, data_fd, "rptena", selected_rcb->domain, selected_rcb->item, "RptEna", 1U, invoke_id, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
                 state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
                 set_result(result, "NATIVE_WIRE_CLIENT_RPTENA_FAILED", diagnostic.message);
                 goto fail;
@@ -3683,6 +3807,8 @@ int unitlab_run_native_wire_client_with_options(
             session.subscription_model.last_rptena_invoke_id = invoke_id;
             snprintf(session.subscription_model.rcb_domain, sizeof(session.subscription_model.rcb_domain), "%s", selected_rcb->domain);
             snprintf(session.subscription_model.rcb_item, sizeof(session.subscription_model.rcb_item), "%s", selected_rcb->item);
+            unitlab_native_session_runtime_complete_operation(session_runtime, UNITLAB_NATIVE_SESSION_OPERATION_SUBSCRIBE, 1, NULL, NULL);
+            active_runtime_operation_set = 0;
             emit_subscription_summary(&session, "rptena");
             state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_READY;
             if (!emit_state_response(state)) {
@@ -3728,6 +3854,7 @@ int unitlab_run_native_wire_client_with_options(
                 set_result(result, "NATIVE_WIRE_CLIENT_GI_NO_DISCOVERED_RCB", "Run discover first and select an existing discovered BRCB index.");
                 goto fail;
             }
+            unitlab_native_session_runtime_set_subscription_intent(session_runtime, selected_rcb->item, 1, 1);
             {
                 uint32_t preflight_invoke_id = unitlab_native_client_session_reserve_invoke_id(&session);
                 state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_ATTRIBUTES_REQUESTED;
@@ -3746,7 +3873,7 @@ int unitlab_run_native_wire_client_with_options(
                 set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its write-requested state.");
                 goto fail;
             }
-            if (!emit_discovered_rcb_bool_step(&session, data_fd, "gi", selected_rcb->domain, selected_rcb->item, "GI", 1U, invoke_id, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
+            if (!emit_discovered_rcb_bool_step(&session, session_runtime, data_fd, "gi", selected_rcb->domain, selected_rcb->item, "GI", 1U, invoke_id, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
                 state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
                 set_result(result, "NATIVE_WIRE_CLIENT_GI_FAILED", diagnostic.message);
                 goto fail;
@@ -3842,12 +3969,12 @@ int unitlab_run_native_wire_client_with_options(
                 goto fail;
             }
             if (write_bool) {
-                if (!emit_write_bool_response(&session, data_fd, domain_id, item_id, boolean_value, invoke_id, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
+                if (!emit_write_bool_response(&session, session_runtime, data_fd, domain_id, item_id, boolean_value, invoke_id, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
                     state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
                     set_result(result, "NATIVE_WIRE_CLIENT_WRITE_REF_FAILED", diagnostic.message);
                     goto fail;
                 }
-            } else if (!emit_write_element_response(&session, data_fd, domain_id, item_id, tag_number, value_bytes, value_length, invoke_id, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
+            } else if (!emit_write_element_response(&session, session_runtime, data_fd, domain_id, item_id, tag_number, value_bytes, value_length, invoke_id, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
                 state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
                 set_result(result, "NATIVE_WIRE_CLIENT_WRITE_REF_FAILED", diagnostic.message);
                 goto fail;
@@ -3892,6 +4019,7 @@ int unitlab_run_native_wire_client_with_options(
             }
             if (!emit_write_bool_response(
                     &session,
+                    session_runtime,
                     data_fd,
                     domain_id,
                     item_id,
@@ -3953,7 +4081,7 @@ int unitlab_run_native_wire_client_with_options(
                 set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its write-requested state.");
                 goto fail;
             }
-            if (!emit_write_element_response(&session, data_fd, domain_id, item_id, tag_number, value_bytes, value_length, invoke_id, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
+            if (!emit_write_element_response(&session, session_runtime, data_fd, domain_id, item_id, tag_number, value_bytes, value_length, invoke_id, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
                 state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
                 set_result(result, "NATIVE_WIRE_CLIENT_WRITE_UINT_FAILED", diagnostic.message);
                 goto fail;
@@ -3997,7 +4125,7 @@ int unitlab_run_native_wire_client_with_options(
                 set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its write-requested state.");
                 goto fail;
             }
-            if (!emit_write_element_response(&session, data_fd, domain_id, item_id, tag_number, (const uint8_t*)value_text, strlen(value_text), invoke_id, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
+            if (!emit_write_element_response(&session, session_runtime, data_fd, domain_id, item_id, tag_number, (const uint8_t*)value_text, strlen(value_text), invoke_id, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
                 state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
                 set_result(result, "NATIVE_WIRE_CLIENT_WRITE_STRING_FAILED", diagnostic.message);
                 goto fail;
@@ -4043,7 +4171,7 @@ int unitlab_run_native_wire_client_with_options(
                 set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit its write-requested state.");
                 goto fail;
             }
-            if (!emit_write_element_response(&session, data_fd, domain_id, item_id, tag_number, value_bytes, value_length, invoke_id, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
+            if (!emit_write_element_response(&session, session_runtime, data_fd, domain_id, item_id, tag_number, value_bytes, value_length, invoke_id, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
                 state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
                 set_result(result, "NATIVE_WIRE_CLIENT_WRITE_HEX_FAILED", diagnostic.message);
                 goto fail;
@@ -4074,7 +4202,7 @@ int unitlab_run_native_wire_client_with_options(
                 set_result(result, "NATIVE_WIRE_CLIENT_REPORT_FRAME_FAILED", "Native wire client could not receive the report frame.");
                 goto fail;
             }
-            if (!emit_wire_frame_response(&session, report_frame, report_length, frame, sizeof(frame))) {
+            if (!emit_wire_frame_response(&session, session_runtime, report_frame, report_length, frame, sizeof(frame))) {
                 state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_FAILED;
                 set_result(result, "NATIVE_WIRE_CLIENT_RESPONSE_FAILED", "Native wire client could not emit the report frame.");
                 goto fail;
@@ -4107,6 +4235,7 @@ int unitlab_run_native_wire_client_with_options(
                 goto fail;
             }
             set_result(result, "NATIVE_WIRE_CLIENT_DISCONNECTED", "Native wire client disconnected.");
+            unitlab_native_session_runtime_mark_closed(session_runtime);
             unitlab_native_client_session_reset(&session);
             return 1;
         }
@@ -4120,10 +4249,27 @@ int unitlab_run_native_wire_client_with_options(
     state = UNITLAB_NATIVE_WIRE_CLIENT_STATE_STOPPED;
     emit_state_response(state);
     set_result(result, "NATIVE_WIRE_CLIENT_STOPPED", "Native wire client stopped.");
+    unitlab_native_session_runtime_mark_closed(session_runtime);
     unitlab_native_client_session_reset(&session);
     return 1;
 
 fail:
+    if (session_runtime != NULL) {
+        if (active_runtime_operation_set) {
+            unitlab_native_session_runtime_complete_operation(
+                session_runtime,
+                active_runtime_operation,
+                0,
+                result != NULL && result->code[0] != '\0' ? result->code : "NATIVE_WIRE_CLIENT_FAILED",
+                result != NULL ? result->message : "Native wire client failed.");
+            active_runtime_operation_set = 0;
+        } else {
+            unitlab_native_session_runtime_mark_failed(
+                session_runtime,
+                result != NULL && result->code[0] != '\0' ? result->code : "NATIVE_WIRE_CLIENT_FAILED",
+                result != NULL ? result->message : "Native wire client failed.");
+        }
+    }
     if (data_fd >= 0) {
         close(data_fd);
     }
