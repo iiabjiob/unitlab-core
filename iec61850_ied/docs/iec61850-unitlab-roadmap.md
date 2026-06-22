@@ -262,3 +262,4 @@ Done when:
 - `docs/unitlab-api-surface.md`
 - `docs/unitlab-event-stream-contract.md`
 - `docs/unitlab-state-machine-contract.md`
+- `docs/unitlab-json-schema-contract.md`
