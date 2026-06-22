@@ -41,7 +41,7 @@ The C runtime does not own test verdict policy.
 4. Python asks the C runtime to prepare the relevant IEC 61850 session(s).
 5. Python executes the selected test action.
 6. C runtime receives reports and updates live signal state.
-7. Python converts report updates into `SignalVerificationEvidence`.
+7. Python converts report updates into durable `SignalVerificationEvidence` records.
 8. Python computes a test verdict from evidence and timing policy.
 
 ## Execution states
@@ -107,6 +107,23 @@ The expected IEC 61850 feedback was observed.
 
 The feedback was observed inside the allowed timing window and is considered successful.
 
+### `signal evidence`
+
+Evidence is a durable record, not a transient UI flag.
+
+Each evidence record should preserve:
+- target identity;
+- canonical signal path;
+- actual report path;
+- source session and generation;
+- source report control and data set;
+- received timestamp;
+- timing window result;
+- freshness / stale context;
+- reason.
+
+Evidence must survive reconnect and stale transitions even when the live signal cache changes later.
+
 ### `stale`
 
 The last known evidence exists, but the source session/report generation is no longer live.
@@ -138,6 +155,7 @@ The workflow finished and the final verdict is stable.
 - A report update must remain traceable back to session, endpoint, report-control, and data-set identity.
 - Evidence must not be destroyed when a later state arrives.
 - Late or stale report updates must not rewrite a newer session generation.
+- Evidence must be reconstructable from runtime report updates and session provenance.
 - Verdicts must come from evidence and policy, not from UI convenience state.
 
 ## Runtime interaction points

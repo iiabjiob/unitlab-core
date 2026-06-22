@@ -79,10 +79,13 @@ Input:
 - signal cache updates;
 - report updates;
 - timing window policy;
-- source identity.
+- source identity;
+- source generation;
+- source report provenance.
 
 Output:
-- evidence records;
+- durable evidence records;
+- evidence set per test run;
 - latency and freshness fields;
 - explainable provenance.
 
@@ -112,6 +115,7 @@ Owner:
 - Runtime sessions must preserve source identity and generation.
 - Late frames from old generations must not corrupt current evidence.
 - Evidence must never erase the original report provenance.
+- Evidence capture must be reconstructable from runtime report updates plus persisted product state.
 - Verdicts must be computed from evidence, not from UI state.
 
 ## Ownership summary

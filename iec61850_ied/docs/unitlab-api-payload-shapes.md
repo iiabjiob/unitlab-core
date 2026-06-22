@@ -188,10 +188,38 @@ Required fields:
 - `reason`
 
 Optional fields:
+- `signal_path`
 - `source_generation`
+- `source_report_sequence_generation`
+- `source_report_sequence_number`
+- `source_report_sub_sequence_number`
 - `report_reason`
 - `signal_value`
 - `timestamp_summary`
+- `stale_reason`
+- `evidence_kind`
+
+`signal_path` should be the canonical stable path used by the product layer.
+`actual_report_path` should remain the raw observed report path.
+
+## 3.1 SignalVerificationEvidenceSet
+
+Represents the durable evidence collection associated with a test run or selected target group.
+
+Required fields:
+- `test_run_id`
+- `evidence`
+- `summary`
+- `diagnostics`
+
+The summary should remain explicit and reconstructable, for example:
+- `evidence_count`
+- `verified_count`
+- `confirmed_count`
+- `stale_count`
+- `timed_out_count`
+- `failed_count`
+- `source_generation`
 
 Example:
 

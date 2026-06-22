@@ -136,6 +136,7 @@ Returns current run state.
 
 Response:
 - `execution_state`;
+- `signal_verification_evidence_set`;
 - `evidence[]`;
 - `verdict`;
 - `diagnostics`;

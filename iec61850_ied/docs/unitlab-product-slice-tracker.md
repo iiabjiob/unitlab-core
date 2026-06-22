@@ -70,17 +70,20 @@ Status: not started.
 
 Input:
 - runtime report updates;
-- source identity and freshness data.
+- source identity and freshness data;
+- source generation and report provenance.
 
 Output:
 - evidence records tied to source report/path;
 - explicit provenance;
 - latency and freshness fields;
+- durable evidence set per test run;
 - verdict-ready state.
 
 Done when:
 - evidence survives reconnect and stale transitions;
 - the UI is not the source of truth.
+- the same runtime evidence can be reconstructed from persisted product data.
 
 ### PR4 - First auto verification flow
 
