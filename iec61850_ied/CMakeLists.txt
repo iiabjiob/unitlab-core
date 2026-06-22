@@ -201,6 +201,7 @@ add_test(NAME unitlab-iec61850-native-wire-session-runtime COMMAND unitlab-iec61
 add_executable(unitlab-iec61850-native-wire-session-worker-test
   src/server/native_wire_session_runtime.c
   src/server/native_wire_session_worker.c
+  src/server/native_wire_client_session.c
   tests/native_wire_session_worker_test.c
 )
 target_include_directories(unitlab-iec61850-native-wire-session-worker-test PRIVATE src)

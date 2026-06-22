@@ -1,4 +1,5 @@
 #include "server/native_wire_session_worker.h"
+#include "server/native_wire_client_session.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -172,6 +173,24 @@ int main(void)
     if (!expect_true(worker.runtime->live.phase == UNITLAB_NATIVE_SESSION_PHASE_REPORTING, "worker did not reach reporting")) {
         unitlab_native_session_manager_reset(&manager);
         return 1;
+    }
+
+    {
+        UnitLabNativeClientSessionState client_session;
+        const UnitLabNativeDiscoveredRcb* discovered_rcb;
+
+        memset(&client_session, 0, sizeof(client_session));
+        unitlab_native_client_session_reset(&client_session);
+        if (!expect_true(unitlab_native_client_session_append_discovered_rcb(&client_session, "LD0", "LLN0$BR$brcbA01") != NULL, "discovered RCB append failed")) {
+            unitlab_native_session_manager_reset(&manager);
+            return 1;
+        }
+        discovered_rcb = unitlab_native_client_session_find_discovered_rcb(&client_session, NULL, "LLN0$BR$brcbA01");
+        if (!expect_true(discovered_rcb != NULL && strcmp(discovered_rcb->item, "LLN0$BR$brcbA01") == 0, "discovered RCB lookup failed")) {
+            unitlab_native_session_manager_reset(&manager);
+            return 1;
+        }
+        unitlab_native_client_session_reset(&client_session);
     }
 
     if (!expect_true(unitlab_native_session_manager_open_worker(&manager, &second_worker, "session-worker", "mms:IED1@127.0.0.1:102", "IED1", &handlers, &context), "second worker open failed")) {

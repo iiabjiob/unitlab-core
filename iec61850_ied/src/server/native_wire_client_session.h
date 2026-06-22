@@ -274,5 +274,9 @@ UnitLabNativeDiscoveredDataSet* unitlab_native_client_session_append_data_set(Un
 int unitlab_native_client_session_append_data_set_member(UnitLabNativeClientSessionState* session, UnitLabNativeDiscoveredDataSet* data_set, const char* member_reference);
 UnitLabNativeDiscoveredRcb* unitlab_native_client_session_append_discovered_rcb(UnitLabNativeClientSessionState* session, const char* domain, const char* item);
 const UnitLabNativeDiscoveredRcb* unitlab_native_client_session_discovered_rcb_at(const UnitLabNativeClientSessionState* session, size_t index);
+const UnitLabNativeDiscoveredRcb* unitlab_native_client_session_find_discovered_rcb(
+    const UnitLabNativeClientSessionState* session,
+    const char* domain,
+    const char* item);
 
 #endif

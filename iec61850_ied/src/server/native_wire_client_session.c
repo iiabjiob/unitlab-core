@@ -913,3 +913,38 @@ const UnitLabNativeDiscoveredRcb* unitlab_native_client_session_discovered_rcb_a
     }
     return &session->discovered_rcbs[index];
 }
+
+const UnitLabNativeDiscoveredRcb* unitlab_native_client_session_find_discovered_rcb(
+    const UnitLabNativeClientSessionState* session,
+    const char* domain,
+    const char* item)
+{
+    if (session == NULL || session->discovered_rcb_count == 0U) {
+        return NULL;
+    }
+    for (size_t index = 0U; index < session->discovered_rcb_count; index++) {
+        const UnitLabNativeDiscoveredRcb* rcb = &session->discovered_rcbs[index];
+        if (domain != NULL && domain[0] != '\0' && strcmp(rcb->domain, domain) != 0) {
+            continue;
+        }
+        if (item != NULL && item[0] != '\0' && strcmp(rcb->item, item) != 0) {
+            continue;
+        }
+        return rcb;
+    }
+    if (item != NULL && item[0] != '\0') {
+        for (size_t index = 0U; index < session->discovered_rcb_count; index++) {
+            if (strcmp(session->discovered_rcbs[index].item, item) == 0) {
+                return &session->discovered_rcbs[index];
+            }
+        }
+    }
+    if (domain != NULL && domain[0] != '\0') {
+        for (size_t index = 0U; index < session->discovered_rcb_count; index++) {
+            if (strcmp(session->discovered_rcbs[index].domain, domain) == 0) {
+                return &session->discovered_rcbs[index];
+            }
+        }
+    }
+    return &session->discovered_rcbs[0];
+}
