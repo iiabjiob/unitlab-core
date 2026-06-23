@@ -13,6 +13,8 @@ from app.schemas.verification_schema import (
     VerificationSubscriptionPlanSchema,
     VerificationSubscriptionPlanGroupSchema,
     VerificationSubscriptionPlanUncoveredTargetSchema,
+    PlannerConfidenceReportSchema,
+    PlannerConfidenceSignalSchema,
     VerificationTargetSchema,
 )
 
@@ -279,6 +281,114 @@ def build_verification_subscription_plan(
         uncovered_targets=uncovered_targets,
         planning_diagnostics=diagnostics,
         coverage=coverage,
+    )
+
+
+def build_planner_confidence_report(
+    plan: VerificationSubscriptionPlanSchema,
+) -> PlannerConfidenceReportSchema:
+    group_by_target_index: dict[int, VerificationSubscriptionPlanGroupSchema] = {}
+    for group in plan.groups:
+        for target_index in group.target_indexes:
+            group_by_target_index[target_index] = group
+
+    source_classification_counts: dict[str, int] = defaultdict(int)
+    signals: list[PlannerConfidenceSignalSchema] = []
+    diagnostic_messages: list[str] = []
+
+    for target_index, target in enumerate(plan.targets):
+        group = group_by_target_index.get(target_index)
+        source_classification = group.source_classification if group is not None else "not found"
+        source_classification_counts[source_classification] += 1
+
+        confidence_state = "uncovered"
+        signal_diagnostics: list[str] = []
+        if target.coverage_state == "uncovered" or group is None:
+            confidence_state = "uncovered"
+            signal_diagnostics.append(target.coverage_reason or "target is uncovered")
+        elif target.coverage_state == "partial":
+            confidence_state = "watch"
+            signal_diagnostics.append(target.coverage_reason or "partial coverage")
+            if source_classification == "fallback":
+                signal_diagnostics.append("plan depends on fallback endpoint binding")
+        elif source_classification == "from SCD":
+            confidence_state = "strong"
+        elif source_classification == "from discovery":
+            confidence_state = "watch"
+            signal_diagnostics.append("plan depends on discovery metadata")
+        elif source_classification == "fallback":
+            confidence_state = "risk"
+            signal_diagnostics.append("plan depends on fallback endpoint binding")
+        else:
+            confidence_state = "risk"
+            signal_diagnostics.append("plan source could not be verified")
+
+        if group is not None:
+            if not group.report_control_reference:
+                signal_diagnostics.append("missing report control reference")
+            if not group.data_set_reference:
+                signal_diagnostics.append("missing dataset reference")
+            if not group.report_control_name:
+                signal_diagnostics.append("missing report control name")
+
+        if signal_diagnostics:
+            diagnostic_messages.append(f"{target.signal_reference}: " + "; ".join(signal_diagnostics))
+
+        signals.append(
+            PlannerConfidenceSignalSchema(
+                signal_index=target_index,
+                signal_id=target.signal_id,
+                signal_reference=target.signal_reference,
+                endpoint_id=group.endpoint_id if group is not None else target.endpoint_id,
+                expected_feedback_path=target.expected_feedback_path,
+                report_control_reference=group.report_control_reference if group is not None else None,
+                report_control_name=group.report_control_name if group is not None else None,
+                data_set_reference=group.data_set_reference if group is not None else None,
+                coverage_state=target.coverage_state,
+                source_classification=source_classification,
+                confidence_state=confidence_state,
+                diagnostics=signal_diagnostics,
+            )
+        )
+
+    total_targets = len(plan.targets)
+    covered_targets = plan.coverage.covered_targets
+    partially_covered_targets = plan.coverage.partially_covered_targets
+    uncovered_targets = plan.coverage.uncovered_targets
+    coverage_percentage = _planner_coverage_percentage(total_targets, covered_targets, partially_covered_targets)
+    confidence_percentage = _planner_confidence_percentage(
+        total_targets=total_targets,
+        covered_targets=covered_targets,
+        partially_covered_targets=partially_covered_targets,
+        uncovered_targets=uncovered_targets,
+        signals=signals,
+    )
+    risk_level = _planner_risk_level(
+        confidence_percentage=confidence_percentage,
+        uncovered_targets=uncovered_targets,
+        fallback_targets=source_classification_counts.get("fallback", 0),
+    )
+
+    diagnostics = list(plan.planning_diagnostics)
+    diagnostics.extend(diagnostic_messages)
+    if uncovered_targets > 0:
+        diagnostics.append(f"{uncovered_targets} targets require attention before runtime")
+
+    return PlannerConfidenceReportSchema(
+        plan_id=plan.plan_id,
+        total_targets=total_targets,
+        covered_targets=covered_targets,
+        partially_covered_targets=partially_covered_targets,
+        uncovered_targets=uncovered_targets,
+        coverage_percentage=coverage_percentage,
+        confidence_percentage=confidence_percentage,
+        groups_count=plan.coverage.groups_count,
+        endpoints_count=plan.coverage.endpoints_count,
+        planning_quality=plan.coverage.planning_quality,
+        risk_level=risk_level,
+        source_classification_counts=dict(source_classification_counts),
+        signals=signals,
+        diagnostics=diagnostics,
     )
 
 
@@ -572,6 +682,50 @@ def _build_plan_id(
     }
     digest = hashlib.sha1(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
     return f"plan-{digest[:12]}"
+
+
+def _planner_coverage_percentage(
+    total_targets: int,
+    covered_targets: int,
+    partially_covered_targets: int,
+) -> int:
+    if total_targets <= 0:
+        return 0
+    score = ((covered_targets + (0.5 * partially_covered_targets)) / total_targets) * 100.0
+    return max(0, min(100, int(round(score))))
+
+
+def _planner_confidence_percentage(
+    *,
+    total_targets: int,
+    covered_targets: int,
+    partially_covered_targets: int,
+    uncovered_targets: int,
+    signals: Sequence[PlannerConfidenceSignalSchema],
+) -> int:
+    if total_targets <= 0:
+        return 0
+    base_score = ((covered_targets + (0.5 * partially_covered_targets)) / total_targets) * 100.0
+    penalty = 0.0
+    penalty += uncovered_targets * 12.0
+    penalty += sum(4.0 for signal in signals if signal.source_classification == "fallback")
+    penalty += sum(2.0 for signal in signals if signal.source_classification == "from discovery")
+    penalty += sum(6.0 for signal in signals if signal.confidence_state == "risk")
+    score = max(0.0, min(100.0, base_score - penalty))
+    return int(round(score))
+
+
+def _planner_risk_level(
+    *,
+    confidence_percentage: int,
+    uncovered_targets: int,
+    fallback_targets: int,
+) -> str:
+    if uncovered_targets > 0 or confidence_percentage < 70:
+        return "high"
+    if fallback_targets > 0 or confidence_percentage < 90:
+        return "medium"
+    return "low"
 
 
 def _resolve_expected_feedback_path(

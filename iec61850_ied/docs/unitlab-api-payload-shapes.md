@@ -225,6 +225,42 @@ Example:
 }
 ```
 
+## 2.3 PlannerConfidenceReport
+
+Represents the pre-runtime confidence view for a subscription plan.
+
+Required fields:
+- `plan_id`
+- `total_targets`
+- `covered_targets`
+- `partially_covered_targets`
+- `uncovered_targets`
+- `coverage_percentage`
+- `confidence_percentage`
+- `groups_count`
+- `endpoints_count`
+- `planning_quality`
+- `risk_level`
+- `source_classification_counts`
+- `signals`
+- `diagnostics`
+
+Each signal entry should include:
+- `signal_index`
+- `signal_id`
+- `signal_reference`
+- `endpoint_id`
+- `expected_feedback_path`
+- `report_control_reference`
+- `report_control_name`
+- `data_set_reference`
+- `coverage_state`
+- `source_classification`
+- `confidence_state`
+- `diagnostics`
+
+Planner confidence is a pre-runtime validation view. It should make fallback bindings, uncovered signals, and missing report-control or dataset context visible before any subscribe or trigger action runs.
+
 ## 3. SignalVerificationEvidence
 
 Represents one feedback observation tied to a target.

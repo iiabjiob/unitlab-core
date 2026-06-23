@@ -70,6 +70,38 @@ class VerificationSubscriptionPlanSchema(BaseModel):
     coverage: VerificationSubscriptionPlanCoverageSchema
 
 
+class PlannerConfidenceSignalSchema(BaseModel):
+    signal_index: int
+    signal_id: int
+    signal_reference: str
+    endpoint_id: str | None = None
+    expected_feedback_path: str | None = None
+    report_control_reference: str | None = None
+    report_control_name: str | None = None
+    data_set_reference: str | None = None
+    coverage_state: Literal["exact", "partial", "uncovered"]
+    source_classification: Literal["from SCD", "from discovery", "fallback", "not found"]
+    confidence_state: Literal["strong", "watch", "risk", "uncovered"]
+    diagnostics: list[str] = Field(default_factory=list)
+
+
+class PlannerConfidenceReportSchema(BaseModel):
+    plan_id: str
+    total_targets: int = 0
+    covered_targets: int = 0
+    partially_covered_targets: int = 0
+    uncovered_targets: int = 0
+    coverage_percentage: int = 0
+    confidence_percentage: int = 0
+    groups_count: int = 0
+    endpoints_count: int = 0
+    planning_quality: str = "partial"
+    risk_level: Literal["low", "medium", "high"] = "medium"
+    source_classification_counts: dict[str, int] = Field(default_factory=dict)
+    signals: list[PlannerConfidenceSignalSchema] = Field(default_factory=list)
+    diagnostics: list[str] = Field(default_factory=list)
+
+
 class VerificationEvidenceDiagnosticSchema(BaseModel):
     code: str
     message: str

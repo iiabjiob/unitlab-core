@@ -18,9 +18,9 @@ This is the first point where UnitLab behaves like a product instead of a set of
 
 ## Progress tracker
 
-- [ ] Phase A - VerificationTarget normalization
-- [ ] Phase B - SubscriptionPlan generation
-- [ ] Phase B.5 - Planner Validation
+- [x] Phase A - VerificationTarget normalization
+- [x] Phase B - SubscriptionPlan generation
+- [x] Phase B.5 - Planner Validation
 - [ ] Phase C - Runtime session orchestration
 - [ ] Phase D - Evidence capture
 - [ ] Phase E - First single-signal auto verification
@@ -463,4 +463,3 @@ Rollback risk
 - Teaching the C layer how to decide PASS/FAIL or how to explain operator verdicts.
 - Baking signal-list or allocation assumptions into MMS primitives.
 - Adding UI-driven workflow states to the runtime session model.
-

@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from app.services.verification_planner import (
+    build_planner_confidence_report,
     VerificationTargetSource,
     build_verification_subscription_plan,
     build_verification_target_sources,
@@ -300,3 +301,151 @@ def test_build_verification_target_sources_preserves_signal_identity_and_row_met
     assert sources[1].source_kind is None
     assert sources[1].source_reason is None
     assert sources[1].source_row_id == "signal-12"
+
+
+def test_build_planner_confidence_report_summarizes_coverage_and_origin_labels() -> None:
+    plan = build_verification_subscription_plan(
+        [
+            VerificationTargetSource(
+                signal_id=1,
+                signal_reference="SCD Signal",
+                signal_path="scd_signal",
+                signal_metadata={
+                    "protocol": "iec61850",
+                    "protocol_metadata": {
+                        "ied_name": "IED-A",
+                        "access_point_name": "P1",
+                        "report_control_reference_hint": "IED-A/P1/LLN0.brA/buffered",
+                        "report_control_name": "brA",
+                        "report_kind": "buffered",
+                        "rpt_id": "IED-A/LLN0.brA",
+                        "data_set_reference": "IED-A/LLN0.dsA",
+                        "expected_feedback_path": "LD0/XCBR1.Pos.stVal[ST]",
+                    },
+                },
+                allocation_id=1,
+                allocation_status="assigned",
+                allocation_health={
+                    "conflict": False,
+                    "invalid_type": False,
+                    "missing_device": False,
+                    "missing_channel": False,
+                    "offline_device": False,
+                    "stale_device": False,
+                },
+                channel_id=11,
+                channel_label="DO-11",
+                unit_id="IED-A/P1",
+                unit_online=True,
+                source_row_id="signal-1",
+                source_kind="from SCD",
+                source_reason="SCD hint match",
+            ),
+            VerificationTargetSource(
+                signal_id=2,
+                signal_reference="Discovery Signal",
+                signal_path="discovery_signal",
+                signal_metadata={
+                    "protocol": "iec61850",
+                    "protocol_metadata": {
+                        "ied_name": "IED-B",
+                        "access_point_name": "P1",
+                        "report_control_name": "brB",
+                        "report_kind": "buffered",
+                        "rpt_id": "IED-B/LLN0.brB",
+                        "data_set_reference": "IED-B/LLN0.dsB",
+                        "expected_feedback_path": "LD0/XCBR2.Pos.stVal[ST]",
+                        "source_kind": "discovery",
+                        "source_reason": "derived from discovered dataset membership",
+                    },
+                },
+                allocation_id=2,
+                allocation_status="assigned",
+                allocation_health={
+                    "conflict": False,
+                    "invalid_type": False,
+                    "missing_device": False,
+                    "missing_channel": False,
+                    "offline_device": False,
+                    "stale_device": False,
+                },
+                channel_id=12,
+                channel_label="DO-12",
+                unit_id="IED-B/P1",
+                unit_online=True,
+                source_row_id="signal-2",
+            ),
+            VerificationTargetSource(
+                signal_id=3,
+                signal_reference="Fallback Signal",
+                signal_path="fallback_signal",
+                signal_metadata={
+                    "protocol": "iec61850",
+                    "protocol_metadata": {
+                        "expected_feedback_path": "LD0/XCBR3.Pos.stVal[ST]",
+                    },
+                },
+                allocation_id=3,
+                allocation_status="assigned",
+                allocation_health={
+                    "conflict": False,
+                    "invalid_type": False,
+                    "missing_device": False,
+                    "missing_channel": False,
+                    "offline_device": False,
+                    "stale_device": False,
+                },
+                channel_id=13,
+                channel_label="DO-13",
+                unit_id="IED-C/P1",
+                unit_online=True,
+                source_row_id="signal-3",
+            ),
+            VerificationTargetSource(
+                signal_id=4,
+                signal_reference="Uncovered Signal",
+                signal_path="uncovered_signal",
+                signal_metadata={},
+                allocation_id=None,
+                allocation_status="unassigned",
+                allocation_health={},
+                channel_id=None,
+                channel_label=None,
+                unit_id=None,
+                unit_online=None,
+                source_row_id="signal-4",
+            ),
+        ]
+    )
+
+    report = build_planner_confidence_report(plan)
+
+    assert report.plan_id == plan.plan_id
+    assert report.total_targets == 4
+    assert report.covered_targets == 3
+    assert report.partially_covered_targets == 0
+    assert report.uncovered_targets == 1
+    assert report.coverage_percentage == 75
+    assert report.confidence_percentage == 51
+    assert report.risk_level == "high"
+    assert report.source_classification_counts == {
+        "from SCD": 1,
+        "from discovery": 1,
+        "fallback": 1,
+        "not found": 1,
+    }
+    assert [signal.source_classification for signal in report.signals] == [
+        "from SCD",
+        "from discovery",
+        "fallback",
+        "not found",
+    ]
+    assert [signal.confidence_state for signal in report.signals] == [
+        "strong",
+        "watch",
+        "risk",
+        "uncovered",
+    ]
+    assert report.signals[3].coverage_state == "uncovered"
+    assert any("Fallback Signal" in diagnostic for diagnostic in report.diagnostics)
+    assert any("require attention" in diagnostic for diagnostic in report.diagnostics)

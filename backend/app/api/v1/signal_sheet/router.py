@@ -53,6 +53,7 @@ from app.core.events.ws_event_publisher import WsEventPublisher
 from app.services.signal_sheet_import_service import SignalSheetImportService
 from app.services.signal_sheet_write_service import SignalSheetWriteService
 from app.services.verification_planner import (
+    build_planner_confidence_report,
     build_verification_subscription_plan,
     build_verification_target_sources,
 )
@@ -592,6 +593,7 @@ async def enqueue_signal_test_run_job(
             allocation_rows_by_signal_id=allocation_rows_by_signal_id,
         )
         plan: VerificationSubscriptionPlanSchema = build_verification_subscription_plan(sources)
+        confidence_report = build_planner_confidence_report(plan)
         job_state = await update_signal_job(
             str(job_state.get("job_id") or ""),
             status="queued",
@@ -599,6 +601,7 @@ async def enqueue_signal_test_run_job(
                 "verification_targets": [target.model_dump(mode="json") for target in plan.targets],
                 "verification_plan": plan.model_dump(mode="json"),
                 "verification_coverage": plan.coverage.model_dump(mode="json"),
+                "verification_confidence": confidence_report.model_dump(mode="json"),
             },
         ) or job_state
     except Exception as exc:  # noqa: BLE001
