@@ -121,3 +121,77 @@ class SignalVerificationEvidenceSetSchema(BaseModel):
     evidence: list[SignalVerificationEvidenceSchema] = Field(default_factory=list)
     summary: SignalVerificationEvidenceSetSummarySchema
     diagnostics: list[VerificationEvidenceDiagnosticSchema] = Field(default_factory=list)
+
+
+class VerificationExecutionContextSchema(BaseModel):
+    project_id: int
+    signal_list_revision_id: int
+    planner_version: str
+    runtime_version: str
+    policy_version: str
+    selected_group_id: str | None = None
+    scd_revision_id: int | None = None
+    discovery_snapshot_id: int | None = None
+    operator_id: str | None = None
+    created_at: datetime | None = None
+    triggered_at: datetime | None = None
+
+
+class VerificationSessionSnapshotSchema(BaseModel):
+    session_id: str
+    endpoint_id: str
+    runtime_state: str
+    connection_generation: int
+    discovery_status: str
+    subscription_status: str
+    report_health: str
+    last_report_at: datetime | None = None
+    last_error: str | None = None
+    selected_report_control: str | None = None
+    selected_data_set: str | None = None
+    current_rptena_owner: str | None = None
+    stale_signal_count: int | None = None
+    diagnostic_code: str | None = None
+
+
+class VerificationStepSchema(BaseModel):
+    step_id: str
+    signal_id: int
+    target_index: int
+    step_state: Literal["draft", "planned", "armed", "running", "awaiting_confirmation", "completing", "completed", "aborted", "failed"]
+    expected_path: str
+    expected_window_ms: int
+    freshness: Literal["live", "stale", "unknown"] | None = None
+    evidence_status: Literal["none", "observed", "stale", "timeout", "invalid", "late", "out_of_window"]
+    verdict_state: Literal["pending", "pass", "fail", "inconclusive", "aborted"]
+    evidence_ids: list[str] = Field(default_factory=list)
+    actual_report_path: str | None = None
+    source_session_id: str | None = None
+    source_generation: int | None = None
+    source_report_rpt_id: str | None = None
+    source_report_dat_set: str | None = None
+    triggered_at: datetime | None = None
+    observed_at: datetime | None = None
+    latency_ms: int | None = None
+    reason: str | None = None
+    diagnostics: list[VerificationEvidenceDiagnosticSchema] = Field(default_factory=list)
+
+
+class VerificationRunSchema(BaseModel):
+    test_run_id: str
+    verification_targets: list[VerificationTargetSchema] = Field(default_factory=list)
+    subscription_plan: VerificationSubscriptionPlanSchema
+    session_snapshots: list[VerificationSessionSnapshotSchema] = Field(default_factory=list)
+    evidence_set: SignalVerificationEvidenceSetSchema
+    execution_context: VerificationExecutionContextSchema
+    workflow_state: Literal["draft", "planned", "preparing", "armed", "running", "awaiting_confirmation", "completing", "completed", "aborted", "failed"]
+    verdict_state: Literal["pending", "pass", "fail", "inconclusive", "aborted"]
+    selected_group_id: str | None = None
+    operator_id: str | None = None
+    triggered_at: datetime | None = None
+    completed_at: datetime | None = None
+    runtime_state: str | None = None
+    runtime_summary: dict[str, Any] | None = None
+    reason: str | None = None
+    diagnostics: list[VerificationEvidenceDiagnosticSchema] = Field(default_factory=list)
+    verification_steps: list[VerificationStepSchema] = Field(default_factory=list)

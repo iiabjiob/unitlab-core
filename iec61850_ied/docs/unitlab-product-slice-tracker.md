@@ -89,7 +89,7 @@ Done when:
 
 ### PR4 - First auto verification flow
 
-Status: not started.
+Status: completed.
 
 Input:
 - selected target set;
@@ -100,6 +100,7 @@ Output:
 - observed / pass / timeout / fail result;
 - evidence-backed decision;
 - visible timing window result.
+- simulator-backed runtime path for the first end-to-end product loop.
 
 Done when:
 - a single signal can complete the full feedback loop;

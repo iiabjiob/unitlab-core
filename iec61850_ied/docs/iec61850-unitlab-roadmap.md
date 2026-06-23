@@ -166,7 +166,7 @@ Done when:
 
 ### PR4 - First auto test flow
 
-Status: not started.
+Status: completed.
 
 Goal:
 - Implement the simplest end-to-end evidence-driven flow.
@@ -244,7 +244,7 @@ Done when:
 - [x] PR1 - Signal list to requested verification targets
 - [x] PR2 - Subscription planner
 - [x] PR3 - Verification evidence model
-- [ ] PR4 - First auto test flow
+- [x] PR4 - First auto test flow
 - [ ] PR5 - Multi-IED selected group flow
 - [ ] PR6 - Hardening
 
