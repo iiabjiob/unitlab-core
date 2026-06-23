@@ -97,13 +97,141 @@ def test_build_verification_subscription_plan_separates_exact_partial_and_uncove
     assert plan.targets[1].expected_feedback_path == "pump_feedback"
     assert plan.targets[2].coverage_state == "uncovered"
     assert plan.targets[2].coverage_reason == "no_endpoint"
+    assert plan.plan_id.startswith("plan-")
+    assert len(plan.groups) == 2
+    assert [group.target_indexes for group in plan.groups] == [[0], [1]]
+    assert [group.source_classification for group in plan.groups] == ["fallback", "fallback"]
+    assert plan.groups[0].endpoint_id == "unit-a"
+    assert plan.groups[1].endpoint_id == "unit-b"
+    assert plan.groups[0].report_control_reference == "KINTE13LVC01CTRL/LLN0.RCB1"
+    assert plan.groups[0].report_control_name == "RCB1"
+    assert plan.groups[1].report_control_reference == "pump_feedback"
+    assert len(plan.uncovered_targets) == 1
+    assert plan.uncovered_targets[0].target_index == 2
+    assert plan.uncovered_targets[0].reason == "no_endpoint"
+    assert plan.uncovered_targets[0].detail == "no_endpoint"
+    assert "normalized 3 verification targets" in plan.planning_diagnostics[0]
+    assert "2 subscription groups across 2 endpoints" in plan.planning_diagnostics[1]
 
     assert plan.coverage.total_targets == 3
     assert plan.coverage.covered_targets == 1
     assert plan.coverage.partially_covered_targets == 1
     assert plan.coverage.uncovered_targets == 1
-    assert plan.coverage.groups_count == 3
+    assert plan.coverage.groups_count == 2
     assert plan.coverage.endpoints_count == 2
+    assert plan.coverage.planning_quality == "partial"
+
+
+def test_build_verification_subscription_plan_groups_targets_by_scd_hints() -> None:
+    plan = build_verification_subscription_plan(
+        [
+            VerificationTargetSource(
+                signal_id=10,
+                signal_reference="Breaker Close",
+                signal_path="breaker_close",
+                signal_metadata={
+                    "protocol": "iec61850",
+                    "protocol_metadata": {
+                        "ied_name": "IED-A",
+                        "access_point_name": "P1",
+                        "report_control_reference_hint": "IED-A/P1/LLN0.brA/buffered",
+                        "report_control_name": "brA",
+                        "report_kind": "buffered",
+                        "rpt_id": "IED-ALD0/LLN0.brA",
+                        "data_set_reference": "IED-ALD0/LLN0.dsA",
+                        "expected_feedback_path": "IED-ALD0/LLN0.brA",
+                    },
+                },
+                allocation_id=301,
+                allocation_status="assigned",
+                allocation_health={
+                    "conflict": False,
+                    "invalid_type": False,
+                    "missing_device": False,
+                    "missing_channel": False,
+                    "offline_device": False,
+                    "stale_device": False,
+                },
+                channel_id=41,
+                channel_label="DO-41",
+                unit_id="IED-A/P1",
+                unit_online=True,
+                source_row_id="signal-10",
+            ),
+            VerificationTargetSource(
+                signal_id=11,
+                signal_reference="Breaker Feedback",
+                signal_path="breaker_feedback",
+                signal_metadata={
+                    "protocol": "iec61850",
+                    "protocol_metadata": {
+                        "ied_name": "IED-A",
+                        "access_point_name": "P1",
+                        "report_control_reference_hint": "IED-A/P1/LLN0.brA/buffered",
+                        "report_control_name": "brA",
+                        "report_kind": "buffered",
+                        "rpt_id": "IED-ALD0/LLN0.brA",
+                        "data_set_reference": "IED-ALD0/LLN0.dsA",
+                        "expected_feedback_path": "IED-ALD0/LLN0.brA",
+                    },
+                },
+                allocation_id=302,
+                allocation_status="assigned",
+                allocation_health={
+                    "conflict": False,
+                    "invalid_type": False,
+                    "missing_device": False,
+                    "missing_channel": False,
+                    "offline_device": False,
+                    "stale_device": False,
+                },
+                channel_id=42,
+                channel_label="DI-42",
+                unit_id="IED-A/P1",
+                unit_online=True,
+                source_row_id="signal-11",
+            ),
+            VerificationTargetSource(
+                signal_id=12,
+                signal_reference="Uncovered",
+                signal_path="uncovered",
+                signal_metadata={},
+                allocation_id=None,
+                allocation_status="unassigned",
+                allocation_health={},
+                channel_id=None,
+                channel_label=None,
+                unit_id=None,
+                unit_online=None,
+                source_row_id="signal-12",
+            ),
+        ]
+    )
+
+    assert plan.plan_id.startswith("plan-")
+    assert [target.signal_id for target in plan.targets] == [10, 11, 12]
+    assert len(plan.groups) == 1
+    assert plan.groups[0].group_id == "group-1"
+    assert plan.groups[0].source_classification == "from SCD"
+    assert plan.groups[0].endpoint_id == "IED-A/P1"
+    assert plan.groups[0].ied_name == "IED-A"
+    assert plan.groups[0].access_point_name == "P1"
+    assert plan.groups[0].report_control_reference == "IED-A/P1/LLN0.brA/buffered"
+    assert plan.groups[0].report_control_name == "brA"
+    assert plan.groups[0].report_kind == "buffered"
+    assert plan.groups[0].rpt_id == "IED-ALD0/LLN0.brA"
+    assert plan.groups[0].data_set_reference == "IED-ALD0/LLN0.dsA"
+    assert plan.groups[0].target_indexes == [0, 1]
+    assert plan.groups[0].reason == "SCD hint match"
+    assert len(plan.uncovered_targets) == 1
+    assert plan.uncovered_targets[0].target_index == 2
+    assert plan.uncovered_targets[0].reason == "no_endpoint"
+    assert plan.coverage.total_targets == 3
+    assert plan.coverage.covered_targets == 2
+    assert plan.coverage.partially_covered_targets == 0
+    assert plan.coverage.uncovered_targets == 1
+    assert plan.coverage.groups_count == 1
+    assert plan.coverage.endpoints_count == 1
     assert plan.coverage.planning_quality == "partial"
 
 

@@ -126,6 +126,7 @@ Required fields:
 - `targets`
 - `groups`
 - `uncovered_targets`
+- `planning_diagnostics`
 - `coverage`
 
 Each group should include:
@@ -140,6 +141,8 @@ Each group should include:
 - `data_set_reference`
 - `target_indexes`
 - `reason`
+- `source_classification`
+- `source_reason`
 
 Each uncovered target should include:
 - `target_index`
@@ -203,8 +206,14 @@ Example:
       "rpt_id": "KINTE13LVC01CTRL/LLN0.brcbA",
       "data_set_reference": "KINTE13LVC01CTRL/LLN0.RCB1",
       "target_indexes": [0, 1],
-      "reason": "exact dataset match"
+      "reason": "exact dataset match",
+      "source_classification": "from SCD",
+      "source_reason": "SCD hint match"
     }
+  ],
+  "planning_diagnostics": [
+    "normalized 3 verification targets",
+    "built 1 subscription groups across 1 endpoints"
   ],
   "uncovered_targets": [
     {

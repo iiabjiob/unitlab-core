@@ -107,8 +107,8 @@ Remaining bottlenecks:
 
 Partially implemented in the backend layer in this repository:
 - signal normalization preview for selected signal-list rows;
-- basic verification target materialization for test-run preview;
-- early subscription-plan scaffolding.
+- verification target materialization for test-run preview;
+- grouped subscription-plan preview with uncovered-target diagnostics.
 
 Still pending:
 - verification evidence model;

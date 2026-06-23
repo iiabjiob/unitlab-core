@@ -47,7 +47,7 @@ Done when:
 
 ### PR2 - Subscription planner
 
-Status: not started.
+Status: completed.
 
 Input:
 - verification targets;
@@ -64,6 +64,7 @@ Done when:
 - multi-IED groups are split cleanly;
 - uncovered targets are not hidden.
 - each grouped target keeps a stable source classification.
+- the backend preview path already emits grouped subscription plans and uncovered-target diagnostics.
 
 ### PR3 - Verification evidence model
 

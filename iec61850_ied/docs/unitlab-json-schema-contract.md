@@ -66,6 +66,7 @@ Required:
 - `targets`
 - `groups`
 - `uncovered_targets`
+- `planning_diagnostics`
 - `coverage`
 
 Group object required fields:
@@ -80,6 +81,8 @@ Group object required fields:
 - `data_set_reference`
 - `target_indexes`
 - `reason`
+- `source_classification`
+- `source_reason`
 
 Uncovered object required fields:
 - `target_index`

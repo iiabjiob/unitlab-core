@@ -27,6 +27,28 @@ class VerificationTargetSchema(BaseModel):
     source_row_id: str | None = None
 
 
+class VerificationSubscriptionPlanGroupSchema(BaseModel):
+    group_id: str = ""
+    endpoint_id: str | None = None
+    ied_name: str | None = None
+    access_point_name: str | None = None
+    report_control_reference: str | None = None
+    report_control_name: str | None = None
+    report_kind: str | None = None
+    rpt_id: str | None = None
+    data_set_reference: str | None = None
+    target_indexes: list[int] = Field(default_factory=list)
+    reason: str = ""
+    source_classification: Literal["from SCD", "from discovery", "fallback", "not found"] = "fallback"
+    source_reason: str | None = None
+
+
+class VerificationSubscriptionPlanUncoveredTargetSchema(BaseModel):
+    target_index: int
+    reason: str
+    detail: str
+
+
 class VerificationSubscriptionPlanCoverageSchema(BaseModel):
     total_targets: int = 0
     covered_targets: int = 0
@@ -38,6 +60,10 @@ class VerificationSubscriptionPlanCoverageSchema(BaseModel):
 
 
 class VerificationSubscriptionPlanSchema(BaseModel):
+    plan_id: str = ""
     selected_signal_ids: list[int] = Field(default_factory=list)
     targets: list[VerificationTargetSchema] = Field(default_factory=list)
+    groups: list[VerificationSubscriptionPlanGroupSchema] = Field(default_factory=list)
+    uncovered_targets: list[VerificationSubscriptionPlanUncoveredTargetSchema] = Field(default_factory=list)
+    planning_diagnostics: list[str] = Field(default_factory=list)
     coverage: VerificationSubscriptionPlanCoverageSchema

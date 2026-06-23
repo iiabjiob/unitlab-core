@@ -104,7 +104,7 @@ Done when:
 
 ### PR2 - Subscription planner
 
-Status: not started.
+Status: completed.
 
 Goal:
 - Turn requested verification targets into per-IED / per-RCB subscription plans.
@@ -129,6 +129,7 @@ Done when:
 - input targets produce a deterministic subscription plan;
 - every target is either covered or has a reason;
 - one plan can span multiple IEDs cleanly.
+- current backend preview path materializes grouped subscription plans and uncovered-target diagnostics from normalized verification targets.
 
 ### PR3 - Verification evidence model
 
@@ -241,7 +242,7 @@ Done when:
 ## PR tracking checklist
 
 - [x] PR1 - Signal list to requested verification targets
-- [ ] PR2 - Subscription planner
+- [x] PR2 - Subscription planner
 - [ ] PR3 - Verification evidence model
 - [ ] PR4 - First auto test flow
 - [ ] PR5 - Multi-IED selected group flow

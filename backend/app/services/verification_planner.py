@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
@@ -9,6 +11,8 @@ from app.schemas.signal_sheet_schema import SignalAllocationRowSchema
 from app.schemas.verification_schema import (
     VerificationSubscriptionPlanCoverageSchema,
     VerificationSubscriptionPlanSchema,
+    VerificationSubscriptionPlanGroupSchema,
+    VerificationSubscriptionPlanUncoveredTargetSchema,
     VerificationTargetSchema,
 )
 
@@ -19,9 +23,6 @@ class VerificationTargetSource:
     signal_reference: str
     signal_path: str
     signal_metadata: dict[str, Any]
-    source_row_index: int | None
-    source_kind: str | None
-    source_reason: str | None
     allocation_id: int | None
     allocation_status: str
     allocation_health: dict[str, bool]
@@ -30,6 +31,9 @@ class VerificationTargetSource:
     unit_id: str | None
     unit_online: bool | None
     source_row_id: str
+    source_row_index: int | None = None
+    source_kind: str | None = None
+    source_reason: str | None = None
 
 
 def build_verification_target_sources(
@@ -82,13 +86,17 @@ def build_verification_subscription_plan(
     window_ms: int = 1000,
 ) -> VerificationSubscriptionPlanSchema:
     targets: list[VerificationTargetSchema] = []
-    groups: dict[str, list[int]] = defaultdict(list)
+    group_buckets: dict[tuple[str, ...], list[int]] = defaultdict(list)
+    group_contexts: dict[tuple[str, ...], dict[str, Any]] = {}
+    uncovered_targets: list[VerificationSubscriptionPlanUncoveredTargetSchema] = []
+    planning_diagnostics: list[str] = []
     endpoints: set[str] = set()
     exact_count = 0
     partial_count = 0
     uncovered_count = 0
+    fallback_group_count = 0
 
-    for source in sources:
+    for target_index, source in enumerate(sources):
         protocol, protocol_metadata = _extract_protocol_metadata(source.signal_metadata)
         expected_feedback_path, feedback_source = _resolve_expected_feedback_path(
             signal_path=source.signal_path,
@@ -98,6 +106,25 @@ def build_verification_subscription_plan(
         coverage_state, coverage_reason = _resolve_coverage_state(
             source=source,
             expected_feedback_path_source=feedback_source,
+        )
+        endpoint_id, ied_name, access_point_name = _resolve_endpoint_identity(source, protocol_metadata)
+        (
+            report_control_reference,
+            report_control_name,
+            report_kind,
+            rpt_id,
+            data_set_reference,
+            group_reference_source,
+        ) = _resolve_group_references(
+            source=source,
+            protocol_metadata=protocol_metadata,
+            expected_feedback_path=expected_feedback_path,
+        )
+        source_classification, source_reason, group_reason = _resolve_source_classification(
+            source=source,
+            protocol_metadata=protocol_metadata,
+            coverage_reason=coverage_reason,
+            has_explicit_group_references=group_reference_source == "protocol_metadata",
         )
 
         target = VerificationTargetSchema(
@@ -123,10 +150,45 @@ def build_verification_subscription_plan(
         )
         targets.append(target)
 
-        group_key = source.unit_id or "__uncovered__"
-        groups[group_key].append(source.signal_id)
-        if source.unit_id:
-            endpoints.add(source.unit_id)
+        if coverage_state == "uncovered":
+            uncovered_targets.append(
+                VerificationSubscriptionPlanUncoveredTargetSchema(
+                    target_index=target_index,
+                    reason=coverage_reason or "not found",
+                    detail=source_reason or "no endpoint metadata available to bind this target",
+                )
+            )
+        else:
+            if endpoint_id:
+                endpoints.add(endpoint_id)
+            group_key = (
+                endpoint_id or "__uncovered__",
+                source_classification,
+                report_control_reference or "",
+                report_control_name or "",
+                report_kind or "",
+                rpt_id or "",
+                data_set_reference or "",
+            )
+            group_buckets[group_key].append(target_index)
+            group_contexts.setdefault(
+                group_key,
+                {
+                    "endpoint_id": endpoint_id,
+                    "ied_name": ied_name,
+                    "access_point_name": access_point_name,
+                    "report_control_reference": report_control_reference,
+                    "report_control_name": report_control_name,
+                    "report_kind": report_kind,
+                    "rpt_id": rpt_id,
+                    "data_set_reference": data_set_reference,
+                    "source_classification": source_classification,
+                    "source_reason": source_reason,
+                    "reason": group_reason,
+                },
+            )
+            if source_classification == "fallback":
+                fallback_group_count += 1
 
         if coverage_state == "exact":
             exact_count += 1
@@ -135,11 +197,70 @@ def build_verification_subscription_plan(
         else:
             uncovered_count += 1
 
+    groups: list[VerificationSubscriptionPlanGroupSchema] = []
+    for group_index, group_key in enumerate(
+        sorted(
+            group_buckets,
+            key=lambda item: (
+                str(item[0]),
+                str(item[1]),
+                str(item[2]),
+                str(item[3]),
+                str(item[4]),
+                str(item[5]),
+                str(item[6]),
+            ),
+        ),
+        start=1,
+    ):
+        context = group_contexts[group_key]
+        groups.append(
+            VerificationSubscriptionPlanGroupSchema(
+                group_id=f"group-{group_index}",
+                endpoint_id=context["endpoint_id"],
+                ied_name=context["ied_name"],
+                access_point_name=context["access_point_name"],
+                report_control_reference=context["report_control_reference"],
+                report_control_name=context["report_control_name"],
+                report_kind=context["report_kind"],
+                rpt_id=context["rpt_id"],
+                data_set_reference=context["data_set_reference"],
+                target_indexes=sorted(group_buckets[group_key]),
+                reason=context["reason"],
+                source_classification=context["source_classification"],
+                source_reason=context["source_reason"],
+            )
+        )
+
     planning_quality = "exact"
     if uncovered_count > 0:
         planning_quality = "partial"
-    elif partial_count > 0:
+    elif partial_count > 0 or fallback_group_count > 0:
         planning_quality = "fallback"
+
+    diagnostics = [
+        f"normalized {len(targets)} verification targets",
+        f"built {len(groups)} subscription groups across {len(endpoints)} endpoints",
+    ]
+    if uncovered_targets:
+        diagnostics.append(f"{len(uncovered_targets)} targets uncovered")
+    if fallback_group_count > 0:
+        diagnostics.append(f"{fallback_group_count} groups use fallback planning")
+
+    plan_id = _build_plan_id(
+        selected_signal_ids=[source.signal_id for source in sources],
+        groups=groups,
+        uncovered_targets=uncovered_targets,
+        coverage={
+            "total_targets": len(targets),
+            "covered_targets": exact_count,
+            "partially_covered_targets": partial_count,
+            "uncovered_targets": uncovered_count,
+            "groups_count": len(groups),
+            "endpoints_count": len(endpoints),
+            "planning_quality": planning_quality,
+        },
+    )
 
     coverage = VerificationSubscriptionPlanCoverageSchema(
         total_targets=len(targets),
@@ -151,8 +272,12 @@ def build_verification_subscription_plan(
         planning_quality=planning_quality,
     )
     return VerificationSubscriptionPlanSchema(
+        plan_id=plan_id,
         selected_signal_ids=[source.signal_id for source in sources],
         targets=targets,
+        groups=groups,
+        uncovered_targets=uncovered_targets,
+        planning_diagnostics=diagnostics,
         coverage=coverage,
     )
 
@@ -234,6 +359,219 @@ def _resolve_source_reason(signal_metadata: dict[str, Any]) -> str | None:
             if value:
                 return value
     return None
+
+
+def _resolve_endpoint_identity(
+    source: VerificationTargetSource,
+    protocol_metadata: dict[str, Any],
+) -> tuple[str | None, str | None, str | None]:
+    endpoint_id = source.unit_id.strip() if source.unit_id else None
+    ied_name = _first_non_empty_string(
+        protocol_metadata.get("ied_name"),
+        protocol_metadata.get("iedName"),
+        protocol_metadata.get("endpoint_ied_name"),
+    )
+    access_point_name = _first_non_empty_string(
+        protocol_metadata.get("access_point_name"),
+        protocol_metadata.get("accessPointName"),
+    )
+    if endpoint_id and "/" in endpoint_id:
+        endpoint_ied_name, endpoint_access_point_name = endpoint_id.split("/", 1)
+        ied_name = ied_name or endpoint_ied_name.strip() or None
+        access_point_name = access_point_name or endpoint_access_point_name.strip() or None
+    if endpoint_id and not ied_name:
+        ied_name = endpoint_id
+    return endpoint_id, ied_name, access_point_name or "unknown"
+
+
+def _resolve_group_references(
+    *,
+    source: VerificationTargetSource,
+    protocol_metadata: dict[str, Any],
+    expected_feedback_path: str,
+) -> tuple[str | None, str | None, str | None, str | None, str | None, str]:
+    explicit_reference = False
+    report_control_reference = _first_non_empty_string(
+        protocol_metadata.get("report_control_reference"),
+        protocol_metadata.get("report_control_reference_hint"),
+        protocol_metadata.get("reportControlReference"),
+        protocol_metadata.get("report_reference"),
+        protocol_metadata.get("report_path"),
+    )
+    rpt_id = _first_non_empty_string(
+        protocol_metadata.get("rpt_id"),
+        protocol_metadata.get("rptId"),
+    )
+    report_control_name = _first_non_empty_string(
+        protocol_metadata.get("report_control_name"),
+        protocol_metadata.get("reportControlName"),
+    )
+    report_kind = _first_non_empty_string(
+        protocol_metadata.get("report_kind"),
+        protocol_metadata.get("reportKind"),
+    )
+    data_set_reference = _first_non_empty_string(
+        protocol_metadata.get("data_set_reference"),
+        protocol_metadata.get("dataSetReference"),
+        protocol_metadata.get("dataset_reference"),
+        protocol_metadata.get("datasetReference"),
+    )
+    if report_control_reference is not None or rpt_id is not None or data_set_reference is not None:
+        explicit_reference = True
+
+    if report_control_reference is None and rpt_id is not None:
+        report_control_reference = rpt_id
+    if report_control_reference is None and expected_feedback_path:
+        report_control_reference = expected_feedback_path
+    if rpt_id is None and report_control_reference is not None:
+        rpt_id = report_control_reference
+    if report_control_name is None:
+        report_control_name = _derive_report_control_name(report_control_reference, rpt_id, source.signal_path)
+    if report_kind is None:
+        report_kind = _first_non_empty_string(protocol_metadata.get("report_kind_hint"), "unknown")
+    reference_source = "protocol_metadata" if explicit_reference else ("fallback_expected_feedback_path" if expected_feedback_path else "fallback_signal_path")
+    return report_control_reference, report_control_name, report_kind, rpt_id, data_set_reference, reference_source
+
+
+def _resolve_source_classification(
+    *,
+    source: VerificationTargetSource,
+    protocol_metadata: dict[str, Any],
+    coverage_reason: str | None,
+    has_explicit_group_references: bool,
+) -> tuple[str, str | None, str]:
+    raw_kind = _first_non_empty_string(
+        source.source_kind,
+        protocol_metadata.get("source_kind"),
+        protocol_metadata.get("sourceKind"),
+    )
+    normalized = _normalize_source_classification(raw_kind)
+    if normalized is not None:
+        reason = _first_non_empty_string(
+            source.source_reason,
+            protocol_metadata.get("source_reason"),
+            protocol_metadata.get("sourceReason"),
+            coverage_reason,
+        )
+        return normalized, reason, _source_classification_reason(normalized, reason)
+
+    if has_explicit_group_references:
+        reason = _first_non_empty_string(
+            source.source_reason,
+            protocol_metadata.get("source_reason"),
+            protocol_metadata.get("sourceReason"),
+            "resolved from protocol metadata hints",
+        )
+        return "from SCD", reason, "SCD hint match"
+
+    if source.unit_id:
+        reason = _first_non_empty_string(
+            source.source_reason,
+            coverage_reason,
+            "no SCD or discovery snapshot available",
+        )
+        return "fallback", reason, "fallback endpoint binding"
+
+    reason = _first_non_empty_string(
+        source.source_reason,
+        coverage_reason,
+        "no endpoint metadata",
+    )
+    return "not found", reason, "no endpoint metadata"
+
+
+def _normalize_source_classification(raw_kind: str | None) -> str | None:
+    if not raw_kind:
+        return None
+    value = raw_kind.strip().lower()
+    if value in {"scd", "from scd"}:
+        return "from SCD"
+    if value in {"discovery", "from discovery"}:
+        return "from discovery"
+    if value in {"fallback"}:
+        return "fallback"
+    if value in {"not found", "not_found", "notfound"}:
+        return "not found"
+    return None
+
+
+def _source_classification_reason(source_classification: str, reason: str | None) -> str:
+    if source_classification == "from SCD":
+        return reason or "SCD hint match"
+    if source_classification == "from discovery":
+        return reason or "discovery snapshot match"
+    if source_classification == "fallback":
+        return reason or "fallback endpoint binding"
+    return reason or "no endpoint metadata"
+
+
+def _first_non_empty_string(*candidates: Any) -> str | None:
+    for candidate in candidates:
+        if isinstance(candidate, str):
+            value = candidate.strip()
+            if value:
+                return value
+    return None
+
+
+def _derive_report_control_name(
+    report_control_reference: str | None,
+    rpt_id: str | None,
+    signal_path: str,
+) -> str:
+    for candidate in (rpt_id, report_control_reference, signal_path):
+        if not candidate:
+            continue
+        token = candidate.strip().rstrip("/")
+        if not token:
+            continue
+        if "." in token:
+            segment = token.rsplit(".", 1)[-1].strip()
+            if segment:
+                return segment
+        parts = [part.strip() for part in token.split("/") if part.strip()]
+        if len(parts) >= 2 and parts[-1].lower() in {"buffered", "unbuffered"}:
+            return parts[-2]
+        if parts:
+            return parts[-1]
+    return signal_path
+
+
+def _build_plan_id(
+    *,
+    selected_signal_ids: Sequence[int],
+    groups: Sequence[VerificationSubscriptionPlanGroupSchema],
+    uncovered_targets: Sequence[VerificationSubscriptionPlanUncoveredTargetSchema],
+    coverage: dict[str, Any],
+) -> str:
+    payload = {
+        "selected_signal_ids": list(selected_signal_ids),
+        "groups": [
+            {
+                "endpoint_id": group.endpoint_id,
+                "group_id": group.group_id,
+                "report_control_reference": group.report_control_reference,
+                "report_control_name": group.report_control_name,
+                "report_kind": group.report_kind,
+                "rpt_id": group.rpt_id,
+                "data_set_reference": group.data_set_reference,
+                "target_indexes": list(group.target_indexes),
+                "source_classification": group.source_classification,
+            }
+            for group in groups
+        ],
+        "uncovered_targets": [
+            {
+                "target_index": item.target_index,
+                "reason": item.reason,
+                "detail": item.detail,
+            }
+            for item in uncovered_targets
+        ],
+        "coverage": coverage,
+    }
+    digest = hashlib.sha1(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+    return f"plan-{digest[:12]}"
 
 
 def _resolve_expected_feedback_path(

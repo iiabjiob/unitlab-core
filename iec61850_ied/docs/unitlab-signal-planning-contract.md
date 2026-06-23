@@ -126,21 +126,20 @@ The C layer should not need to understand product-level verdict semantics.
 
 ## Current implementation gap
 
-This repository currently provides the reusable C runtime and discovery/report primitives, but not the Python implementation of the planning contract.
+This repository now provides the reusable C runtime and a backend Python/FastAPI implementation of the normalization and subscription-planning contract, but not the evidence/verdict layer or the full end-to-end verification workflow.
 
-That means the next product-layer PRs should live in the FastAPI app repository and implement:
-- `verification target` normalization;
-- `subscription plan` building;
+That means the next product-layer PRs should continue with:
 - `evidence` creation;
-- `verdict state` computation.
+- `verdict state` computation;
+- first auto-observed verification flow;
+- multi-IED group handling.
 
 ## Recommended next slices in Python
 
-1. Signal-list row normalization into verification targets.
-2. Subscription planner from verification targets to per-IED groups.
-3. Evidence model and verdict states.
-4. First auto-observed test flow.
-5. Multi-IED group handling.
+1. Evidence model and verdict states.
+2. First auto-observed test flow.
+3. Multi-IED group handling.
+4. Recovery hardening for reconnect, stale signals, and report gaps.
 
 ## Validation expectations
 
