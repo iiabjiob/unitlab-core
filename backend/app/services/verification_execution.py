@@ -10,6 +10,7 @@ from app.schemas.verification_schema import (
     SignalVerificationEvidenceSetSchema,
     VerificationExecutionContextSchema,
     VerificationEvidenceDiagnosticSchema,
+    VerificationRecoveryStateSchema,
     VerificationRunSchema,
     VerificationSessionSnapshotSchema,
     VerificationStepSchema,
@@ -109,10 +110,14 @@ async def execute_simulated_verification_run(
     latency_ms: int = 250,
     client_id: str = "unitlab-backend-simulator",
     now: Callable[[], datetime] | None = None,
+    simulate_missing_signal_ids: Sequence[int] = (),
+    simulate_stale_signal_ids: Sequence[int] = (),
 ) -> VerificationExecutionResult:
     if triggered_at is None:
         triggered_at = datetime.now(UTC)
     runtime_now = now or (lambda: triggered_at + timedelta(milliseconds=max(0, latency_ms)))
+    missing_signal_ids = {int(signal_id) for signal_id in simulate_missing_signal_ids}
+    stale_signal_ids = {int(signal_id) for signal_id in simulate_stale_signal_ids}
     runtime_plan = build_runtime_subscription_plan(subscription_plan)
     runtime_result = run_simulator_report_subscription_plan(
         plan=runtime_plan,
@@ -142,6 +147,12 @@ async def execute_simulated_verification_run(
 
     for target_index, target in enumerate(verification_targets):
         observation_bundle = observations_by_signal_id.get(int(target.signal_id))
+        forced_evidence_status = None
+        if int(target.signal_id) in missing_signal_ids:
+            observation_bundle = None
+            forced_evidence_status = "timeout"
+        elif int(target.signal_id) in stale_signal_ids:
+            forced_evidence_status = "stale"
         evidence, step = _build_step_and_evidence(
             target_index=target_index,
             target=target,
@@ -149,6 +160,7 @@ async def execute_simulated_verification_run(
             triggered_at=triggered_at,
             runtime_result=runtime_result,
             test_run_id=test_run_id,
+            forced_evidence_status=forced_evidence_status,
         )
         evidence_rows.append(evidence)
         step_rows.append(step)
@@ -203,6 +215,15 @@ async def execute_simulated_verification_run(
         runtime_result=runtime_result,
         evidence_rows=evidence_rows,
     )
+    recovery_state = _build_recovery_state(
+        test_run_id=test_run_id,
+        verification_targets=verification_targets,
+        subscription_plan=subscription_plan,
+        execution_context=execution_context,
+        session_snapshots=session_snapshots,
+        evidence_rows=evidence_rows,
+        runtime_result=runtime_result,
+    )
     verdict_state = _resolve_verdict_state(step_verdicts)
     workflow_state = "completed" if verdict_state != "aborted" else "aborted"
 
@@ -213,6 +234,7 @@ async def execute_simulated_verification_run(
         session_snapshots=session_snapshots,
         evidence_set=evidence_set,
         execution_context=execution_context,
+        recovery_state=recovery_state,
         workflow_state=workflow_state,
         verdict_state=verdict_state,
         selected_group_id=execution_context.selected_group_id,
@@ -275,6 +297,7 @@ def _build_step_and_evidence(
     triggered_at: datetime,
     runtime_result,
     test_run_id: str,
+    forced_evidence_status: str | None = None,
 ) -> tuple[SignalVerificationEvidenceSchema, VerificationStepSchema]:
     report = observation_bundle[0] if observation_bundle is not None else None
     actual_report_path = observation_bundle[1] if observation_bundle is not None else None
@@ -292,6 +315,15 @@ def _build_step_and_evidence(
         window_ms=window_ms,
         timeout_ms=timeout_ms,
     )
+    if forced_evidence_status is not None:
+        evidence_status = forced_evidence_status
+        freshness = "stale" if forced_evidence_status == "stale" else freshness
+        if forced_evidence_status == "timeout":
+            reason_code = "no_confirmation"
+            evidence_kind = "timeout"
+        elif forced_evidence_status == "stale":
+            reason_code = "stale_generation"
+            evidence_kind = "report_observation"
     diagnostics = [
         VerificationEvidenceDiagnosticSchema(
             code=reason_code,
@@ -322,7 +354,7 @@ def _build_step_and_evidence(
         report_reason=report.event.reason.value if report is not None and report.event is not None else None,
         signal_value=signal_value,
         timestamp_summary={"observed_at": observed_at.isoformat()} if observed_at is not None else {},
-        stale_reason="runtime_stale" if evidence_status == "stale" else None,
+        stale_reason=reason_code if evidence_status == "stale" else None,
         evidence_kind=evidence_kind,
         diagnostics=diagnostics,
     )
@@ -394,6 +426,80 @@ def _resolve_evidence_state(
     return "observed", "live", "report_received", "report_observation"
 
 
+def _build_recovery_state(
+    *,
+    test_run_id: str,
+    verification_targets: Sequence[VerificationTargetSchema],
+    subscription_plan: VerificationSubscriptionPlanSchema,
+    execution_context: VerificationExecutionContextSchema,
+    session_snapshots: Sequence[VerificationSessionSnapshotSchema],
+    evidence_rows: Sequence[SignalVerificationEvidenceSchema],
+    runtime_result,
+) -> VerificationRecoveryStateSchema | None:
+    recovery_evidence_rows = [evidence for evidence in evidence_rows if _is_recovery_evidence_status(evidence.evidence_status)]
+    runtime_diagnostics = tuple(_runtime_diagnostic_to_evidence_diagnostic(diagnostic) for diagnostic in runtime_result.diagnostics)
+    snapshot_failed = any(snapshot.report_health != "healthy" for snapshot in session_snapshots)
+    diagnostics = [
+        *runtime_diagnostics,
+        *(diagnostic for evidence in recovery_evidence_rows for diagnostic in evidence.diagnostics),
+    ]
+    if recovery_evidence_rows:
+        runtime_state = "degraded"
+        recovery_reason = _resolve_recovery_reason(recovery_evidence_rows, runtime_diagnostics, snapshot_failed)
+        desired_state = "reconnecting"
+    elif snapshot_failed or any(diagnostic.severity == "error" for diagnostic in runtime_diagnostics):
+        runtime_state = "failed"
+        recovery_reason = "runtime_failure"
+        desired_state = "reconnecting"
+    else:
+        runtime_state = "reporting"
+        recovery_reason = None
+        desired_state = "reporting"
+
+    representative_snapshot = None
+    if session_snapshots:
+        representative_snapshot = next(
+            (
+                snapshot
+                for snapshot in session_snapshots
+                if snapshot.report_health != "healthy" or snapshot.stale_signal_count not in (None, 0)
+            ),
+            session_snapshots[0],
+        )
+
+    group_ids = _unique_non_empty_strings(
+        [
+            execution_context.selected_group_id,
+            *(group.group_id for group in subscription_plan.groups),
+        ]
+    )
+    report_controls = _unique_non_empty_strings(
+        [
+            group.report_control_reference or group.rpt_id or group.report_control_name or group.group_id
+            for group in subscription_plan.groups
+        ]
+    )
+
+    return VerificationRecoveryStateSchema(
+        session_id=representative_snapshot.session_id if representative_snapshot is not None else f"{test_run_id}:recovery",
+        endpoint_id=representative_snapshot.endpoint_id if representative_snapshot is not None else execution_context.selected_group_id or test_run_id,
+        runtime_state=runtime_state,
+        desired_state=desired_state,
+        active_generation=max((snapshot.connection_generation for snapshot in session_snapshots), default=1),
+        recovery_reason=recovery_reason,
+        desired_subscription_plan_id=subscription_plan.plan_id or test_run_id,
+        desired_group_ids=group_ids,
+        desired_report_controls=report_controls,
+        desired_target_ids=[int(target.signal_id) for target in verification_targets],
+        active_verification_run_id=test_run_id,
+        preserved_evidence_count=len(evidence_rows),
+        in_flight=runtime_state != "reporting",
+        preserved_verification_targets=list(verification_targets),
+        stale_signal_count=len(recovery_evidence_rows),
+        diagnostics=list(diagnostics),
+    )
+
+
 def _resolve_step_state(*, evidence_status: str) -> str:
     if evidence_status == "timeout":
         return "failed"
@@ -437,6 +543,43 @@ def _resolve_runtime_state(session_snapshots: Sequence[VerificationSessionSnapsh
     return sorted(states)[0]
 
 
+def _is_recovery_evidence_status(evidence_status: str) -> bool:
+    return evidence_status in {"timeout", "stale", "invalid"}
+
+
+def _resolve_recovery_reason(
+    recovery_evidence_rows: Sequence[SignalVerificationEvidenceSchema],
+    runtime_diagnostics: Sequence[VerificationEvidenceDiagnosticSchema],
+    snapshot_failed: bool,
+) -> str | None:
+    evidence_statuses = {evidence.evidence_status for evidence in recovery_evidence_rows}
+    if "timeout" in evidence_statuses:
+        return "timeout"
+    if "stale" in evidence_statuses:
+        return "stale_generation"
+    if "invalid" in evidence_statuses:
+        return "runtime_failure"
+    if snapshot_failed:
+        return "report_health_degraded"
+    if any(diagnostic.severity == "error" for diagnostic in runtime_diagnostics):
+        return "runtime_failure"
+    return None
+
+
+def _unique_non_empty_strings(values: Sequence[str | None]) -> list[str]:
+    unique_values: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        if value is None:
+            continue
+        text = str(value).strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        unique_values.append(text)
+    return unique_values
+
+
 def _build_session_snapshots(
     *,
     test_run_id: str,
@@ -456,6 +599,7 @@ def _build_session_snapshots(
             last_report_at = _parse_timestamp(report.event.received_at)
         if last_report_at is None and report_evidence:
             last_report_at = max((item.observed_at for item in report_evidence if item.observed_at is not None), default=None)
+        stale_signal_count = sum(1 for item in report_evidence if _is_recovery_evidence_status(item.evidence_status))
         snapshots.append(
             VerificationSessionSnapshotSchema(
                 session_id=f"{test_run_id}:{endpoint_id}",
@@ -470,7 +614,7 @@ def _build_session_snapshots(
                 selected_report_control=report.report_control_name,
                 selected_data_set=report.data_set_ref,
                 current_rptena_owner=None,
-                stale_signal_count=0,
+                stale_signal_count=stale_signal_count,
                 diagnostic_code=report.error_code,
             )
         )

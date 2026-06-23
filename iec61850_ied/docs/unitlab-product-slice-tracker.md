@@ -127,7 +127,7 @@ Done when:
 
 ### PR6 - Recovery hardening
 
-Status: not started.
+Status: completed.
 
 Input:
 - reconnect events;
@@ -138,13 +138,15 @@ Input:
 Output:
 - stable recovery behavior;
 - preserved evidence;
-- rejected late/old frames.
+- rejected late/old frames;
+- simulator-backed recovery state exposed on verification runs.
 
 Done when:
 - reconnect does not corrupt current evidence;
 - stale and gap conditions remain visible.
 - old-generation frames are rejected and diagnosable.
 - one IED reconnect does not invalidate other IED sessions in the same selected group.
+- verification runs carry a recovery summary that preserves desired work and evidence context.
 
 ## Mandatory vs optional
 

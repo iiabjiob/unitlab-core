@@ -163,6 +163,9 @@ async def test_execute_simulated_verification_run_records_observed_evidence_and_
 
     assert result.verification_run.workflow_state == "completed"
     assert result.verification_run.verdict_state == "pass"
+    assert result.verification_run.recovery_state is not None
+    assert result.verification_run.recovery_state.runtime_state == "reporting"
+    assert result.verification_run.recovery_state.recovery_reason is None
     assert result.evidence_set.summary.evidence_count == 1
     assert result.evidence_set.summary.observed_count == 1
     assert result.verification_run.verification_steps[0].evidence_status == "observed"
@@ -199,6 +202,9 @@ async def test_execute_simulated_verification_run_marks_late_observation_as_fail
 
     assert result.verification_run.workflow_state == "completed"
     assert result.verification_run.verdict_state == "fail"
+    assert result.verification_run.recovery_state is not None
+    assert result.verification_run.recovery_state.runtime_state == "reporting"
+    assert result.verification_run.recovery_state.recovery_reason is None
     assert result.evidence_set.summary.late_count == 1
     assert result.verification_run.verification_steps[0].evidence_status == "late"
     assert result.verification_run.verification_steps[0].verdict_state == "fail"
@@ -245,3 +251,82 @@ async def test_execute_simulated_verification_run_splits_multi_ied_sessions_and_
         "IED-A/LLN0.brA",
         "IED-B/LLN0.brB",
     }
+    assert result.verification_run.recovery_state is not None
+    assert result.verification_run.recovery_state.runtime_state == "reporting"
+    assert result.verification_run.recovery_state.recovery_reason is None
+
+
+@pytest.mark.anyio
+async def test_execute_simulated_verification_run_marks_missing_observation_as_timeout_and_degraded() -> None:
+    plan = _build_plan()
+    repo = _FakeVerificationEvidenceRepository()
+    triggered_at = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
+
+    result = await execute_simulated_verification_run(
+        workspace_id=7,
+        test_run_id="run-4",
+        verification_targets=plan.targets,
+        subscription_plan=plan,
+        execution_context=VerificationExecutionContextSchema(
+            project_id=1,
+            signal_list_revision_id=2,
+            planner_version="test",
+            runtime_version="simulator",
+            policy_version="v1",
+        ),
+        repository=repo,  # type: ignore[arg-type]
+        triggered_at=triggered_at,
+        latency_ms=250,
+        now=lambda: triggered_at + timedelta(milliseconds=250),
+        simulate_missing_signal_ids=(101,),
+    )
+
+    assert result.verification_run.verdict_state == "fail"
+    assert result.verification_run.recovery_state is not None
+    assert result.verification_run.recovery_state.runtime_state == "degraded"
+    assert result.verification_run.recovery_state.desired_state == "reconnecting"
+    assert result.verification_run.recovery_state.recovery_reason == "timeout"
+    assert result.verification_run.recovery_state.stale_signal_count == 1
+    assert result.verification_run.recovery_state.preserved_evidence_count == 1
+    assert result.verification_run.recovery_state.desired_target_ids == [101]
+    assert result.verification_run.verification_steps[0].evidence_status == "timeout"
+    assert result.verification_run.verification_steps[0].verdict_state == "fail"
+    assert result.evidence_set.summary.timeout_count == 1
+    assert repo.rows[0]["evidence_status"] == "timeout"
+
+
+@pytest.mark.anyio
+async def test_execute_simulated_verification_run_marks_stale_generation_as_degraded() -> None:
+    plan = _build_plan()
+    repo = _FakeVerificationEvidenceRepository()
+    triggered_at = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
+
+    result = await execute_simulated_verification_run(
+        workspace_id=7,
+        test_run_id="run-5",
+        verification_targets=plan.targets,
+        subscription_plan=plan,
+        execution_context=VerificationExecutionContextSchema(
+            project_id=1,
+            signal_list_revision_id=2,
+            planner_version="test",
+            runtime_version="simulator",
+            policy_version="v1",
+        ),
+        repository=repo,  # type: ignore[arg-type]
+        triggered_at=triggered_at,
+        latency_ms=250,
+        now=lambda: triggered_at + timedelta(milliseconds=250),
+        simulate_stale_signal_ids=(101,),
+    )
+
+    assert result.verification_run.verdict_state == "fail"
+    assert result.verification_run.recovery_state is not None
+    assert result.verification_run.recovery_state.runtime_state == "degraded"
+    assert result.verification_run.recovery_state.desired_state == "reconnecting"
+    assert result.verification_run.recovery_state.recovery_reason == "stale_generation"
+    assert result.verification_run.recovery_state.stale_signal_count == 1
+    assert result.verification_run.verification_steps[0].evidence_status == "stale"
+    assert result.verification_run.verification_steps[0].verdict_state == "fail"
+    assert result.evidence_set.summary.stale_count == 1
+    assert repo.rows[0]["evidence_status"] == "stale"

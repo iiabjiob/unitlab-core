@@ -154,6 +154,34 @@ class VerificationSessionSnapshotSchema(BaseModel):
     diagnostic_code: str | None = None
 
 
+class VerificationRecoveryStateSchema(BaseModel):
+    session_id: str
+    endpoint_id: str
+    runtime_state: Literal["reporting", "reconnecting", "degraded", "closed", "failed", "discovering", "subscribing"]
+    desired_state: Literal["reporting", "reconnecting", "discovering", "subscribing"]
+    active_generation: int
+    recovery_reason: Literal[
+        "disconnect",
+        "association_lost",
+        "report_health_degraded",
+        "stale_generation",
+        "subscription_lost",
+        "timeout",
+        "user_reconnect",
+        "runtime_failure",
+    ] | None = None
+    desired_subscription_plan_id: str
+    desired_group_ids: list[str] = Field(default_factory=list)
+    desired_report_controls: list[str] = Field(default_factory=list)
+    desired_target_ids: list[int] = Field(default_factory=list)
+    active_verification_run_id: str
+    preserved_evidence_count: int = 0
+    in_flight: bool | None = None
+    preserved_verification_targets: list[VerificationTargetSchema] = Field(default_factory=list)
+    stale_signal_count: int | None = None
+    diagnostics: list[VerificationEvidenceDiagnosticSchema] = Field(default_factory=list)
+
+
 class VerificationStepSchema(BaseModel):
     step_id: str
     signal_id: int
@@ -184,6 +212,7 @@ class VerificationRunSchema(BaseModel):
     session_snapshots: list[VerificationSessionSnapshotSchema] = Field(default_factory=list)
     evidence_set: SignalVerificationEvidenceSetSchema
     execution_context: VerificationExecutionContextSchema
+    recovery_state: VerificationRecoveryStateSchema | None = None
     workflow_state: Literal["draft", "planned", "preparing", "armed", "running", "awaiting_confirmation", "completing", "completed", "aborted", "failed"]
     verdict_state: Literal["pending", "pass", "fail", "inconclusive", "aborted"]
     selected_group_id: str | None = None

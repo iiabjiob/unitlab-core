@@ -215,7 +215,7 @@ Done when:
 
 ### PR6 - Hardening
 
-Status: not started.
+Status: completed.
 
 Goal:
 - Harden the end-to-end verification path.
@@ -246,7 +246,7 @@ Done when:
 - [x] PR3 - Verification evidence model
 - [x] PR4 - First auto test flow
 - [x] PR5 - Multi-IED selected group flow
-- [ ] PR6 - Hardening
+- [x] PR6 - Hardening
 
 ## What should be treated as mandatory
 

@@ -119,6 +119,7 @@ Implemented in the backend layer here:
 - verification evidence model.
 - first auto verification flow via simulator-backed runtime path.
 - multi-IED selected-group execution via simulator-backed runtime path.
+- recovery hardening for timeout and stale-generation evidence in the simulator-backed verification path.
 
 This is a deliberate boundary, not a gap in the C runtime.
 
