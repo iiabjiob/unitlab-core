@@ -10,6 +10,7 @@ from app.api.v1.sequences.router import router as sequences_router
 from app.api.v1.workspaces.router import router as workspaces_router
 from app.api.v1.signals.router import router as signals_router
 from app.api.v1.signal_sheet.router import router as signal_sheet_router
+from app.api.v1.verification.router import router as verification_router
 from app.api.v1.core_network.router import router as core_network_router
 from app.api.v1.core_ntp.router import router as core_ntp_router
 from app.api.v1.core_diag.router import router as core_diag_router
@@ -121,6 +122,7 @@ app.include_router(switchgears_router)
 app.include_router(sequences_router)
 app.include_router(signals_router)
 app.include_router(signal_sheet_router)
+app.include_router(verification_router)
 app.include_router(core_network_router)
 app.include_router(core_ntp_router)
 app.include_router(core_diag_router)

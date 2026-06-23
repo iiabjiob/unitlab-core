@@ -256,3 +256,16 @@ class VerificationRunSchema(BaseModel):
     reason: str | None = None
     diagnostics: list[VerificationEvidenceDiagnosticSchema] = Field(default_factory=list)
     verification_steps: list[VerificationStepSchema] = Field(default_factory=list)
+
+
+class VerificationRuntimeOrchestrationStartSchema(BaseModel):
+    test_run_id: str
+    verification_targets: list[VerificationTargetSchema] = Field(default_factory=list)
+    subscription_plan: VerificationSubscriptionPlanSchema
+    execution_context: VerificationExecutionContextSchema
+    client_id: str = "unitlab-backend-simulator"
+
+
+class VerificationRuntimeOrchestrationResponseSchema(BaseModel):
+    orchestration_id: str
+    verification_run: VerificationRunSchema

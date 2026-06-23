@@ -21,7 +21,7 @@ This is the first point where UnitLab behaves like a product instead of a set of
 - [x] Phase A - VerificationTarget normalization
 - [x] Phase B - SubscriptionPlan generation
 - [x] Phase B.5 - Planner Validation
-- [ ] Phase C - Runtime session orchestration
+- [x] Phase C - Runtime session orchestration
 - [ ] Phase D - Evidence capture
 - [ ] Phase E - First single-signal auto verification
 - [ ] Phase F - Multi-signal same IED verification
@@ -185,7 +185,7 @@ Demo scenario
 - User starts a run and sees the session reach reporting with active subscriptions.
 
 Evidence
-- Session snapshots, runtime events, and integration traces.
+- Session snapshots, runtime events, integration traces, and orchestration API snapshots.
 
 Rollback risk
 - Product workflow logic leaks into the runtime layer and makes reconnect brittle.
