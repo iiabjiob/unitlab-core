@@ -133,7 +133,7 @@ Done when:
 
 ### PR3 - Verification evidence model
 
-Status: not started.
+Status: completed.
 
 Goal:
 - Introduce a durable evidence object for signal verification.
@@ -243,7 +243,7 @@ Done when:
 
 - [x] PR1 - Signal list to requested verification targets
 - [x] PR2 - Subscription planner
-- [ ] PR3 - Verification evidence model
+- [x] PR3 - Verification evidence model
 - [ ] PR4 - First auto test flow
 - [ ] PR5 - Multi-IED selected group flow
 - [ ] PR6 - Hardening

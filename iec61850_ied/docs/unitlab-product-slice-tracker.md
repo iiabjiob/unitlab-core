@@ -68,7 +68,7 @@ Done when:
 
 ### PR3 - Verification evidence model
 
-Status: not started.
+Status: completed.
 
 Input:
 - runtime report updates;

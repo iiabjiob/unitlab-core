@@ -1,0 +1,267 @@
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from types import SimpleNamespace
+
+import pytest
+
+from app.schemas.verification_schema import (
+    SignalVerificationEvidenceSchema,
+    VerificationEvidenceDiagnosticSchema,
+)
+from app.services.verification_evidence import (
+    VerificationEvidenceRepository,
+    build_signal_verification_evidence_set,
+    build_signal_verification_evidence_summary,
+)
+
+
+def test_build_signal_verification_evidence_summary_counts_statuses() -> None:
+    evidence = [
+        SignalVerificationEvidenceSchema(
+            evidence_id="ev-1",
+            signal_id=10,
+            signal_path="signal-a",
+            expected_path="expected-a",
+            actual_report_path="expected-a",
+            source_ied="IED-A",
+            endpoint_id="endpoint-a",
+            rpt_id="rpt-a",
+            dataset="dataset-a",
+            received_at=datetime(2026, 6, 23, 12, 0, tzinfo=UTC),
+            latency_ms=12,
+            quality="good",
+            freshness="live",
+            evidence_status="observed",
+            reason_code="report_received",
+            source_generation=7,
+        ),
+        SignalVerificationEvidenceSchema(
+            evidence_id="ev-2",
+            signal_id=10,
+            signal_path="signal-a",
+            expected_path="expected-a",
+            actual_report_path="expected-a",
+            source_ied="IED-A",
+            endpoint_id="endpoint-a",
+            rpt_id="rpt-a",
+            dataset="dataset-a",
+            received_at=datetime(2026, 6, 23, 12, 0, tzinfo=UTC),
+            latency_ms=155,
+            quality="good",
+            freshness="stale",
+            evidence_status="late",
+            reason_code="window_exceeded",
+            source_generation=7,
+        ),
+        SignalVerificationEvidenceSchema(
+            evidence_id="ev-3",
+            signal_id=10,
+            signal_path="signal-a",
+            expected_path="expected-a",
+            actual_report_path="expected-a",
+            source_ied="IED-A",
+            endpoint_id="endpoint-a",
+            rpt_id="rpt-a",
+            dataset="dataset-a",
+            received_at=datetime(2026, 6, 23, 12, 0, tzinfo=UTC),
+            latency_ms=999,
+            quality="bad",
+            freshness="unknown",
+            evidence_status="timeout",
+            reason_code="no_confirmation",
+            source_generation=7,
+        ),
+    ]
+
+    summary = build_signal_verification_evidence_summary(evidence)
+
+    assert summary.evidence_count == 3
+    assert summary.observed_count == 1
+    assert summary.stale_count == 0
+    assert summary.timeout_count == 1
+    assert summary.invalid_count == 0
+    assert summary.late_count == 1
+    assert summary.out_of_window_count == 0
+    assert summary.source_generation == 7
+
+
+def test_build_signal_verification_evidence_set_preserves_diagnostics() -> None:
+    evidence = [
+        SignalVerificationEvidenceSchema(
+            evidence_id="ev-10",
+            signal_id=11,
+            signal_path="signal-b",
+            expected_path="expected-b",
+            actual_report_path="expected-b",
+            source_ied="IED-B",
+            endpoint_id="endpoint-b",
+            rpt_id="rpt-b",
+            dataset="dataset-b",
+            received_at=datetime(2026, 6, 23, 12, 0, tzinfo=UTC),
+            latency_ms=31,
+            quality="good",
+            freshness="live",
+            evidence_status="observed",
+            reason_code="report_received",
+        )
+    ]
+
+    evidence_set = build_signal_verification_evidence_set(
+        test_run_id="run-17",
+        evidence=evidence,
+        diagnostics=[VerificationEvidenceDiagnosticSchema(code="REPORT_RECEIVED", message="Report received.")],
+    )
+
+    assert evidence_set.test_run_id == "run-17"
+    assert evidence_set.summary.evidence_count == 1
+    assert evidence_set.diagnostics[0].code == "REPORT_RECEIVED"
+
+
+class _FakeExecuteResult:
+    def __init__(self, value=None) -> None:
+        self.value = value
+
+    def scalar_one_or_none(self):
+        return self.value
+
+
+class _FakeListExecuteResult:
+    def __init__(self, values) -> None:
+        self.values = list(values)
+
+    def scalars(self):
+        return self
+
+    def all(self):
+        return list(self.values)
+
+
+class _FakeAsyncSession:
+    def __init__(self, existing=None) -> None:
+        self.existing = existing
+        self.added = []
+        self.flushed = 0
+        self.execute_count = 0
+
+    async def execute(self, _stmt):
+        self.execute_count += 1
+        return _FakeExecuteResult(self.existing)
+
+    def add(self, row):
+        self.added.append(row)
+
+    async def flush(self):
+        self.flushed += 1
+
+
+@pytest.mark.anyio
+async def test_verification_evidence_repository_records_append_only_rows() -> None:
+    session = _FakeAsyncSession()
+    repository = VerificationEvidenceRepository(session)  # type: ignore[arg-type]
+
+    first = await repository.record_signal_verification_evidence(
+        workspace_id=9,
+        test_run_id="run-7",
+        evidence_id="ev-1",
+        signal_id=100,
+        signal_path="signal-x",
+        expected_path="expected-x",
+        actual_report_path="actual-x",
+        source_ied="IED-X",
+        endpoint_id="endpoint-x",
+        rpt_id="rpt-x",
+        dataset="dataset-x",
+        received_at=datetime(2026, 6, 23, 12, 0, tzinfo=UTC),
+        latency_ms=44,
+        quality="good",
+        freshness="live",
+        evidence_status="observed",
+        reason_code="report_received",
+        diagnostics=[VerificationEvidenceDiagnosticSchema(code="REPORT_RECEIVED", message="Report received.")],
+    )
+    second = await repository.record_signal_verification_evidence(
+        workspace_id=9,
+        test_run_id="run-7",
+        evidence_id="ev-2",
+        signal_id=100,
+        signal_path="signal-x",
+        expected_path="expected-x",
+        actual_report_path="actual-x",
+        source_ied="IED-X",
+        endpoint_id="endpoint-x",
+        rpt_id="rpt-x",
+        dataset="dataset-x",
+        received_at=datetime(2026, 6, 23, 12, 0, tzinfo=UTC),
+        latency_ms=211,
+        quality="good",
+        freshness="stale",
+        evidence_status="late",
+        reason_code="window_exceeded",
+    )
+
+    assert len(session.added) == 2
+    assert first.evidence_id == "ev-1"
+    assert first.diagnostics[0]["code"] == "REPORT_RECEIVED"
+    assert second.evidence_id == "ev-2"
+    assert second.evidence_status == "late"
+    assert session.flushed == 2
+
+
+@pytest.mark.anyio
+async def test_verification_evidence_repository_updates_run_summary_without_touching_rows() -> None:
+    existing = SimpleNamespace(summary={"evidence_count": 1}, diagnostics=[{"code": "OLD", "message": "old"}])
+    session = _FakeAsyncSession(existing=existing)
+    repository = VerificationEvidenceRepository(session)  # type: ignore[arg-type]
+
+    evidence = [
+        SignalVerificationEvidenceSchema(
+            evidence_id="ev-11",
+            signal_id=11,
+            signal_path="signal-y",
+            expected_path="expected-y",
+            actual_report_path="actual-y",
+            source_ied="IED-Y",
+            endpoint_id="endpoint-y",
+            rpt_id="rpt-y",
+            dataset="dataset-y",
+            received_at=datetime(2026, 6, 23, 12, 0, tzinfo=UTC),
+            latency_ms=33,
+            quality="good",
+            freshness="live",
+            evidence_status="observed",
+            reason_code="report_received",
+        )
+    ]
+
+    evidence_set = await repository.upsert_signal_verification_evidence_set(
+        workspace_id=9,
+        test_run_id="run-8",
+        evidence=evidence,
+        diagnostics=[VerificationEvidenceDiagnosticSchema(code="RUN_UPDATED", message="Updated summary.")],
+    )
+
+    assert evidence_set is existing
+    assert evidence_set.summary["evidence_count"] == 1
+    assert evidence_set.diagnostics[0]["code"] == "RUN_UPDATED"
+    assert session.added == []
+    assert session.flushed == 1
+
+
+@pytest.mark.anyio
+async def test_verification_evidence_repository_lists_rows_for_inspection() -> None:
+    rows = [
+        SimpleNamespace(evidence_id="ev-2", created_at=datetime(2026, 6, 23, 12, 0, tzinfo=UTC)),
+        SimpleNamespace(evidence_id="ev-3", created_at=datetime(2026, 6, 23, 12, 1, tzinfo=UTC)),
+    ]
+
+    class _ListingSession(_FakeAsyncSession):
+        async def execute(self, _stmt):
+            self.execute_count += 1
+            return _FakeListExecuteResult(rows)
+
+    repository = VerificationEvidenceRepository(_ListingSession())  # type: ignore[arg-type]
+
+    result = await repository.list_signal_verification_evidence(workspace_id=9, test_run_id="run-9")
+
+    assert [row.evidence_id for row in result] == ["ev-2", "ev-3"]

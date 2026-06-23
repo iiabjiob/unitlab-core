@@ -111,10 +111,12 @@ Partially implemented in the backend layer in this repository:
 - grouped subscription-plan preview with uncovered-target diagnostics.
 
 Still pending:
-- verification evidence model;
 - verdict engine;
 - API/event orchestration for the full verification flow;
 - UI integration.
+
+Implemented in the backend layer here:
+- verification evidence model.
 
 This is a deliberate boundary, not a gap in the C runtime.
 

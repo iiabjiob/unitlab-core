@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -67,3 +68,56 @@ class VerificationSubscriptionPlanSchema(BaseModel):
     uncovered_targets: list[VerificationSubscriptionPlanUncoveredTargetSchema] = Field(default_factory=list)
     planning_diagnostics: list[str] = Field(default_factory=list)
     coverage: VerificationSubscriptionPlanCoverageSchema
+
+
+class VerificationEvidenceDiagnosticSchema(BaseModel):
+    code: str
+    message: str
+    severity: str | None = None
+    details: dict[str, Any] | None = None
+
+
+class SignalVerificationEvidenceSchema(BaseModel):
+    evidence_id: str
+    signal_id: int
+    signal_path: str
+    expected_path: str
+    actual_report_path: str
+    source_ied: str
+    endpoint_id: str
+    rpt_id: str
+    dataset: str
+    received_at: datetime
+    latency_ms: int
+    quality: str
+    freshness: Literal["live", "stale", "unknown"]
+    evidence_status: Literal["observed", "stale", "timeout", "invalid", "late", "out_of_window"]
+    reason_code: str
+    source_generation: int | None = None
+    source_report_sequence_generation: int | None = None
+    source_report_sequence_number: int | None = None
+    source_report_sub_sequence_number: int | None = None
+    report_reason: str | None = None
+    signal_value: Any | None = None
+    timestamp_summary: dict[str, Any] | None = None
+    stale_reason: str | None = None
+    evidence_kind: str | None = None
+    diagnostics: list[VerificationEvidenceDiagnosticSchema] = Field(default_factory=list)
+
+
+class SignalVerificationEvidenceSetSummarySchema(BaseModel):
+    evidence_count: int = 0
+    observed_count: int = 0
+    stale_count: int = 0
+    timeout_count: int = 0
+    invalid_count: int = 0
+    late_count: int = 0
+    out_of_window_count: int = 0
+    source_generation: int | None = None
+
+
+class SignalVerificationEvidenceSetSchema(BaseModel):
+    test_run_id: str
+    evidence: list[SignalVerificationEvidenceSchema] = Field(default_factory=list)
+    summary: SignalVerificationEvidenceSetSummarySchema
+    diagnostics: list[VerificationEvidenceDiagnosticSchema] = Field(default_factory=list)

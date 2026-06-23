@@ -5,6 +5,7 @@ from .sequence import Sequence, SequenceStep  # noqa: F401
 from .sequence_run import SequenceRun, SequenceRunStep  # noqa: F401
 from .signal import Signal  # noqa: F401
 from .signal_sheet import SignalAllocation, SignalAllocationEvent, SignalSheet, SignalSheetPreset, SignalTestRunStepEvidence  # noqa: F401
+from .verification_evidence import SignalVerificationEvidence, SignalVerificationEvidenceSet  # noqa: F401
 from .processed_job import ProcessedJob  # noqa: F401
 from .workspace import Workspace, WorkspaceSequence, WorkspaceSwitchgear  # noqa: F401
 from .workspace_iec61850 import (
@@ -28,6 +29,8 @@ __all__ = [
     "SignalAllocation",
     "SignalAllocationEvent",
     "SignalTestRunStepEvidence",
+    "SignalVerificationEvidence",
+    "SignalVerificationEvidenceSet",
     "ProcessedJob",
     "Workspace",
     "WorkspaceSwitchgear",
