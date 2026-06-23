@@ -146,7 +146,7 @@ Must do:
 - store `source_ied`;
 - store `rpt_id`;
 - store `dataset`;
-- store `received_at`;
+- store `observed_at`;
 - store `latency_ms`;
 - store `quality`;
 - store `freshness`;

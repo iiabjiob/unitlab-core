@@ -93,7 +93,7 @@ Example:
 
 ```json
 {
-  "signal_id": "row-1842",
+  "signal_id": 1842,
   "signal_reference": "PROT/CT50PTOC1.Op[ST]",
   "signal_path": "KINTE13LVC01PROT/CT50PTOC1.Op",
   "endpoint_id": "mms:KINTE13LVC01@172.16.40.128:12447",
@@ -239,11 +239,13 @@ Required fields:
 - `endpoint_id`
 - `rpt_id`
 - `dataset`
-- `received_at`
+- `observed_at`
 - `latency_ms`
 - `quality`
 - `evidence_status`
 - `reason_code`
+
+Report-derived fields may be null when the evidence represents timeout, invalid, or stale conditions.
 
 Optional fields:
 - `source_generation`
@@ -258,7 +260,8 @@ Optional fields:
 - `diagnostics`
 
 `signal_path` is the canonical stable path used by the product layer.
-`actual_report_path` should remain the raw observed report path.
+Fields derived from the observed report may be null for timeout, invalid, or stale evidence.
+`actual_report_path` should remain the raw observed report path when one exists.
 `evidence_status` describes what was observed.
 `verdict_state` is intentionally not stored on the evidence record because it is derived from evidence and policy.
 
@@ -287,7 +290,7 @@ Example:
 ```json
 {
   "evidence_id": "ev-901",
-  "signal_id": "row-1842",
+  "signal_id": 1842,
   "signal_path": "KINTE13LVC01PROT/CT50PTOC1.Op",
   "expected_path": "KINTE13LVC01PROT/CT50PTOC1$ST$Op$general",
   "actual_report_path": "KINTE13LVC01PROT/CT50PTOC1$ST$Op$general",
@@ -295,7 +298,7 @@ Example:
   "endpoint_id": "mms:KINTE13LVC01@172.16.40.128:12447",
   "rpt_id": "KINTE13LVC01CTRL/LLN0.brcbA",
   "dataset": "KINTE13LVC01CTRL/LLN0.RCB1",
-  "received_at": "2026-06-22T12:00:00Z",
+  "observed_at": "2026-06-22T12:00:00Z",
   "latency_ms": 42,
   "quality": "good",
   "evidence_status": "observed",

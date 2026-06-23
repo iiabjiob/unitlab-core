@@ -3,7 +3,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, JSON, String, UniqueConstraint, func
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, JSON, String, UniqueConstraint, func, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.infrastructure.db.database import Base
@@ -34,27 +35,34 @@ class SignalVerificationEvidence(Base):
     signal_id: Mapped[int] = mapped_column(BIGINT_PK, nullable=False)
     signal_path: Mapped[str] = mapped_column(String(255), nullable=False)
     expected_path: Mapped[str] = mapped_column(String(255), nullable=False)
-    actual_report_path: Mapped[str] = mapped_column(String(255), nullable=False)
-    source_ied: Mapped[str] = mapped_column(String(128), nullable=False)
-    endpoint_id: Mapped[str] = mapped_column(String(128), nullable=False)
-    rpt_id: Mapped[str] = mapped_column(String(255), nullable=False)
-    dataset: Mapped[str] = mapped_column(String(255), nullable=False)
-    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False)
-    quality: Mapped[str] = mapped_column(String(32), nullable=False)
-    freshness: Mapped[str] = mapped_column(String(16), nullable=False)
+    actual_report_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    source_ied: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    endpoint_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    rpt_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    dataset: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    observed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    quality: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    freshness: Mapped[str | None] = mapped_column(String(16), nullable=True)
     evidence_status: Mapped[str] = mapped_column(String(32), nullable=False)
     reason_code: Mapped[str] = mapped_column(String(64), nullable=False)
-    source_generation: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    source_report_sequence_generation: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    source_report_sequence_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    source_report_sub_sequence_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source_generation: Mapped[int | None] = mapped_column(BIGINT_PK, nullable=True)
+    source_report_sequence_generation: Mapped[int | None] = mapped_column(BIGINT_PK, nullable=True)
+    source_report_sequence_number: Mapped[int | None] = mapped_column(BIGINT_PK, nullable=True)
+    source_report_sub_sequence_number: Mapped[int | None] = mapped_column(BIGINT_PK, nullable=True)
     report_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    signal_value: Mapped[Any | None] = mapped_column(JSON, nullable=True)
-    timestamp_summary: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    signal_value: Mapped[Any | None] = mapped_column(JSONB().with_variant(JSON(), "sqlite"), nullable=True)
+    timestamp_summary: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"),
+        nullable=True,
+    )
     stale_reason: Mapped[str | None] = mapped_column(String(128), nullable=True)
     evidence_kind: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    diagnostics: Mapped[list] = mapped_column(JSON, nullable=False, server_default="[]")
+    diagnostics: Mapped[list] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"),
+        nullable=False,
+        server_default=text("'[]'::jsonb"),
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -78,8 +86,16 @@ class SignalVerificationEvidenceSet(Base):
         nullable=False,
     )
     test_run_id: Mapped[str] = mapped_column(String(64), nullable=False)
-    summary: Mapped[dict] = mapped_column(JSON, nullable=False, server_default="{}")
-    diagnostics: Mapped[list] = mapped_column(JSON, nullable=False, server_default="[]")
+    summary: Mapped[dict] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"),
+        nullable=False,
+        server_default=text("'{}'::jsonb"),
+    )
+    diagnostics: Mapped[list] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"),
+        nullable=False,
+        server_default=text("'[]'::jsonb"),
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

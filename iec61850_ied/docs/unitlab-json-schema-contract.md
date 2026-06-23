@@ -141,11 +141,13 @@ Required:
 - `endpoint_id`
 - `rpt_id`
 - `dataset`
-- `received_at`
+- `observed_at`
 - `latency_ms`
 - `quality`
 - `evidence_status`
 - `reason_code`
+
+Report-derived fields may be null for timeout, invalid, or stale evidence.
 
 Optional:
 - `source_generation`
@@ -157,6 +159,10 @@ Optional:
 - `timestamp_summary`
 - `stale_reason`
 - `diagnostic_id`
+
+Notes:
+- report-derived fields may be null for timeout, invalid, or stale evidence;
+- `signal_id` is the durable numeric signal identifier, not a UI row key.
 
 ### 6. `diagnostic`
 

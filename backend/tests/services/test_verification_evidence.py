@@ -28,7 +28,7 @@ def test_build_signal_verification_evidence_summary_counts_statuses() -> None:
             endpoint_id="endpoint-a",
             rpt_id="rpt-a",
             dataset="dataset-a",
-            received_at=datetime(2026, 6, 23, 12, 0, tzinfo=UTC),
+            observed_at=datetime(2026, 6, 23, 12, 0, tzinfo=UTC),
             latency_ms=12,
             quality="good",
             freshness="live",
@@ -46,7 +46,7 @@ def test_build_signal_verification_evidence_summary_counts_statuses() -> None:
             endpoint_id="endpoint-a",
             rpt_id="rpt-a",
             dataset="dataset-a",
-            received_at=datetime(2026, 6, 23, 12, 0, tzinfo=UTC),
+            observed_at=datetime(2026, 6, 23, 12, 0, tzinfo=UTC),
             latency_ms=155,
             quality="good",
             freshness="stale",
@@ -64,7 +64,7 @@ def test_build_signal_verification_evidence_summary_counts_statuses() -> None:
             endpoint_id="endpoint-a",
             rpt_id="rpt-a",
             dataset="dataset-a",
-            received_at=datetime(2026, 6, 23, 12, 0, tzinfo=UTC),
+            observed_at=datetime(2026, 6, 23, 12, 0, tzinfo=UTC),
             latency_ms=999,
             quality="bad",
             freshness="unknown",
@@ -98,7 +98,7 @@ def test_build_signal_verification_evidence_set_preserves_diagnostics() -> None:
             endpoint_id="endpoint-b",
             rpt_id="rpt-b",
             dataset="dataset-b",
-            received_at=datetime(2026, 6, 23, 12, 0, tzinfo=UTC),
+            observed_at=datetime(2026, 6, 23, 12, 0, tzinfo=UTC),
             latency_ms=31,
             quality="good",
             freshness="live",
@@ -172,7 +172,7 @@ async def test_verification_evidence_repository_records_append_only_rows() -> No
         endpoint_id="endpoint-x",
         rpt_id="rpt-x",
         dataset="dataset-x",
-        received_at=datetime(2026, 6, 23, 12, 0, tzinfo=UTC),
+        observed_at=datetime(2026, 6, 23, 12, 0, tzinfo=UTC),
         latency_ms=44,
         quality="good",
         freshness="live",
@@ -192,7 +192,7 @@ async def test_verification_evidence_repository_records_append_only_rows() -> No
         endpoint_id="endpoint-x",
         rpt_id="rpt-x",
         dataset="dataset-x",
-        received_at=datetime(2026, 6, 23, 12, 0, tzinfo=UTC),
+        observed_at=datetime(2026, 6, 23, 12, 0, tzinfo=UTC),
         latency_ms=211,
         quality="good",
         freshness="stale",
@@ -225,7 +225,7 @@ async def test_verification_evidence_repository_updates_run_summary_without_touc
             endpoint_id="endpoint-y",
             rpt_id="rpt-y",
             dataset="dataset-y",
-            received_at=datetime(2026, 6, 23, 12, 0, tzinfo=UTC),
+            observed_at=datetime(2026, 6, 23, 12, 0, tzinfo=UTC),
             latency_ms=33,
             quality="good",
             freshness="live",
@@ -265,3 +265,37 @@ async def test_verification_evidence_repository_lists_rows_for_inspection() -> N
     result = await repository.list_signal_verification_evidence(workspace_id=9, test_run_id="run-9")
 
     assert [row.evidence_id for row in result] == ["ev-2", "ev-3"]
+
+
+@pytest.mark.anyio
+async def test_verification_evidence_repository_allows_timeout_rows_with_nullable_fields() -> None:
+    session = _FakeAsyncSession()
+    repository = VerificationEvidenceRepository(session)  # type: ignore[arg-type]
+
+    evidence = await repository.record_signal_verification_evidence(
+        workspace_id=9,
+        test_run_id="run-10",
+        evidence_id="ev-timeout",
+        signal_id=101,
+        signal_path="signal-timeout",
+        expected_path="expected-timeout",
+        observed_at=None,
+        actual_report_path=None,
+        source_ied=None,
+        endpoint_id="endpoint-timeout",
+        rpt_id=None,
+        dataset=None,
+        latency_ms=None,
+        quality=None,
+        freshness=None,
+        evidence_status="timeout",
+        reason_code="no_confirmation",
+    )
+
+    assert len(session.added) == 1
+    assert evidence.actual_report_path is None
+    assert evidence.observed_at is None
+    assert evidence.latency_ms is None
+    assert evidence.quality is None
+    assert evidence.freshness is None
+    assert evidence.source_ied is None

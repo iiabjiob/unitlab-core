@@ -82,15 +82,15 @@ class SignalVerificationEvidenceSchema(BaseModel):
     signal_id: int
     signal_path: str
     expected_path: str
-    actual_report_path: str
-    source_ied: str
-    endpoint_id: str
-    rpt_id: str
-    dataset: str
-    received_at: datetime
-    latency_ms: int
-    quality: str
-    freshness: Literal["live", "stale", "unknown"]
+    actual_report_path: str | None = None
+    source_ied: str | None = None
+    endpoint_id: str | None = None
+    rpt_id: str | None = None
+    dataset: str | None = None
+    observed_at: datetime | None = None
+    latency_ms: int | None = None
+    quality: str | None = None
+    freshness: Literal["live", "stale", "unknown"] | None = None
     evidence_status: Literal["observed", "stale", "timeout", "invalid", "late", "out_of_window"]
     reason_code: str
     source_generation: int | None = None
