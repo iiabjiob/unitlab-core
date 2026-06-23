@@ -191,7 +191,7 @@ Done when:
 
 ### PR5 - Multi-IED selected group flow
 
-Status: not started.
+Status: completed.
 
 Goal:
 - Support one selected signal group spanning multiple IEDs.
@@ -245,7 +245,7 @@ Done when:
 - [x] PR2 - Subscription planner
 - [x] PR3 - Verification evidence model
 - [x] PR4 - First auto test flow
-- [ ] PR5 - Multi-IED selected group flow
+- [x] PR5 - Multi-IED selected group flow
 - [ ] PR6 - Hardening
 
 ## What should be treated as mandatory

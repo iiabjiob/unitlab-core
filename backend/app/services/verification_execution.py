@@ -215,6 +215,8 @@ async def execute_simulated_verification_run(
         execution_context=execution_context,
         workflow_state=workflow_state,
         verdict_state=verdict_state,
+        selected_group_id=execution_context.selected_group_id,
+        operator_id=execution_context.operator_id,
         triggered_at=triggered_at,
         completed_at=_parse_timestamp(runtime_result.finished_at),
         runtime_state=_resolve_runtime_state(session_snapshots),

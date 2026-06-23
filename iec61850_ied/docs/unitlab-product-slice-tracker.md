@@ -110,7 +110,7 @@ Done when:
 
 ### PR5 - Multi-IED selected-group flow
 
-Status: not started.
+Status: completed.
 
 Input:
 - one selected group that spans multiple IEDs.
@@ -118,6 +118,7 @@ Input:
 Output:
 - isolated per-IED execution;
 - coherent user-visible result for the whole group.
+- simulator-backed multi-IED run path that preserves one selected-group context.
 
 Done when:
 - the planner and runtime keep per-IED failure detail;
