@@ -106,7 +106,13 @@ async def test_load_verification_run_evidence_projects_steps_and_summary() -> No
     assert len(result.evidence_rows) == 2
     assert [step.signal_id for step in result.verification_steps] == [101, 202]
     assert [step.verdict_state for step in result.verification_steps] == ["pass", "fail"]
+    assert [step.verification_confidence for step in result.verification_steps] == ["simulated", "degraded"]
+    assert [step.confidence_reason for step in result.verification_steps] == [
+        "simulator_generated_report",
+        "degraded_recovery_state",
+    ]
+    assert result.verification_steps[0].source_session_id == "run-42:sim:IED-A/P1"
+    assert result.verification_steps[1].source_session_id == "run-42:sim:IED-B/P1"
     assert result.verification_steps[0].source_report_rpt_id == "rpt-a"
     assert result.verification_steps[1].evidence_status == "timeout"
     assert result.diagnostics[0].code == "RUN_DIAGNOSTIC"
-

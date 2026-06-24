@@ -57,11 +57,13 @@ def build_verification_verdict_explanation(
         )
 
     headline = _resolve_headline(verdict_state)
-    summary = _resolve_summary(verdict_state, signals)
+    summary = _resolve_summary(verdict_state, signals, verification_run.subscription_plan.coverage.planning_quality)
     diagnostics = _collect_diagnostics(verification_run, signals)
     return VerificationVerdictExplanationSchema(
         test_run_id=verification_run.test_run_id,
         verdict_state=verdict_state,
+        verification_confidence=verification_run.verification_confidence,
+        confidence_reason=verification_run.confidence_reason,
         headline=headline,
         summary=summary,
         signals=signals,
@@ -102,6 +104,7 @@ def _resolve_signal_reason(
 def _resolve_summary(
     verdict_state: str,
     signals: Sequence[VerificationVerdictExplanationSignalSchema],
+    planning_quality: str | None = None,
 ) -> str:
     if not signals:
         return "No evidence was collected for this verification run."
@@ -111,6 +114,11 @@ def _resolve_summary(
         latency = f" in {first.latency_ms} ms" if first.latency_ms is not None else ""
         observed = first.observed_path or first.expected_path
         location = first.source_ied or first.endpoint_id or "the selected IED"
+        if planning_quality and planning_quality != "exact":
+            return (
+                f"PASS with fallback planning: observed {observed} on {location}{latency}. "
+                "Verified by simulator fallback source, not exact IEC 61850 report-control match."
+            )
         return f"PASS: observed {observed} on {location}{latency}."
     if verdict_state == "fail" and first.evidence_status == "timeout":
         return "FAIL: no confirmation arrived before the timeout expired."
@@ -150,6 +158,14 @@ def _collect_diagnostics(
     for signal in signals:
         for diagnostic in signal.diagnostics:
             add(diagnostic)
+    if verification_run.subscription_plan.coverage.planning_quality != "exact":
+        add(
+            VerificationEvidenceDiagnosticSchema(
+                code="fallback_planning",
+                message="Verification run used fallback planning and did not achieve an exact IEC 61850 report-control match.",
+                severity="warning",
+            )
+        )
     if not diagnostics:
         add(
             VerificationEvidenceDiagnosticSchema(

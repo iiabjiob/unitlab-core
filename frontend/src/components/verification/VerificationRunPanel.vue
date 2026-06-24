@@ -63,8 +63,12 @@
               <span class="verification-run-panel__signal-value">{{ signal.observed }}</span>
             </div>
             <div class="verification-run-panel__signal-row">
-              <span class="verification-run-panel__signal-label">IED</span>
-              <span class="verification-run-panel__signal-value">{{ signal.ied }}</span>
+              <span class="verification-run-panel__signal-label">Unit</span>
+              <span class="verification-run-panel__signal-value">{{ signal.unit }}</span>
+            </div>
+            <div class="verification-run-panel__signal-row">
+              <span class="verification-run-panel__signal-label">Endpoint</span>
+              <span class="verification-run-panel__signal-value">{{ signal.endpoint }}</span>
             </div>
             <div class="verification-run-panel__signal-row">
               <span class="verification-run-panel__signal-label">RCB</span>

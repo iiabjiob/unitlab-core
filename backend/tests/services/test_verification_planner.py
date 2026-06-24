@@ -90,13 +90,16 @@ def test_build_verification_subscription_plan_separates_exact_partial_and_uncove
 
     assert [target.signal_id for target in plan.targets] == [1, 2, 3]
     assert plan.targets[0].coverage_state == "exact"
+    assert plan.targets[0].endpoint_id == "sim:unit-a/unknown"
     assert plan.targets[0].expected_feedback_path == "KINTE13LVC01CTRL/LLN0.RCB1"
     assert plan.targets[0].protocol == "iec61850"
     assert plan.targets[0].source_row_index == 17
     assert plan.targets[1].coverage_state == "partial"
+    assert plan.targets[1].endpoint_id == "sim:unit-b/unknown"
     assert plan.targets[1].coverage_reason == "allocation_offline_device"
     assert plan.targets[1].expected_feedback_path == "pump_feedback"
     assert plan.targets[2].coverage_state == "uncovered"
+    assert plan.targets[2].endpoint_id is None
     assert plan.targets[2].coverage_reason == "no_endpoint"
     assert plan.plan_id.startswith("plan-")
     assert len(plan.groups) == 2
@@ -211,6 +214,7 @@ def test_build_verification_subscription_plan_groups_targets_by_scd_hints() -> N
 
     assert plan.plan_id.startswith("plan-")
     assert [target.signal_id for target in plan.targets] == [10, 11, 12]
+    assert plan.targets[0].endpoint_id == "sim:IED-A/P1/unknown"
     assert len(plan.groups) == 1
     assert plan.groups[0].group_id == "group-1"
     assert plan.groups[0].source_classification == "from SCD"

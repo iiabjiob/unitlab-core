@@ -5,6 +5,16 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+VerificationConfidenceLevel = Literal[
+    "exact_iec61850",
+    "exact_report_match",
+    "discovery_match",
+    "simulated_fallback",
+    "simulated",
+    "degraded",
+    "unknown",
+]
+
 
 class VerificationTargetSchema(BaseModel):
     signal_id: int
@@ -105,7 +115,7 @@ class PlannerConfidenceReportSchema(BaseModel):
 class VerificationEvidenceDiagnosticSchema(BaseModel):
     code: str
     message: str
-    severity: str | None = None
+    severity: str = "info"
     details: dict[str, Any] | None = None
 
 
@@ -218,6 +228,7 @@ class VerificationStepSchema(BaseModel):
     step_id: str
     signal_id: int
     target_index: int
+    group_id: str | None = None
     step_state: Literal["draft", "planned", "armed", "running", "awaiting_confirmation", "completing", "completed", "aborted", "failed"]
     expected_path: str
     expected_window_ms: int
@@ -230,6 +241,8 @@ class VerificationStepSchema(BaseModel):
     source_generation: int | None = None
     source_report_rpt_id: str | None = None
     source_report_dat_set: str | None = None
+    verification_confidence: VerificationConfidenceLevel = "unknown"
+    confidence_reason: str = "unknown"
     triggered_at: datetime | None = None
     observed_at: datetime | None = None
     latency_ms: int | None = None
@@ -247,6 +260,8 @@ class VerificationRunSchema(BaseModel):
     recovery_state: VerificationRecoveryStateSchema | None = None
     workflow_state: Literal["draft", "planned", "preparing", "armed", "running", "awaiting_confirmation", "completing", "completed", "aborted", "failed"]
     verdict_state: Literal["pending", "pass", "fail", "inconclusive", "aborted"]
+    verification_confidence: VerificationConfidenceLevel = "unknown"
+    confidence_reason: str = "unknown"
     selected_group_id: str | None = None
     operator_id: str | None = None
     triggered_at: datetime | None = None
@@ -305,6 +320,8 @@ class VerificationVerdictExplanationSignalSchema(BaseModel):
 class VerificationVerdictExplanationSchema(BaseModel):
     test_run_id: str
     verdict_state: Literal["pending", "pass", "fail", "inconclusive", "aborted"]
+    verification_confidence: VerificationConfidenceLevel = "unknown"
+    confidence_reason: str = "unknown"
     headline: str
     summary: str
     signals: list[VerificationVerdictExplanationSignalSchema] = Field(default_factory=list)

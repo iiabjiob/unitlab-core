@@ -27,6 +27,8 @@ Optional fields:
 - `protocol_metadata`
 
 `protocol_metadata` may contain protocol-specific hints such as IEC 61850 endpoint and model details, but the planner and verdict engine must not require them at the top level.
+`unit_id` names the bound device or allocation target.
+`endpoint_id` names the runtime connection endpoint used by planner/runtime/session records and should not repeat the human device id.
 
 For IEC 61850, `protocol_metadata` may include:
 - `ied_name`
@@ -295,6 +297,9 @@ Optional fields:
 - `evidence_kind`
 - `diagnostics`
 
+`verification_confidence` is intentionally not stored on the evidence record by default.
+Confidence is a derived step/run/explanation property that should be computed from evidence provenance, runtime health, and planning exactness.
+
 ## 3.1 VerificationRunEvidenceResponse
 
 Represents the persisted evidence view for one verification run.
@@ -319,6 +324,48 @@ Required fields:
 
 This is a read-only inspection shape for operator and API consumers.
 
+### Verification confidence model
+
+`verification_confidence` answers "how strong is the proof?" and must stay separate from `verdict_state`, which answers "did it pass?".
+
+Allowed values:
+- `exact_iec61850`
+- `exact_report_match`
+- `discovery_match`
+- `simulated_fallback`
+- `simulated`
+- `degraded`
+- `unknown`
+
+`confidence_reason` should be a normalized code, not ad-hoc prose.
+Recommended codes:
+- `exact_report_control_match`
+- `exact_dataset_match`
+- `discovery_match`
+- `fallback_planning_used`
+- `simulator_generated_report`
+- `degraded_recovery_state`
+- `partial_coverage`
+- `unknown`
+
+Aggregation policy for future multi-signal / multi-IED runs:
+- step confidence is derived from the strongest applicable evidence/source classification for that step;
+- run confidence is the weakest confidence among the contributing steps after runtime-health modifiers are applied;
+- `simulated_fallback` on any contributing step caps the run confidence at `simulated_fallback`;
+- `degraded` on any contributing step or session caps the run confidence at `degraded`;
+- a `pass` verdict does not increase confidence by itself;
+- identical inputs must produce identical confidence output.
+
+Example:
+
+```json
+{
+  "verdict_state": "pass",
+  "verification_confidence": "simulated_fallback",
+  "confidence_reason": "fallback_planning_used"
+}
+```
+
 ## 3.3 VerificationAutoRunStart
 
 Represents a single-signal auto verification request.
@@ -340,6 +387,8 @@ Represents the product-facing explanation for why a verification run passed or f
 Required fields:
 - `test_run_id`
 - `verdict_state`
+- `verification_confidence`
+- `confidence_reason`
 - `headline`
 - `summary`
 - `signals`
@@ -361,6 +410,8 @@ Signal-level explanation fields should include:
 - `reason`
 - `diagnostics`
 
+The explanation-level confidence should summarize the run-level proof strength and should not be duplicated as verdict text.
+
 ## 3.5 VerificationRunDetailResponse
 
 Represents the persisted run snapshot plus the derived verdict explanation.
@@ -375,6 +426,7 @@ Fields derived from the observed report may be null for timeout, invalid, or sta
 `actual_report_path` should remain the raw observed report path when one exists.
 `evidence_status` describes what was observed.
 `verdict_state` is intentionally not stored on the evidence record because it is derived from evidence and policy.
+`verification_confidence` belongs to the run/step/explanation view, not the raw evidence record.
 
 ## 3.1 SignalVerificationEvidenceSet
 
@@ -453,6 +505,7 @@ Optional fields:
 Represents one product-level auto verification execution.
 
 `workflow_state`, `runtime_state`, and `verdict_state` must stay separate.
+`verification_confidence` and `confidence_reason` are separate from verdict and may default to `unknown` until the confidence classifier is implemented.
 For multi-IED runs, `session_snapshots` are the source of truth and `runtime_state` is only an optional aggregate summary.
 If present, `runtime_summary` should be derived from the per-session snapshots rather than replace them.
 
@@ -465,6 +518,8 @@ Required fields:
 - `execution_context`
 - `workflow_state`
 - `verdict_state`
+- `verification_confidence`
+- `confidence_reason`
 
 Optional fields:
 - `selected_group_id`
@@ -482,6 +537,7 @@ Represents one executable observation inside a verification run.
 
 `step_state` is the step-local lifecycle state and must not be confused with workflow, runtime, evidence, or verdict state.
 `evidence_ids` is an ordered list of evidence record ids and may include multiple observations for the same step, including late, stale, duplicate, or recovered reports.
+`verification_confidence` and `confidence_reason` are separate from verdict and may default to `unknown` until the confidence classifier is implemented.
 
 Required fields:
 - `step_id`
@@ -494,10 +550,13 @@ Required fields:
 - `evidence_status`
 - `verdict_state`
 - `evidence_ids`
+- `verification_confidence`
+- `confidence_reason`
 
 Optional fields:
 - `actual_report_path`
 - `source_session_id`
+- `group_id`
 - `source_generation`
 - `source_report_rpt_id`
 - `source_report_dat_set`
@@ -506,6 +565,9 @@ Optional fields:
 - `latency_ms`
 - `reason`
 - `diagnostics`
+
+`source_session_id` should carry the full runtime session identity, while `group_id` keeps the planner/runtime group binding separate from the session identity.
+`verification_confidence` and `confidence_reason` on a step should reflect the strongest proof available for that step, not the overall run verdict.
 
 ## 7. RecoveryState
 
@@ -545,6 +607,7 @@ Optional fields:
 - `SessionSnapshot` should describe runtime state, not product verdicts.
 - `source_kind` and `reason` should stay explicit, even for fallback cases.
 - `evidence_status` and `verdict_state` must remain separate fields.
+- `verification_confidence` must remain separate from `verdict_state` and should not be inferred from free-text summary strings.
 - `protocol_metadata` may evolve per protocol without changing the top-level target contract.
 
 ## Recommended Python modules

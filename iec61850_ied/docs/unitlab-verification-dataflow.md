@@ -107,6 +107,7 @@ Input:
 Output:
 - verdict states derived from evidence + policy;
 - explainable reason codes.
+- verification confidence derived from evidence provenance, runtime health, and planning exactness.
 
 Owner:
 - Python/FastAPI product layer.
@@ -122,6 +123,7 @@ Owner:
 - Evidence capture must be reconstructable from runtime report updates plus persisted product state.
 - Verdicts must be computed from evidence and policy, not from UI state.
 - Evidence status and verdict must remain separate concepts.
+- Verification confidence must remain separate from verdict state and must not be inferred from free-text reasons.
 - ExecutionContext must preserve the source inputs and policy versions for a run.
 
 ## Ownership summary

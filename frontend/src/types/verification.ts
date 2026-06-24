@@ -5,6 +5,15 @@ export interface VerificationEvidenceDiagnostic {
   details?: Record<string, unknown> | null
 }
 
+export type VerificationConfidence =
+  | "exact_iec61850"
+  | "exact_report_match"
+  | "discovery_match"
+  | "simulated_fallback"
+  | "simulated"
+  | "degraded"
+  | "unknown"
+
 export interface VerificationTarget {
   signal_id: number
   signal_reference: string
@@ -135,6 +144,7 @@ export interface VerificationStep {
   step_id: string
   signal_id: number
   target_index: number
+  group_id?: string | null
   step_state: "draft" | "planned" | "armed" | "running" | "awaiting_confirmation" | "completing" | "completed" | "aborted" | "failed"
   expected_path: string
   expected_window_ms: number
@@ -147,6 +157,8 @@ export interface VerificationStep {
   source_generation?: number | null
   source_report_rpt_id?: string | null
   source_report_dat_set?: string | null
+  verification_confidence: VerificationConfidence
+  confidence_reason: string
   triggered_at?: string | null
   observed_at?: string | null
   latency_ms?: number | null
@@ -163,6 +175,8 @@ export interface VerificationRun {
   execution_context: VerificationExecutionContext
   workflow_state: "draft" | "planned" | "preparing" | "armed" | "running" | "awaiting_confirmation" | "completing" | "completed" | "aborted" | "failed"
   verdict_state: "pending" | "pass" | "fail" | "inconclusive" | "aborted"
+  verification_confidence: VerificationConfidence
+  confidence_reason: string
   selected_group_id?: string | null
   operator_id?: string | null
   triggered_at?: string | null
@@ -194,6 +208,8 @@ export interface VerificationVerdictExplanationSignal {
 export interface VerificationVerdictExplanation {
   test_run_id: string
   verdict_state: "pending" | "pass" | "fail" | "inconclusive" | "aborted"
+  verification_confidence: VerificationConfidence
+  confidence_reason: string
   headline: string
   summary: string
   signals: VerificationVerdictExplanationSignal[]

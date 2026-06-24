@@ -133,7 +133,7 @@ def build_verification_subscription_plan(
             signal_id=source.signal_id,
             signal_reference=source.signal_reference,
             signal_path=source.signal_path,
-            endpoint_id=source.unit_id,
+            endpoint_id=_resolve_runtime_endpoint_id(endpoint_id, source.unit_id),
             expected_feedback_path=expected_feedback_path,
             timeout_ms=timeout_ms,
             window_ms=window_ms,
@@ -492,6 +492,13 @@ def _resolve_endpoint_identity(
     if endpoint_id and not ied_name:
         ied_name = endpoint_id
     return endpoint_id, ied_name, access_point_name or "unknown"
+
+
+def _resolve_runtime_endpoint_id(endpoint_id: str | None, unit_id: str | None) -> str | None:
+    base_endpoint_id = _first_non_empty_string(endpoint_id, unit_id)
+    if base_endpoint_id is None:
+        return None
+    return f"sim:{base_endpoint_id}/unknown"
 
 
 def _resolve_group_references(

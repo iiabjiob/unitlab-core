@@ -35,7 +35,7 @@ def _build_verification_run(signal_reference: str = "Breaker Close") -> Verifica
         expected_path="LD0/XCBR1.Pos.stVal",
         actual_report_path="LD0/XCBR1.Pos.stVal",
         source_ied="IED-A",
-        endpoint_id="IED-A/P1",
+        endpoint_id="sim:IED-A/P1",
         rpt_id="rpt-a",
         dataset="ds-a",
         observed_at=datetime(2026, 6, 23, 12, 0, 0, 250_000, tzinfo=UTC),
@@ -44,6 +44,7 @@ def _build_verification_run(signal_reference: str = "Breaker Close") -> Verifica
         freshness="live",
         evidence_status="observed",
         reason_code="report_received",
+        source_generation=1,
         diagnostics=[],
     )
     return VerificationRunSchema(
@@ -53,7 +54,7 @@ def _build_verification_run(signal_reference: str = "Breaker Close") -> Verifica
                 signal_id=101,
                 signal_reference=signal_reference,
                 signal_path="breaker_close",
-                endpoint_id="IED-A/P1",
+                endpoint_id="sim:IED-A/P1/unknown",
                 expected_feedback_path="LD0/XCBR1.Pos.stVal",
                 timeout_ms=5000,
                 window_ms=1000,
@@ -76,7 +77,7 @@ def _build_verification_run(signal_reference: str = "Breaker Close") -> Verifica
                     signal_id=101,
                     signal_reference=signal_reference,
                     signal_path="breaker_close",
-                    endpoint_id="IED-A/P1",
+                    endpoint_id="sim:IED-A/P1/unknown",
                     expected_feedback_path="LD0/XCBR1.Pos.stVal",
                     timeout_ms=5000,
                     window_ms=1000,
@@ -94,7 +95,15 @@ def _build_verification_run(signal_reference: str = "Breaker Close") -> Verifica
             groups=[],
             uncovered_targets=[],
             planning_diagnostics=[],
-            coverage=VerificationSubscriptionPlanCoverageSchema(),
+            coverage=VerificationSubscriptionPlanCoverageSchema(
+                total_targets=1,
+                covered_targets=1,
+                partially_covered_targets=0,
+                uncovered_targets=0,
+                groups_count=1,
+                endpoints_count=1,
+                planning_quality="exact",
+            ),
         ),
         session_snapshots=[],
         evidence_set=SignalVerificationEvidenceSetSchema(
@@ -103,7 +112,7 @@ def _build_verification_run(signal_reference: str = "Breaker Close") -> Verifica
             summary=SignalVerificationEvidenceSetSummarySchema(
                 evidence_count=1,
                 observed_count=1,
-                source_generation=None,
+                source_generation=1,
             ),
             diagnostics=[],
         ),
@@ -116,6 +125,8 @@ def _build_verification_run(signal_reference: str = "Breaker Close") -> Verifica
         ),
         workflow_state="completed",
         verdict_state="pass",
+        verification_confidence="exact_iec61850",
+        confidence_reason="exact_report_control_match",
         selected_group_id=None,
         operator_id=None,
         triggered_at=datetime(2026, 6, 23, 12, 0, tzinfo=UTC),
@@ -129,6 +140,7 @@ def _build_verification_run(signal_reference: str = "Breaker Close") -> Verifica
                 step_id="step-101",
                 signal_id=101,
                 target_index=0,
+                group_id="group-1",
                 step_state="completed",
                 expected_path="LD0/XCBR1.Pos.stVal",
                 expected_window_ms=1000,
@@ -137,9 +149,12 @@ def _build_verification_run(signal_reference: str = "Breaker Close") -> Verifica
                 verdict_state="pass",
                 evidence_ids=["ev-1"],
                 actual_report_path="LD0/XCBR1.Pos.stVal",
-                source_session_id="IED-A/P1",
+                source_session_id="run-1:sim:IED-A/P1",
+                source_generation=1,
                 source_report_rpt_id="rpt-a",
                 source_report_dat_set="ds-a",
+                verification_confidence="exact_iec61850",
+                confidence_reason="exact_report_control_match",
                 triggered_at=datetime(2026, 6, 23, 12, 0, tzinfo=UTC),
                 observed_at=datetime(2026, 6, 23, 12, 0, 0, 250_000, tzinfo=UTC),
                 latency_ms=250,
@@ -160,7 +175,7 @@ def test_build_verification_verdict_explanation_includes_signal_context_and_summ
             expected_path="LD0/XCBR1.Pos.stVal",
             actual_report_path="LD0/XCBR1.Pos.stVal",
             source_ied="IED-A",
-            endpoint_id="IED-A/P1",
+            endpoint_id="sim:IED-A/P1",
             rpt_id="rpt-a",
             dataset="ds-a",
             observed_at=datetime(2026, 6, 23, 12, 0, 0, 250_000, tzinfo=UTC),
@@ -169,6 +184,7 @@ def test_build_verification_verdict_explanation_includes_signal_context_and_summ
             freshness="live",
             evidence_status="observed",
             reason_code="report_received",
+            source_generation=1,
             diagnostics=[],
         )
     ]
@@ -181,6 +197,8 @@ def test_build_verification_verdict_explanation_includes_signal_context_and_summ
 
     assert explanation.verdict_state == "pass"
     assert explanation.headline == "PASS"
+    assert explanation.verification_confidence == "exact_iec61850"
+    assert explanation.confidence_reason == "exact_report_control_match"
     assert "observed" in explanation.summary.lower()
     assert explanation.signals[0].signal_reference == "Breaker Close"
     assert explanation.signals[0].observed_path == "LD0/XCBR1.Pos.stVal"
@@ -211,7 +229,7 @@ def test_build_verification_verdict_explanation_marks_timeout_fail() -> None:
             expected_path="LD0/XCBR1.Pos.stVal",
             actual_report_path=None,
             source_ied=None,
-            endpoint_id="IED-A/P1",
+            endpoint_id="sim:IED-A/P1",
             rpt_id=None,
             dataset=None,
             observed_at=None,
@@ -232,8 +250,47 @@ def test_build_verification_verdict_explanation_marks_timeout_fail() -> None:
 
     assert explanation.verdict_state == "fail"
     assert explanation.headline == "FAIL"
+    assert explanation.verification_confidence == "exact_iec61850"
+    assert explanation.confidence_reason == "exact_report_control_match"
     assert "timeout" in explanation.summary.lower()
     assert explanation.signals[0].evidence_status == "timeout"
+
+
+def test_build_verification_verdict_explanation_warns_on_fallback_planning() -> None:
+    verification_run = _build_verification_run()
+    verification_run.subscription_plan.coverage.planning_quality = "fallback"
+
+    explanation = build_verification_verdict_explanation(
+        verification_run=verification_run,  # type: ignore[arg-type]
+        verification_steps=verification_run.verification_steps,
+        evidence_rows=[
+            SignalVerificationEvidenceSchema(
+                evidence_id="ev-1",
+                signal_id=101,
+                signal_path="breaker_close",
+                expected_path="LD0/XCBR1.Pos.stVal",
+                actual_report_path="LD0/XCBR1.Pos.stVal",
+                source_ied="IED-A",
+                endpoint_id="sim:IED-A/P1",
+                rpt_id="rpt-a",
+                dataset="ds-a",
+                observed_at=datetime(2026, 6, 23, 12, 0, 0, 250_000, tzinfo=UTC),
+                latency_ms=250,
+                quality="good",
+                freshness="live",
+                evidence_status="observed",
+                reason_code="report_received",
+                source_generation=1,
+                diagnostics=[],
+            )
+        ],
+    )
+
+    assert explanation.headline == "PASS"
+    assert explanation.verification_confidence == "exact_iec61850"
+    assert explanation.confidence_reason == "exact_report_control_match"
+    assert explanation.summary.startswith("PASS with fallback planning:")
+    assert any(diagnostic.code == "fallback_planning" for diagnostic in explanation.diagnostics)
 
 
 class _FakeDb:
@@ -368,6 +425,9 @@ async def test_execute_single_signal_verification_run_persists_run_snapshot_and_
     assert result.verification_run.verdict_state == "pass"
     assert result.verdict_explanation.headline == "PASS"
     assert result.verdict_explanation.signals[0].observed_path == "LD0/XCBR1.Pos.stVal"
+    assert result.verification_run.verification_steps[0].group_id == "group-1"
+    assert result.verification_run.verification_steps[0].source_session_id == f"{result.test_run_id}:sim:IED-A/P1"
+    assert result.verification_run.verification_steps[0].source_generation == 1
     assert result.verification_run.reason == result.verdict_explanation.summary
     assert result.as_response().test_run_id == result.test_run_id
     assert db.flushed >= 1
@@ -384,6 +444,8 @@ async def test_load_verification_run_detail_returns_persisted_payload(monkeypatc
         verdict_explanation=VerificationVerdictExplanationSchema(
             test_run_id="run-1",
             verdict_state="pass",
+            verification_confidence="exact_iec61850",
+            confidence_reason="exact_report_control_match",
             headline="PASS",
             summary="PASS: observed LD0/XCBR1.Pos.stVal on IED-A/P1 in 250 ms.",
             signals=[],
@@ -402,4 +464,5 @@ async def test_load_verification_run_detail_returns_persisted_payload(monkeypatc
 
     assert result.test_run_id == "run-1"
     assert result.verdict_explanation.headline == "PASS"
+    assert result.verdict_explanation.verification_confidence == "exact_iec61850"
     assert result.verification_run.verdict_state == "pass"

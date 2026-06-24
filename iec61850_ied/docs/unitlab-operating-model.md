@@ -12,6 +12,7 @@ This document describes how the product should behave end-to-end when a user sel
 4. The runtime opens sessions, discovers where needed, subscribes, and waits for reports.
 5. The report stream is converted into signal/evidence state.
 6. The verdict engine derives `pending`, `pass`, `fail`, `inconclusive`, or `aborted` from evidence, freshness, and policy.
+7. The confidence model derives proof strength independently from the verdict.
 
 ## Ownership boundaries
 
@@ -90,6 +91,16 @@ The product should keep these state axes explicit:
 - `inconclusive`
 - `aborted`
 
+### Verification confidence
+
+- `exact_iec61850`
+- `exact_report_match`
+- `discovery_match`
+- `simulated_fallback`
+- `simulated`
+- `degraded`
+- `unknown`
+
 The runtime may use lower-level session and signal states internally, but the product layer should expose the higher-level state to the UI and API consumers.
 
 ## Evidence rules
@@ -100,6 +111,8 @@ The runtime may use lower-level session and signal states internally, but the pr
 - evidence must not be overwritten destructively by later updates;
 - verdicts must be explainable from stored evidence fields.
 - evidence status and verdict state must remain separate.
+- verification confidence must be explainable from provenance, plan coverage, runtime health, and source quality.
+- verification confidence must remain separate from verdict state.
 
 ## Recovery rules
 
@@ -133,6 +146,14 @@ The runtime should return:
 - protocol-specific verdict logic;
 - SCD generation;
 - generic workflow engine abstractions.
+
+## Confidence policy
+
+- `verdict_state` answers whether the selected target or run passed.
+- `verification_confidence` answers how strong the proof is behind that verdict.
+- A pass with simulator fallback is valid but not equivalent to a pass confirmed by an exact live IEC 61850 report-control path.
+- Confidence must not be inferred from free-text summary strings.
+- Confidence should be derived from the weakest contributing step after considering runtime health and coverage.
 
 ## Related docs
 

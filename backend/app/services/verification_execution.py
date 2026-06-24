@@ -36,6 +36,10 @@ from app.services.verification_evidence import (
     build_signal_verification_evidence_set,
     build_signal_verification_evidence_summary,
 )
+from app.services.verification_confidence import (
+    derive_run_confidence,
+    derive_step_confidence,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,6 +128,7 @@ async def execute_simulated_verification_run(
         client_id=client_id,
         now=runtime_now,
     )
+    connection_generation = _resolve_connection_generation(runtime_result)
     diagnostics: list[VerificationEvidenceDiagnosticSchema] = [
         _runtime_diagnostic_to_evidence_diagnostic(diagnostic) for diagnostic in runtime_result.diagnostics
     ]
@@ -156,10 +161,12 @@ async def execute_simulated_verification_run(
         evidence, step = _build_step_and_evidence(
             target_index=target_index,
             target=target,
+            group=_resolve_target_group(subscription_plan, target_index),
             observation_bundle=observation_bundle,
             triggered_at=triggered_at,
             runtime_result=runtime_result,
             test_run_id=test_run_id,
+            source_generation=connection_generation,
             forced_evidence_status=forced_evidence_status,
         )
         evidence_rows.append(evidence)
@@ -213,6 +220,7 @@ async def execute_simulated_verification_run(
     session_snapshots = _build_session_snapshots(
         test_run_id=test_run_id,
         runtime_result=runtime_result,
+        connection_generation=connection_generation,
         evidence_rows=evidence_rows,
     )
     recovery_state = _build_recovery_state(
@@ -225,6 +233,10 @@ async def execute_simulated_verification_run(
         runtime_result=runtime_result,
     )
     verdict_state = _resolve_verdict_state(step_verdicts)
+    verification_confidence, confidence_reason = derive_run_confidence(
+        steps=step_rows,
+        session_snapshots=session_snapshots,
+    )
     workflow_state = "completed" if verdict_state != "aborted" else "aborted"
 
     verification_run = VerificationRunSchema(
@@ -237,6 +249,8 @@ async def execute_simulated_verification_run(
         recovery_state=recovery_state,
         workflow_state=workflow_state,
         verdict_state=verdict_state,
+        verification_confidence=verification_confidence,
+        confidence_reason=confidence_reason,
         selected_group_id=execution_context.selected_group_id,
         operator_id=execution_context.operator_id,
         triggered_at=triggered_at,
@@ -293,10 +307,12 @@ def _build_step_and_evidence(
     *,
     target_index: int,
     target: VerificationTargetSchema,
+    group: VerificationSubscriptionPlanGroupSchema | None,
     observation_bundle: tuple[Any, str | None, str | None, str | None] | None,
     triggered_at: datetime,
     runtime_result,
     test_run_id: str,
+    source_generation: int | None = None,
     forced_evidence_status: str | None = None,
 ) -> tuple[SignalVerificationEvidenceSchema, VerificationStepSchema]:
     report = observation_bundle[0] if observation_bundle is not None else None
@@ -330,6 +346,11 @@ def _build_step_and_evidence(
             message=_diagnostic_message(reason_code, evidence_status),
         )
     ]
+    source_session_id = None
+    if report is not None and report.event is not None:
+        source_session_id = f"{test_run_id}:{report.event.endpoint_id}"
+    elif target.endpoint_id is not None:
+        source_session_id = f"{test_run_id}:{target.endpoint_id}"
     evidence_id = f"{test_run_id}:{target.signal_id}:{target_index}:{uuid4().hex[:8]}"
     evidence = SignalVerificationEvidenceSchema(
         evidence_id=evidence_id,
@@ -347,7 +368,7 @@ def _build_step_and_evidence(
         freshness=freshness,
         evidence_status=evidence_status,
         reason_code=reason_code,
-        source_generation=None,
+        source_generation=source_generation,
         source_report_sequence_generation=report.event.sequence_number if report is not None and report.event is not None else None,
         source_report_sequence_number=report.event.sequence_number if report is not None and report.event is not None else None,
         source_report_sub_sequence_number=None,
@@ -358,10 +379,16 @@ def _build_step_and_evidence(
         evidence_kind=evidence_kind,
         diagnostics=diagnostics,
     )
+    verification_confidence, confidence_reason = derive_step_confidence(
+        target=target,
+        evidence=evidence,
+        group=group,
+    )
     step = VerificationStepSchema(
         step_id=f"step-{target.signal_id}",
         signal_id=int(target.signal_id),
         target_index=target_index,
+        group_id=group.group_id if group is not None else None,
         step_state=_resolve_step_state(evidence_status=evidence_status),
         expected_path=evidence.expected_path,
         expected_window_ms=window_ms,
@@ -370,10 +397,12 @@ def _build_step_and_evidence(
         verdict_state=_resolve_step_verdict_state(evidence_status=evidence_status),
         evidence_ids=[evidence_id],
         actual_report_path=evidence.actual_report_path,
-        source_session_id=report.candidate_id if report is not None else None,
-        source_generation=None,
+        source_session_id=source_session_id,
+        source_generation=source_generation,
         source_report_rpt_id=evidence.rpt_id,
         source_report_dat_set=evidence.dataset,
+        verification_confidence=verification_confidence,
+        confidence_reason=confidence_reason,
         triggered_at=triggered_at,
         observed_at=observed_at,
         latency_ms=computed_latency_ms,
@@ -584,6 +613,7 @@ def _build_session_snapshots(
     *,
     test_run_id: str,
     runtime_result,
+    connection_generation: int,
     evidence_rows: Sequence[SignalVerificationEvidenceSchema],
 ) -> list[VerificationSessionSnapshotSchema]:
     evidence_by_group: dict[str, list[SignalVerificationEvidenceSchema]] = {}
@@ -605,7 +635,7 @@ def _build_session_snapshots(
                 session_id=f"{test_run_id}:{endpoint_id}",
                 endpoint_id=endpoint_id,
                 runtime_state="reporting" if report.error_code is None else "failed",
-                connection_generation=1,
+                connection_generation=connection_generation,
                 discovery_status="available" if report.error_code is None else "unknown",
                 subscription_status="enabled" if report.error_code is None else "failed",
                 report_health="healthy" if report.error_code is None else "degraded",
@@ -664,10 +694,12 @@ def _diagnostic_message(code: str, evidence_status: str) -> str:
 
 
 def _runtime_diagnostic_to_evidence_diagnostic(diagnostic: Any) -> VerificationEvidenceDiagnosticSchema:
+    severity = getattr(diagnostic, "severity", None)
+    severity_value = str(severity).strip() if severity is not None else ""
     return VerificationEvidenceDiagnosticSchema(
         code=str(getattr(diagnostic, "code", "runtime_diagnostic")),
         message=str(getattr(diagnostic, "message", "Runtime diagnostic")),
-        severity=str(getattr(diagnostic, "severity", "info")) if getattr(diagnostic, "severity", None) is not None else None,
+        severity=severity_value or "info",
         details={
             key: value
             for key, value in {
@@ -680,3 +712,30 @@ def _runtime_diagnostic_to_evidence_diagnostic(diagnostic: Any) -> VerificationE
         }
         or None,
     )
+
+
+def _resolve_connection_generation(runtime_result) -> int:
+    generation = getattr(runtime_result, "connection_generation", None)
+    if isinstance(generation, int) and generation > 0:
+        return generation
+    return 1
+
+
+def _resolve_target_group_id(
+    subscription_plan: VerificationSubscriptionPlanSchema,
+    target_index: int,
+) -> str | None:
+    for group in subscription_plan.groups:
+        if target_index in group.target_indexes:
+            return group.group_id or None
+    return None
+
+
+def _resolve_target_group(
+    subscription_plan: VerificationSubscriptionPlanSchema,
+    target_index: int,
+) -> VerificationSubscriptionPlanGroupSchema | None:
+    for group in subscription_plan.groups:
+        if target_index in group.target_indexes:
+            return group
+    return None

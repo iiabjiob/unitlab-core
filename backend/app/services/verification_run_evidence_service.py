@@ -76,7 +76,7 @@ async def load_verification_run_evidence(
         )
         diagnostics = [VerificationEvidenceDiagnosticSchema.model_validate(item) for item in evidence_set.diagnostics]
 
-    verification_steps = _project_verification_steps(evidence_rows)
+    verification_steps = _project_verification_steps(test_run_id=test_run_id, evidence_rows=evidence_rows)
     return VerificationRunEvidenceResult(
         test_run_id=test_run_id,
         evidence_set=evidence_set_schema,
@@ -87,17 +87,22 @@ async def load_verification_run_evidence(
 
 
 def _project_verification_steps(
+    *,
+    test_run_id: str,
     evidence_rows: Sequence[SignalVerificationEvidenceSchema],
 ) -> list[VerificationStepSchema]:
     steps: list[VerificationStepSchema] = []
     for target_index, evidence in enumerate(evidence_rows):
         step_state = _resolve_step_state(evidence_status=evidence.evidence_status)
         verdict_state = _resolve_step_verdict_state(evidence_status=evidence.evidence_status)
+        verification_confidence = _projected_step_confidence(evidence)
+        confidence_reason = _projected_step_confidence_reason(evidence)
         steps.append(
             VerificationStepSchema(
                 step_id=evidence.evidence_id,
                 signal_id=evidence.signal_id,
                 target_index=target_index,
+                group_id=None,
                 step_state=step_state,
                 expected_path=evidence.expected_path,
                 expected_window_ms=0,
@@ -106,10 +111,12 @@ def _project_verification_steps(
                 verdict_state=verdict_state,
                 evidence_ids=[evidence.evidence_id],
                 actual_report_path=evidence.actual_report_path,
-                source_session_id=evidence.endpoint_id,
+                source_session_id=f"{test_run_id}:{evidence.endpoint_id}" if evidence.endpoint_id else None,
                 source_generation=evidence.source_generation,
                 source_report_rpt_id=evidence.rpt_id,
                 source_report_dat_set=evidence.dataset,
+                verification_confidence=verification_confidence,
+                confidence_reason=confidence_reason,
                 triggered_at=evidence.observed_at,
                 observed_at=evidence.observed_at,
                 latency_ms=evidence.latency_ms,
@@ -134,3 +141,19 @@ def _resolve_step_verdict_state(*, evidence_status: str) -> str:
     if evidence_status in {"timeout", "invalid", "stale", "late", "out_of_window"}:
         return "fail"
     return "inconclusive"
+
+
+def _projected_step_confidence(evidence: SignalVerificationEvidenceSchema) -> str:
+    if evidence.evidence_status != "observed":
+        return "degraded"
+    if str(evidence.endpoint_id or "").startswith("sim:"):
+        return "simulated"
+    return "exact_iec61850"
+
+
+def _projected_step_confidence_reason(evidence: SignalVerificationEvidenceSchema) -> str:
+    if evidence.evidence_status != "observed":
+        return "degraded_recovery_state"
+    if str(evidence.endpoint_id or "").startswith("sim:"):
+        return "simulator_generated_report"
+    return "exact_report_control_match"

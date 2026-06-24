@@ -137,6 +137,42 @@ def _build_multi_ied_plan():
     )
 
 
+def _build_fallback_plan():
+    return build_verification_subscription_plan(
+        [
+            VerificationTargetSource(
+                signal_id=13041,
+                signal_reference="KINT",
+                signal_path="kint_5",
+                signal_metadata={
+                    "protocol": "iec61850",
+                    "protocol_metadata": {
+                        "expected_feedback_path": "kint_5",
+                    },
+                },
+                source_row_index=4,
+                source_kind=None,
+                source_reason=None,
+                allocation_id=183399,
+                allocation_status="assigned",
+                allocation_health={
+                    "conflict": False,
+                    "invalid_type": False,
+                    "missing_device": False,
+                    "missing_channel": False,
+                    "offline_device": True,
+                    "stale_device": False,
+                },
+                channel_id=3,
+                channel_label="CH3",
+                unit_id="DO-002",
+                unit_online=False,
+                source_row_id="signal-13041",
+            )
+        ]
+    )
+
+
 @pytest.mark.anyio
 async def test_execute_simulated_verification_run_records_observed_evidence_and_passes() -> None:
     plan = _build_plan()
@@ -166,12 +202,54 @@ async def test_execute_simulated_verification_run_records_observed_evidence_and_
     assert result.verification_run.recovery_state is not None
     assert result.verification_run.recovery_state.runtime_state == "reporting"
     assert result.verification_run.recovery_state.recovery_reason is None
+    assert result.verification_run.verification_confidence == "exact_report_match"
+    assert result.verification_run.confidence_reason == "exact_dataset_match"
     assert result.evidence_set.summary.evidence_count == 1
     assert result.evidence_set.summary.observed_count == 1
+    assert result.evidence_set.summary.source_generation == 1
     assert result.verification_run.verification_steps[0].evidence_status == "observed"
     assert result.verification_run.verification_steps[0].verdict_state == "pass"
+    assert result.verification_run.verification_steps[0].verification_confidence == "exact_report_match"
+    assert result.verification_run.verification_steps[0].confidence_reason == "exact_dataset_match"
+    assert result.verification_run.verification_steps[0].group_id == "group-1"
+    assert result.verification_run.verification_steps[0].source_session_id == "run-1:sim:IED-A/P1"
+    assert result.verification_run.verification_steps[0].source_generation == 1
     assert repo.rows[0]["evidence_status"] == "observed"
+    assert repo.rows[0]["source_generation"] == 1
     assert repo.evidence_sets[0]["evidence"][0].signal_id == 101
+
+
+@pytest.mark.anyio
+async def test_execute_simulated_verification_run_marks_fallback_planning_as_simulated_fallback() -> None:
+    plan = _build_fallback_plan()
+    repo = _FakeVerificationEvidenceRepository()
+    triggered_at = datetime(2026, 6, 24, 10, 11, 12, 820_000, tzinfo=UTC)
+
+    result = await execute_simulated_verification_run(
+        workspace_id=7,
+        test_run_id="run-fallback",
+        verification_targets=plan.targets,
+        subscription_plan=plan,
+        execution_context=VerificationExecutionContextSchema(
+            project_id=2,
+            signal_list_revision_id=2,
+            planner_version="ui-auto-run",
+            runtime_version="simulator",
+            policy_version="v1",
+        ),
+        repository=repo,  # type: ignore[arg-type]
+        triggered_at=triggered_at,
+        latency_ms=250,
+        now=lambda: triggered_at + timedelta(milliseconds=250),
+    )
+
+    assert result.verification_run.verdict_state == "pass"
+    assert result.verification_run.verification_confidence == "simulated_fallback"
+    assert result.verification_run.confidence_reason == "fallback_planning_used"
+    assert result.verification_run.verification_steps[0].verification_confidence == "simulated_fallback"
+    assert result.verification_run.verification_steps[0].confidence_reason == "fallback_planning_used"
+    assert result.verification_run.recovery_state is not None
+    assert result.verification_run.recovery_state.runtime_state == "reporting"
 
 
 @pytest.mark.anyio
@@ -205,6 +283,7 @@ async def test_execute_simulated_verification_run_marks_late_observation_as_fail
     assert result.verification_run.recovery_state is not None
     assert result.verification_run.recovery_state.runtime_state == "reporting"
     assert result.verification_run.recovery_state.recovery_reason is None
+    assert result.verification_run.verification_confidence == "degraded"
     assert result.evidence_set.summary.late_count == 1
     assert result.verification_run.verification_steps[0].evidence_status == "late"
     assert result.verification_run.verification_steps[0].verdict_state == "fail"
@@ -246,11 +325,18 @@ async def test_execute_simulated_verification_run_splits_multi_ied_sessions_and_
     }
     assert result.verification_run.verdict_state == "pass"
     assert result.evidence_set.summary.evidence_count == 2
+    assert result.evidence_set.summary.source_generation == 1
     assert {row["endpoint_id"] for row in repo.rows} == {"sim:IED-A/P1", "sim:IED-B/P1"}
+    assert {row["source_generation"] for row in repo.rows} == {1}
     assert {step.source_report_rpt_id for step in result.verification_run.verification_steps} == {
         "IED-A/LLN0.brA",
         "IED-B/LLN0.brB",
     }
+    assert {step.group_id for step in result.verification_run.verification_steps} == {"group-1", "group-2"}
+    assert {step.verification_confidence for step in result.verification_run.verification_steps} == {"exact_report_match"}
+    assert {
+        step.source_session_id for step in result.verification_run.verification_steps
+    } == {"run-3:sim:IED-A/P1", "run-3:sim:IED-B/P1"}
     assert result.verification_run.recovery_state is not None
     assert result.verification_run.recovery_state.runtime_state == "reporting"
     assert result.verification_run.recovery_state.recovery_reason is None
@@ -286,12 +372,14 @@ async def test_execute_simulated_verification_run_marks_missing_observation_as_t
     assert result.verification_run.recovery_state.runtime_state == "degraded"
     assert result.verification_run.recovery_state.desired_state == "reconnecting"
     assert result.verification_run.recovery_state.recovery_reason == "timeout"
+    assert result.verification_run.verification_confidence == "degraded"
     assert result.verification_run.recovery_state.stale_signal_count == 1
     assert result.verification_run.recovery_state.preserved_evidence_count == 1
     assert result.verification_run.recovery_state.desired_target_ids == [101]
     assert result.verification_run.verification_steps[0].evidence_status == "timeout"
     assert result.verification_run.verification_steps[0].verdict_state == "fail"
     assert result.evidence_set.summary.timeout_count == 1
+    assert result.evidence_set.summary.source_generation == 1
     assert repo.rows[0]["evidence_status"] == "timeout"
 
 
@@ -325,8 +413,10 @@ async def test_execute_simulated_verification_run_marks_stale_generation_as_degr
     assert result.verification_run.recovery_state.runtime_state == "degraded"
     assert result.verification_run.recovery_state.desired_state == "reconnecting"
     assert result.verification_run.recovery_state.recovery_reason == "stale_generation"
+    assert result.verification_run.verification_confidence == "degraded"
     assert result.verification_run.recovery_state.stale_signal_count == 1
     assert result.verification_run.verification_steps[0].evidence_status == "stale"
     assert result.verification_run.verification_steps[0].verdict_state == "fail"
     assert result.evidence_set.summary.stale_count == 1
+    assert result.evidence_set.summary.source_generation == 1
     assert repo.rows[0]["evidence_status"] == "stale"

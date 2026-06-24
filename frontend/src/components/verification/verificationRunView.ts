@@ -5,7 +5,8 @@ export type VerificationRunViewSignal = {
   output: string
   expected: string
   observed: string
-  ied: string
+  unit: string
+  endpoint: string
   rcb: string
   dataset: string
   latency: string
@@ -42,12 +43,17 @@ export function buildVerificationRunView(result: VerificationRunDetailResponse |
     return null
   }
 
+  const targetBySignalId = new Map(
+    result.verification_run.verification_targets.map((target) => [target.signal_id, target]),
+  )
+
   const signals = result.verdict_explanation.signals.map((signal) => ({
     title: resolveFieldValue(signal.signal_reference),
     output: resolveFieldValue(signal.signal_path),
     expected: resolveFieldValue(signal.expected_path),
     observed: resolveObservedPath(signal),
-    ied: resolveFieldValue(signal.source_ied ?? signal.endpoint_id),
+    unit: resolveFieldValue(targetBySignalId.get(signal.signal_id)?.unit_id ?? signal.source_ied ?? signal.endpoint_id),
+    endpoint: resolveFieldValue(targetBySignalId.get(signal.signal_id)?.endpoint_id ?? signal.endpoint_id),
     rcb: resolveFieldValue(signal.rpt_id),
     dataset: resolveFieldValue(signal.dataset),
     latency: resolveLatency(signal.latency_ms),

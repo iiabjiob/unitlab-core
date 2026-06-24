@@ -128,6 +128,7 @@ It binds:
 - the durable evidence set;
 - an optional runtime summary aggregate;
 - the final verdict state.
+It should also carry a verification confidence level and reason that describe proof strength independently from verdict.
 
 ### Workflow state
 
@@ -199,6 +200,36 @@ The product-level conclusion for a verification step or run, such as:
 - `inconclusive`
 - `aborted`
 
+### Verification confidence
+
+The proof-strength classification for a verification step or run.
+
+Typical values:
+- `exact_iec61850`
+- `exact_report_match`
+- `discovery_match`
+- `simulated_fallback`
+- `simulated`
+- `degraded`
+- `unknown`
+
+Confidence answers "how strong is the proof?" and must remain separate from verdict state.
+Do not confuse it with planner confidence, which is a pre-runtime validation view over target coverage and binding quality.
+
+### Confidence reason
+
+A normalized reason code that explains why the current confidence level was assigned.
+
+Examples:
+- `exact_report_control_match`
+- `exact_dataset_match`
+- `discovery_match`
+- `fallback_planning_used`
+- `simulator_generated_report`
+- `degraded_recovery_state`
+- `partial_coverage`
+- `unknown`
+
 ## Naming rules
 
 - Use `signal_path` for product identity.
@@ -209,6 +240,7 @@ The product-level conclusion for a verification step or run, such as:
 - Use `connection_generation` for session generation tokens and `source_generation` for report provenance.
 - Use `evidence_status` for observed feedback state.
 - Use `verdict_state` for product-level decision state.
+- Use `verification_confidence` for proof strength and `confidence_reason` for the normalized reason code.
 
 ## Boundary rules
 

@@ -43,6 +43,7 @@ The C runtime does not own test verdict policy.
 6. C runtime receives reports and updates live signal state.
 7. Python converts report updates into durable `SignalVerificationEvidence` records.
 8. Python computes verdict state from evidence and timing policy.
+9. Python computes verification confidence from provenance, coverage, runtime health, and source quality.
 
 For multi-IED runs, the source of truth for runtime health is the set of `session_snapshots`; any top-level runtime state should be treated only as a derived aggregate summary.
 
@@ -82,6 +83,48 @@ Required behavior:
 - `fail` means the overall verdict is negative;
 - `pending` is the state before enough evidence exists;
 - `aborted` means the operator or system stopped the workflow intentionally.
+
+`verdict_state` answers whether the verification passed.
+`verification_confidence` answers how strong the proof is behind that verdict.
+These are intentionally separate fields and should not be collapsed into one status.
+
+## Confidence taxonomy
+
+Use a normalized `verification_confidence` value to describe proof strength:
+
+- `exact_iec61850`: exact live report-control and dataset confirmation from a real IED.
+- `exact_report_match`: exact report-control or dataset match, but the source is not yet proven to be a real IED.
+- `discovery_match`: matched via discovery metadata or discovery-derived binding.
+- `simulated_fallback`: simulator or fallback-planned runtime produced the matching report.
+- `simulated`: simulator-generated report without stronger binding.
+- `degraded`: the verdict is still explainable, but recovery, stale state, or partial coverage reduced trust.
+- `unknown`: confidence has not been classified yet.
+
+Use a normalized `confidence_reason` code rather than ad-hoc prose:
+
+- `exact_report_control_match`
+- `exact_dataset_match`
+- `discovery_match`
+- `fallback_planning_used`
+- `simulator_generated_report`
+- `degraded_recovery_state`
+- `partial_coverage`
+- `unknown`
+
+The confidence reason should be machine-stable and should not replace diagnostics or human-readable summaries.
+
+### Aggregation policy
+
+For future multi-signal and multi-IED runs:
+
+- step confidence is derived from the strongest applicable evidence/source classification for that step;
+- run confidence is the weakest confidence among the contributing steps after applying runtime-health modifiers;
+- if any contributing step is `degraded`, the run confidence cannot exceed `degraded`;
+- if any contributing step is `simulated_fallback`, the run confidence cannot exceed `simulated_fallback`;
+- if all contributing steps are `exact_iec61850`, the run confidence is `exact_iec61850`;
+- a passing verdict does not raise confidence on its own.
+
+This aggregation rule is deterministic and should be stable for identical inputs.
 
 The product layer should preserve the exact evidence trail used for the verdict.
 
@@ -237,11 +280,14 @@ The workflow finished and the final verdict is stable.
 - Evidence must be reconstructable from runtime report updates and session provenance.
 - Verdicts must come from evidence and policy, not from UI convenience state.
 - `evidence_status` and `verdict_state` must remain separate and independently inspectable.
+- `verification_confidence` and `confidence_reason` should be carried alongside verdict state and remain separate from evidence status.
 - `ExecutionContext` must be carried with the run for later reconstruction.
 
 ## Summary flow
 
 SignalListRow -> VerificationTarget -> SubscriptionPlan -> Runtime Session / Report Updates -> SignalVerificationEvidence -> Verdict -> UI/API
+
+The runtime/explanation layer may additionally derive `verification_confidence` from the same trail, but that confidence must remain separate from verdict state.
 
 Ownership:
 - SignalListRow: UI/persistence
