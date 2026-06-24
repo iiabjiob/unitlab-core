@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.signal_sheet.repository import SignalSheetRepository
 from app.api.v1.signals.repository import SignalsRepository
+from app.core.config import get_settings
 from app.schemas.verification_schema import (
     VerificationAutoRunStartSchema,
     VerificationRunDetailResponseSchema,
@@ -16,6 +17,7 @@ from app.schemas.verification_schema import (
     VerificationVerdictExplanationSchema,
 )
 from app.services.iec61850.mms_adapter import Iec61850MmsEndpointCatalog
+from app.services.iec61850.mms_adapter import build_mms_endpoint_catalog_from_json
 from app.services.iec61850.report_runtime import (
     Iec61850DeviceEndpoint,
     Iec61850ReportSubscriptionPlanDevice,
@@ -94,11 +96,16 @@ async def execute_single_signal_verification_run(
         allocation_rows_by_signal_id=allocation_rows_by_signal_id,
     )
     subscription_plan = build_verification_subscription_plan(sources)
+    effective_mms_endpoint_catalog = mms_endpoint_catalog
+    if effective_mms_endpoint_catalog is None and execution_context.runtime_version.strip().lower() in {"mms", "live", "live-mms", "real-mms"}:
+        effective_mms_endpoint_catalog = build_mms_endpoint_catalog_from_json(
+            getattr(get_settings(), "iec61850_mms_endpoint_catalog_json", None)
+        )
 
     runtime_selection = resolve_verification_runtime(
         execution_context=execution_context,
         now=lambda: start_at,
-        endpoint_catalog=mms_endpoint_catalog,
+        endpoint_catalog=effective_mms_endpoint_catalog,
         simulator_endpoint_for_device=endpoint_for_device,
         mms_control_service_factory=mms_control_service_factory or Iec61850ClientControlService,
     )

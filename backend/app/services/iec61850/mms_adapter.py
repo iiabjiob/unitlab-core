@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Sequence
 
@@ -109,6 +110,62 @@ def build_mms_endpoint_catalog(
     entries: Sequence[Iec61850MmsEndpointCatalogEntry],
 ) -> Iec61850MmsEndpointCatalog:
     return Iec61850MmsEndpointCatalog(entries)
+
+
+def build_mms_endpoint_catalog_from_json(payload: str | None) -> Iec61850MmsEndpointCatalog | None:
+    text = payload.strip() if payload is not None else ""
+    if not text:
+        return None
+    try:
+        document = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise Iec61850ReportRuntimeError(
+            "INVALID_MMS_ENDPOINT_CATALOG",
+            "IEC 61850 MMS endpoint catalog JSON is invalid.",
+        ) from exc
+    if not isinstance(document, list):
+        raise Iec61850ReportRuntimeError(
+            "INVALID_MMS_ENDPOINT_CATALOG",
+            "IEC 61850 MMS endpoint catalog JSON must be a list of endpoint entries.",
+        )
+
+    entries: list[Iec61850MmsEndpointCatalogEntry] = []
+    for item in document:
+        if not isinstance(item, dict):
+            raise Iec61850ReportRuntimeError(
+                "INVALID_MMS_ENDPOINT_CATALOG",
+                "IEC 61850 MMS endpoint catalog entries must be JSON objects.",
+            )
+        ied_name = str(item.get("ied_name") or item.get("iedName") or "").strip()
+        access_point_name = str(item.get("access_point_name") or item.get("accessPointName") or "AP1").strip() or "AP1"
+        host = str(item.get("host") or "").strip()
+        port_value = item.get("port")
+        if port_value is None or not str(port_value).strip():
+            port = 102
+        else:
+            try:
+                port = int(port_value)
+            except (TypeError, ValueError) as exc:
+                raise Iec61850ReportRuntimeError(
+                    "INVALID_MMS_ENDPOINT_CATALOG",
+                    "IEC 61850 MMS endpoint catalog entries require a numeric port.",
+                ) from exc
+        endpoint_id = str(item.get("endpoint_id") or item.get("endpointId") or "").strip() or None
+        if not ied_name:
+            raise Iec61850ReportRuntimeError(
+                "INVALID_MMS_ENDPOINT_CATALOG",
+                "IEC 61850 MMS endpoint catalog entries require an ied_name.",
+            )
+        entries.append(
+            Iec61850MmsEndpointCatalogEntry(
+                ied_name=ied_name,
+                access_point_name=access_point_name,
+                host=host,
+                port=port,
+                endpoint_id=endpoint_id,
+            )
+        )
+    return build_mms_endpoint_catalog(entries)
 
 
 class Iec61850UnavailableMmsAdapter:

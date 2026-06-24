@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.core.config import get_settings
 from app.schemas.verification_schema import (
     SignalVerificationEvidenceSchema,
     SignalVerificationEvidenceSetSchema,
@@ -645,6 +646,47 @@ async def test_execute_single_signal_verification_run_selects_mms_runtime_from_c
     assert result.verification_run.verification_steps[0].evidence_status == "timeout"
     assert result.verification_run.verification_steps[0].subscription_id == "vr-mms-runtime:group-1"
     assert result.verification_run.reason is not None
+
+
+@pytest.mark.anyio
+async def test_execute_single_signal_verification_run_loads_mms_endpoint_catalog_from_settings(monkeypatch) -> None:
+    db = _FakeDb()
+    triggered_at = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
+    monkeypatch.setenv(
+        "IEC61850_MMS_ENDPOINT_CATALOG_JSON",
+        '[{"ied_name":"IED-A","access_point_name":"P1","host":"10.10.10.250","port":12447}]',
+    )
+    get_settings.cache_clear()
+    try:
+        monkeypatch.setattr(run_service, "SignalsRepository", _FakeSignalsRepository)
+        monkeypatch.setattr(run_service, "SignalSheetRepository", _FakeSignalSheetRepository)
+        monkeypatch.setattr(run_service, "VerificationEvidenceRepository", _FakeEvidenceRepository)
+        monkeypatch.setattr(run_service, "VerificationRunRepository", _FakeRunRepository)
+
+        result = await execute_single_signal_verification_run(
+            workspace_id=7,
+            payload=VerificationAutoRunStartSchema(
+                signal_ids=[101],
+                execution_context=VerificationExecutionContextSchema(
+                    project_id=1,
+                    signal_list_revision_id=2,
+                    planner_version="test",
+                    runtime_version="mms",
+                    policy_version="v1",
+                ),
+                client_id="unitlab-backend-simulator",
+                test_run_id="vr-mms-settings",
+            ),
+            db=db,  # type: ignore[arg-type]
+            triggered_at=triggered_at,
+            mms_control_service_factory=_FakeClientControlService,
+        )
+    finally:
+        get_settings.cache_clear()
+
+    assert result.verification_run.verdict_state == "fail"
+    assert result.verification_run.session_snapshots[0].endpoint_id == "mms:IED-A/P1@10.10.10.250:12447"
+    assert result.verification_run.subscription_snapshots[0].endpoint_id == "mms:IED-A/P1@10.10.10.250:12447"
 
 
 @pytest.mark.anyio

@@ -156,6 +156,7 @@ Practical rules:
 Current product implementation uses a runtime-selection seam in the Python layer:
 - `runtime_version="simulator"` routes through the simulator-backed verification adapter;
 - `runtime_version="mms"` routes through the MMS endpoint catalog and a client-control-backed MMS wrapper;
+- if no catalog is passed explicitly, the backend can load a settings-driven JSON MMS endpoint catalog for auto-run execution;
 - the MMS wrapper routes one physical session per endpoint and can manage multiple report-control candidates through client-control-backed per-candidate control services.
 
 ### Test fixture override policy
