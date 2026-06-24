@@ -643,6 +643,12 @@ async def test_execute_single_signal_verification_run_selects_mms_runtime_from_c
     assert result.verification_run.verdict_state == "fail"
     assert result.verification_run.session_snapshots[0].endpoint_id == "mms:IED-A/P1@10.10.10.250:12447"
     assert result.verification_run.subscription_snapshots[0].endpoint_id == "mms:IED-A/P1@10.10.10.250:12447"
+    assert any(diagnostic.code == "endpoint_resolution_policy" for diagnostic in result.verification_run.diagnostics)
+    assert any(
+        diagnostic.code == "endpoint_resolution_policy" and diagnostic.details and diagnostic.details.get("transport_source") == "explicit_request"
+        for diagnostic in result.verification_run.diagnostics
+    )
+    assert any(diagnostic.code == "endpoint_resolution_policy" for diagnostic in result.verdict_explanation.diagnostics)
     assert result.verification_run.verification_steps[0].evidence_status == "timeout"
     assert result.verification_run.verification_steps[0].subscription_id == "vr-mms-runtime:group-1"
     assert result.verification_run.reason is not None
@@ -687,6 +693,12 @@ async def test_execute_single_signal_verification_run_loads_mms_endpoint_catalog
     assert result.verification_run.verdict_state == "fail"
     assert result.verification_run.session_snapshots[0].endpoint_id == "mms:IED-A/P1@10.10.10.250:12447"
     assert result.verification_run.subscription_snapshots[0].endpoint_id == "mms:IED-A/P1@10.10.10.250:12447"
+    assert any(diagnostic.code == "endpoint_resolution_policy" for diagnostic in result.verification_run.diagnostics)
+    assert any(
+        diagnostic.code == "endpoint_resolution_policy" and diagnostic.details and diagnostic.details.get("transport_source") == "settings_catalog"
+        for diagnostic in result.verification_run.diagnostics
+    )
+    assert any(diagnostic.code == "endpoint_resolution_policy" for diagnostic in result.verdict_explanation.diagnostics)
 
 
 @pytest.mark.anyio

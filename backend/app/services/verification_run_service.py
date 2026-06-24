@@ -17,7 +17,11 @@ from app.schemas.verification_schema import (
     VerificationVerdictExplanationSchema,
 )
 from app.services.iec61850.mms_adapter import Iec61850MmsEndpointCatalog
-from app.services.iec61850.mms_adapter import build_mms_endpoint_catalog_from_json
+from app.services.iec61850.scl_import import Iec61850SqlAlchemySclImportRepository
+from app.services.verification_endpoint_resolution import (
+    build_verification_endpoint_resolution_diagnostic,
+    resolve_verification_endpoint_resolution_policy,
+)
 from app.services.iec61850.report_runtime import (
     Iec61850DeviceEndpoint,
     Iec61850ReportSubscriptionPlanDevice,
@@ -96,16 +100,27 @@ async def execute_single_signal_verification_run(
         allocation_rows_by_signal_id=allocation_rows_by_signal_id,
     )
     subscription_plan = build_verification_subscription_plan(sources)
-    effective_mms_endpoint_catalog = mms_endpoint_catalog
-    if effective_mms_endpoint_catalog is None and execution_context.runtime_version.strip().lower() in {"mms", "live", "live-mms", "real-mms"}:
-        effective_mms_endpoint_catalog = build_mms_endpoint_catalog_from_json(
-            getattr(get_settings(), "iec61850_mms_endpoint_catalog_json", None)
-        )
+    active_runtime_selection = None
+    if hasattr(db, "execute"):
+        active_runtime_selection = await Iec61850SqlAlchemySclImportRepository(db).get_active_runtime_selection(workspace_id=workspace_id)
+
+    endpoint_resolution_policy = resolve_verification_endpoint_resolution_policy(
+        execution_context=execution_context,
+        explicit_mms_endpoint_catalog=mms_endpoint_catalog,
+        settings_mms_endpoint_catalog_json=getattr(get_settings(), "iec61850_mms_endpoint_catalog_json", None),
+        active_runtime_selection_import_id=(
+            active_runtime_selection.import_id if active_runtime_selection is not None else None
+        ),
+        active_runtime_selection_revision=(
+            active_runtime_selection.runtime_revision if active_runtime_selection is not None else None
+        ),
+    )
+    endpoint_resolution_diagnostic = build_verification_endpoint_resolution_diagnostic(endpoint_resolution_policy)
 
     runtime_selection = resolve_verification_runtime(
         execution_context=execution_context,
         now=lambda: start_at,
-        endpoint_catalog=effective_mms_endpoint_catalog,
+        endpoint_catalog=endpoint_resolution_policy.endpoint_catalog,
         simulator_endpoint_for_device=endpoint_for_device,
         mms_control_service_factory=mms_control_service_factory or Iec61850ClientControlService,
     )
@@ -122,12 +137,17 @@ async def execute_single_signal_verification_run(
         client_id=client_id or payload.client_id,
     )
 
+    verification_run = execution_result.verification_run.model_copy(
+        update={
+            "diagnostics": [*execution_result.verification_run.diagnostics, endpoint_resolution_diagnostic],
+        }
+    )
     verdict_explanation = build_verification_verdict_explanation(
-        verification_run=execution_result.verification_run,
-        verification_steps=execution_result.verification_run.verification_steps,
+        verification_run=verification_run,
+        verification_steps=verification_run.verification_steps,
         evidence_rows=execution_result.evidence_rows,
     )
-    verification_run = execution_result.verification_run.model_copy(
+    verification_run = verification_run.model_copy(
         update={
             "reason": verdict_explanation.summary,
         }

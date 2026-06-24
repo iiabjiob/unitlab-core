@@ -157,7 +157,8 @@ Current product implementation uses a runtime-selection seam in the Python layer
 - `runtime_version="simulator"` routes through the simulator-backed verification adapter;
 - `runtime_version="mms"` routes through the MMS endpoint catalog and a client-control-backed MMS wrapper;
 - if no catalog is passed explicitly, the backend can load a settings-driven JSON MMS endpoint catalog for auto-run execution;
-- the MMS wrapper routes one physical session per endpoint and can manage multiple report-control candidates through client-control-backed per-candidate control services.
+- the MMS wrapper routes one physical session per endpoint and can manage multiple report-control candidates through client-control-backed per-candidate control services;
+- endpoint resolution now reports transport source and model source separately so the run can explain whether the transport address came from an explicit request, settings catalog, or was unavailable, and whether the model binding came from loaded SCD or discovery fallback.
 
 ### Test fixture override policy
 
@@ -251,6 +252,11 @@ The session snapshot may also expose a compact transport summary:
 - signal update count;
 - signal change count;
 - stale-generation drop count.
+
+Endpoint-resolution diagnostics should be explicit about the split between transport and model binding:
+- transport source answers where the MMS host/port came from;
+- model source answers whether the IED/report-control model came from loaded SCD or discovery fallback;
+- discovery should not invent transport addresses for production runs.
 
 The subscription snapshot should carry the selected RCB key, data-set reference, report-health summary, and recovery/re-subscription identity.
 
