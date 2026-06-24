@@ -38,14 +38,14 @@ The C runtime does not own test verdict policy.
 1. User selects signal-list rows.
 2. Python normalizes rows into `VerificationTarget` records.
 3. Python groups targets into a `SubscriptionPlan`.
-4. Python asks the C runtime to prepare the relevant IEC 61850 session(s).
+4. Python asks the C runtime to prepare the relevant IEC 61850 session(s) and subscription(s).
 5. Python executes the selected test action.
-6. C runtime receives reports and updates live signal state.
+6. C runtime receives reports and updates live signal state through the owning subscription(s).
 7. Python converts report updates into durable `SignalVerificationEvidence` records.
 8. Python computes verdict state from evidence and timing policy.
 9. Python computes verification confidence from provenance, coverage, runtime health, and source quality.
 
-For multi-IED runs, the source of truth for runtime health is the set of `session_snapshots`; any top-level runtime state should be treated only as a derived aggregate summary.
+For multi-IED runs, the source of truth for transport health is the set of `session_snapshots`; the source of truth for report health and stream state is the set of `subscription_snapshots`. Any top-level runtime state should be treated only as a derived aggregate summary.
 
 The workflow should preserve the source `ExecutionContext` so the run remains reconstructable later.
 
@@ -179,6 +179,16 @@ Do not collapse the following into one flat state field:
 - `degraded`
 - `closed`
 
+### Subscription state
+
+- `pending`
+- `reserving`
+- `enabled`
+- `reporting`
+- `reconnecting`
+- `degraded`
+- `closed`
+
 ### Evidence status
 
 - `none`
@@ -239,7 +249,7 @@ Each evidence record should preserve:
 - target identity;
 - canonical signal path;
 - actual report path;
-- source session and generation;
+- source session, subscription, and generation;
 - source report control and data set;
 - received timestamp;
 - timing window result;
@@ -267,6 +277,8 @@ The workflow finished and the final verdict is stable.
 
 - A verification run should not lose the evidence trail when one session reconnects.
 - A multi-IED group should not hide one IED failure behind a successful peer.
+- A single session may carry multiple subscriptions, and recovery must not duplicate the session snapshot once per subscription.
+- Subscription health must remain visible even when transport health is healthy.
 - Recovery should preserve prior targets and evidence while restoring live confirmation ability.
 - Late or old-generation report updates must remain rejected and diagnosable.
 
@@ -274,7 +286,7 @@ The workflow finished and the final verdict is stable.
 
 - A target must remain traceable back to the original signal-list row.
 - A plan must remain traceable back to the target(s) that produced it.
-- A report update must remain traceable back to session, endpoint, report-control, and data-set identity.
+- A report update must remain traceable back to session, subscription, endpoint, report-control, and data-set identity.
 - Evidence must not be destroyed when a later state arrives.
 - Late or stale report updates must not rewrite a newer session generation.
 - Evidence must be reconstructable from runtime report updates and session provenance.
@@ -285,7 +297,9 @@ The workflow finished and the final verdict is stable.
 
 ## Summary flow
 
-SignalListRow -> VerificationTarget -> SubscriptionPlan -> Runtime Session / Report Updates -> SignalVerificationEvidence -> Verdict -> UI/API
+Endpoint -> Session -> Subscription -> SignalVerificationEvidence -> VerificationStep -> VerificationRun -> Verdict/UI/API
+
+SignalListRow -> VerificationTarget -> SubscriptionPlan -> Runtime Session / Subscription / Report Updates -> SignalVerificationEvidence -> Verdict -> UI/API
 
 The runtime/explanation layer may additionally derive `verification_confidence` from the same trail, but that confidence must remain separate from verdict state.
 
@@ -293,10 +307,44 @@ Ownership:
 - SignalListRow: UI/persistence
 - VerificationTarget: Python/FastAPI product layer
 - SubscriptionPlan: Python/FastAPI product layer
-- Runtime Session / Report Updates: reusable IEC 61850 C runtime
+- Runtime Session: reusable IEC 61850 C runtime
+- Runtime Subscription / Report Updates: reusable IEC 61850 C runtime
 - SignalVerificationEvidence: Python/FastAPI product layer
 - Verdict: Python/FastAPI product layer
 - UI/API projection: Python/FastAPI product layer
+
+## Session and subscription ownership
+
+### Session
+
+Owns:
+- endpoint identity;
+- connection generation;
+- transport state;
+- association state;
+- reconnect lifecycle;
+- discovery snapshot ownership.
+
+### Subscription
+
+Owns:
+- report-control identity;
+- data-set identity;
+- report stream state;
+- report health;
+- group linkage;
+- selected report-control recovery state.
+
+### Verification step identity
+
+A verification step should reference:
+- `session_id`;
+- `subscription_id`;
+- `signal_id`;
+- `group_id` when available;
+- expected feedback path.
+
+The step should not infer subscription identity from session-local selected report-control state.
 
 ## Runtime interaction points
 

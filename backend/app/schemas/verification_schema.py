@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 VerificationConfidenceLevel = Literal[
     "exact_iec61850",
@@ -185,15 +185,26 @@ class VerificationSessionSnapshotSchema(BaseModel):
     runtime_state: str
     connection_generation: int
     discovery_status: str
-    subscription_status: str
-    report_health: str
-    last_report_at: datetime | None = None
     last_error: str | None = None
-    selected_report_control: str | None = None
-    selected_data_set: str | None = None
+    diagnostic_code: str | None = None
+
+
+class VerificationSubscriptionSnapshotSchema(BaseModel):
+    subscription_id: str
+    session_id: str
+    endpoint_id: str
+    group_id: str | None = None
+    report_control_reference: str | None = None
+    report_control_name: str | None = None
+    data_set_reference: str | None = None
+    subscription_state: Literal["pending", "reserving", "enabled", "reporting", "reconnecting", "degraded", "closed", "failed"]
+    report_health: Literal["unknown", "healthy", "degraded"]
+    last_report_at: datetime | None = None
     current_rptena_owner: str | None = None
     stale_signal_count: int | None = None
+    last_error: str | None = None
     diagnostic_code: str | None = None
+    diagnostics: list[VerificationEvidenceDiagnosticSchema] = Field(default_factory=list)
 
 
 class VerificationRecoveryStateSchema(BaseModel):
@@ -228,6 +239,8 @@ class VerificationStepSchema(BaseModel):
     step_id: str
     signal_id: int
     target_index: int
+    session_id: str
+    subscription_id: str
     group_id: str | None = None
     step_state: Literal["draft", "planned", "armed", "running", "awaiting_confirmation", "completing", "completed", "aborted", "failed"]
     expected_path: str
@@ -238,6 +251,7 @@ class VerificationStepSchema(BaseModel):
     evidence_ids: list[str] = Field(default_factory=list)
     actual_report_path: str | None = None
     source_session_id: str | None = None
+    source_subscription_id: str | None = None
     source_generation: int | None = None
     source_report_rpt_id: str | None = None
     source_report_dat_set: str | None = None
@@ -249,12 +263,35 @@ class VerificationStepSchema(BaseModel):
     reason: str | None = None
     diagnostics: list[VerificationEvidenceDiagnosticSchema] = Field(default_factory=list)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_identity(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+
+        data = dict(value)
+        if not data.get("session_id") and data.get("source_session_id"):
+            data["session_id"] = data["source_session_id"]
+
+        if not data.get("subscription_id"):
+            subscription_id = data.get("source_subscription_id") or data.get("group_id")
+            if subscription_id is None:
+                session_id = data.get("session_id")
+                report_reference = data.get("source_report_rpt_id") or data.get("source_report_dat_set")
+                if session_id and report_reference:
+                    subscription_id = f"{session_id}:{report_reference}"
+            if subscription_id is not None:
+                data["subscription_id"] = str(subscription_id)
+
+        return data
+
 
 class VerificationRunSchema(BaseModel):
     test_run_id: str
     verification_targets: list[VerificationTargetSchema] = Field(default_factory=list)
     subscription_plan: VerificationSubscriptionPlanSchema
     session_snapshots: list[VerificationSessionSnapshotSchema] = Field(default_factory=list)
+    subscription_snapshots: list[VerificationSubscriptionSnapshotSchema] = Field(default_factory=list)
     evidence_set: SignalVerificationEvidenceSetSchema
     execution_context: VerificationExecutionContextSchema
     recovery_state: VerificationRecoveryStateSchema | None = None

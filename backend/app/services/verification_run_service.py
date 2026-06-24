@@ -47,8 +47,8 @@ async def execute_single_signal_verification_run(
     client_id: str | None = None,
 ) -> VerificationAutoRunResult:
     selected_signal_ids = [int(signal_id) for signal_id in payload.signal_ids if int(signal_id) > 0]
-    if len(selected_signal_ids) != 1:
-        raise ValueError("Single-signal auto verification requires exactly one selected signal.")
+    if not selected_signal_ids:
+        raise ValueError("Verification requires at least one selected signal.")
 
     run_id = str(payload.test_run_id or f"vr-{uuid4().hex[:10]}")
     start_at = triggered_at or payload.execution_context.triggered_at or datetime.now(UTC)
@@ -81,6 +81,15 @@ async def execute_single_signal_verification_run(
         signals_by_id=signals_by_id,
         allocation_rows_by_signal_id=allocation_rows_by_signal_id,
     )
+    unit_ids = sorted(
+        {
+            str(source.unit_id).strip()
+            for source in sources
+            if source.unit_id is not None and str(source.unit_id).strip()
+        }
+    )
+    if len(unit_ids) != 1:
+        raise ValueError("Verification requires selected signals from one IED only.")
     subscription_plan = build_verification_subscription_plan(sources)
 
     execution_result = await execute_simulated_verification_run(

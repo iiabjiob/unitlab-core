@@ -75,9 +75,40 @@ It should preserve:
 
 ### Session
 
-The runtime-owned connection state for one endpoint/device identity.
+The runtime-owned physical connection state for one endpoint/device identity.
 
-It includes desired state, live state, discovery snapshot, connection generation, diagnostics, and freshness summary.
+It includes transport state, association state, discovery snapshot, connection generation, and diagnostics.
+It should not carry per-report-control execution state once the contract separates subscriptions from sessions.
+
+Current transitional payloads may still expose session+subscription hybrid snapshots, but the target contract treats that as legacy shape.
+
+### Session snapshot
+
+The serialized product or runtime view of one physical session.
+
+A session snapshot should expose:
+- `session_id`;
+- `endpoint_id`;
+- session lifecycle and transport state;
+- connection generation;
+- discovery state;
+- transport/association diagnostics.
+
+It should not duplicate once per subscription.
+
+### Subscription
+
+The runtime-owned report-control execution state inside one session.
+
+A subscription owns:
+- report-control identity;
+- data-set identity;
+- report stream state;
+- report health;
+- group linkage;
+- per-subscription diagnostics.
+
+One session can own many subscriptions.
 
 ### Connection generation
 
@@ -125,6 +156,7 @@ It binds:
 - selected verification targets;
 - the subscription plan used for execution;
 - session snapshots;
+- subscription snapshots;
 - the durable evidence set;
 - an optional runtime summary aggregate;
 - the final verdict state.
@@ -166,6 +198,8 @@ A single executable observation inside a verification run.
 It remains traceable to:
 - one selected signal row;
 - one expected feedback path;
+- one runtime session;
+- one runtime subscription;
 - one runtime observation or timeout outcome.
 It may accumulate multiple evidence records over time.
 
@@ -187,9 +221,9 @@ It preserves:
 
 ### Runtime summary
 
-An optional aggregate view of runtime health across one or more session snapshots.
+An optional aggregate view of runtime health across session and subscription snapshots.
 
-It should be derived from the underlying session snapshots rather than replace them.
+It should be derived from the underlying snapshots rather than replace them.
 
 ### Verdict state
 
@@ -229,6 +263,38 @@ Examples:
 - `degraded_recovery_state`
 - `partial_coverage`
 - `unknown`
+
+### Subscription snapshot
+
+The runtime-owned execution state for one report-control / data-set stream inside one session.
+
+It should include:
+- `subscription_id`
+- `session_id`
+- `group_id`
+- `endpoint_id`
+- `report_control_reference`
+- `report_control_name`
+- `data_set_reference`
+- `subscription_state`
+- `report_health`
+- `last_report_at`
+- `diagnostics`
+
+One session can own many subscription snapshots.
+
+### Subscription state
+
+The lifecycle state for one report-control subscription inside a session.
+
+Typical values:
+- `pending`
+- `reserving`
+- `enabled`
+- `reporting`
+- `reconnecting`
+- `degraded`
+- `closed`
 
 ## Naming rules
 

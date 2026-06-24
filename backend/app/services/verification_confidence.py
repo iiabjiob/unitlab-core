@@ -7,6 +7,7 @@ from app.schemas.verification_schema import (
     VerificationConfidenceLevel,
     VerificationSessionSnapshotSchema,
     VerificationStepSchema,
+    VerificationSubscriptionSnapshotSchema,
     VerificationSubscriptionPlanGroupSchema,
     VerificationTargetSchema,
 )
@@ -66,8 +67,15 @@ def derive_run_confidence(
     *,
     steps: Sequence[VerificationStepSchema],
     session_snapshots: Sequence[VerificationSessionSnapshotSchema] = (),
+    subscription_snapshots: Sequence[VerificationSubscriptionSnapshotSchema] = (),
 ) -> tuple[VerificationConfidenceLevel, str]:
-    if any(snapshot.report_health != "healthy" or snapshot.runtime_state != "reporting" for snapshot in session_snapshots):
+    if any(snapshot.runtime_state != "reporting" for snapshot in session_snapshots):
+        return "degraded", _CONFIDENCE_REASON["degraded"]
+
+    if any(
+        snapshot.subscription_state != "reporting" or snapshot.report_health != "healthy"
+        for snapshot in subscription_snapshots
+    ):
         return "degraded", _CONFIDENCE_REASON["degraded"]
 
     if not steps:

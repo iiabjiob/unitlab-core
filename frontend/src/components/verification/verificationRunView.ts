@@ -1,6 +1,7 @@
 import type { VerificationRunDetailResponse, VerificationVerdictExplanationSignal } from "@/types/verification"
 
 export type VerificationRunViewSignal = {
+  signalId: number
   title: string
   output: string
   expected: string
@@ -60,6 +61,7 @@ export function buildVerificationRunView(result: VerificationRunDetailResponse |
   )
 
   const signals = result.verdict_explanation.signals.map((signal) => ({
+    signalId: signal.signal_id,
     title: resolveFieldValue(signal.signal_reference),
     output: resolveFieldValue(signal.signal_path),
     expected: resolveFieldValue(signal.expected_path),

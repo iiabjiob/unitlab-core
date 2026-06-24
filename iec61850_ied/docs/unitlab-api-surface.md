@@ -95,7 +95,7 @@ Request:
 - optional `gi_requested`.
 
 Response:
-- `selected_report_control`;
+- `subscription_snapshot`;
 - subscription status;
 - diagnostics.
 

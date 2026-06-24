@@ -19,8 +19,11 @@ The workflow should be built in this order:
 2. subscription planning;
 3. evidence capture;
 4. first auto verification flow;
-5. multi-IED selected-group flow;
-6. recovery hardening.
+5. same-IED multi-signal flow;
+6. multi-IED selected-group flow;
+7. recovery hardening;
+8. virtual-substation regression harness;
+9. real MMS integration.
 
 ## Slice tracker
 
@@ -125,7 +128,24 @@ Done when:
 - single-IED behavior does not regress.
 - each IED/session keeps its own evidence trail and verdict explanation.
 
-### PR6 - Recovery hardening
+### PR6 - Same-IED multi-signal flow
+
+Status: completed.
+
+Input:
+- multiple selected signal-list rows from one IED.
+
+Output:
+- one verification run with multiple step results;
+- shared IED/session reuse;
+- per-signal evidence and verdict detail.
+
+Done when:
+- multiple rows on the same IED can be verified in one run;
+- one report session is reused for the same IED;
+- mixed-IED selections are rejected before execution.
+
+### PR7 - Recovery hardening
 
 Status: completed.
 
@@ -147,6 +167,40 @@ Done when:
 - old-generation frames are rejected and diagnosable.
 - one IED reconnect does not invalidate other IED sessions in the same selected group.
 - verification runs carry a recovery summary that preserves desired work and evidence context.
+
+### PR8 - Virtual-substation regression harness
+
+Status: pending.
+
+Input:
+- deterministic virtual substation fixtures;
+- failure injection descriptors;
+- the already verified product flow.
+
+Output:
+- reproducible pass/timeout/stale/reconnect scenarios;
+- golden outputs and saved artifacts.
+
+Done when:
+- the full flow can be exercised repeatedly in CI;
+- failures are reproducible from saved fixtures.
+
+### PR9 - Real MMS integration
+
+Status: pending.
+
+Input:
+- the stable product flow;
+- real MMS client/server runtime;
+- discovery and report subscription primitives.
+
+Output:
+- the same operator workflow against real MMS-backed endpoint sessions;
+- preserved evidence and recovery semantics across real transport.
+
+Done when:
+- simulator-backed verification can be swapped for real MMS sessions without changing the operator workflow;
+- evidence and verdict semantics stay stable.
 
 ## Mandatory vs optional
 

@@ -27,7 +27,7 @@
       @set-interval-ms="setTestRunIntervalMs"
     />
 
-    <VerificationRunPanel
+      <VerificationRunPanel
       :busy="verificationRunBusy"
       :can-run="canRunSingleVerification"
       :error-text="verificationRunError"
@@ -168,6 +168,7 @@ import type { AoChannel, DoChannel } from "@/types/channel"
 import AllocationEditorHeader from "@/pages/signals/components/AllocationEditorHeader.vue"
 import VerificationRunPanel from "@/components/verification/VerificationRunPanel.vue"
 import { VerificationAPI } from "@/api/verification.api"
+import { resolveVerificationSelection } from "@/pages/signals/utils/verificationSelection"
 import { extractSourceRowFromSignalMetadata, resolveAllSourceColumnHeaders, resolveSourceColumnInitialWidth, resolveSourceColumnMinWidth } from "@/pages/signals/utils/sourceColumns"
 import AllocationChannelCell from "@/pages/signals/components/AllocationChannelCell.vue"
 import AllocationChannelPickerPanel from "@/pages/signals/components/AllocationChannelPickerPanel.vue"
@@ -609,20 +610,14 @@ const selectedVisibleAllocatedPhysicalRows = computed(() => (
   ))
 ))
 
-const selectedVerificationRow = computed(() => (
-  selectedVisibleAllocatedPhysicalRows.value.length === 1
-    ? selectedVisibleAllocatedPhysicalRows.value[0]
-    : null
+const verificationSelection = computed(() => (
+  resolveVerificationSelection(selectedVisibleAllocatedPhysicalRows.value)
 ))
 
-const selectedVerificationSignalLabel = computed(() => (
-  selectedVerificationRow.value?.signal_name
-  || selectedVerificationRow.value?.signal_key
-  || null
-))
+const selectedVerificationSignalLabel = computed(() => verificationSelection.value.label)
 
 const canRunSingleVerification = computed(() => (
-  Boolean(selectedVerificationRow.value)
+  verificationSelection.value.canRun
   && !verificationRunBusy.value
   && !isTestRunBusy.value
 ))
@@ -2147,9 +2142,9 @@ async function runTestVisualOnly() {
 async function runSingleSignalVerification() {
   if (verificationRunBusy.value) return
 
-  const row = selectedVerificationRow.value
-  if (!row) {
-    verificationRunError.value = "Select exactly one allocated signal to run verification."
+  const selection = verificationSelection.value
+  if (!selection.canRun) {
+    verificationRunError.value = selection.error ?? "Select one or more allocated signals from the same IED."
     return
   }
 
@@ -2162,7 +2157,7 @@ async function runSingleSignalVerification() {
 
   const startedAt = new Date().toISOString()
   const payload: VerificationAutoRunStartPayload = {
-    signal_ids: [row.signal_id],
+    signal_ids: selection.signalIds,
     client_id: "unitlab-frontend",
     execution_context: {
       project_id: workspaceId,

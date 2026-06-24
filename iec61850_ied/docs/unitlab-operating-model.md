@@ -9,7 +9,7 @@ This document describes how the product should behave end-to-end when a user sel
 1. The user selects one or more signal-list rows.
 2. The product normalizes those rows into verification targets.
 3. The planner groups targets into per-IED / per-RCB subscription plans.
-4. The runtime opens sessions, discovers where needed, subscribes, and waits for reports.
+4. The runtime opens sessions, discovers where needed, creates subscriptions, and waits for reports.
 5. The report stream is converted into signal/evidence state.
 6. The verdict engine derives `pending`, `pass`, `fail`, `inconclusive`, or `aborted` from evidence, freshness, and policy.
 7. The confidence model derives proof strength independently from the verdict.
@@ -36,6 +36,8 @@ This document describes how the product should behave end-to-end when a user sel
 
 - owns association/connect/disconnect/reconnect primitives;
 - owns discovery snapshots;
+- owns session snapshots;
+- owns subscription snapshots;
 - owns RCB selection and report enablement execution;
 - owns report ingestion and signal freshness;
 - owns protocol diagnostics and stable source identity.
@@ -68,6 +70,16 @@ The product should keep these state axes explicit:
 - `connecting`
 - `discovering`
 - `subscribing`
+- `reporting`
+- `reconnecting`
+- `degraded`
+- `closed`
+
+### Subscription state
+
+- `pending`
+- `reserving`
+- `enabled`
 - `reporting`
 - `reconnecting`
 - `degraded`
@@ -113,6 +125,7 @@ The runtime may use lower-level session and signal states internally, but the pr
 - evidence status and verdict state must remain separate.
 - verification confidence must be explainable from provenance, plan coverage, runtime health, and source quality.
 - verification confidence must remain separate from verdict state.
+- verification steps should reference the session that carried the report and the subscription that owned the report-control stream.
 
 ## Recovery rules
 
@@ -132,10 +145,23 @@ The product layer should pass the runtime:
 
 The runtime should return:
 - session snapshot;
+- subscription snapshots;
 - discovery snapshot;
 - report updates;
 - freshness state;
 - diagnostics.
+
+## Why session and subscription must stay separate
+
+If one physical session is duplicated once per subscription, the product will eventually miscount live connections, overstate recovery scope, and blur whether a failure belongs to transport or to a single report-control stream.
+
+That becomes dangerous when:
+- one IED has one MMS association;
+- the association carries multiple report controls;
+- one report-control recovers while another remains stale;
+- a multi-signal run needs clean per-subscription evidence.
+
+The contract should therefore treat session count and subscription count as different dimensions, not as interchangeable duplicates.
 
 ## Out of scope
 

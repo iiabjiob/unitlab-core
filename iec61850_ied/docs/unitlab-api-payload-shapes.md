@@ -286,6 +286,8 @@ Required fields:
 Report-derived fields may be null when the evidence represents timeout, invalid, or stale conditions.
 
 Optional fields:
+- `session_id`
+- `subscription_id`
 - `source_generation`
 - `source_report_sequence_generation`
 - `source_report_sequence_number`
@@ -299,6 +301,7 @@ Optional fields:
 
 `verification_confidence` is intentionally not stored on the evidence record by default.
 Confidence is a derived step/run/explanation property that should be computed from evidence provenance, runtime health, and planning exactness.
+If a transitional payload includes `session_id` or `subscription_id`, consumers should treat those as provenance fields, not as a reason to infer session state from evidence alone.
 
 ## 3.1 VerificationRunEvidenceResponse
 
@@ -477,10 +480,12 @@ Example:
 
 ## 4. SessionSnapshot
 
-Represents the current runtime view returned by the reusable IEC 61850 layer.
+Represents the physical runtime session returned by the reusable IEC 61850 layer.
 
 `runtime_state` is the session lifecycle state and must not be confused with workflow, evidence, or verdict state.
 `last_error` is optional; a healthy live session may have no current error.
+`SessionSnapshot` should represent one physical session once, even when that session carries multiple subscriptions.
+Report-control, dataset, and report-health fields belong in `SubscriptionSnapshot`, not in `SessionSnapshot`.
 
 Required fields:
 - `session_id`
@@ -488,17 +493,43 @@ Required fields:
 - `runtime_state`
 - `connection_generation`
 - `discovery_status`
-- `subscription_status`
+
+Optional fields:
+- `transport_state`
+- `association_state`
+- `last_error`
+- `diagnostic_code`
+- `subscription_count`
+- `healthy_subscription_count`
+- `degraded_subscription_count`
+
+## 4.1 SubscriptionSnapshot
+
+Represents one report-control / data-set subscription inside a physical session.
+
+One `SessionSnapshot` can own many `SubscriptionSnapshot` records.
+
+Required fields:
+- `subscription_id`
+- `session_id`
+- `endpoint_id`
+- `group_id`
+- `report_control_reference`
+- `report_control_name`
+- `data_set_reference`
+- `subscription_state`
 - `report_health`
 - `last_report_at`
 
 Optional fields:
-- `last_error`
-- `selected_report_control`
-- `selected_data_set`
+- `selected_signal_ids`
+- `report_kind`
+- `rpt_id`
 - `current_rptena_owner`
 - `stale_signal_count`
+- `last_error`
 - `diagnostic_code`
+- `diagnostics`
 
 ## 5. VerificationRun
 
@@ -506,14 +537,17 @@ Represents one product-level auto verification execution.
 
 `workflow_state`, `runtime_state`, and `verdict_state` must stay separate.
 `verification_confidence` and `confidence_reason` are separate from verdict and may default to `unknown` until the confidence classifier is implemented.
-For multi-IED runs, `session_snapshots` are the source of truth and `runtime_state` is only an optional aggregate summary.
-If present, `runtime_summary` should be derived from the per-session snapshots rather than replace them.
+For multi-IED runs, `session_snapshots` are the source of truth for transport, `subscription_snapshots` are the source of truth for report streams, and `runtime_state` is only an optional aggregate summary.
+If present, `runtime_summary` should be derived from the session and subscription snapshots rather than replace them.
+`session_snapshots.length` and `subscription_snapshots.length` are intentionally independent.
+Typical runtime-summary fields include session counts, subscription counts, evidence counts, and derived health flags, but not the raw snapshots themselves.
 
 Required fields:
 - `test_run_id`
 - `verification_targets`
 - `subscription_plan`
 - `session_snapshots`
+- `subscription_snapshots`
 - `evidence_set`
 - `execution_context`
 - `workflow_state`
@@ -538,11 +572,14 @@ Represents one executable observation inside a verification run.
 `step_state` is the step-local lifecycle state and must not be confused with workflow, runtime, evidence, or verdict state.
 `evidence_ids` is an ordered list of evidence record ids and may include multiple observations for the same step, including late, stale, duplicate, or recovered reports.
 `verification_confidence` and `confidence_reason` are separate from verdict and may default to `unknown` until the confidence classifier is implemented.
+`VerificationStep` should reference both the physical session and the subscription that owned the report stream.
 
 Required fields:
 - `step_id`
 - `signal_id`
 - `target_index`
+- `session_id`
+- `subscription_id`
 - `step_state`
 - `expected_path`
 - `expected_window_ms`
@@ -555,17 +592,19 @@ Required fields:
 
 Optional fields:
 - `actual_report_path`
-- `source_session_id`
 - `group_id`
 - `source_generation`
 - `source_report_rpt_id`
 - `source_report_dat_set`
+- `source_session_id`
 - `triggered_at`
 - `observed_at`
 - `latency_ms`
 - `reason`
 - `diagnostics`
 
+`session_id` and `subscription_id` should carry the physical session and the subscription that produced the step.
+`source_session_id` is a transitional alias for older payloads and should not be used to infer subscription identity.
 `source_session_id` should carry the full runtime session identity, while `group_id` keeps the planner/runtime group binding separate from the session identity.
 `verification_confidence` and `confidence_reason` on a step should reflect the strongest proof available for that step, not the overall run verdict.
 
@@ -596,17 +635,94 @@ Optional fields:
 - `stale_signal_count`
 - `diagnostics`
 
+## 8. Session / Subscription examples
+
+### Single IED
+
+One physical session, two subscriptions, ten signals.
+
+```json
+{
+  "session_snapshots": [
+    {
+      "session_id": "vr-100:sim:DO-002/unknown",
+      "endpoint_id": "sim:DO-002/unknown",
+      "runtime_state": "reporting",
+      "connection_generation": 1,
+      "discovery_status": "available"
+    }
+  ],
+  "subscription_snapshots": [
+    {
+      "subscription_id": "sub-1",
+      "session_id": "vr-100:sim:DO-002/unknown",
+      "endpoint_id": "sim:DO-002/unknown",
+      "group_id": "group-1",
+      "report_control_reference": "kint_4",
+      "report_control_name": "kint_4",
+      "data_set_reference": "kint_4",
+      "subscription_state": "reporting",
+      "report_health": "healthy",
+      "last_report_at": "2026-06-24T10:11:13.070000Z"
+    },
+    {
+      "subscription_id": "sub-2",
+      "session_id": "vr-100:sim:DO-002/unknown",
+      "endpoint_id": "sim:DO-002/unknown",
+      "group_id": "group-2",
+      "report_control_reference": "kint_5",
+      "report_control_name": "kint_5",
+      "data_set_reference": "kint_5",
+      "subscription_state": "reporting",
+      "report_health": "healthy",
+      "last_report_at": "2026-06-24T10:11:13.070000Z"
+    }
+  ],
+  "verification_steps_count": 10
+}
+```
+
+### Multi IED
+
+Three physical sessions, six subscriptions, fifty signals.
+
+```json
+{
+  "session_snapshots": [
+    { "session_id": "vr-200:sim:IED-A/P1", "endpoint_id": "sim:IED-A/P1", "runtime_state": "reporting", "connection_generation": 2, "discovery_status": "available" },
+    { "session_id": "vr-200:sim:IED-B/P1", "endpoint_id": "sim:IED-B/P1", "runtime_state": "reporting", "connection_generation": 1, "discovery_status": "available" },
+    { "session_id": "vr-200:sim:IED-C/P1", "endpoint_id": "sim:IED-C/P1", "runtime_state": "reporting", "connection_generation": 1, "discovery_status": "available" }
+  ],
+  "subscription_snapshots": [
+    { "subscription_id": "sub-a1", "session_id": "vr-200:sim:IED-A/P1", "group_id": "group-a1" },
+    { "subscription_id": "sub-a2", "session_id": "vr-200:sim:IED-A/P1", "group_id": "group-a2" },
+    { "subscription_id": "sub-b1", "session_id": "vr-200:sim:IED-B/P1", "group_id": "group-b1" },
+    { "subscription_id": "sub-b2", "session_id": "vr-200:sim:IED-B/P1", "group_id": "group-b2" },
+    { "subscription_id": "sub-c1", "session_id": "vr-200:sim:IED-C/P1", "group_id": "group-c1" },
+    { "subscription_id": "sub-c2", "session_id": "vr-200:sim:IED-C/P1", "group_id": "group-c2" }
+  ],
+  "verification_steps_count": 50
+}
+```
+
+These examples are intentional:
+- `session_snapshots` count and `subscription_snapshots` count are not expected to match;
+- one physical session should appear once;
+- subscriptions should fan out under the session that owns them.
+
 ## Contract rules
 
 - A `VerificationTarget` must exist before a `SubscriptionPlan`.
 - A `SubscriptionPlan` must exist before MMS execution.
 - A `SignalVerificationEvidence` must be derived from observed runtime data, not guessed in the UI.
-- A `VerificationRun` should bind the target, plan, session snapshots, and evidence set into one traceable product object.
-- A `VerificationStep` should remain traceable to one selected signal and one expected feedback path.
+- A `VerificationRun` should bind the target, plan, session snapshots, subscription snapshots, and evidence set into one traceable product object.
+- A `VerificationStep` should remain traceable to one selected signal, one session, one subscription, and one expected feedback path.
 - A `RecoveryState` should preserve desired work and evidence while recovery is in flight.
-- `SessionSnapshot` should describe runtime state, not product verdicts.
+- `SessionSnapshot` should describe physical session state, not report-control streams or product verdicts.
+- `SubscriptionSnapshot` should describe report-control stream state, not physical transport state.
 - `source_kind` and `reason` should stay explicit, even for fallback cases.
 - `evidence_status` and `verdict_state` must remain separate fields.
+- `session_id` and `subscription_id` should not be inferred from selected report-control names.
 - `verification_confidence` must remain separate from `verdict_state` and should not be inferred from free-text summary strings.
 - `protocol_metadata` may evolve per protocol without changing the top-level target contract.
 

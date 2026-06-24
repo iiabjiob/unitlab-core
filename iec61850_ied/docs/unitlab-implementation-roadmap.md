@@ -24,10 +24,11 @@ This is the first point where UnitLab behaves like a product instead of a set of
 - [x] Phase C - Runtime session orchestration
 - [x] Phase D - Evidence capture
 - [x] Phase E - First single-signal auto verification
-- [ ] Phase F - Multi-signal same IED verification
+- [x] Phase F - Multi-signal same IED verification
 - [ ] Phase G - Multi-IED verification
 - [ ] Phase H - Recovery and reconnect verification
 - [ ] Phase I - Virtual-substation-backed automated regression testing
+- [ ] Phase J - Real MMS integration
 
 ## Phase A
 
@@ -432,6 +433,46 @@ Evidence
 
 Rollback risk
 - The harness becomes too synthetic and stops representing real MMS behavior.
+
+## Phase J
+
+Purpose
+- Connect the now-stable product flow to real MMS-backed runtime sessions.
+
+Implementation
+- Goal: replace simulator-only verification execution with real MMS control and report handling for the already-proven product slices.
+- Scope: real client/session wiring, target-to-endpoint reconciliation, report subscription/enable/disable, runtime fallback handling, production readiness checks.
+- Out of scope: reopening planner contracts, renaming evidence or verdict models, redesigning the product workflow, speculative fleet orchestration.
+- Required models: the existing verification contracts plus any thin runtime adapter state needed for real endpoint sessions.
+- Required API endpoints: verification run start/detail, runtime session control, recovery state, evidence detail, failure diagnostics.
+- Required backend services: MMS-backed runtime adapter, session supervisor, report-control binder, reconnect/recovery coordinator.
+- Required persistence: runtime session snapshots, evidence rows, recovery attempts, execution diagnostics.
+- Required runtime integration: native MMS client/server, discovery, subscriptions, reconnect, generation protection, report delivery.
+- Required UI changes: runtime source indicator, real-MMS status and diagnostics if the operator needs to distinguish live device proof from simulator-backed proof.
+
+Tests
+- Unit tests: adapter mapping, session state, report correlation.
+- Integration tests: real MMS client/server smoke with a virtual substation.
+- End-to-end tests: run the verified product flow against a real endpoint fixture and compare against the simulator-backed harness.
+
+Acceptance Criteria
+- The existing product flow can run against a real MMS endpoint without changing the user workflow contract.
+- Evidence and verdict semantics remain stable when the transport changes from simulator to real MMS.
+- Recovery and reconnect continue to preserve evidence and desired work.
+
+Do Not Build Yet
+- New verdict semantics.
+- Planner redesign.
+- Fleet orchestration.
+
+Demo scenario
+- Repeat the verified single-signal and same-IED flows against a real MMS-backed virtual substation.
+
+Evidence
+- Real endpoint session snapshots, report captures, preserved evidence, and pass/fail output from the live MMS path.
+
+Rollback risk
+- Real MMS wiring reintroduces transport-specific assumptions into the product flow or weakens the simulator-backed regression harness.
 
 ## Highest-risk implementation areas
 

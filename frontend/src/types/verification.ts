@@ -129,21 +129,34 @@ export interface VerificationSessionSnapshot {
   runtime_state: string
   connection_generation: number
   discovery_status: string
-  subscription_status: string
-  report_health: string
-  last_report_at?: string | null
   last_error?: string | null
-  selected_report_control?: string | null
-  selected_data_set?: string | null
+  diagnostic_code?: string | null
+}
+
+export interface VerificationSubscriptionSnapshot {
+  subscription_id: string
+  session_id: string
+  endpoint_id: string
+  group_id?: string | null
+  report_control_reference?: string | null
+  report_control_name?: string | null
+  data_set_reference?: string | null
+  subscription_state: "pending" | "reserving" | "enabled" | "reporting" | "reconnecting" | "degraded" | "closed" | "failed"
+  report_health: "unknown" | "healthy" | "degraded"
+  last_report_at?: string | null
   current_rptena_owner?: string | null
   stale_signal_count?: number | null
+  last_error?: string | null
   diagnostic_code?: string | null
+  diagnostics: VerificationEvidenceDiagnostic[]
 }
 
 export interface VerificationStep {
   step_id: string
   signal_id: number
   target_index: number
+  session_id: string
+  subscription_id: string
   group_id?: string | null
   step_state: "draft" | "planned" | "armed" | "running" | "awaiting_confirmation" | "completing" | "completed" | "aborted" | "failed"
   expected_path: string
@@ -154,6 +167,7 @@ export interface VerificationStep {
   evidence_ids: string[]
   actual_report_path?: string | null
   source_session_id?: string | null
+  source_subscription_id?: string | null
   source_generation?: number | null
   source_report_rpt_id?: string | null
   source_report_dat_set?: string | null
@@ -171,6 +185,7 @@ export interface VerificationRun {
   verification_targets: VerificationTarget[]
   subscription_plan: VerificationSubscriptionPlan
   session_snapshots: VerificationSessionSnapshot[]
+  subscription_snapshots: VerificationSubscriptionSnapshot[]
   evidence_set: VerificationEvidenceSet
   execution_context: VerificationExecutionContext
   workflow_state: "draft" | "planned" | "preparing" | "armed" | "running" | "awaiting_confirmation" | "completing" | "completed" | "aborted" | "failed"

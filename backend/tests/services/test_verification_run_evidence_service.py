@@ -113,6 +113,9 @@ async def test_load_verification_run_evidence_projects_steps_and_summary() -> No
     ]
     assert result.verification_steps[0].source_session_id == "run-42:sim:IED-A/P1"
     assert result.verification_steps[1].source_session_id == "run-42:sim:IED-B/P1"
+    assert result.verification_steps[0].session_id == "run-42:sim:IED-A/P1"
+    assert result.verification_steps[0].subscription_id == "run-42:sim:IED-A/P1:rpt-a"
+    assert result.verification_steps[1].subscription_id == "run-42:sim:IED-B/P1:subscription"
     assert result.verification_steps[0].source_report_rpt_id == "rpt-a"
     assert result.verification_steps[1].evidence_status == "timeout"
     assert result.diagnostics[0].code == "RUN_DIAGNOSTIC"

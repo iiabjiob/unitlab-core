@@ -111,11 +111,18 @@ async def test_runtime_orchestrator_opens_sessions_and_keeps_live_state() -> Non
         "sim:IED-B/P1",
     }
     assert all(snapshot.runtime_state == "reporting" for snapshot in result.session_snapshots)
-    assert all(snapshot.subscription_status == "enabled" for snapshot in result.session_snapshots)
-    assert all(snapshot.report_health == "healthy" for snapshot in result.session_snapshots)
-    assert all(snapshot.current_rptena_owner == "unitlab-backend-simulator" for snapshot in result.session_snapshots)
+    assert len(result.subscription_snapshots) == 2
+    assert {snapshot.endpoint_id for snapshot in result.subscription_snapshots} == {
+        "sim:IED-A/P1",
+        "sim:IED-B/P1",
+    }
+    assert all(snapshot.subscription_state == "reporting" for snapshot in result.subscription_snapshots)
+    assert all(snapshot.report_health == "healthy" for snapshot in result.subscription_snapshots)
+    assert all(snapshot.current_rptena_owner == "unitlab-backend-simulator" for snapshot in result.subscription_snapshots)
     assert result.verification_run.runtime_summary["active_sessions"] == 2
     assert result.verification_run.runtime_summary["reporting_sessions"] == 2
+    assert result.verification_run.runtime_summary["active_subscriptions"] == 2
+    assert result.verification_run.runtime_summary["reporting_subscriptions"] == 2
 
     snapshot = orchestrator.snapshot(result.orchestration_id)
     assert snapshot.verification_run.runtime_state == "reporting"

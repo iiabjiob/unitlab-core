@@ -97,16 +97,9 @@ Required:
 - `runtime_state`
 - `connection_generation`
 - `discovery_status`
-- `subscription_status`
-- `report_health`
 
 Optional:
 - `last_error`
-- `last_report_at`
-- `selected_report_control`
-- `selected_data_set`
-- `current_rptena_owner`
-- `stale_signal_count`
 - `diagnostic_code`
 
 ### 4. `signal_state`
@@ -129,7 +122,28 @@ Optional:
 - `update_count`
 - `change_count`
 
-### 5. `signal_verification_evidence`
+### 5. `subscription_snapshot`
+
+Required:
+- `subscription_id`
+- `session_id`
+- `endpoint_id`
+- `subscription_state`
+- `report_health`
+
+Optional:
+- `group_id`
+- `report_control_reference`
+- `report_control_name`
+- `data_set_reference`
+- `last_report_at`
+- `current_rptena_owner`
+- `stale_signal_count`
+- `last_error`
+- `diagnostic_code`
+- `diagnostics`
+
+### 6. `signal_verification_evidence`
 
 Required:
 - `evidence_id`

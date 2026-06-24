@@ -106,6 +106,7 @@ def _build_verification_run(signal_reference: str = "Breaker Close") -> Verifica
             ),
         ),
         session_snapshots=[],
+        subscription_snapshots=[],
         evidence_set=SignalVerificationEvidenceSetSchema(
             test_run_id="run-1",
             evidence=[evidence],
@@ -140,6 +141,8 @@ def _build_verification_run(signal_reference: str = "Breaker Close") -> Verifica
                 step_id="step-101",
                 signal_id=101,
                 target_index=0,
+                session_id="run-1:sim:IED-A/P1",
+                subscription_id="run-1:group-1",
                 group_id="group-1",
                 step_state="completed",
                 expected_path="LD0/XCBR1.Pos.stVal",
@@ -150,6 +153,7 @@ def _build_verification_run(signal_reference: str = "Breaker Close") -> Verifica
                 evidence_ids=["ev-1"],
                 actual_report_path="LD0/XCBR1.Pos.stVal",
                 source_session_id="run-1:sim:IED-A/P1",
+                source_subscription_id="run-1:group-1",
                 source_generation=1,
                 source_report_rpt_id="rpt-a",
                 source_report_dat_set="ds-a",
@@ -212,6 +216,8 @@ def test_build_verification_verdict_explanation_marks_timeout_fail() -> None:
         step_id="step-101",
         signal_id=101,
         target_index=0,
+        session_id="run-1:sim:IED-A/P1",
+        subscription_id="run-1:group-1",
         step_state="failed",
         expected_path="LD0/XCBR1.Pos.stVal",
         expected_window_ms=1000,
@@ -319,8 +325,8 @@ class _FakeSignalsRepository:
     async def list_by_ids(self, workspace_id: int, signal_ids):
         if workspace_id != 7:
             return []
-        return [
-            SimpleNamespace(
+        rows_by_id = {
+            101: SimpleNamespace(
                 id=101,
                 key="breaker_close",
                 name="Breaker Close",
@@ -337,8 +343,45 @@ class _FakeSignalsRepository:
                         "expected_feedback_path": "LD0/XCBR1.Pos.stVal",
                     },
                 },
-            )
-        ]
+            ),
+            102: SimpleNamespace(
+                id=102,
+                key="breaker_close_2",
+                name="Breaker Close 2",
+                signal_metadata={
+                    "protocol": "iec61850",
+                    "protocol_metadata": {
+                        "ied_name": "IED-A",
+                        "access_point_name": "P1",
+                        "report_control_reference_hint": "IED-A/P1/LLN0.brA/buffered",
+                        "report_control_name": "brA",
+                        "report_kind": "buffered",
+                        "rpt_id": "IED-A/LLN0.brA",
+                        "data_set_reference": "IED-A/LLN0.dsA",
+                        "expected_feedback_path": "LD0/XCBR2.Pos.stVal",
+                    },
+                },
+            ),
+            202: SimpleNamespace(
+                id=202,
+                key="breaker_close_b",
+                name="Breaker Close B",
+                signal_metadata={
+                    "protocol": "iec61850",
+                    "protocol_metadata": {
+                        "ied_name": "IED-B",
+                        "access_point_name": "P1",
+                        "report_control_reference_hint": "IED-B/P1/LLN0.brB/buffered",
+                        "report_control_name": "brB",
+                        "report_kind": "buffered",
+                        "rpt_id": "IED-B/LLN0.brB",
+                        "data_set_reference": "IED-B/LLN0.dsB",
+                        "expected_feedback_path": "LD0/XCBR3.Pos.stVal",
+                    },
+                },
+            ),
+        }
+        return [rows_by_id[signal_id] for signal_id in signal_ids if signal_id in rows_by_id]
 
 
 class _FakeSignalSheetRepository:
@@ -348,8 +391,8 @@ class _FakeSignalSheetRepository:
     async def list_allocation_rows_by_signal_ids(self, workspace_id: int, signal_ids):
         if workspace_id != 7:
             return []
-        return [
-            SimpleNamespace(
+        rows_by_id = {
+            101: SimpleNamespace(
                 row_id="signal-101",
                 signal_id=101,
                 allocation_id=1,
@@ -359,8 +402,31 @@ class _FakeSignalSheetRepository:
                 channel_label="DO-11",
                 unit_id="IED-A/P1",
                 unit_online=True,
-            )
-        ]
+            ),
+            102: SimpleNamespace(
+                row_id="signal-102",
+                signal_id=102,
+                allocation_id=2,
+                allocation_status="assigned",
+                allocation_health={},
+                channel_id=12,
+                channel_label="DO-12",
+                unit_id="IED-A/P1",
+                unit_online=True,
+            ),
+            202: SimpleNamespace(
+                row_id="signal-202",
+                signal_id=202,
+                allocation_id=3,
+                allocation_status="assigned",
+                allocation_health={},
+                channel_id=21,
+                channel_label="DO-21",
+                unit_id="IED-B/P1",
+                unit_online=True,
+            ),
+        }
+        return [rows_by_id[signal_id] for signal_id in signal_ids if signal_id in rows_by_id]
 
 
 class _FakeEvidenceRepository:
@@ -431,6 +497,74 @@ async def test_execute_single_signal_verification_run_persists_run_snapshot_and_
     assert result.verification_run.reason == result.verdict_explanation.summary
     assert result.as_response().test_run_id == result.test_run_id
     assert db.flushed >= 1
+
+
+@pytest.mark.anyio
+async def test_execute_single_signal_verification_run_allows_multiple_signals_on_same_ied(monkeypatch) -> None:
+    db = _FakeDb()
+    triggered_at = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
+
+    monkeypatch.setattr(run_service, "SignalsRepository", _FakeSignalsRepository)
+    monkeypatch.setattr(run_service, "SignalSheetRepository", _FakeSignalSheetRepository)
+    monkeypatch.setattr(run_service, "VerificationEvidenceRepository", _FakeEvidenceRepository)
+    monkeypatch.setattr(run_service, "VerificationRunRepository", _FakeRunRepository)
+
+    result = await execute_single_signal_verification_run(
+        workspace_id=7,
+        payload=VerificationAutoRunStartSchema(
+            signal_ids=[101, 102],
+            execution_context=VerificationExecutionContextSchema(
+                project_id=1,
+                signal_list_revision_id=2,
+                planner_version="test",
+                runtime_version="simulator",
+                policy_version="v1",
+            ),
+            client_id="unitlab-backend-simulator",
+        ),
+        db=db,  # type: ignore[arg-type]
+        triggered_at=triggered_at,
+    )
+
+    assert result.verification_run.verdict_state == "pass"
+    assert result.verification_run.verification_confidence == "exact_report_match"
+    assert len(result.verification_run.verification_targets) == 2
+    assert len(result.verification_run.verification_steps) == 2
+    assert len(result.verification_run.session_snapshots) == 1
+    assert {step.group_id for step in result.verification_run.verification_steps} == {"group-1"}
+    assert {step.source_session_id for step in result.verification_run.verification_steps} == {
+        f"{result.test_run_id}:sim:IED-A/P1"
+    }
+    assert result.verification_run.reason == result.verdict_explanation.summary
+
+
+@pytest.mark.anyio
+async def test_execute_single_signal_verification_run_rejects_multi_ied_selection(monkeypatch) -> None:
+    db = _FakeDb()
+    triggered_at = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
+
+    monkeypatch.setattr(run_service, "SignalsRepository", _FakeSignalsRepository)
+    monkeypatch.setattr(run_service, "SignalSheetRepository", _FakeSignalSheetRepository)
+    monkeypatch.setattr(run_service, "VerificationEvidenceRepository", _FakeEvidenceRepository)
+    monkeypatch.setattr(run_service, "VerificationRunRepository", _FakeRunRepository)
+
+    with pytest.raises(ValueError, match="one IED only"):
+        await execute_single_signal_verification_run(
+            workspace_id=7,
+            payload=VerificationAutoRunStartSchema(
+                signal_ids=[101, 202],
+                execution_context=VerificationExecutionContextSchema(
+                    project_id=1,
+                    signal_list_revision_id=2,
+                    planner_version="test",
+                    runtime_version="simulator",
+                    policy_version="v1",
+                ),
+                client_id="unitlab-backend-simulator",
+            ),
+            db=db,  # type: ignore[arg-type]
+            triggered_at=triggered_at,
+        )
 
 
 @pytest.mark.anyio

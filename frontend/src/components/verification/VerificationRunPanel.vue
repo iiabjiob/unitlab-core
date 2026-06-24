@@ -4,7 +4,7 @@
       <div class="verification-run-panel__copy">
         <p class="verification-run-panel__eyebrow">Verification</p>
         <p class="verification-run-panel__meta">
-          One selected signal. Automatic discovery. Persisted evidence.
+          One or more allocated signals on the same IED. Automatic discovery. Persisted evidence.
         </p>
         <p v-if="selectedSignalLabel" class="verification-run-panel__subtle">
           Selected: <span class="verification-run-panel__subtle-strong">{{ selectedSignalLabel }}</span>
@@ -55,7 +55,7 @@
       </div>
 
       <div class="verification-run-panel__signals">
-        <article v-for="signal in viewModel.signals" :key="`${viewModel.testRunId}:${signal.title}`" class="verification-run-panel__signal-card">
+        <article v-for="signal in viewModel.signals" :key="`${viewModel.testRunId}:${signal.signalId}`" class="verification-run-panel__signal-card">
           <div class="verification-run-panel__signal-title">{{ signal.title }}</div>
           <div class="verification-run-panel__signal-grid">
             <div class="verification-run-panel__signal-row">

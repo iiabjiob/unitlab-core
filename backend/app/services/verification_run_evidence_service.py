@@ -102,6 +102,8 @@ def _project_verification_steps(
                 step_id=evidence.evidence_id,
                 signal_id=evidence.signal_id,
                 target_index=target_index,
+                session_id=_resolve_session_id(test_run_id=test_run_id, evidence=evidence),
+                subscription_id=_resolve_subscription_id(test_run_id=test_run_id, evidence=evidence),
                 group_id=None,
                 step_state=step_state,
                 expected_path=evidence.expected_path,
@@ -111,7 +113,8 @@ def _project_verification_steps(
                 verdict_state=verdict_state,
                 evidence_ids=[evidence.evidence_id],
                 actual_report_path=evidence.actual_report_path,
-                source_session_id=f"{test_run_id}:{evidence.endpoint_id}" if evidence.endpoint_id else None,
+                source_session_id=_resolve_session_id(test_run_id=test_run_id, evidence=evidence),
+                source_subscription_id=_resolve_subscription_id(test_run_id=test_run_id, evidence=evidence),
                 source_generation=evidence.source_generation,
                 source_report_rpt_id=evidence.rpt_id,
                 source_report_dat_set=evidence.dataset,
@@ -125,6 +128,18 @@ def _project_verification_steps(
             )
         )
     return steps
+
+
+def _resolve_session_id(*, test_run_id: str, evidence: SignalVerificationEvidenceSchema) -> str:
+    return f"{test_run_id}:{evidence.endpoint_id}" if evidence.endpoint_id else f"{test_run_id}:unknown-session"
+
+
+def _resolve_subscription_id(*, test_run_id: str, evidence: SignalVerificationEvidenceSchema) -> str:
+    report_reference = str(evidence.rpt_id or evidence.dataset or "").strip()
+    endpoint_id = str(evidence.endpoint_id or "unknown").strip()
+    if report_reference:
+        return f"{test_run_id}:{endpoint_id}:{report_reference}"
+    return f"{test_run_id}:{endpoint_id}:subscription"
 
 
 def _resolve_step_state(*, evidence_status: str) -> str:

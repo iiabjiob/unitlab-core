@@ -33,6 +33,10 @@ The Python application provides:
 - recovery policy;
 - operator-facing API status.
 
+The Python layer also owns the product-level split between:
+- session ownership;
+- subscription ownership.
+
 ## Runtime objects
 
 ### Discovery snapshot
@@ -56,6 +60,35 @@ The Python layer may treat discovery as:
 - `failed`
 
 but must preserve the underlying snapshot and reasons.
+
+### Session snapshot
+
+The C runtime should expose one snapshot per physical session with:
+- session identity;
+- endpoint identity;
+- runtime state;
+- connection generation;
+- discovery status;
+- transport/association diagnostics;
+- reconnect lifecycle flags.
+
+The session snapshot must not be duplicated once per subscription.
+
+### Subscription snapshot
+
+The C runtime should expose one snapshot per report-control subscription with:
+- subscription identity;
+- session identity;
+- endpoint identity;
+- group identity;
+- report-control reference;
+- data-set reference;
+- subscription state;
+- report-health;
+- last report time;
+- diagnostics.
+
+One physical session may own many subscription snapshots.
 
 ### Verification target input
 
@@ -106,7 +139,7 @@ The C runtime must not infer product-level verdict semantics.
 ### Report update / evidence input
 
 The C runtime should emit report updates with:
-- source session / generation;
+- source session / subscription / generation;
 - endpoint identity;
 - report control identity;
 - data set identity;
@@ -159,11 +192,11 @@ Input:
 
 Output:
 - live session state;
-- selected RCB state;
+- one or more subscription snapshots bound to that session;
 - diagnostics;
 - current freshness summary.
 
-The session snapshot may also expose a compact signal-cache summary:
+The session snapshot may also expose a compact transport summary:
 - total cached signals;
 - live signal count;
 - stale signal count;
@@ -172,9 +205,9 @@ The session snapshot may also expose a compact signal-cache summary:
 - signal change count;
 - stale-generation drop count.
 
-If the runtime has an explicit subscription intent, the snapshot should also expose the selected RCB key used for recovery/re-subscription.
+The subscription snapshot should carry the selected RCB key, data-set reference, report-health summary, and recovery/re-subscription identity.
 
-If available, the session snapshot should also expose a compact report-health summary:
+If available, the subscription snapshot should expose a compact report-health summary:
 - `unknown` while no valid report has been observed;
 - `live` when the report stream is healthy;
 - `degraded` when report health has been marked stale or unhealthy;
@@ -185,6 +218,30 @@ If available, the session snapshot should also expose in-flight operation flags:
 - discover;
 - subscribe;
 - reconnect.
+
+## Session vs subscription ownership
+
+### Session
+
+Owns:
+- endpoint identity;
+- connection generation;
+- transport state;
+- association state;
+- reconnect lifecycle;
+- discovery snapshot ownership.
+
+### Subscription
+
+Owns:
+- report-control identity;
+- data-set identity;
+- report stream state;
+- report health;
+- group linkage;
+- selected RCB recovery state.
+
+One session can own many subscriptions. The runtime must not duplicate the physical session snapshot once per subscription.
 
 ### Report stream / state update service
 
@@ -205,6 +262,8 @@ Output:
 - Report health and signal freshness must remain visible to Python.
 - Product verdict logic must not live inside the C runtime.
 - Product workflow state must remain in Python/FastAPI, not C.
+- Session identity and subscription identity must remain separate in the product contract.
+- One endpoint session may carry many subscriptions, but the session snapshot itself must appear once per session.
 
 ## Current repository status
 

@@ -13,6 +13,7 @@ from app.schemas.verification_schema import (
     VerificationRecoveryStateSchema,
     VerificationRunSchema,
     VerificationSessionSnapshotSchema,
+    VerificationSubscriptionSnapshotSchema,
     VerificationStepSchema,
     VerificationSubscriptionPlanGroupSchema,
     VerificationSubscriptionPlanSchema,
@@ -221,7 +222,14 @@ async def execute_simulated_verification_run(
         test_run_id=test_run_id,
         runtime_result=runtime_result,
         connection_generation=connection_generation,
+    )
+    subscription_snapshots = _build_subscription_snapshots(
+        test_run_id=test_run_id,
+        runtime_result=runtime_result,
+        subscription_plan=subscription_plan,
+        connection_generation=connection_generation,
         evidence_rows=evidence_rows,
+        client_id=client_id,
     )
     recovery_state = _build_recovery_state(
         test_run_id=test_run_id,
@@ -229,6 +237,7 @@ async def execute_simulated_verification_run(
         subscription_plan=subscription_plan,
         execution_context=execution_context,
         session_snapshots=session_snapshots,
+        subscription_snapshots=subscription_snapshots,
         evidence_rows=evidence_rows,
         runtime_result=runtime_result,
     )
@@ -236,6 +245,7 @@ async def execute_simulated_verification_run(
     verification_confidence, confidence_reason = derive_run_confidence(
         steps=step_rows,
         session_snapshots=session_snapshots,
+        subscription_snapshots=subscription_snapshots,
     )
     workflow_state = "completed" if verdict_state != "aborted" else "aborted"
 
@@ -244,6 +254,7 @@ async def execute_simulated_verification_run(
         verification_targets=list(verification_targets),
         subscription_plan=subscription_plan,
         session_snapshots=session_snapshots,
+        subscription_snapshots=subscription_snapshots,
         evidence_set=evidence_set,
         execution_context=execution_context,
         recovery_state=recovery_state,
@@ -255,8 +266,8 @@ async def execute_simulated_verification_run(
         operator_id=execution_context.operator_id,
         triggered_at=triggered_at,
         completed_at=_parse_timestamp(runtime_result.finished_at),
-        runtime_state=_resolve_runtime_state(session_snapshots),
-        runtime_summary=_build_runtime_summary(runtime_result, evidence_rows),
+        runtime_state=_resolve_runtime_state(session_snapshots, subscription_snapshots),
+        runtime_summary=_build_runtime_summary(runtime_result, evidence_rows, subscription_snapshots),
         diagnostics=diagnostics,
         verification_steps=step_rows,
     )
@@ -346,11 +357,18 @@ def _build_step_and_evidence(
             message=_diagnostic_message(reason_code, evidence_status),
         )
     ]
-    source_session_id = None
-    if report is not None and report.event is not None:
-        source_session_id = f"{test_run_id}:{report.event.endpoint_id}"
-    elif target.endpoint_id is not None:
-        source_session_id = f"{test_run_id}:{target.endpoint_id}"
+    source_session_id = _resolve_source_session_id(
+        test_run_id=test_run_id,
+        report=report,
+        target=target,
+    )
+    source_subscription_id = _resolve_source_subscription_id(
+        test_run_id=test_run_id,
+        group=group,
+        report=report,
+        target=target,
+        source_session_id=source_session_id,
+    )
     evidence_id = f"{test_run_id}:{target.signal_id}:{target_index}:{uuid4().hex[:8]}"
     evidence = SignalVerificationEvidenceSchema(
         evidence_id=evidence_id,
@@ -388,6 +406,8 @@ def _build_step_and_evidence(
         step_id=f"step-{target.signal_id}",
         signal_id=int(target.signal_id),
         target_index=target_index,
+        session_id=source_session_id or f"{test_run_id}:unknown-session",
+        subscription_id=source_subscription_id or f"{test_run_id}:unknown-subscription",
         group_id=group.group_id if group is not None else None,
         step_state=_resolve_step_state(evidence_status=evidence_status),
         expected_path=evidence.expected_path,
@@ -398,6 +418,7 @@ def _build_step_and_evidence(
         evidence_ids=[evidence_id],
         actual_report_path=evidence.actual_report_path,
         source_session_id=source_session_id,
+        source_subscription_id=source_subscription_id,
         source_generation=source_generation,
         source_report_rpt_id=evidence.rpt_id,
         source_report_dat_set=evidence.dataset,
@@ -462,12 +483,15 @@ def _build_recovery_state(
     subscription_plan: VerificationSubscriptionPlanSchema,
     execution_context: VerificationExecutionContextSchema,
     session_snapshots: Sequence[VerificationSessionSnapshotSchema],
+    subscription_snapshots: Sequence[VerificationSubscriptionSnapshotSchema],
     evidence_rows: Sequence[SignalVerificationEvidenceSchema],
     runtime_result,
 ) -> VerificationRecoveryStateSchema | None:
     recovery_evidence_rows = [evidence for evidence in evidence_rows if _is_recovery_evidence_status(evidence.evidence_status)]
     runtime_diagnostics = tuple(_runtime_diagnostic_to_evidence_diagnostic(diagnostic) for diagnostic in runtime_result.diagnostics)
-    snapshot_failed = any(snapshot.report_health != "healthy" for snapshot in session_snapshots)
+    snapshot_failed = any(
+        snapshot.runtime_state != "reporting" for snapshot in session_snapshots
+    ) or any(snapshot.report_health != "healthy" for snapshot in subscription_snapshots)
     diagnostics = [
         *runtime_diagnostics,
         *(diagnostic for evidence in recovery_evidence_rows for diagnostic in evidence.diagnostics),
@@ -487,14 +511,7 @@ def _build_recovery_state(
 
     representative_snapshot = None
     if session_snapshots:
-        representative_snapshot = next(
-            (
-                snapshot
-                for snapshot in session_snapshots
-                if snapshot.report_health != "healthy" or snapshot.stale_signal_count not in (None, 0)
-            ),
-            session_snapshots[0],
-        )
+        representative_snapshot = session_snapshots[0]
 
     group_ids = _unique_non_empty_strings(
         [
@@ -561,15 +578,21 @@ def _resolve_verdict_state(step_verdicts: Sequence[str]) -> str:
     return "inconclusive"
 
 
-def _resolve_runtime_state(session_snapshots: Sequence[VerificationSessionSnapshotSchema]) -> str | None:
-    if not session_snapshots:
+def _resolve_runtime_state(
+    session_snapshots: Sequence[VerificationSessionSnapshotSchema],
+    subscription_snapshots: Sequence[VerificationSubscriptionSnapshotSchema] = (),
+) -> str | None:
+    if not session_snapshots and not subscription_snapshots:
         return None
     states = {snapshot.runtime_state for snapshot in session_snapshots}
-    if states == {"reporting"}:
+    subscription_states = {snapshot.subscription_state for snapshot in subscription_snapshots}
+    if states == {"reporting"} and subscription_states.issubset({"reporting", "enabled"}):
         return "reporting"
-    if "failed" in states:
+    if "failed" in states or "failed" in subscription_states or "degraded" in subscription_states:
         return "degraded"
-    return sorted(states)[0]
+    if states:
+        return sorted(states)[0]
+    return "reporting" if subscription_snapshots else None
 
 
 def _is_recovery_evidence_status(evidence_status: str) -> bool:
@@ -614,53 +637,185 @@ def _build_session_snapshots(
     test_run_id: str,
     runtime_result,
     connection_generation: int,
-    evidence_rows: Sequence[SignalVerificationEvidenceSchema],
 ) -> list[VerificationSessionSnapshotSchema]:
-    evidence_by_group: dict[str, list[SignalVerificationEvidenceSchema]] = {}
-    for evidence in evidence_rows:
-        evidence_by_group.setdefault(str(evidence.endpoint_id or evidence.source_ied or test_run_id), []).append(evidence)
-
     snapshots: list[VerificationSessionSnapshotSchema] = []
+    seen_endpoints: set[str] = set()
     for report in runtime_result.reports:
         endpoint_id = report.event.endpoint_id if report.event is not None else f"{report.ied_name}/{report.access_point_name}"
-        report_evidence = evidence_by_group.get(endpoint_id, [])
-        last_report_at = None
-        if report.event is not None:
-            last_report_at = _parse_timestamp(report.event.received_at)
-        if last_report_at is None and report_evidence:
-            last_report_at = max((item.observed_at for item in report_evidence if item.observed_at is not None), default=None)
-        stale_signal_count = sum(1 for item in report_evidence if _is_recovery_evidence_status(item.evidence_status))
+        if endpoint_id in seen_endpoints:
+            continue
+        seen_endpoints.add(endpoint_id)
         snapshots.append(
             VerificationSessionSnapshotSchema(
                 session_id=f"{test_run_id}:{endpoint_id}",
                 endpoint_id=endpoint_id,
-                runtime_state="reporting" if report.error_code is None else "failed",
+                runtime_state="reporting" if runtime_result.reports else "connecting",
                 connection_generation=connection_generation,
-                discovery_status="available" if report.error_code is None else "unknown",
-                subscription_status="enabled" if report.error_code is None else "failed",
-                report_health="healthy" if report.error_code is None else "degraded",
-                last_report_at=last_report_at,
-                last_error=report.error_message,
-                selected_report_control=report.report_control_name,
-                selected_data_set=report.data_set_ref,
-                current_rptena_owner=None,
-                stale_signal_count=stale_signal_count,
-                diagnostic_code=report.error_code,
+                discovery_status="available" if runtime_result.reports else "discovering",
+                last_error=None,
+                diagnostic_code=None,
             )
         )
     return snapshots
 
 
-def _build_runtime_summary(runtime_result, evidence_rows: Sequence[SignalVerificationEvidenceSchema]) -> dict[str, Any]:
+def _build_subscription_snapshots(
+    *,
+    test_run_id: str,
+    runtime_result,
+    subscription_plan: VerificationSubscriptionPlanSchema,
+    connection_generation: int,
+    evidence_rows: Sequence[SignalVerificationEvidenceSchema],
+    client_id: str,
+) -> list[VerificationSubscriptionSnapshotSchema]:
+    evidence_by_endpoint_and_report: dict[tuple[str, str | None], list[SignalVerificationEvidenceSchema]] = {}
+    for evidence in evidence_rows:
+        endpoint_id = str(evidence.endpoint_id or evidence.source_ied or test_run_id)
+        report_reference = str(evidence.rpt_id or evidence.dataset or "").strip() or None
+        evidence_by_endpoint_and_report.setdefault((endpoint_id, report_reference), []).append(evidence)
+
+    snapshots: list[VerificationSubscriptionSnapshotSchema] = []
+    for report in runtime_result.reports:
+        endpoint_id = report.event.endpoint_id if report.event is not None else f"{report.ied_name}/{report.access_point_name}"
+        group = _resolve_plan_group_for_report(subscription_plan, report)
+        subscription_id = _resolve_subscription_id(
+            test_run_id=test_run_id,
+            endpoint_id=endpoint_id,
+            group=group,
+            report=report,
+        )
+        report_reference = str(report.report_control_name or report.data_set_ref or "").strip() or None
+        matching_evidence = evidence_by_endpoint_and_report.get((endpoint_id, report_reference), [])
+        stale_signal_count = sum(1 for item in matching_evidence if _is_recovery_evidence_status(item.evidence_status))
+        last_report_at = _parse_timestamp(report.event.received_at) if report.event is not None else None
+        if last_report_at is None and matching_evidence:
+            last_report_at = max((item.observed_at for item in matching_evidence if item.observed_at is not None), default=None)
+        snapshots.append(
+            VerificationSubscriptionSnapshotSchema(
+                subscription_id=subscription_id,
+                session_id=f"{test_run_id}:{endpoint_id}",
+                endpoint_id=endpoint_id,
+                group_id=group.group_id if group is not None else None,
+                report_control_reference=(
+                    group.report_control_reference
+                    if group is not None and group.report_control_reference is not None
+                    else report.report_control_name
+                ),
+                report_control_name=report.report_control_name,
+                data_set_reference=report.data_set_ref,
+                subscription_state="reporting" if report.error_code is None else "failed",
+                report_health="healthy" if report.error_code is None else "degraded",
+                last_report_at=last_report_at,
+                current_rptena_owner=client_id if report.error_code is None else None,
+                stale_signal_count=stale_signal_count or None,
+                last_error=report.error_message,
+                diagnostic_code=report.error_code,
+                diagnostics=[
+                    VerificationEvidenceDiagnosticSchema(
+                        code=diagnostic.code,
+                        message=diagnostic.message,
+                        severity=diagnostic.severity,
+                        details={
+                            "ied_name": diagnostic.reference.ied_name if getattr(diagnostic, "reference", None) is not None else None,
+                            "report_control_name": diagnostic.reference.report_control_name if getattr(diagnostic, "reference", None) is not None else None,
+                        },
+                    )
+                    for diagnostic in report.diagnostics
+                ],
+            )
+        )
+    return snapshots
+
+
+def _build_runtime_summary(
+    runtime_result,
+    evidence_rows: Sequence[SignalVerificationEvidenceSchema],
+    subscription_snapshots: Sequence[VerificationSubscriptionSnapshotSchema] = (),
+) -> dict[str, Any]:
     summary = build_signal_verification_evidence_summary(evidence_rows).model_dump()
     summary.update(
         {
             "runtime_reports": len(runtime_result.reports),
             "runtime_diagnostics": len(runtime_result.diagnostics),
             "observations": sum(len(report.observations) for report in runtime_result.reports),
+            "subscription_reports": len(runtime_result.reports),
+            "active_subscriptions": sum(1 for snapshot in subscription_snapshots if snapshot.subscription_state != "closed"),
+            "reporting_subscriptions": sum(
+                1 for snapshot in subscription_snapshots if snapshot.subscription_state == "reporting"
+            ),
+            "failed_subscriptions": sum(1 for snapshot in subscription_snapshots if snapshot.subscription_state == "failed"),
         }
     )
     return summary
+
+
+def _resolve_plan_group_for_report(
+    subscription_plan: VerificationSubscriptionPlanSchema,
+    report,
+) -> VerificationSubscriptionPlanGroupSchema | None:
+    report_control_name = str(getattr(report, "report_control_name", "")).strip()
+    data_set_ref = str(getattr(report, "data_set_ref", "")).strip()
+    endpoint_id = str(getattr(report.event, "endpoint_id", "")).strip() if getattr(report, "event", None) is not None else ""
+    for group in subscription_plan.groups:
+        if group.report_control_name == report_control_name and (group.endpoint_id is None or group.endpoint_id == endpoint_id):
+            return group
+        if group.data_set_reference == data_set_ref and (group.endpoint_id is None or group.endpoint_id == endpoint_id):
+            return group
+    return None
+
+
+def _resolve_subscription_id(
+    *,
+    test_run_id: str,
+    endpoint_id: str,
+    group: VerificationSubscriptionPlanGroupSchema | None,
+    report,
+) -> str:
+    if group is not None and group.group_id.strip():
+        return f"{test_run_id}:{group.group_id}"
+    report_control_name = str(getattr(report, "report_control_name", "")).strip()
+    data_set_ref = str(getattr(report, "data_set_ref", "")).strip()
+    if report_control_name:
+        return f"{test_run_id}:{endpoint_id}:{report_control_name}"
+    if data_set_ref:
+        return f"{test_run_id}:{endpoint_id}:{data_set_ref}"
+    return f"{test_run_id}:{endpoint_id}:subscription"
+
+
+def _resolve_source_session_id(
+    *,
+    test_run_id: str,
+    report,
+    target: VerificationTargetSchema,
+) -> str | None:
+    if report is not None and report.event is not None:
+        return f"{test_run_id}:{report.event.endpoint_id}"
+    if target.endpoint_id is not None:
+        return f"{test_run_id}:{target.endpoint_id}"
+    return None
+
+
+def _resolve_source_subscription_id(
+    *,
+    test_run_id: str,
+    group: VerificationSubscriptionPlanGroupSchema | None,
+    report,
+    target: VerificationTargetSchema,
+    source_session_id: str | None,
+) -> str | None:
+    if group is not None and group.group_id.strip():
+        return f"{test_run_id}:{group.group_id}"
+    report_control_name = str(getattr(report, "report_control_name", "")).strip()
+    data_set_ref = str(getattr(report, "data_set_ref", "")).strip()
+    if source_session_id and report_control_name:
+        return f"{source_session_id}:{report_control_name}"
+    if source_session_id and data_set_ref:
+        return f"{source_session_id}:{data_set_ref}"
+    if report_control_name:
+        return f"{test_run_id}:{target.endpoint_id or 'unknown'}:{report_control_name}"
+    if data_set_ref:
+        return f"{test_run_id}:{target.endpoint_id or 'unknown'}:{data_set_ref}"
+    return None
 
 
 def _parse_timestamp(value: Any) -> datetime | None:
