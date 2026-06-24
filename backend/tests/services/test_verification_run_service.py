@@ -10,6 +10,7 @@ from app.schemas.verification_schema import (
     SignalVerificationEvidenceSchema,
     SignalVerificationEvidenceSetSchema,
     SignalVerificationEvidenceSetSummarySchema,
+    VerificationEvidenceDiagnosticSchema,
     VerificationAutoRunStartSchema,
     VerificationExecutionContextSchema,
     VerificationRunDetailResponseSchema,
@@ -314,6 +315,48 @@ def test_build_verification_verdict_explanation_warns_on_fallback_planning() -> 
     assert any(diagnostic.code == "fallback_planning" for diagnostic in explanation.diagnostics)
 
 
+def test_build_verification_verdict_explanation_includes_endpoint_source_clause() -> None:
+    verification_run = _build_verification_run()
+    verification_run.diagnostics = [
+        VerificationEvidenceDiagnosticSchema(
+            code="endpoint_resolution_policy",
+            message="resolved from catalog",
+            severity="info",
+            details={"transport_source": "settings_catalog", "model_source": "loaded_scd"},
+        )
+    ]
+
+    explanation = build_verification_verdict_explanation(
+        verification_run=verification_run,  # type: ignore[arg-type]
+        verification_steps=verification_run.verification_steps,
+        evidence_rows=[
+            SignalVerificationEvidenceSchema(
+                evidence_id="ev-1",
+                signal_id=101,
+                signal_path="breaker_close",
+                expected_path="LD0/XCBR1.Pos.stVal",
+                actual_report_path="LD0/XCBR1.Pos.stVal",
+                source_ied="IED-A",
+                endpoint_id="mms:IED-A/P1@10.10.10.250:12447",
+                rpt_id="rpt-a",
+                dataset="ds-a",
+                observed_at=datetime(2026, 6, 23, 12, 0, 0, 250_000, tzinfo=UTC),
+                latency_ms=250,
+                quality="good",
+                freshness="live",
+                evidence_status="observed",
+                reason_code="report_received",
+                source_generation=1,
+                diagnostics=[],
+            )
+        ],
+    )
+
+    assert explanation.summary.startswith("PASS: observed")
+    assert "transport from settings catalog" in explanation.summary
+    assert "model binding from loaded SCD" in explanation.summary
+
+
 class _FakeDb:
     def __init__(self) -> None:
         self.flushed = 0
@@ -328,6 +371,9 @@ class _FakeDb:
 
     async def rollback(self) -> None:
         self.rolled_back += 1
+
+    async def execute(self, _stmt):
+        return SimpleNamespace(first=lambda: None)
 
 
 class _FakeSignalsRepository:
@@ -649,6 +695,8 @@ async def test_execute_single_signal_verification_run_selects_mms_runtime_from_c
         for diagnostic in result.verification_run.diagnostics
     )
     assert any(diagnostic.code == "endpoint_resolution_policy" for diagnostic in result.verdict_explanation.diagnostics)
+    assert "transport from explicit request" in result.verdict_explanation.summary
+    assert "model binding from discovery fallback" in result.verdict_explanation.summary
     assert result.verification_run.verification_steps[0].evidence_status == "timeout"
     assert result.verification_run.verification_steps[0].subscription_id == "vr-mms-runtime:group-1"
     assert result.verification_run.reason is not None
@@ -699,6 +747,58 @@ async def test_execute_single_signal_verification_run_loads_mms_endpoint_catalog
         for diagnostic in result.verification_run.diagnostics
     )
     assert any(diagnostic.code == "endpoint_resolution_policy" for diagnostic in result.verdict_explanation.diagnostics)
+    assert "transport from settings catalog" in result.verdict_explanation.summary
+    assert "model binding from discovery fallback" in result.verdict_explanation.summary
+
+
+@pytest.mark.anyio
+async def test_execute_single_signal_verification_run_uses_loaded_scd_for_model_binding(monkeypatch) -> None:
+    db = _FakeDb()
+    triggered_at = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
+
+    class _FakeRuntimeSelectionRepository:
+        def __init__(self, _db):
+            pass
+
+        async def get_active_runtime_selection(self, *, workspace_id: int):
+            return SimpleNamespace(import_id="import-7", runtime_revision=12)
+
+    monkeypatch.setattr(run_service, "SignalsRepository", _FakeSignalsRepository)
+    monkeypatch.setattr(run_service, "SignalSheetRepository", _FakeSignalSheetRepository)
+    monkeypatch.setattr(run_service, "VerificationEvidenceRepository", _FakeEvidenceRepository)
+    monkeypatch.setattr(run_service, "VerificationRunRepository", _FakeRunRepository)
+    monkeypatch.setattr(run_service, "Iec61850SqlAlchemySclImportRepository", _FakeRuntimeSelectionRepository)
+
+    result = await execute_single_signal_verification_run(
+        workspace_id=7,
+        payload=VerificationAutoRunStartSchema(
+            signal_ids=[101],
+            execution_context=VerificationExecutionContextSchema(
+                project_id=1,
+                signal_list_revision_id=2,
+                planner_version="test",
+                runtime_version="mms",
+                policy_version="v1",
+            ),
+            client_id="unitlab-backend-simulator",
+            test_run_id="vr-mms-loaded-scd",
+        ),
+        db=db,  # type: ignore[arg-type]
+        triggered_at=triggered_at,
+        mms_control_service_factory=_FakeClientControlService,
+        mms_endpoint_catalog=build_mms_endpoint_catalog((
+            Iec61850MmsEndpointCatalogEntry(
+                ied_name="IED-A",
+                access_point_name="P1",
+                host="10.10.10.250",
+                port=12447,
+            ),
+        )),
+    )
+
+    assert result.verdict_explanation.summary.startswith("FAIL: no confirmation arrived before the timeout expired.")
+    assert "transport from explicit request" in result.verdict_explanation.summary
+    assert "model binding from loaded SCD" in result.verdict_explanation.summary
 
 
 @pytest.mark.anyio

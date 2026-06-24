@@ -57,7 +57,7 @@ def build_verification_verdict_explanation(
         )
 
     headline = _resolve_headline(verdict_state)
-    summary = _resolve_summary(verdict_state, signals, verification_run.subscription_plan.coverage.planning_quality)
+    summary = _resolve_summary(verification_run, verdict_state, signals, verification_run.subscription_plan.coverage.planning_quality)
     diagnostics = _collect_diagnostics(verification_run, signals)
     return VerificationVerdictExplanationSchema(
         test_run_id=verification_run.test_run_id,
@@ -102,6 +102,7 @@ def _resolve_signal_reason(
 
 
 def _resolve_summary(
+    verification_run: VerificationRunSchema,
     verdict_state: str,
     signals: Sequence[VerificationVerdictExplanationSignalSchema],
     planning_quality: str | None = None,
@@ -114,21 +115,51 @@ def _resolve_summary(
         latency = f" in {first.latency_ms} ms" if first.latency_ms is not None else ""
         observed = first.observed_path or first.expected_path
         location = first.source_ied or first.endpoint_id or "the selected IED"
+        source_clause = _resolve_source_clause(verification_run)
         if planning_quality and planning_quality != "exact":
-            return (
-                f"PASS with fallback planning: observed {observed} on {location}{latency}. "
-                "Verified by simulator fallback source, not exact IEC 61850 report-control match."
-            )
+            summary = f"PASS with fallback planning: observed {observed} on {location}{latency}."
+            if source_clause is not None:
+                return f"{summary} {source_clause}"
+            return f"{summary} Verified by simulator fallback source, not exact IEC 61850 report-control match."
+        if source_clause is not None:
+            return f"PASS: observed {observed} on {location}{latency}. {source_clause}"
         return f"PASS: observed {observed} on {location}{latency}."
     if verdict_state == "fail" and first.evidence_status == "timeout":
-        return "FAIL: no confirmation arrived before the timeout expired."
+        return _append_source_clause("FAIL: no confirmation arrived before the timeout expired.", verification_run)
     if verdict_state == "fail" and first.evidence_status in {"late", "out_of_window"}:
-        return "FAIL: confirmation arrived outside the allowed window."
+        return _append_source_clause("FAIL: confirmation arrived outside the allowed window.", verification_run)
     if verdict_state == "fail" and first.evidence_status == "stale":
-        return "FAIL: confirmation was stale and could not be trusted."
+        return _append_source_clause("FAIL: confirmation was stale and could not be trusted.", verification_run)
     if verdict_state == "fail" and first.evidence_status == "invalid":
-        return "FAIL: confirmation was invalid or incomplete."
+        return _append_source_clause("FAIL: confirmation was invalid or incomplete.", verification_run)
     return f"{verdict_state.upper()}: verification completed with derived evidence."
+
+
+def _append_source_clause(summary: str, verification_run: VerificationRunSchema) -> str:
+    source_clause = _resolve_source_clause(verification_run)
+    return f"{summary} {source_clause}" if source_clause is not None else summary
+
+
+def _resolve_source_clause(verification_run: VerificationRunSchema) -> str | None:
+    for diagnostic in verification_run.diagnostics:
+        if diagnostic.code != "endpoint_resolution_policy" or diagnostic.details is None:
+            continue
+        transport_source = str(diagnostic.details.get("transport_source") or "").strip()
+        model_source = str(diagnostic.details.get("model_source") or "").strip()
+        source_parts: list[str] = []
+        if transport_source == "explicit_request":
+            source_parts.append("transport from explicit request")
+        elif transport_source == "settings_catalog":
+            source_parts.append("transport from settings catalog")
+        elif transport_source == "simulator":
+            source_parts.append("simulator transport")
+        if model_source == "loaded_scd":
+            source_parts.append("model binding from loaded SCD")
+        elif model_source == "discovery_fallback":
+            source_parts.append("model binding from discovery fallback")
+        if source_parts:
+            return f"Source: {'; '.join(source_parts)}."
+    return None
 
 
 def _resolve_headline(verdict_state: str) -> str:
