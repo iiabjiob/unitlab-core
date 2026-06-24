@@ -15,18 +15,20 @@ from app.schemas.verification_schema import (
     VerificationRunSchema,
     VerificationVerdictExplanationSchema,
 )
+from app.services.iec61850.mms_adapter import Iec61850MmsEndpointCatalog
 from app.services.iec61850.report_runtime import (
     Iec61850DeviceEndpoint,
     Iec61850ReportSubscriptionPlanDevice,
     build_simulator_endpoint_for_plan_device,
 )
 from app.services.verification_evidence import VerificationEvidenceRepository
-from app.services.verification_execution import execute_simulated_verification_run
+from app.services.verification_execution import execute_verification_run
 from app.services.verification_planner import (
     build_verification_subscription_plan,
     build_verification_target_sources,
 )
 from app.services.verification_run_repository import VerificationRunRepository
+from app.services.verification_runtime_selection import resolve_verification_runtime
 from app.services.verification_verdict_explanation_service import build_verification_verdict_explanation
 
 
@@ -52,6 +54,7 @@ async def execute_single_signal_verification_run(
     triggered_at: datetime | None = None,
     client_id: str | None = None,
     endpoint_for_device: Callable[[Iec61850ReportSubscriptionPlanDevice], Iec61850DeviceEndpoint] = build_simulator_endpoint_for_plan_device,
+    mms_endpoint_catalog: Iec61850MmsEndpointCatalog | None = None,
 ) -> VerificationAutoRunResult:
     selected_signal_ids = [int(signal_id) for signal_id in payload.signal_ids if int(signal_id) > 0]
     if not selected_signal_ids:
@@ -90,16 +93,23 @@ async def execute_single_signal_verification_run(
     )
     subscription_plan = build_verification_subscription_plan(sources)
 
-    execution_result = await execute_simulated_verification_run(
+    runtime_selection = resolve_verification_runtime(
+        execution_context=execution_context,
+        now=lambda: start_at,
+        endpoint_catalog=mms_endpoint_catalog,
+        simulator_endpoint_for_device=endpoint_for_device,
+    )
+    execution_result = await execute_verification_run(
         workspace_id=workspace_id,
         test_run_id=run_id,
         verification_targets=subscription_plan.targets,
         subscription_plan=subscription_plan,
         execution_context=execution_context,
+        adapter=runtime_selection.adapter,
+        endpoint_for_device=runtime_selection.endpoint_for_device,
         repository=evidence_repo,
         triggered_at=start_at,
         client_id=client_id or payload.client_id,
-        endpoint_for_device=endpoint_for_device,
     )
 
     verdict_explanation = build_verification_verdict_explanation(

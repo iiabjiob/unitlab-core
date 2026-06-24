@@ -269,6 +269,7 @@ class Iec61850ReportObservationResult:
 @dataclass(frozen=True, slots=True)
 class Iec61850ReportSubscriptionRunReportResult:
     candidate_id: str
+    endpoint_id: str | None
     ied_name: str
     access_point_name: str
     report_control_name: str
@@ -610,6 +611,7 @@ def run_report_subscription_plan(
                     error.code,
                     str(error),
                     diagnostics=(_runtime_diagnostic_from_error(report.candidate, error.code, error),),
+                    endpoint=endpoint,
                 )
                 for report in device.reports
             )
@@ -752,6 +754,7 @@ def _run_plan_report(
 
     return Iec61850ReportSubscriptionRunReportResult(
         candidate_id=candidate.id,
+        endpoint_id=endpoint.id,
         ied_name=candidate.ied_name,
         access_point_name=candidate.access_point_name,
         report_control_name=candidate.report_control_name,
@@ -851,10 +854,12 @@ def _failed_plan_report(
     error_code: str,
     error_message: str,
     diagnostics: tuple[Iec61850RuntimeDiagnostic | Iec61850ReportObservationDiagnostic, ...] = (),
+    endpoint: Iec61850DeviceEndpoint | None = None,
 ) -> Iec61850ReportSubscriptionRunReportResult:
     candidate = report.candidate
     return Iec61850ReportSubscriptionRunReportResult(
         candidate_id=candidate.id,
+        endpoint_id=endpoint.id if endpoint is not None else None,
         ied_name=candidate.ied_name,
         access_point_name=candidate.access_point_name,
         report_control_name=candidate.report_control_name,

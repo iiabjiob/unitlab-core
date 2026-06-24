@@ -29,10 +29,11 @@ from app.services.iec61850.report_runtime import (
     Iec61850ReportSubscriptionPlanDevice,
     Iec61850ReportSubscriptionPlanReport,
     Iec61850ReportSubscriptionPlanSignal,
+    Iec61850ReportRuntimeAdapter,
     Iec61850SelectedSignal,
     Iec61850RuntimeTriggerOptions,
     build_simulator_endpoint_for_plan_device,
-    run_simulator_report_subscription_plan,
+    create_iec61850_simulator_adapter,
 )
 from app.services.verification_evidence import (
     VerificationEvidenceRepository,
@@ -124,11 +125,53 @@ async def execute_simulated_verification_run(
     if triggered_at is None:
         triggered_at = datetime.now(UTC)
     runtime_now = now or (lambda: triggered_at + timedelta(milliseconds=max(0, latency_ms)))
+    simulator_adapter = create_iec61850_simulator_adapter(now=runtime_now)
+    return await execute_verification_run(
+        workspace_id=workspace_id,
+        test_run_id=test_run_id,
+        verification_targets=verification_targets,
+        subscription_plan=subscription_plan,
+        execution_context=execution_context,
+        adapter=simulator_adapter,
+        endpoint_for_device=endpoint_for_device,
+        repository=repository,
+        triggered_at=triggered_at,
+        latency_ms=latency_ms,
+        client_id=client_id,
+        now=now,
+        simulate_missing_signal_ids=simulate_missing_signal_ids,
+        simulate_stale_signal_ids=simulate_stale_signal_ids,
+    )
+
+
+async def execute_verification_run(
+    *,
+    workspace_id: int,
+    test_run_id: str,
+    verification_targets: Sequence[VerificationTargetSchema],
+    subscription_plan: VerificationSubscriptionPlanSchema,
+    execution_context: VerificationExecutionContextSchema,
+    adapter: Iec61850ReportRuntimeAdapter,
+    endpoint_for_device: Callable[[Iec61850ReportSubscriptionPlanDevice], Iec61850DeviceEndpoint] = build_simulator_endpoint_for_plan_device,
+    repository: VerificationEvidenceRepository | None = None,
+    triggered_at: datetime | None = None,
+    latency_ms: int = 250,
+    client_id: str = "unitlab-backend-simulator",
+    now: Callable[[], datetime] | None = None,
+    simulate_missing_signal_ids: Sequence[int] = (),
+    simulate_stale_signal_ids: Sequence[int] = (),
+) -> VerificationExecutionResult:
+    if triggered_at is None:
+        triggered_at = datetime.now(UTC)
+    runtime_now = now or (lambda: triggered_at + timedelta(milliseconds=max(0, latency_ms)))
     missing_signal_ids = {int(signal_id) for signal_id in simulate_missing_signal_ids}
     stale_signal_ids = {int(signal_id) for signal_id in simulate_stale_signal_ids}
     runtime_plan = build_runtime_subscription_plan(subscription_plan)
-    runtime_result = run_simulator_report_subscription_plan(
+    from app.services.iec61850.report_runtime import run_report_subscription_plan
+
+    runtime_result = run_report_subscription_plan(
         plan=runtime_plan,
+        adapter=adapter,
         client_id=client_id,
         endpoint_for_device=endpoint_for_device,
         now=runtime_now,
@@ -645,7 +688,9 @@ def _build_session_snapshots(
     snapshots: list[VerificationSessionSnapshotSchema] = []
     seen_endpoints: set[str] = set()
     for report in runtime_result.reports:
-        endpoint_id = report.event.endpoint_id if report.event is not None else f"{report.ied_name}/{report.access_point_name}"
+        report_endpoint_id = getattr(report, "endpoint_id", None)
+        event_endpoint_id = report.event.endpoint_id if report.event is not None else None
+        endpoint_id = report_endpoint_id or event_endpoint_id or f"{report.ied_name}/{report.access_point_name}"
         if endpoint_id in seen_endpoints:
             continue
         seen_endpoints.add(endpoint_id)
@@ -680,7 +725,9 @@ def _build_subscription_snapshots(
 
     snapshots: list[VerificationSubscriptionSnapshotSchema] = []
     for report in runtime_result.reports:
-        endpoint_id = report.event.endpoint_id if report.event is not None else f"{report.ied_name}/{report.access_point_name}"
+        report_endpoint_id = getattr(report, "endpoint_id", None)
+        event_endpoint_id = report.event.endpoint_id if report.event is not None else None
+        endpoint_id = report_endpoint_id or event_endpoint_id or f"{report.ied_name}/{report.access_point_name}"
         group = _resolve_plan_group_for_report(subscription_plan, report)
         subscription_id = _resolve_subscription_id(
             test_run_id=test_run_id,

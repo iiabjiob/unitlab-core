@@ -19,6 +19,7 @@ from app.schemas.verification_schema import (
     VerificationTargetSchema,
     VerificationVerdictExplanationSchema,
 )
+from app.services.iec61850.mms_adapter import Iec61850MmsEndpointCatalogEntry, build_mms_endpoint_catalog
 from app.services.iec61850.report_runtime import Iec61850DeviceEndpoint, Iec61850RuntimeMode
 from app.services import verification_run_service as run_service
 from app.services.verification_run_service import (
@@ -544,6 +545,51 @@ async def test_execute_single_signal_verification_run_uses_custom_endpoint_mappe
     assert result.verification_run.subscription_snapshots[0].endpoint_id == "sim:IED-A/P1@10.10.10.250:12447"
     assert result.verification_run.verification_steps[0].source_session_id == "vr-custom-endpoint:sim:IED-A/P1@10.10.10.250:12447"
     assert result.verification_run.verification_confidence == "exact_report_match"
+
+
+@pytest.mark.anyio
+async def test_execute_single_signal_verification_run_selects_mms_runtime_from_catalog(monkeypatch) -> None:
+    db = _FakeDb()
+    triggered_at = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
+    catalog = build_mms_endpoint_catalog((
+        Iec61850MmsEndpointCatalogEntry(
+            ied_name="IED-A",
+            access_point_name="P1",
+            host="10.10.10.250",
+            port=12447,
+        ),
+    ))
+
+    monkeypatch.setattr(run_service, "SignalsRepository", _FakeSignalsRepository)
+    monkeypatch.setattr(run_service, "SignalSheetRepository", _FakeSignalSheetRepository)
+    monkeypatch.setattr(run_service, "VerificationEvidenceRepository", _FakeEvidenceRepository)
+    monkeypatch.setattr(run_service, "VerificationRunRepository", _FakeRunRepository)
+
+    result = await execute_single_signal_verification_run(
+        workspace_id=7,
+        payload=VerificationAutoRunStartSchema(
+            signal_ids=[101],
+            execution_context=VerificationExecutionContextSchema(
+                project_id=1,
+                signal_list_revision_id=2,
+                planner_version="test",
+                runtime_version="mms",
+                policy_version="v1",
+            ),
+            client_id="unitlab-backend-simulator",
+            test_run_id="vr-mms-runtime",
+        ),
+        db=db,  # type: ignore[arg-type]
+        triggered_at=triggered_at,
+        mms_endpoint_catalog=catalog,
+    )
+
+    assert result.verification_run.verdict_state == "fail"
+    assert result.verification_run.session_snapshots[0].endpoint_id == "mms:IED-A/P1@10.10.10.250:12447"
+    assert result.verification_run.subscription_snapshots[0].endpoint_id == "mms:IED-A/P1@10.10.10.250:12447"
+    assert result.verification_run.verification_steps[0].evidence_status == "timeout"
+    assert result.verification_run.verification_steps[0].subscription_id == "vr-mms-runtime:group-1"
+    assert result.verification_run.reason is not None
 
 
 @pytest.mark.anyio
