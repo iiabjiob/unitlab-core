@@ -33,6 +33,15 @@ _CONFIDENCE_REASON: dict[VerificationConfidenceLevel, str] = {
 }
 
 
+def _confidence_sort_key(step: VerificationStepSchema) -> tuple[int, int, int, str]:
+    return (
+        _CONFIDENCE_RANK.get(step.verification_confidence, 0),
+        int(step.signal_id),
+        int(step.target_index),
+        str(step.step_id),
+    )
+
+
 def derive_step_confidence(
     *,
     target: VerificationTargetSchema,
@@ -81,7 +90,7 @@ def derive_run_confidence(
     if not steps:
         return "unknown", _CONFIDENCE_REASON["unknown"]
 
-    weakest = min(steps, key=lambda step: _CONFIDENCE_RANK.get(step.verification_confidence, 0))
+    weakest = min(steps, key=_confidence_sort_key)
     if weakest.verification_confidence == "degraded":
         return "degraded", _CONFIDENCE_REASON["degraded"]
     return weakest.verification_confidence, weakest.confidence_reason or _CONFIDENCE_REASON[weakest.verification_confidence]

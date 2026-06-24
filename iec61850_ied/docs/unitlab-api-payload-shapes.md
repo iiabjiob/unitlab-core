@@ -374,7 +374,7 @@ Recommended codes:
 
 Aggregation policy for future multi-signal / multi-IED runs:
 - step confidence is derived from the strongest applicable evidence/source classification for that step;
-- run confidence is the weakest confidence among the contributing steps after runtime-health modifiers are applied;
+- run confidence is the weakest confidence among the contributing steps after runtime-health modifiers are applied; ties are broken deterministically by `signal_id` and then `step_id`;
 - `simulated_fallback` on any contributing step caps the run confidence at `simulated_fallback`;
 - `degraded` on any contributing step or session caps the run confidence at `degraded`;
 - a `pass` verdict does not increase confidence by itself;

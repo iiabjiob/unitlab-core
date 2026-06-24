@@ -138,7 +138,7 @@ The confidence reason should be machine-stable and should not replace diagnostic
 For future multi-signal and multi-IED runs:
 
 - step confidence is derived from the strongest applicable evidence/source classification for that step;
-- run confidence is the weakest confidence among the contributing steps after applying runtime-health modifiers;
+- run confidence is the weakest confidence among the contributing steps after applying runtime-health modifiers; ties are broken deterministically by `signal_id` and then `step_id`;
 - if any contributing step is `degraded`, the run confidence cannot exceed `degraded`;
 - if any contributing step is `simulated_fallback`, the run confidence cannot exceed `simulated_fallback`;
 - if all contributing steps are `exact_iec61850`, the run confidence is `exact_iec61850`;
