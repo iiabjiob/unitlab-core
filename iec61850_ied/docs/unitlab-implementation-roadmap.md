@@ -23,7 +23,7 @@ This is the first point where UnitLab behaves like a product instead of a set of
 - [x] Phase B.5 - Planner Validation
 - [x] Phase C - Runtime session orchestration
 - [x] Phase D - Evidence capture
-- [ ] Phase E - First single-signal auto verification
+- [x] Phase E - First single-signal auto verification
 - [ ] Phase F - Multi-signal same IED verification
 - [ ] Phase G - Multi-IED verification
 - [ ] Phase H - Recovery and reconnect verification
@@ -245,7 +245,7 @@ Implementation
 - Required persistence: run record, step records, evidence rows, verdict state, execution diagnostics.
 - Required runtime integration: trigger output action, await IEC 61850 confirmation, correlate report to the target.
 - Required UI changes: one-click run action, live run state, verdict banner, Explain Why panel.
-- Backend slice now implemented: single-signal auto-run endpoint, persisted run snapshot, and verdict explanation response; UI wiring remains to be attached.
+- Backend and frontend slice now implemented: single-signal auto-run endpoint, persisted run snapshot, verdict explanation response, and operator-facing Explain Why panel.
 
 Tests
 - Unit tests: verdict rules, step state transitions, explanation fields.

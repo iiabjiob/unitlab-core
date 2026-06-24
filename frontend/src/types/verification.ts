@@ -1,0 +1,207 @@
+export interface VerificationEvidenceDiagnostic {
+  code: string
+  message: string
+  severity?: string | null
+  details?: Record<string, unknown> | null
+}
+
+export interface VerificationTarget {
+  signal_id: number
+  signal_reference: string
+  signal_path: string
+  endpoint_id?: string | null
+  expected_feedback_path?: string | null
+  source_row_index?: number | null
+  source_kind?: string | null
+  source_reason?: string | null
+  timeout_ms: number
+  window_ms: number
+  protocol?: string | null
+  protocol_metadata: Record<string, unknown>
+  coverage_state: "exact" | "partial" | "uncovered"
+  coverage_reason?: string | null
+  allocation_id?: number | null
+  channel_id?: number | null
+  channel_label?: string | null
+  unit_id?: string | null
+  source_row_id?: string | null
+}
+
+export interface VerificationSubscriptionPlanCoverage {
+  total_targets: number
+  covered_targets: number
+  partially_covered_targets: number
+  uncovered_targets: number
+  groups_count: number
+  endpoints_count: number
+  planning_quality: string
+}
+
+export interface VerificationSubscriptionPlan {
+  plan_id: string
+  selected_signal_ids: number[]
+  targets: VerificationTarget[]
+  groups: Array<Record<string, unknown>>
+  uncovered_targets: Array<Record<string, unknown>>
+  planning_diagnostics: string[]
+  coverage: VerificationSubscriptionPlanCoverage
+}
+
+export interface VerificationExecutionContext {
+  project_id: number
+  signal_list_revision_id: number
+  planner_version: string
+  runtime_version: string
+  policy_version: string
+  selected_group_id?: string | null
+  scd_revision_id?: number | null
+  discovery_snapshot_id?: number | null
+  operator_id?: string | null
+  created_at?: string | null
+  triggered_at?: string | null
+}
+
+export interface VerificationAutoRunStartPayload {
+  signal_ids: number[]
+  execution_context: VerificationExecutionContext
+  client_id?: string
+  test_run_id?: string | null
+}
+
+export interface VerificationEvidence {
+  evidence_id: string
+  signal_id: number
+  signal_path: string
+  expected_path: string
+  actual_report_path?: string | null
+  source_ied?: string | null
+  endpoint_id?: string | null
+  rpt_id?: string | null
+  dataset?: string | null
+  observed_at?: string | null
+  latency_ms?: number | null
+  quality?: string | null
+  freshness?: "live" | "stale" | "unknown" | null
+  evidence_status: "observed" | "stale" | "timeout" | "invalid" | "late" | "out_of_window"
+  reason_code: string
+  source_generation?: number | null
+  source_report_sequence_generation?: number | null
+  source_report_sequence_number?: number | null
+  source_report_sub_sequence_number?: number | null
+  report_reason?: string | null
+  signal_value?: unknown | null
+  timestamp_summary?: Record<string, unknown> | null
+  stale_reason?: string | null
+  evidence_kind?: string | null
+  diagnostics: VerificationEvidenceDiagnostic[]
+}
+
+export interface VerificationEvidenceSummary {
+  evidence_count: number
+  observed_count: number
+  stale_count: number
+  timeout_count: number
+  invalid_count: number
+  late_count: number
+  out_of_window_count: number
+  source_generation?: number | null
+}
+
+export interface VerificationEvidenceSet {
+  test_run_id: string
+  evidence: VerificationEvidence[]
+  summary: VerificationEvidenceSummary
+  diagnostics: VerificationEvidenceDiagnostic[]
+}
+
+export interface VerificationSessionSnapshot {
+  session_id: string
+  endpoint_id: string
+  runtime_state: string
+  connection_generation: number
+  discovery_status: string
+  subscription_status: string
+  report_health: string
+  last_report_at?: string | null
+  last_error?: string | null
+  selected_report_control?: string | null
+  selected_data_set?: string | null
+  current_rptena_owner?: string | null
+  stale_signal_count?: number | null
+  diagnostic_code?: string | null
+}
+
+export interface VerificationStep {
+  step_id: string
+  signal_id: number
+  target_index: number
+  step_state: "draft" | "planned" | "armed" | "running" | "awaiting_confirmation" | "completing" | "completed" | "aborted" | "failed"
+  expected_path: string
+  expected_window_ms: number
+  freshness?: "live" | "stale" | "unknown" | null
+  evidence_status: "none" | "observed" | "stale" | "timeout" | "invalid" | "late" | "out_of_window"
+  verdict_state: "pending" | "pass" | "fail" | "inconclusive" | "aborted"
+  evidence_ids: string[]
+  actual_report_path?: string | null
+  source_session_id?: string | null
+  source_generation?: number | null
+  source_report_rpt_id?: string | null
+  source_report_dat_set?: string | null
+  triggered_at?: string | null
+  observed_at?: string | null
+  latency_ms?: number | null
+  reason?: string | null
+  diagnostics: VerificationEvidenceDiagnostic[]
+}
+
+export interface VerificationRun {
+  test_run_id: string
+  verification_targets: VerificationTarget[]
+  subscription_plan: VerificationSubscriptionPlan
+  session_snapshots: VerificationSessionSnapshot[]
+  evidence_set: VerificationEvidenceSet
+  execution_context: VerificationExecutionContext
+  workflow_state: "draft" | "planned" | "preparing" | "armed" | "running" | "awaiting_confirmation" | "completing" | "completed" | "aborted" | "failed"
+  verdict_state: "pending" | "pass" | "fail" | "inconclusive" | "aborted"
+  selected_group_id?: string | null
+  operator_id?: string | null
+  triggered_at?: string | null
+  completed_at?: string | null
+  runtime_state?: string | null
+  runtime_summary?: Record<string, unknown> | null
+  reason?: string | null
+  diagnostics: VerificationEvidenceDiagnostic[]
+  verification_steps: VerificationStep[]
+}
+
+export interface VerificationVerdictExplanationSignal {
+  signal_id: number
+  signal_reference: string
+  signal_path: string
+  expected_path: string
+  observed_path?: string | null
+  source_ied?: string | null
+  endpoint_id?: string | null
+  rpt_id?: string | null
+  dataset?: string | null
+  evidence_status: "observed" | "stale" | "timeout" | "invalid" | "late" | "out_of_window"
+  verdict_state: "pending" | "pass" | "fail" | "inconclusive" | "aborted"
+  latency_ms?: number | null
+  reason?: string | null
+  diagnostics: VerificationEvidenceDiagnostic[]
+}
+
+export interface VerificationVerdictExplanation {
+  test_run_id: string
+  verdict_state: "pending" | "pass" | "fail" | "inconclusive" | "aborted"
+  headline: string
+  summary: string
+  signals: VerificationVerdictExplanationSignal[]
+  diagnostics: VerificationEvidenceDiagnostic[]
+}
+
+export interface VerificationRunDetailResponse {
+  test_run_id: string
+  verification_run: VerificationRun
+  verdict_explanation: VerificationVerdictExplanation
+}

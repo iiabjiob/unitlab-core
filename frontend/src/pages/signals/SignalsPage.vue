@@ -27,6 +27,15 @@
       @set-interval-ms="setTestRunIntervalMs"
     />
 
+    <VerificationRunPanel
+      :busy="verificationRunBusy"
+      :can-run="canRunSingleVerification"
+      :error-text="verificationRunError"
+      :selected-signal-label="selectedVerificationSignalLabel"
+      :result="verificationRunResult"
+      @run="runSingleSignalVerification"
+    />
+
     <div
       v-if="workspaceMissing"
       class="signals-page__empty"
@@ -157,6 +166,8 @@ import { defineDataGridComponent, parseDataGridSavedView, useDataGridRef, type D
 import { SignalsAPI } from "@/api/signals.api"
 import type { AoChannel, DoChannel } from "@/types/channel"
 import AllocationEditorHeader from "@/pages/signals/components/AllocationEditorHeader.vue"
+import VerificationRunPanel from "@/components/verification/VerificationRunPanel.vue"
+import { VerificationAPI } from "@/api/verification.api"
 import { extractSourceRowFromSignalMetadata, resolveAllSourceColumnHeaders, resolveSourceColumnInitialWidth, resolveSourceColumnMinWidth } from "@/pages/signals/utils/sourceColumns"
 import AllocationChannelCell from "@/pages/signals/components/AllocationChannelCell.vue"
 import AllocationChannelPickerPanel from "@/pages/signals/components/AllocationChannelPickerPanel.vue"
@@ -202,6 +213,7 @@ import { formatDate } from "@/utils/datetime"
 import { formatAoValue, parseAoInput } from "@/utils/channel"
 import { resolveRuntimeChannelTypeForSignal } from "@/utils/signalRuntimeMapping"
 import type { SignalAllocationJob, SignalAllocationRow } from "@/types/signal"
+import type { VerificationAutoRunStartPayload, VerificationRunDetailResponse } from "@/types/verification"
 import type { SignalRowsPatchedEvent, SignalRowsPatchedRowPatch } from "@/types/ws/events"
 
 const workspaceStore = useWorkspaceStore()
@@ -244,6 +256,9 @@ const deleteSelectedSignalIds = ref<number[]>([])
 const allocatingSelected = ref(false)
 const deallocatingSelected = ref(false)
 const testRunInProgress = ref(false)
+const verificationRunBusy = ref(false)
+const verificationRunError = ref<string | null>(null)
+const verificationRunResult = ref<VerificationRunDetailResponse | null>(null)
 const testRunIntervalMs = ref(1000)
 const testRunToggleMode = ref<"single" | "double">("single")
 const activeAoControlSignalId = ref<number | null>(null)
@@ -592,6 +607,24 @@ const selectedVisibleAllocatedPhysicalRows = computed(() => (
     && Number.isFinite(row.device_id as number)
     && Boolean(row.unit_id)
   ))
+))
+
+const selectedVerificationRow = computed(() => (
+  selectedVisibleAllocatedPhysicalRows.value.length === 1
+    ? selectedVisibleAllocatedPhysicalRows.value[0]
+    : null
+))
+
+const selectedVerificationSignalLabel = computed(() => (
+  selectedVerificationRow.value?.signal_name
+  || selectedVerificationRow.value?.signal_key
+  || null
+))
+
+const canRunSingleVerification = computed(() => (
+  Boolean(selectedVerificationRow.value)
+  && !verificationRunBusy.value
+  && !isTestRunBusy.value
 ))
 
 const allocatedCableRows = computed(() => (
@@ -2109,6 +2142,52 @@ async function runTestVisualOnly() {
     return
   }
   await startTestRunJob({ resumeFromCursor: false })
+}
+
+async function runSingleSignalVerification() {
+  if (verificationRunBusy.value) return
+
+  const row = selectedVerificationRow.value
+  if (!row) {
+    verificationRunError.value = "Select exactly one allocated signal to run verification."
+    return
+  }
+
+  const workspaceId = workspaceStore.activeWorkspaceId
+  const activeSheetId = activeSignalSheet.value?.id ?? null
+  if (!workspaceId) {
+    verificationRunError.value = "Active workspace is not selected."
+    return
+  }
+
+  const startedAt = new Date().toISOString()
+  const payload: VerificationAutoRunStartPayload = {
+    signal_ids: [row.signal_id],
+    client_id: "unitlab-frontend",
+    execution_context: {
+      project_id: workspaceId,
+      signal_list_revision_id: Number(activeSheetId ?? workspaceId),
+      planner_version: "ui-auto-run",
+      runtime_version: "simulator",
+      policy_version: "v1",
+      created_at: startedAt,
+      triggered_at: startedAt,
+    },
+  }
+
+  verificationRunBusy.value = true
+  verificationRunError.value = null
+  try {
+    const { data } = await VerificationAPI.startSingleSignalRun(workspaceId, payload)
+    verificationRunResult.value = data
+    toastStore.success(`${data.verdict_explanation.headline}: ${data.verdict_explanation.summary}`)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    verificationRunError.value = message
+    toastStore.error(message)
+  } finally {
+    verificationRunBusy.value = false
+  }
 }
 
 type ControlTargetBase = {
