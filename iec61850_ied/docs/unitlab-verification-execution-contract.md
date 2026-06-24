@@ -63,6 +63,11 @@ Policy:
 - discovery can reconcile the connected endpoint and enrich the runtime model, but it must not silently rewrite the transport host;
 - if model sources disagree, keep the transport source explicit and record a diagnostic instead of merging the disagreement away.
 
+Test-only override:
+- automated regression runs may temporarily remap a real device IP to a virtual MMS endpoint;
+- the override must be explicit in diagnostics and artifact output;
+- the override is validation-only and must not change the production endpoint contract.
+
 ## Evidence immutability
 
 Evidence records should be append-only once created.

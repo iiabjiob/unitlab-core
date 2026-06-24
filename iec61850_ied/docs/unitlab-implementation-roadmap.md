@@ -454,9 +454,9 @@ Implementation
 - Required UI changes: runtime source indicator, real-MMS status and diagnostics if the operator needs to distinguish live device proof from simulator-backed proof.
 
 Tests
-- Unit tests: adapter mapping, session state, report correlation.
-- Integration tests: real MMS client/server smoke with a virtual substation.
-- End-to-end tests: run the verified product flow against a real endpoint fixture and compare against the simulator-backed harness.
+- Unit tests: adapter mapping, session state, report correlation, endpoint override policy.
+- Integration tests: real MMS client/server smoke with a virtual substation, lib-server or iDiscover simulator, C264/BCU-focused endpoint fixtures.
+- End-to-end tests: run the verified product flow against a real endpoint fixture or virtualized endpoint override and compare against the simulator-backed harness.
 
 Acceptance Criteria
 - The existing product flow can run against a real MMS endpoint without changing the user workflow contract.
@@ -466,6 +466,8 @@ Acceptance Criteria
 - If a loaded SCD is present and matches the IED/access-point model, it is used first for candidate binding.
 - If SCD is missing or incomplete, discovery is used to fill the gap after transport reachability exists.
 - Discovery never invents the transport host; it only validates or enriches model data once a connection target exists.
+- Test-only virtual endpoint override is available for MMS regression runs and can temporarily replace a real device IP with a virtual substation IP.
+- The Phase J validation matrix should focus primarily on C264/BCU-style devices, because that is the dominant field target.
 
 Do Not Build Yet
 - New verdict semantics.
@@ -473,11 +475,12 @@ Do Not Build Yet
 - Fleet orchestration.
 
 Demo scenario
-- Repeat the verified single-signal and same-IED flows against a real MMS-backed virtual substation.
+- Repeat the verified single-signal and same-IED flows against a real MMS-backed virtual substation or a C264/BCU-style endpoint mapped to a virtual test IP.
 
 Evidence
 - Real endpoint session snapshots, report captures, preserved evidence, and pass/fail output from the live MMS path.
 - Endpoint-resolution diagnostics showing whether the run used explicit host/port, SCD-first binding, or discovery fallback.
+- Test-only override diagnostics showing when a virtual IP substituted a real device IP.
 
 Rollback risk
 - Real MMS wiring reintroduces transport-specific assumptions into the product flow or weakens the simulator-backed regression harness.

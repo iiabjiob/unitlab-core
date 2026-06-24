@@ -153,6 +153,23 @@ Practical rules:
 - if SCD and discovery disagree, keep the transport host from the explicit endpoint source and surface a diagnostic instead of silently rewriting the target;
 - discovery should enrich report-control and dataset identity after the transport target exists.
 
+### Test fixture override policy
+
+For automated validation only, the Python layer may remap a real device endpoint to a virtual MMS endpoint.
+
+This override is allowed only when:
+- the run is clearly marked as test or regression validation;
+- the override is recorded in diagnostics and artifacts;
+- production endpoint resolution still remains explicit and catalog-driven.
+
+This is useful for:
+- lib-server based smoke tests;
+- iDiscover simulator-based smoke tests;
+- virtual-substation regression runs;
+- C264/BCU-focused validation where the field device identity stays the same but the transport target is swapped for a controlled fixture.
+
+The override must not be treated as the production source of truth for MMS host resolution.
+
 ### Report update / evidence input
 
 The C runtime should emit report updates with:

@@ -195,12 +195,15 @@ Input:
 - endpoint catalog / explicit host-port configuration;
 - optional loaded SCD;
 - discovery snapshots when SCD is missing or incomplete;
+- test-only virtual endpoint override for replacing a real device IP during validation;
+- C264/BCU-focused endpoint fixtures;
 - report subscription primitives.
 
 Output:
 - the same operator workflow against real MMS-backed endpoint sessions;
 - preserved evidence and recovery semantics across real transport;
 - explicit resolution diagnostics for host/model source.
+- validation support for lib-server or iDiscover-style simulator-backed runs.
 
 Done when:
 - simulator-backed verification can be swapped for real MMS sessions without changing the operator workflow;
@@ -208,6 +211,8 @@ Done when:
 - MMS host resolution is deterministic and not inferred from signal rows.
 - Loaded SCD is used first for model binding when it matches the endpoint.
 - Discovery is used as a fallback or reconciliation source when SCD is absent or incomplete.
+- Automated validation can temporarily remap a real device IP to a virtual endpoint without changing the production contract.
+- The main validation matrix should prioritize C264/BCU-style endpoints.
 
 ## Mandatory vs optional
 
