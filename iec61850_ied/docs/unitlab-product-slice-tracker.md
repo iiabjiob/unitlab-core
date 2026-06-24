@@ -179,7 +179,7 @@ Input:
 
 Output:
 - reproducible pass/timeout/stale/reconnect scenarios;
-- golden outputs and saved artifacts.
+- golden outputs, saved JSON artifacts, and a manifest for CI reuse.
 
 Done when:
 - the full flow can be exercised repeatedly in CI;

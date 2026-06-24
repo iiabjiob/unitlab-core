@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
+import json
 
 import pytest
 
@@ -12,6 +14,7 @@ from app.services.verification_regression_harness import (
     VerificationRegressionExpectation,
     run_verification_regression_case,
     run_verification_regression_suite,
+    write_verification_regression_artifacts,
 )
 
 
@@ -306,6 +309,85 @@ async def test_verification_regression_case_captures_reconnect_generation_bump()
     assert result.report_payload["verification_run"]["runtime_state"] == "reporting"
     assert max(snapshot["connection_generation"] for snapshot in result.report_payload["session_snapshots"]) == 2
     assert result.report_payload["subscription_snapshots"][0]["subscription_state"] == "reporting"
+
+
+@pytest.mark.anyio
+async def test_verification_regression_suite_writes_artifacts(tmp_path: Path) -> None:
+    pass_plan = _build_exact_plan()
+    multi_plan = _build_multi_ied_plan()
+    triggered_at = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
+    cases = [
+        VerificationRegressionCase(
+            scenario_id="reg-pass-artifacts",
+            mode="verification_run",
+            description="single-signal pass",
+            verification_targets=tuple(pass_plan.targets),
+            subscription_plan=pass_plan,
+            execution_context=VerificationExecutionContextSchema(
+                project_id=1,
+                signal_list_revision_id=2,
+                planner_version="test",
+                runtime_version="simulator",
+                policy_version="v1",
+            ),
+            expectation=VerificationRegressionExpectation(
+                verdict_state="pass",
+                verification_confidence="exact_report_match",
+                confidence_reason="exact_dataset_match",
+                runtime_state="reporting",
+                evidence_count=1,
+                session_count=1,
+                subscription_count=1,
+                step_count=1,
+            ),
+        ),
+        VerificationRegressionCase(
+            scenario_id="reg-reconnect-artifacts",
+            mode="reconnect",
+            description="reconnect one session in multi-ied run",
+            verification_targets=tuple(multi_plan.targets),
+            subscription_plan=multi_plan,
+            execution_context=VerificationExecutionContextSchema(
+                project_id=1,
+                signal_list_revision_id=2,
+                planner_version="test",
+                runtime_version="simulator",
+                policy_version="v1",
+            ),
+            expectation=VerificationRegressionExpectation(
+                runtime_state="reporting",
+                session_count=2,
+                subscription_count=2,
+                active_generation=2,
+            ),
+        ),
+    ]
+
+    suite = await run_verification_regression_suite(
+        cases,
+        triggered_at=triggered_at,
+        now=lambda: triggered_at + timedelta(milliseconds=250),
+    )
+
+    artifact_root = tmp_path / "artifacts"
+    manifest = write_verification_regression_artifacts(suite, artifact_root)
+
+    assert manifest["schema"] == "unitlab.verification.regression-artifacts.v1"
+    assert manifest["suite_id"] == suite.suite_id
+    assert manifest["suite_report_path"] == "suite-report.json"
+    assert len(manifest["cases"]) == 2
+    assert (artifact_root / "manifest.json").exists()
+    assert (artifact_root / "suite-report.json").exists()
+    assert (artifact_root / "cases" / "reg-pass-artifacts" / "report.json").exists()
+    assert (artifact_root / "cases" / "reg-pass-artifacts" / "fixture.json").exists()
+
+    manifest_data = json.loads((artifact_root / "manifest.json").read_text(encoding="utf-8"))
+    suite_report_data = json.loads((artifact_root / "suite-report.json").read_text(encoding="utf-8"))
+    case_report_data = json.loads((artifact_root / "cases" / "reg-pass-artifacts" / "report.json").read_text(encoding="utf-8"))
+    assert manifest_data["cases"][0]["scenario_id"] == "reg-pass-artifacts"
+    assert suite_report_data["suite_id"] == suite.suite_id
+    assert case_report_data["scenario_id"] == "reg-pass-artifacts"
+    assert case_report_data["verification_run"]["verdict_state"] == "pass"
 
 
 @pytest.mark.anyio

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Callable, Literal, Sequence
 from uuid import uuid4
@@ -98,6 +99,50 @@ class VerificationRegressionSuiteResult:
             "summary": self.summary,
             "results": [result.report_payload for result in self.results],
         }
+
+
+def write_verification_regression_artifacts(
+    suite: VerificationRegressionSuiteResult,
+    output_dir: str | Path,
+) -> dict[str, Any]:
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    suite_report_path = output_path / "suite-report.json"
+    _write_json_file(suite_report_path, suite.to_report())
+
+    case_artifacts: list[dict[str, Any]] = []
+    for result in suite.results:
+        case_dir = output_path / "cases" / result.scenario_id
+        case_dir.mkdir(parents=True, exist_ok=True)
+
+        report_path = case_dir / "report.json"
+        fixture_path = case_dir / "fixture.json"
+        _write_json_file(report_path, result.report_payload)
+        _write_json_file(fixture_path, result.fixture_payload)
+
+        case_artifacts.append(
+            {
+                "scenario_id": result.scenario_id,
+                "mode": result.mode,
+                "passed": result.passed,
+                "report_path": _relative_artifact_path(output_path, report_path),
+                "fixture_path": _relative_artifact_path(output_path, fixture_path),
+            }
+        )
+
+    manifest = {
+        "schema": "unitlab.verification.regression-artifacts.v1",
+        "suite_id": suite.suite_id,
+        "passed": suite.passed,
+        "started_at": suite.started_at.isoformat().replace("+00:00", "Z"),
+        "finished_at": suite.finished_at.isoformat().replace("+00:00", "Z"),
+        "summary": suite.summary,
+        "suite_report_path": _relative_artifact_path(output_path, suite_report_path),
+        "cases": case_artifacts,
+    }
+    _write_json_file(output_path / "manifest.json", manifest)
+    return manifest
 
 
 class _RegressionVerificationEvidenceRepository:
@@ -403,3 +448,16 @@ def _diagnostics_to_payload(diagnostics: Sequence[Any]) -> list[dict[str, Any]]:
 
 def _now(now: Callable[[], datetime] | None) -> datetime:
     return now() if now is not None else datetime.now(UTC)
+
+
+def _write_json_file(path: Path, payload: Any) -> None:
+    import json
+
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=True), encoding="utf-8")
+
+
+def _relative_artifact_path(root: Path, path: Path) -> str:
+    try:
+        return path.relative_to(root).as_posix()
+    except ValueError:
+        return path.as_posix()

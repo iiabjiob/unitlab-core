@@ -409,7 +409,7 @@ Implementation
 - Required models: scenario definitions, expected captures, golden outputs, failure-injection descriptors.
 - Required API endpoints: test-harness entrypoints or CLI commands.
 - Required backend services: scenario runner, fixture loader, capture comparator, regression report generator.
-- Required persistence: test artifacts, scenario outputs, golden captures, CI logs.
+- Required persistence: test artifacts, scenario outputs, golden captures, CI logs, artifact manifests.
 - Required runtime integration: MMS client/server, discovery, reports, sessions, reconnect, generation protection, evidence capture, verdicts.
 - Required UI changes: optional developer/test dashboard only if the harness is exposed in-app.
 
@@ -432,7 +432,7 @@ Demo scenario
 - Run the regression suite and reproduce pass, timeout, stale, and reconnect scenarios.
 
 Evidence
-- CI artifacts, golden outputs, scenario logs, and reproducible test results.
+- CI artifacts, golden outputs, scenario logs, reproducible test results, and saved artifact bundles.
 
 Rollback risk
 - The harness becomes too synthetic and stops representing real MMS behavior.
