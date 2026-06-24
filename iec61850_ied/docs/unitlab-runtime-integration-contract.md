@@ -294,7 +294,7 @@ Owns:
 - group linkage;
 - selected RCB recovery state.
 
-One session can own many subscriptions. The runtime must not duplicate the physical session snapshot once per subscription.
+One session can own many subscriptions. The runtime must not duplicate the physical session snapshot once per subscription. A reconnect of that session must re-establish every subscription owned by it.
 
 ### Report stream / state update service
 

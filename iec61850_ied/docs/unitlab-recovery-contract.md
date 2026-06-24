@@ -120,4 +120,5 @@ The product layer should distinguish:
 - Old-generation report updates must not change live evidence.
 - Stale signals should keep their last known good value while being visibly non-live.
 - Reconnect should be visible in product state as a separate recovery phase.
+- A reconnect must restore every subscription owned by the recovered session, not only one report-control stream.
 - One IED recovery must not invalidate other IED sessions in the same selected group.

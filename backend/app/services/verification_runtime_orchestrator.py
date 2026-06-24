@@ -303,9 +303,14 @@ class VerificationRuntimeOrchestrator:
         handle.reconnecting_session_ids.add(session_id)
         try:
             runtime_plan = build_runtime_subscription_plan(handle.subscription_plan)
-            device = self._resolve_runtime_plan_device(runtime_plan, session_state.endpoint_id, endpoint_for_device=handle.endpoint_for_device)
-            endpoint = handle.endpoint_for_device(device)
-            candidates = [report.candidate for report in device.reports]
+            device_group = self._resolve_runtime_plan_device_group(
+                runtime_plan,
+                session_state.endpoint_id,
+                endpoint_for_device=handle.endpoint_for_device,
+            )
+            endpoint = device_group.endpoint
+            group_reports = tuple(report for device in device_group.devices for report in device.reports)
+            candidates = [report.candidate for report in group_reports]
             session_subscription_ids = [
                 subscription_id
                 for subscription_id in handle.subscription_order
@@ -334,7 +339,7 @@ class VerificationRuntimeOrchestrator:
             session_state.connection_generation += 1
             self._transition(session_state, "discovering", "discovering")
 
-            for report in device.reports:
+            for report in group_reports:
                 subscription_state = self._activate_report_subscription(
                     runtime_service=handle.runtime_service,
                     session_state=session_state,
@@ -429,17 +434,20 @@ class VerificationRuntimeOrchestrator:
             raise RuntimeError(f'Verification orchestration "{orchestration_id}" not found.')
         return handle
 
-    def _resolve_runtime_plan_device(
+    def _resolve_runtime_plan_device_group(
         self,
         runtime_plan,
         endpoint_id: str,
         *,
         endpoint_for_device: Callable[[Any], Iec61850DeviceEndpoint] = build_simulator_endpoint_for_plan_device,
     ):
-        for device in runtime_plan.devices:
-            if endpoint_for_device(device).id == endpoint_id:
-                return device
-        raise RuntimeError(f'Runtime device for endpoint "{endpoint_id}" not found.')
+        for device_group in group_report_subscription_plan_devices_by_endpoint(
+            plan=runtime_plan,
+            endpoint_for_device=endpoint_for_device,
+        ):
+            if device_group.endpoint.id == endpoint_id:
+                return device_group
+        raise RuntimeError(f'Runtime device group for endpoint "{endpoint_id}" not found.')
 
 
 def _runtime_diagnostics_to_evidence_diagnostics(

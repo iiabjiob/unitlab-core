@@ -184,6 +184,39 @@ async def test_runtime_orchestrator_reuses_one_session_for_multiple_reports_on_s
 
 
 @pytest.mark.anyio
+async def test_runtime_orchestrator_reconnects_one_session_with_multiple_reports_on_same_endpoint() -> None:
+    plan = _build_same_endpoint_multi_report_plan()
+    orchestrator = VerificationRuntimeOrchestrator(now=lambda: datetime(2026, 6, 23, 12, 0, tzinfo=UTC))
+
+    result = orchestrator.start(
+        workspace_id=7,
+        test_run_id="run-same-endpoint-reconnect",
+        verification_targets=plan.targets,
+        subscription_plan=plan,
+        execution_context=VerificationExecutionContextSchema(
+            project_id=1,
+            signal_list_revision_id=2,
+            planner_version="test",
+            runtime_version="simulator",
+            policy_version="v1",
+        ),
+    )
+
+    session_id = result.session_snapshots[0].session_id
+    reconnected = orchestrator.reconnect(result.orchestration_id, session_id)
+    session_snapshots = {snapshot.session_id: snapshot for snapshot in reconnected.session_snapshots}
+    subscription_snapshots = [snapshot for snapshot in reconnected.subscription_snapshots if snapshot.session_id == session_id]
+
+    assert reconnected.verification_run.recovery_state is None
+    assert session_snapshots[session_id].connection_generation == 2
+    assert session_snapshots[session_id].runtime_state == "reporting"
+    assert len(subscription_snapshots) == 2
+    assert {snapshot.subscription_state for snapshot in subscription_snapshots} == {"reporting"}
+    assert {snapshot.report_health for snapshot in subscription_snapshots} == {"healthy"}
+    assert {snapshot.session_id for snapshot in subscription_snapshots} == {session_id}
+
+
+@pytest.mark.anyio
 async def test_runtime_orchestrator_opens_sessions_and_keeps_live_state() -> None:
     plan = _build_multi_ied_plan()
     orchestrator = VerificationRuntimeOrchestrator(now=lambda: datetime(2026, 6, 23, 12, 0, tzinfo=UTC))
