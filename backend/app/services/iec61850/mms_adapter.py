@@ -45,21 +45,64 @@ class Iec61850MmsEndpointCatalog:
             self._entries[key] = entry
 
     def endpoint_for_plan_device(self, device: Iec61850ReportSubscriptionPlanDevice) -> Iec61850DeviceEndpoint:
-        entry = self._entries.get(_endpoint_key(device.ied_name, device.access_point_name))
+        endpoint, _ = self.resolve_transport_endpoint(
+            ied_name=device.ied_name,
+            access_point_name=device.access_point_name,
+            requested_host=None,
+            requested_port=None,
+        )
+        return endpoint
+
+    def resolve_transport_endpoint(
+        self,
+        *,
+        ied_name: str,
+        access_point_name: str,
+        requested_host: str | None,
+        requested_port: int | None,
+    ) -> tuple[Iec61850DeviceEndpoint, tuple[str, ...]]:
+        entry = self._entries.get(_endpoint_key(ied_name, access_point_name))
+        requested_host = requested_host.strip() if requested_host is not None else None
+        notes: list[str] = []
         if entry is None:
-            raise Iec61850ReportRuntimeError(
-                "MMS_ENDPOINT_NOT_CONFIGURED",
-                f'MMS endpoint for "{device.ied_name}/{device.access_point_name}" is not configured.',
+            if not requested_host:
+                raise Iec61850ReportRuntimeError(
+                    "MMS_ENDPOINT_NOT_CONFIGURED",
+                    f'MMS endpoint for "{ied_name}/{access_point_name}" is not configured.',
+                )
+            if requested_port is None or requested_port <= 0 or requested_port > 65535:
+                raise Iec61850ReportRuntimeError(
+                    "MMS_ENDPOINT_PORT_REQUIRED",
+                    f'MMS endpoint for "{ied_name}/{access_point_name}" requires a valid port.',
+                )
+            endpoint = Iec61850DeviceEndpoint(
+                id=f"mms:{ied_name}@{requested_host}:{requested_port}" if ied_name else f"mms:{requested_host}:{requested_port}",
+                mode=Iec61850RuntimeMode.MMS,
+                ied_name=ied_name,
+                access_point_name=access_point_name,
+                host=requested_host,
+                port=requested_port,
             )
-        endpoint_id = entry.endpoint_id or f"mms:{entry.ied_name}/{entry.access_point_name}@{entry.host}:{entry.port}"
-        return Iec61850DeviceEndpoint(
+            return endpoint, ("explicit transport request",)
+
+        resolved_host = requested_host or entry.host
+        resolved_port = requested_port if requested_port is not None and requested_port > 0 else entry.port
+        if requested_host and requested_host != entry.host:
+            notes.append("requested host overrides catalog host")
+        if requested_port is not None and requested_port != entry.port:
+            notes.append("requested port overrides catalog port")
+        if not requested_host:
+            notes.append("transport host resolved from endpoint catalog")
+        endpoint_id = entry.endpoint_id or f"mms:{entry.ied_name}/{entry.access_point_name}@{resolved_host}:{resolved_port}"
+        endpoint = Iec61850DeviceEndpoint(
             id=endpoint_id,
             mode=Iec61850RuntimeMode.MMS,
             ied_name=entry.ied_name,
             access_point_name=entry.access_point_name,
-            host=entry.host,
-            port=entry.port,
+            host=resolved_host,
+            port=resolved_port,
         )
+        return endpoint, tuple(notes)
 
 
 def build_mms_endpoint_catalog(

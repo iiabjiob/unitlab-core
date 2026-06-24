@@ -17,6 +17,7 @@ from app.core.config import get_settings
 
 from .client_runtime import Iec61850MmsClientEvent, Iec61850MmsClientRuntime
 from .ied_simulator_fixture import build_ied_simulator_fixture_from_subscription_plan
+from .mms_adapter import Iec61850MmsEndpointCatalog
 from .ied_simulator_process import (
     Iec61850IedSimulatorProcessHandle,
     build_ied_simulator_process_spec,
@@ -141,6 +142,7 @@ class Iec61850ClientControlService:
         client_id: str = "unitlab-test-client",
         endpoint: Iec61850DeviceEndpoint | None = None,
         candidate: Iec61850ReportControlCandidate | None = None,
+        endpoint_catalog: Iec61850MmsEndpointCatalog | None = None,
         live_wire_binary_path: str | None = None,
         live_wire_service_host: str | None = None,
         live_wire_data_port: int | None = None,
@@ -152,6 +154,7 @@ class Iec61850ClientControlService:
         self._client_id = client_id
         self._endpoint = endpoint or _default_endpoint()
         self._endpoint_resolution = _default_endpoint_resolution(self._endpoint)
+        self._endpoint_catalog = endpoint_catalog
         self._candidate = candidate or _default_candidate()
         self._target_scl_path: str | None = None
         self._last_read: Iec61850ReportControlReadResult | None = None
@@ -245,7 +248,10 @@ class Iec61850ClientControlService:
     def configure_target(self, request: Iec61850ClientTargetRequest) -> Iec61850ClientControlSnapshot:
         with self._lock:
             self._reset_runtime_state_for_target_change()
-            endpoint, candidate, available_candidates, endpoint_resolution = _build_target_endpoint_and_candidate(request)
+            endpoint, candidate, available_candidates, endpoint_resolution = _build_target_endpoint_and_candidate(
+                request,
+                endpoint_catalog=self._endpoint_catalog,
+            )
             self._endpoint = endpoint
             self._endpoint_resolution = endpoint_resolution
             self._candidate = candidate
@@ -1993,6 +1999,8 @@ def _build_discovery_structure(
 
 def _build_target_endpoint_and_candidate(
     request: Iec61850ClientTargetRequest,
+    *,
+    endpoint_catalog: Iec61850MmsEndpointCatalog | None = None,
 ) -> tuple[
     Iec61850DeviceEndpoint,
     Iec61850ReportControlCandidate,
@@ -2005,23 +2013,46 @@ def _build_target_endpoint_and_candidate(
         return endpoint, _default_candidate(), (_default_candidate(),), _default_endpoint_resolution(endpoint)
     if mode not in {"mms", "external-mms"}:
         raise Iec61850ReportRuntimeError("CLIENT_TARGET_MODE_INVALID", "IEC 61850 client target mode must be simulator or external-mms.")
-    host = request.host.strip()
     ied_name = request.ied_name.strip()
     access_point_name = request.access_point_name.strip() or "AP1"
-    if not host:
-        raise Iec61850ReportRuntimeError("CLIENT_TARGET_HOST_REQUIRED", "IEC 61850 external MMS target host is required.")
-    if request.port <= 0 or request.port > 65535:
-        raise Iec61850ReportRuntimeError("CLIENT_TARGET_PORT_INVALID", "IEC 61850 external MMS target port must be in range 1..65535.")
     if (request.scl_path is not None and request.scl_path.strip()) and not ied_name:
         raise Iec61850ReportRuntimeError("CLIENT_TARGET_IED_REQUIRED", "IEC 61850 external MMS target IED name is required.")
-    endpoint = Iec61850DeviceEndpoint(
-        id=f"mms:{ied_name}@{host}:{request.port}" if ied_name else f"mms:{host}:{request.port}",
-        mode=Iec61850RuntimeMode.MMS,
-        ied_name=ied_name,
-        access_point_name=access_point_name,
-        host=host,
-        port=request.port,
-    )
+    requested_host = request.host.strip() if request.host is not None else ""
+    requested_port = request.port if request.port > 0 else None
+    notes: tuple[str, ...] = ()
+    if endpoint_catalog is not None and ied_name:
+        try:
+            endpoint, notes = endpoint_catalog.resolve_transport_endpoint(
+                ied_name=ied_name,
+                access_point_name=access_point_name,
+                requested_host=requested_host or None,
+                requested_port=requested_port,
+            )
+        except Iec61850ReportRuntimeError:
+            if not requested_host:
+                raise
+            endpoint = Iec61850DeviceEndpoint(
+                id=f"mms:{ied_name}@{requested_host}:{requested_port}" if ied_name else f"mms:{requested_host}:{requested_port}",
+                mode=Iec61850RuntimeMode.MMS,
+                ied_name=ied_name,
+                access_point_name=access_point_name,
+                host=requested_host,
+                port=requested_port or 102,
+            )
+            notes = ("explicit transport request",)
+    else:
+        if not requested_host:
+            raise Iec61850ReportRuntimeError("CLIENT_TARGET_HOST_REQUIRED", "IEC 61850 external MMS target host is required.")
+        if requested_port is None:
+            raise Iec61850ReportRuntimeError("CLIENT_TARGET_PORT_INVALID", "IEC 61850 external MMS target port must be in range 1..65535.")
+        endpoint = Iec61850DeviceEndpoint(
+            id=f"mms:{ied_name}@{requested_host}:{requested_port}" if ied_name else f"mms:{requested_host}:{requested_port}",
+            mode=Iec61850RuntimeMode.MMS,
+            ied_name=ied_name,
+            access_point_name=access_point_name,
+            host=requested_host,
+            port=requested_port,
+        )
     if request.scl_path is None or not request.scl_path.strip():
         return (
             endpoint,
@@ -2030,12 +2061,12 @@ def _build_target_endpoint_and_candidate(
             Iec61850EndpointResolution(
                 transport_source="explicit_request",
                 model_source="discovery-fallback",
-                requested_host=host,
-                requested_port=request.port,
-                resolved_host=host,
-                resolved_port=request.port,
+                requested_host=requested_host or endpoint.host,
+                requested_port=requested_port,
+                resolved_host=endpoint.host,
+                resolved_port=endpoint.port,
                 scl_path=None,
-                notes=("discovery required for model binding",),
+                notes=("discovery required for model binding",) + notes,
             ),
         )
     scl_path = Path(request.scl_path.strip())
@@ -2054,12 +2085,12 @@ def _build_target_endpoint_and_candidate(
         Iec61850EndpointResolution(
             transport_source="explicit_request",
             model_source="scd-first",
-            requested_host=host,
-            requested_port=request.port,
-            resolved_host=host,
-            resolved_port=request.port,
+            requested_host=requested_host or endpoint.host,
+            requested_port=requested_port,
+            resolved_host=endpoint.host,
+            resolved_port=endpoint.port,
             scl_path=str(scl_path),
-            notes=("loaded SCD used for model binding",),
+            notes=("loaded SCD used for model binding",) + notes,
         ),
     )
 

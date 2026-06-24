@@ -497,6 +497,52 @@ def test_backend_runtime_builds_mms_endpoint_from_catalog() -> None:
     assert endpoint.port == 1102
 
 
+def test_backend_runtime_resolves_transport_endpoint_from_catalog_without_requested_host() -> None:
+    catalog = build_mms_endpoint_catalog((
+        Iec61850MmsEndpointCatalogEntry(
+            ied_name="C264_BCU_01",
+            access_point_name="AP1",
+            host="10.10.10.250",
+            port=12447,
+        ),
+    ))
+
+    endpoint, notes = catalog.resolve_transport_endpoint(
+        ied_name="C264_BCU_01",
+        access_point_name="AP1",
+        requested_host=None,
+        requested_port=None,
+    )
+
+    assert endpoint.id == "mms:C264_BCU_01/AP1@10.10.10.250:12447"
+    assert endpoint.host == "10.10.10.250"
+    assert endpoint.port == 12447
+    assert "transport host resolved from endpoint catalog" in notes
+
+
+def test_backend_runtime_resolves_transport_endpoint_with_explicit_override() -> None:
+    catalog = build_mms_endpoint_catalog((
+        Iec61850MmsEndpointCatalogEntry(
+            ied_name="C264_BCU_01",
+            access_point_name="AP1",
+            host="10.10.10.250",
+            port=12447,
+        ),
+    ))
+
+    endpoint, notes = catalog.resolve_transport_endpoint(
+        ied_name="C264_BCU_01",
+        access_point_name="AP1",
+        requested_host="10.10.10.251",
+        requested_port=12447,
+    )
+
+    assert endpoint.id == "mms:C264_BCU_01/AP1@10.10.10.251:12447"
+    assert endpoint.host == "10.10.10.251"
+    assert endpoint.port == 12447
+    assert "requested host overrides catalog host" in notes
+
+
 def test_backend_runtime_rejects_missing_mms_endpoint() -> None:
     catalog = build_mms_endpoint_catalog(())
 
