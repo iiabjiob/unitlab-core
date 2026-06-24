@@ -396,6 +396,9 @@ Rollback risk
 
 ## Phase I
 
+Status
+- Completed.
+
 Purpose
 - Make the full verification flow reproducible in automated regression.
 

@@ -170,7 +170,7 @@ Done when:
 
 ### PR8 - Virtual-substation regression harness
 
-Status: pending.
+Status: completed.
 
 Input:
 - deterministic virtual substation fixtures;
