@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { buildCoreNetworkSettingsPayload, createCoreNetworkDraft, splitList } from "./coreNetworkPanelModel"
+import { buildCoreNetworkInterfaceChoices, buildCoreNetworkSettingsPayload, createCoreNetworkDraft, getSelectedCoreNetworkInterface, splitList } from "./coreNetworkPanelModel"
 
 describe("coreNetworkPanelModel", () => {
   it("splits comma-separated lists", () => {
@@ -36,6 +36,58 @@ describe("coreNetworkPanelModel", () => {
       proxyUrl: "http://proxy:3128",
       proxyNoProxy: "localhost, 127.0.0.1",
     })
+  })
+
+
+
+  it("builds interface choices and keeps the configured fallback visible", () => {
+    const choices = buildCoreNetworkInterfaceChoices(
+      [
+        {
+          interface_name: "eth0",
+          device_type: "ethernet",
+          local_ip: "192.168.10.21",
+          netmask: "24",
+          network: "192.168.10.0/24",
+          connection: "Wired connection 1",
+          state: "connected",
+        },
+      ],
+      "eth1",
+    )
+
+    expect(choices).toEqual([
+      {
+        value: "eth1",
+        label: "eth1 · configured",
+        selected: true,
+      },
+      {
+        value: "eth0",
+        label: "eth0 · ethernet · 192.168.10.21/24",
+        selected: false,
+      },
+    ])
+  })
+
+  it("resolves the selected interface from the live interface list", () => {
+    const selected = getSelectedCoreNetworkInterface(
+      [
+        {
+          interface_name: "eth0",
+          device_type: "ethernet",
+          local_ip: "192.168.10.21",
+          netmask: "24",
+          network: "192.168.10.0/24",
+          connection: "Wired connection 1",
+          state: "connected",
+        },
+      ],
+      "eth0",
+    )
+
+    expect(selected?.connection).toBe("Wired connection 1")
+    expect(selected?.local_ip).toBe("192.168.10.21")
   })
 
   it("builds a network settings payload from the draft", () => {

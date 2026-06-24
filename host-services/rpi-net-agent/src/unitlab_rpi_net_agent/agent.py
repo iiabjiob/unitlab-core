@@ -515,11 +515,8 @@ class CoreNetworkAgent:
     ) -> None:
         applied_at = self._current_timestamp()
         self._snapshot.host_network = replace(settings, last_applied_at=applied_at, last_error=None)
-        self._snapshot.interfaces = self._build_interface_snapshots(
-            wifi_status=await self._safe_device_status(self.config.wifi_interface),
-            ethernet_status=status,
-        )
         self._snapshot.last_error = None
+        await self._refresh_interface_snapshots()
         await self._persist_host_network_settings()
         await self._publish_snapshot(last_event="network_settings_applied", request_id=request_id)
         await self._publish_event_best_effort(
@@ -608,19 +605,13 @@ class CoreNetworkAgent:
             logger.debug("Failed to read device status | interface=%s error=%s", interface, exc)
             return None
 
-    def _build_interface_snapshots(
-        self,
-        *,
-        wifi_status: DeviceStatus | None,
-        ethernet_status: DeviceStatus | None,
-    ) -> list[NetworkInterfaceInfo]:
+    def _build_interface_snapshots(self, statuses: list[DeviceStatus]) -> list[NetworkInterfaceInfo]:
         items: list[NetworkInterfaceInfo] = []
-        for interface_name, status in (
-            (self.config.wifi_interface, wifi_status),
-            (self.config.ethernet_interface, ethernet_status),
-        ):
-            if status is None:
+        seen: set[str] = set()
+        for status in statuses:
+            if status.interface_name in seen:
                 continue
+            seen.add(status.interface_name)
             local_ip = status.ip4
             netmask = str(status.ip4_prefix) if status.ip4_prefix is not None else None
             network = None
@@ -631,7 +622,8 @@ class CoreNetworkAgent:
                     network = None
             items.append(
                 NetworkInterfaceInfo(
-                    interface_name=interface_name,
+                    interface_name=status.interface_name,
+                    device_type=status.device_type,
                     local_ip=local_ip,
                     netmask=netmask,
                     network=network,
@@ -642,12 +634,22 @@ class CoreNetworkAgent:
         return items
 
     async def _refresh_interface_snapshots(self) -> None:
-        wifi_status = await self._safe_device_status(self.config.wifi_interface)
-        ethernet_status = await self._safe_device_status(self.config.ethernet_interface)
-        self._snapshot.interfaces = self._build_interface_snapshots(
-            wifi_status=wifi_status,
-            ethernet_status=ethernet_status,
-        )
+        statuses: list[DeviceStatus] = []
+        try:
+            statuses = await self.nmcli.device_statuses()
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Failed to list host interfaces via nmcli: %s", exc)
+        selected_interface = self._snapshot.host_network.interface or self.config.ethernet_interface
+        if selected_interface and not any(item.interface_name == selected_interface for item in statuses):
+            selected_status = await self._safe_device_status(selected_interface)
+            if selected_status is not None:
+                statuses.append(selected_status)
+        wifi_interface = self.config.wifi_interface
+        if wifi_interface and not any(item.interface_name == wifi_interface for item in statuses):
+            wifi_status = await self._safe_device_status(wifi_interface)
+            if wifi_status is not None:
+                statuses.append(wifi_status)
+        self._snapshot.interfaces = self._build_interface_snapshots(statuses=statuses)
 
     async def _refresh_runtime_status(
         self,

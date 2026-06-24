@@ -1,6 +1,6 @@
 # UnitLab RPi Net Agent
 
-Host-side Wi-Fi control service for the UnitLab core (Raspberry Pi 5, Bookworm, `NetworkManager`).
+Host-side Linux network control service for the UnitLab core (Raspberry Pi 5, Bookworm, `NetworkManager`).
 
 Purpose:
 - always boot into AP mode (`[unitlab]-core-ABCD`, `pwd!ABCD`)
@@ -22,8 +22,8 @@ This service is intended to run on the **host OS** (not inside Docker containers
   - ensures and activates `NetworkManager` AP profile (`unitlab-ap`)
 - During runtime:
   - listens for Redis stream commands
-  - runs `nmcli` for scan / connect / AP restart / Ethernet profile updates
-  - stores latest snapshot in Redis (`core_net:state`)
+  - runs `nmcli` for scan / connect / AP restart / interface discovery / Ethernet profile updates
+  - stores latest snapshot in Redis (`core_net:state`) including discovered interfaces and the selected host network interface
   - writes events to Redis stream (`core_net:events`)
 
 ## Requirements (host)

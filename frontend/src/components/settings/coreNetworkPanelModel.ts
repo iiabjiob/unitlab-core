@@ -1,4 +1,4 @@
-import type { CoreNetHostNetworkSettings, CoreNetIpv4Mode } from "@/types/coreNetwork"
+import type { CoreNetHostNetworkSettings, CoreNetNetworkInterfaceInfo, CoreNetIpv4Mode } from "@/types/coreNetwork"
 
 export interface CoreNetworkDraft {
   interface: string
@@ -12,11 +12,63 @@ export interface CoreNetworkDraft {
   proxyNoProxy: string
 }
 
+export interface CoreNetworkInterfaceChoice {
+  value: string
+  label: string
+  selected: boolean
+}
+
 export function splitList(value: string): string[] {
   return value
     .split(",")
     .map(part => part.trim())
     .filter(Boolean)
+}
+
+export function buildInterfaceDisplayLabel(entry: CoreNetNetworkInterfaceInfo): string {
+  const parts = [entry.interface_name]
+  if (entry.device_type) {
+    parts.push(entry.device_type)
+  }
+  if (entry.local_ip) {
+    parts.push(entry.netmask ? `${entry.local_ip}/${entry.netmask}` : entry.local_ip)
+  }
+  return parts.join(" · ")
+}
+
+export function buildInterfaceDetailText(entry: CoreNetNetworkInterfaceInfo | null | undefined): string {
+  if (!entry) return ""
+  const parts: string[] = []
+  if (entry.state) parts.push(entry.state)
+  if (entry.connection) parts.push(entry.connection)
+  if (entry.network) parts.push(entry.network)
+  return parts.join(" · ")
+}
+
+export function buildCoreNetworkInterfaceChoices(
+  interfaces: CoreNetNetworkInterfaceInfo[],
+  selectedInterface: string,
+): CoreNetworkInterfaceChoice[] {
+  const choices = interfaces.map((entry) => ({
+    value: entry.interface_name,
+    label: buildInterfaceDisplayLabel(entry),
+    selected: entry.interface_name === selectedInterface,
+  }))
+  if (selectedInterface && !choices.some(choice => choice.value === selectedInterface)) {
+    choices.unshift({
+      value: selectedInterface,
+      label: `${selectedInterface} · configured`,
+      selected: true,
+    })
+  }
+  return choices
+}
+
+export function getSelectedCoreNetworkInterface(
+  interfaces: CoreNetNetworkInterfaceInfo[],
+  selectedInterface: string,
+): CoreNetNetworkInterfaceInfo | null {
+  return interfaces.find(entry => entry.interface_name === selectedInterface) ?? null
 }
 
 export function createCoreNetworkDraft(

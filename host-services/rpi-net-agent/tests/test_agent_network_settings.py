@@ -4,6 +4,7 @@ from pathlib import Path
 
 from unitlab_rpi_net_agent.agent import CoreNetworkAgent
 from unitlab_rpi_net_agent.config import AgentConfig
+from unitlab_rpi_net_agent.nmcli_adapter import DeviceStatus
 
 
 def _make_config(tmp_path: Path) -> AgentConfig:
@@ -54,3 +55,39 @@ def test_core_network_agent_exposes_host_network_defaults(tmp_path: Path) -> Non
     assert agent._snapshot.host_network.dns_servers == ["192.168.10.1"]
     assert agent._snapshot.host_network.proxy_url == "http://proxy:3128"
     assert agent._snapshot.host_network.proxy_no_proxy == ["localhost"]
+
+
+def test_core_network_agent_builds_interface_snapshots_from_device_statuses(tmp_path: Path) -> None:
+    agent = CoreNetworkAgent(_make_config(tmp_path))
+
+    snapshots = agent._build_interface_snapshots(
+        [
+            DeviceStatus(
+                interface_name="eth0",
+                device_type="ethernet",
+                state_code="100",
+                state_text="connected",
+                connection="Wired connection 1",
+                ip4="192.168.10.21",
+                ip4_prefix=24,
+                ip4_cidr="192.168.10.21/24",
+            ),
+            DeviceStatus(
+                interface_name="wlan0",
+                device_type="wifi",
+                state_code="30",
+                state_text="disconnected",
+                connection=None,
+                ip4=None,
+                ip4_prefix=None,
+                ip4_cidr=None,
+            ),
+        ]
+    )
+
+    assert [item.interface_name for item in snapshots] == ["eth0", "wlan0"]
+    assert snapshots[0].device_type == "ethernet"
+    assert snapshots[0].local_ip == "192.168.10.21"
+    assert snapshots[0].netmask == "24"
+    assert snapshots[0].network == "192.168.10.0/24"
+    assert snapshots[1].device_type == "wifi"

@@ -19,6 +19,8 @@ class NmcliError(RuntimeError):
 
 @dataclass(frozen=True)
 class DeviceStatus:
+    interface_name: str
+    device_type: str | None
     state_code: str | None
     state_text: str | None
     connection: str | None
@@ -282,6 +284,66 @@ class NmcliAdapter:
         )
         return profile
 
+    async def device_statuses(self) -> list[DeviceStatus]:
+        out = await self._run(
+            "-t",
+            "-f",
+            "DEVICE,TYPE,STATE,CONNECTION,IP4.ADDRESS[1]",
+            "device",
+            "status",
+            check=False,
+        )
+        statuses: list[DeviceStatus] = []
+        for line in out.splitlines():
+            parts = line.split(":", 4)
+            if len(parts) < 3:
+                continue
+            device_name = parts[0].strip()
+            device_type = parts[1].strip() or None
+            state_raw = parts[2].strip() if len(parts) > 2 else ""
+            connection = parts[3].strip() if len(parts) > 3 else None
+            ip_cidr = parts[4].strip() if len(parts) > 4 else None
+            if not device_name:
+                continue
+            if connection == "--":
+                connection = None
+            if ip_cidr == "--":
+                ip_cidr = None
+            state_code = None
+            state_text = None
+            if state_raw:
+                if " " in state_raw:
+                    state_code, state_text = state_raw.split(" ", 1)
+                    state_text = state_text.strip("() ").strip()
+                else:
+                    state_text = state_raw
+                    state_code = state_raw
+            ip4 = None
+            ip4_prefix = None
+            if ip_cidr:
+                if "/" in ip_cidr:
+                    ip4, prefix_raw = ip_cidr.split("/", 1)
+                    ip4 = ip4.strip() or None
+                    try:
+                        ip4_prefix = int(prefix_raw.strip())
+                    except ValueError:
+                        ip4_prefix = None
+                else:
+                    ip4 = ip_cidr.strip() or None
+            statuses.append(
+                DeviceStatus(
+                    interface_name=device_name,
+                    device_type=device_type,
+                    state_code=state_code,
+                    state_text=state_text,
+                    connection=connection,
+                    ip4=ip4,
+                    ip4_prefix=ip4_prefix,
+                    ip4_cidr=ip_cidr,
+                )
+            )
+        return statuses
+
     async def device_status(self, interface: str) -> DeviceStatus:
         out = await self._run(
             "-t",
@@ -326,6 +388,8 @@ class NmcliAdapter:
             else:
                 ip4 = ip_cidr.strip() or None
         return DeviceStatus(
+            interface_name=interface,
+            device_type=None,
             state_code=state_code,
             state_text=state_text,
             connection=connection,

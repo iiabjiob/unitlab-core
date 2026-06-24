@@ -43,6 +43,7 @@ class WifiNetwork:
 @dataclass
 class NetworkInterfaceInfo:
     interface_name: str
+    device_type: str | None
     local_ip: str | None
     netmask: str | None
     network: str | None

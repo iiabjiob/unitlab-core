@@ -28,6 +28,7 @@ export interface CoreNetStaInfo {
 
 export interface CoreNetNetworkInterfaceInfo {
   interface_name: string
+  device_type?: string | null
   local_ip: string | null
   netmask: string | null
   network: string | null

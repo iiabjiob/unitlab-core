@@ -4,14 +4,14 @@
       <div class="core-network-panel__heading">
         <p class="core-network-panel__eyebrow">Network / RJ45</p>
         <p class="core-network-panel__meta">
-          Host interface:
-          <span class="core-network-panel__meta-strong">{{ hostInterfaceLabel }}</span>
+          Configured interface:
+          <span class="core-network-panel__meta-strong">{{ configuredInterfaceLabel }}</span>
           · Mode:
           <span class="core-network-panel__meta-strong">{{ hostModeLabel }}</span>
           <template v-if="networkSnapshot?.last_event"> · {{ networkSnapshot.last_event }}</template>
         </p>
         <p class="core-network-panel__subtle">
-          RJ45 is the primary MMS/SCADA path. Wi-Fi AP stays available for operator access.
+          Select the active host interface, then review its live IP, mask, network and connection state before applying MMS/SCADA settings.
         </p>
         <p v-if="networkErrorText" class="core-network-panel__error">{{ networkErrorText }}</p>
       </div>
@@ -25,9 +25,13 @@
         </div>
 
         <div class="core-network-panel__form-grid">
-          <label class="core-network-panel__field">
+          <label class="core-network-panel__field core-network-panel__field--wide">
             <span class="core-network-panel__field-label">Interface</span>
-            <input v-model.trim="draft.interface" class="core-network-panel__input" type="text" autocomplete="off" @input="markDirty" />
+            <select v-model="draft.interface" class="core-network-panel__input" @change="markDirty">
+              <option v-for="choice in interfaceChoices" :key="choice.value" :value="choice.value">
+                {{ choice.label }}
+              </option>
+            </select>
           </label>
 
           <label class="core-network-panel__field">
@@ -74,6 +78,43 @@
           </label>
         </div>
 
+        <div class="core-network-panel__selected-card">
+          <div class="core-network-panel__selected-card-header">
+            <p class="core-network-panel__card-title">Selected interface details</p>
+            <span class="core-network-panel__card-meta">{{ selectedInterfaceSummary || 'No live details yet' }}</span>
+          </div>
+
+          <div v-if="selectedInterface" class="core-network-panel__facts">
+            <div class="core-network-panel__fact-row">
+              <span class="core-network-panel__fact-label">Device type</span>
+              <span class="core-network-panel__fact-value">{{ selectedInterface.device_type || '—' }}</span>
+            </div>
+            <div class="core-network-panel__fact-row">
+              <span class="core-network-panel__fact-label">IP address</span>
+              <span class="core-network-panel__fact-value">{{ selectedInterface.local_ip || '—' }}</span>
+            </div>
+            <div class="core-network-panel__fact-row">
+              <span class="core-network-panel__fact-label">Mask</span>
+              <span class="core-network-panel__fact-value">{{ selectedInterface.netmask ? `/${selectedInterface.netmask}` : '—' }}</span>
+            </div>
+            <div class="core-network-panel__fact-row">
+              <span class="core-network-panel__fact-label">Network</span>
+              <span class="core-network-panel__fact-value">{{ selectedInterface.network || '—' }}</span>
+            </div>
+            <div class="core-network-panel__fact-row">
+              <span class="core-network-panel__fact-label">Connection</span>
+              <span class="core-network-panel__fact-value">{{ selectedInterface.connection || '—' }}</span>
+            </div>
+            <div class="core-network-panel__fact-row">
+              <span class="core-network-panel__fact-label">State</span>
+              <span class="core-network-panel__fact-value">{{ selectedInterface.state || '—' }}</span>
+            </div>
+          </div>
+          <p v-else class="core-network-panel__empty">
+            No live details for the selected interface yet.
+          </p>
+        </div>
+
         <div class="core-network-panel__actions">
           <button type="button" class="btn btn-base btn-secondary" :disabled="networkBusy" @click="resetDraft">
             Reset
@@ -97,14 +138,14 @@
       <div class="core-network-panel__card">
         <div class="core-network-panel__card-header">
           <p class="core-network-panel__card-title">Observed interfaces</p>
-          <span class="core-network-panel__card-meta">{{ interfaces.length }} active snapshot{{ interfaces.length === 1 ? '' : 's' }}</span>
+          <span class="core-network-panel__card-meta">{{ interfaces.length }} interface{{ interfaces.length === 1 ? '' : 's' }}</span>
         </div>
 
         <div class="core-network-panel__interfaces">
           <div v-for="entry in interfaces" :key="entry.interface_name" class="core-network-panel__interface-row">
             <div class="core-network-panel__interface-main">
               <span class="core-network-panel__interface-name">{{ entry.interface_name }}</span>
-              <span class="core-network-panel__interface-state">{{ entry.state || 'unknown' }}</span>
+              <span class="core-network-panel__interface-state">{{ entry.device_type || 'unknown' }}</span>
               <span v-if="entry.connection" class="core-network-panel__interface-connection">{{ entry.connection }}</span>
             </div>
             <div class="core-network-panel__interface-meta">
@@ -135,8 +176,10 @@
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue"
 import { useCoreNetworkStore } from "@/stores/coreNetworkStore"
 import {
+  buildCoreNetworkInterfaceChoices,
   buildCoreNetworkSettingsPayload,
   createCoreNetworkDraft,
+  getSelectedCoreNetworkInterface,
 } from "./coreNetworkPanelModel"
 
 const coreNetworkStore = useCoreNetworkStore()
@@ -146,15 +189,15 @@ const hostNetwork = computed(() => coreNetworkStore.hostNetwork)
 const interfaces = computed(() => coreNetworkStore.interfaces)
 const networkBusy = computed(() => coreNetworkStore.commandPending || coreNetworkStore.loading)
 const networkErrorText = computed(() => coreNetworkStore.lastError || networkSnapshot.value?.last_error || hostNetwork.value?.last_error || null)
-const hostInterfaceLabel = computed(() => hostNetwork.value?.interface || networkSnapshot.value?.wifi_iface || "eth0")
+const configuredInterfaceLabel = computed(() => hostNetwork.value?.interface || networkSnapshot.value?.wifi_iface || "eth0")
 const hostModeLabel = computed(() => hostNetwork.value?.ipv4_mode?.toUpperCase() || "AUTO")
 
-const draft = reactive(createCoreNetworkDraft(hostNetwork.value, networkSnapshot.value?.wifi_iface || "eth0"))
+const draft = reactive(createCoreNetworkDraft(hostNetwork.value, configuredInterfaceLabel.value))
 const draftDirty = ref(false)
 
 function syncDraftFromSnapshot() {
   if (draftDirty.value) return
-  const next = createCoreNetworkDraft(hostNetwork.value, networkSnapshot.value?.wifi_iface || "eth0")
+  const next = createCoreNetworkDraft(hostNetwork.value, configuredInterfaceLabel.value)
   draft.interface = next.interface
   draft.profile = next.profile
   draft.ipv4Mode = next.ipv4Mode
@@ -189,6 +232,17 @@ async function applyNetworkSettings() {
   draftDirty.value = false
 }
 
+const interfaceChoices = computed(() => buildCoreNetworkInterfaceChoices(interfaces.value, draft.interface))
+const selectedInterface = computed(() => getSelectedCoreNetworkInterface(interfaces.value, draft.interface))
+const selectedInterfaceSummary = computed(() => {
+  const item = selectedInterface.value
+  if (!item) return null
+  const parts: string[] = []
+  if (item.state) parts.push(item.state)
+  if (item.connection) parts.push(item.connection)
+  if (item.device_type) parts.push(item.device_type)
+  return parts.length ? parts.join(" · ") : null
+})
 const canApplySettings = computed(() => {
   if (networkBusy.value) return false
   if (!draft.interface.trim() || !draft.profile.trim()) return false
@@ -209,6 +263,12 @@ const draftSummary = computed(() => {
 watch(hostNetwork, () => {
   syncDraftFromSnapshot()
 }, { immediate: true })
+
+watch(interfaces, () => {
+  if (!draftDirty.value) {
+    syncDraftFromSnapshot()
+  }
+})
 
 onMounted(() => {
   coreNetworkStore.startMonitoring()
@@ -271,12 +331,21 @@ onUnmounted(() => {
   background: var(--color-white);
 }
 
-.core-network-panel__card-header {
+.core-network-panel__card-header,
+.core-network-panel__selected-card-header {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 1rem;
   margin-bottom: 1rem;
+}
+
+.core-network-panel__selected-card {
+  margin-top: 1rem;
+  padding: 0.85rem;
+  border: 1px solid color-mix(in srgb, var(--color-neutral-200) 70%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-neutral-50) 60%, transparent);
 }
 
 .core-network-panel__card-title {
@@ -346,6 +415,34 @@ onUnmounted(() => {
   margin-top: 0.75rem;
   color: var(--color-neutral-500);
   font-size: 11px;
+}
+
+.core-network-panel__facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.core-network-panel__fact-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--color-neutral-200) 70%, transparent);
+  border-radius: 10px;
+  background: var(--color-white);
+}
+
+.core-network-panel__fact-label {
+  color: var(--color-neutral-500);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.core-network-panel__fact-value {
+  color: var(--color-neutral-900);
+  font-size: var(--text-xs);
+  font-weight: 600;
 }
 
 .core-network-panel__interfaces {
@@ -423,18 +520,21 @@ onUnmounted(() => {
 
 :global(.dark .core-network-panel__meta-strong),
 :global(.dark .core-network-panel__card-title),
+:global(.dark .core-network-panel__fact-value),
 :global(.dark .core-network-panel__interface-name),
 :global(.dark .core-network-panel__notes-title){
   color: var(--color-neutral-100);
 }
 
 :global(.dark .core-network-panel__card),
+:global(.dark .core-network-panel__fact-row),
 :global(.dark .core-network-panel__input){
   background: var(--color-neutral-900);
   border-color: var(--color-neutral-800);
   color: var(--color-neutral-100);
 }
 
+:global(.dark .core-network-panel__selected-card),
 :global(.dark .core-network-panel__interface-row){
   background: color-mix(in srgb, var(--color-neutral-900) 80%, transparent);
   border-color: var(--color-neutral-800);
@@ -447,7 +547,8 @@ onUnmounted(() => {
 }
 
 @media (max-width: 800px) {
-  .core-network-panel__form-grid {
+  .core-network-panel__form-grid,
+  .core-network-panel__facts {
     grid-template-columns: 1fr;
   }
 }
