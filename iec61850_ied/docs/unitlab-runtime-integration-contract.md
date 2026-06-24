@@ -228,7 +228,8 @@ Output:
 - live session state;
 - one or more subscription snapshots bound to that session;
 - diagnostics;
-- current freshness summary.
+- current freshness summary;
+- endpoint-resolution diagnostics showing requested host, resolved host, and whether model binding came from SCD or discovery fallback.
 
 The session snapshot may also expose a compact transport summary:
 - total cached signals;

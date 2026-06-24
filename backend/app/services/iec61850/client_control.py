@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 import select
 from threading import RLock
-from typing import Callable, Sequence
+from typing import Callable, Literal, Sequence
 import tempfile
 import xml.etree.ElementTree as ET
 
@@ -65,6 +65,18 @@ class _ExternalDiscoveredReportControl:
     item: str
 
 
+@dataclass(frozen=True, slots=True)
+class Iec61850EndpointResolution:
+    transport_source: Literal["simulator", "explicit_request"]
+    model_source: Literal["simulator", "scd-first", "discovery-fallback"]
+    requested_host: str | None
+    requested_port: int | None
+    resolved_host: str | None
+    resolved_port: int | None
+    scl_path: str | None
+    notes: tuple[str, ...] = ()
+
+
 _EXTERNAL_RCB_OPTFLDS_HEX = "067f80"
 _EXTERNAL_RCB_TRGOPS_HEX = "0274"
 
@@ -94,6 +106,7 @@ class Iec61850ClientControlSnapshot:
     client_id: str
     session_open: bool
     endpoint: Iec61850DeviceEndpoint
+    endpoint_resolution: Iec61850EndpointResolution
     candidate: Iec61850ReportControlCandidate
     last_read: Iec61850ReportControlReadResult | None
     last_discovery: dict | None
@@ -138,6 +151,7 @@ class Iec61850ClientControlService:
         self._session_id = session_id
         self._client_id = client_id
         self._endpoint = endpoint or _default_endpoint()
+        self._endpoint_resolution = _default_endpoint_resolution(self._endpoint)
         self._candidate = candidate or _default_candidate()
         self._target_scl_path: str | None = None
         self._last_read: Iec61850ReportControlReadResult | None = None
@@ -190,6 +204,7 @@ class Iec61850ClientControlService:
                 client_id=self._client_id,
                 session_open=self._session_open,
                 endpoint=self._endpoint,
+                endpoint_resolution=self._endpoint_resolution,
                 candidate=self._candidate,
                 available_candidates=self._available_candidates,
                 last_discovery=self._last_discovery,
@@ -209,6 +224,7 @@ class Iec61850ClientControlService:
                 client_id=self._client_id,
                 session_open=self._session_open,
                 endpoint=self._endpoint,
+                endpoint_resolution=self._endpoint_resolution,
                 candidate=self._candidate,
                 last_read=self._last_read,
                 last_discovery=self._last_discovery,
@@ -229,8 +245,9 @@ class Iec61850ClientControlService:
     def configure_target(self, request: Iec61850ClientTargetRequest) -> Iec61850ClientControlSnapshot:
         with self._lock:
             self._reset_runtime_state_for_target_change()
-            endpoint, candidate, available_candidates = _build_target_endpoint_and_candidate(request)
+            endpoint, candidate, available_candidates, endpoint_resolution = _build_target_endpoint_and_candidate(request)
             self._endpoint = endpoint
+            self._endpoint_resolution = endpoint_resolution
             self._candidate = candidate
             self._available_candidates = available_candidates
             self._target_scl_path = request.scl_path.strip() if request.scl_path is not None and request.scl_path.strip() else None
@@ -1274,6 +1291,7 @@ class Iec61850ClientControlService:
         self._last_diagnostic = None
         self._live_wire_last_frame = None
         self._live_wire_last_diagnostic = None
+        self._endpoint_resolution = _default_endpoint_resolution(self._endpoint)
 
     def _read_live_wire_process_frame_response(self, frame_kind: str, timeout_seconds: float = 5.0) -> bytes:
         if self._live_wire_process is None or self._live_wire_process.process.stdout is None:
@@ -1362,6 +1380,7 @@ def _build_ui_state(
     client_id: str,
     session_open: bool,
     endpoint: Iec61850DeviceEndpoint,
+    endpoint_resolution: Iec61850EndpointResolution,
     candidate: Iec61850ReportControlCandidate,
     available_candidates: tuple[Iec61850ReportControlCandidate, ...],
     last_discovery: dict | None,
@@ -1447,6 +1466,16 @@ def _build_ui_state(
             "endpoint_label": _endpoint_label(endpoint),
             "last_event_kind": last_event.kind if last_event is not None else None,
             "last_event_outcome": last_event.outcome if last_event is not None else None,
+        },
+        "endpoint_resolution": {
+            "transport_source": endpoint_resolution.transport_source,
+            "model_source": endpoint_resolution.model_source,
+            "requested_host": endpoint_resolution.requested_host,
+            "requested_port": endpoint_resolution.requested_port,
+            "resolved_host": endpoint_resolution.resolved_host,
+            "resolved_port": endpoint_resolution.resolved_port,
+            "scl_path": endpoint_resolution.scl_path,
+            "notes": list(endpoint_resolution.notes),
         },
         "discovery": {
             "discovered": last_discovery is not None,
@@ -1622,6 +1651,21 @@ def _endpoint_label(endpoint: Iec61850DeviceEndpoint) -> str:
             return f"{endpoint.ied_name}@{endpoint.host}:{endpoint.port}"
         return f"{endpoint.host}:{endpoint.port}"
     return f"{endpoint.ied_name}/{endpoint.access_point_name}" if endpoint.ied_name else endpoint.access_point_name
+
+
+def _default_endpoint_resolution(endpoint: Iec61850DeviceEndpoint) -> Iec61850EndpointResolution:
+    transport_source: Literal["simulator", "explicit_request"] = "simulator" if endpoint.mode == Iec61850RuntimeMode.SIMULATOR else "explicit_request"
+    model_source: Literal["simulator", "scd-first", "discovery-fallback"] = "simulator" if endpoint.mode == Iec61850RuntimeMode.SIMULATOR else "discovery-fallback"
+    return Iec61850EndpointResolution(
+        transport_source=transport_source,
+        model_source=model_source,
+        requested_host=endpoint.host,
+        requested_port=endpoint.port,
+        resolved_host=endpoint.host,
+        resolved_port=endpoint.port,
+        scl_path=None,
+        notes=(),
+    )
 
 def get_iec61850_client_control_service() -> Iec61850ClientControlService:
     return _CLIENT_CONTROL_SERVICE
@@ -1953,10 +1997,12 @@ def _build_target_endpoint_and_candidate(
     Iec61850DeviceEndpoint,
     Iec61850ReportControlCandidate,
     tuple[Iec61850ReportControlCandidate, ...],
+    Iec61850EndpointResolution,
 ]:
     mode = request.mode.strip().lower()
     if mode == "simulator":
-        return _default_endpoint(), _default_candidate(), (_default_candidate(),)
+        endpoint = _default_endpoint()
+        return endpoint, _default_candidate(), (_default_candidate(),), _default_endpoint_resolution(endpoint)
     if mode not in {"mms", "external-mms"}:
         raise Iec61850ReportRuntimeError("CLIENT_TARGET_MODE_INVALID", "IEC 61850 client target mode must be simulator or external-mms.")
     host = request.host.strip()
@@ -1977,7 +2023,21 @@ def _build_target_endpoint_and_candidate(
         port=request.port,
     )
     if request.scl_path is None or not request.scl_path.strip():
-        return endpoint, _external_unselected_candidate(endpoint), ()
+        return (
+            endpoint,
+            _external_unselected_candidate(endpoint),
+            (),
+            Iec61850EndpointResolution(
+                transport_source="explicit_request",
+                model_source="discovery-fallback",
+                requested_host=host,
+                requested_port=request.port,
+                resolved_host=host,
+                resolved_port=request.port,
+                scl_path=None,
+                notes=("discovery required for model binding",),
+            ),
+        )
     scl_path = Path(request.scl_path.strip())
     if not scl_path.is_file():
         raise Iec61850ReportRuntimeError("CLIENT_TARGET_SCL_NOT_FOUND", f"IEC 61850 SCD/SCL file was not found: {scl_path}.")
@@ -1987,7 +2047,21 @@ def _build_target_endpoint_and_candidate(
     candidate = _find_candidate_by_rcb_reference(candidates, request.selected_rcb_ref)
     if candidate is None:
         candidate = next((item for item in candidates if item.access_point_name == access_point_name), candidates[0])
-    return endpoint, candidate, candidates
+    return (
+        endpoint,
+        candidate,
+        candidates,
+        Iec61850EndpointResolution(
+            transport_source="explicit_request",
+            model_source="scd-first",
+            requested_host=host,
+            requested_port=request.port,
+            resolved_host=host,
+            resolved_port=request.port,
+            scl_path=str(scl_path),
+            notes=("loaded SCD used for model binding",),
+        ),
+    )
 
 
 def _candidates_from_scd(scl_path: Path, ied_name: str, fallback_access_point: str) -> tuple[Iec61850ReportControlCandidate, ...]:

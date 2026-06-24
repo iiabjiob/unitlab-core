@@ -739,12 +739,58 @@ def test_client_control_configures_external_mms_target_from_scd(tmp_path) -> Non
 
     assert snapshot.endpoint.id == "mms:KINTE13LVC01@host.docker.internal:12447"
     assert snapshot.endpoint.mode.value == "mms"
+    assert snapshot.endpoint_resolution.transport_source == "explicit_request"
+    assert snapshot.endpoint_resolution.model_source == "scd-first"
+    assert snapshot.endpoint_resolution.requested_host == "host.docker.internal"
+    assert snapshot.endpoint_resolution.resolved_host == "host.docker.internal"
     assert snapshot.candidate.logical_device_inst == "CTRL"
     assert snapshot.candidate.logical_node_name == "LLN0"
     assert snapshot.candidate.report_control_name == "brcbA"
     assert snapshot.candidate.data_set_ref == "KINTE13LVC01CTRL/LLN0.RCB1"
     assert snapshot.candidate.signals[0].reference == "CTRL/XCBR1.Pos.stVal[ST]"
     assert snapshot.transcript[-1].kind == "target-configured"
+
+
+def test_client_control_can_remap_a_real_device_ip_to_a_virtual_endpoint(tmp_path) -> None:
+    scl_path = tmp_path / "target.scd"
+    scl_path.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<SCL xmlns="http://www.iec.ch/61850/2003/SCL">
+  <IED name="C264_BCU_01">
+    <AccessPoint name="AP1">
+      <Server>
+        <LDevice inst="CTRL">
+          <LN0 lnClass="LLN0" inst="" lnType="T_CTRL">
+            <DataSet name="RCB1">
+              <FCDA ldInst="CTRL" lnClass="XCBR" lnInst="1" doName="Pos" daName="stVal" fc="ST" />
+            </DataSet>
+            <ReportControl name="brcbA" datSet="RCB1" buffered="true" indexed="true" rptID="C264_BCU_01CTRL/LLN0.brcbA" confRev="10000" />
+          </LN0>
+        </LDevice>
+      </Server>
+    </AccessPoint>
+  </IED>
+</SCL>
+""",
+        encoding="utf-8",
+    )
+    service = Iec61850ClientControlService()
+    snapshot = service.configure_target(
+        client_control_module.Iec61850ClientTargetRequest(
+            mode="external-mms",
+            host="10.10.10.250",
+            port=12447,
+            ied_name="C264_BCU_01",
+            scl_path=str(scl_path),
+        )
+    )
+
+    assert snapshot.endpoint.id == "mms:C264_BCU_01@10.10.10.250:12447"
+    assert snapshot.endpoint_resolution.transport_source == "explicit_request"
+    assert snapshot.endpoint_resolution.requested_host == "10.10.10.250"
+    assert snapshot.endpoint_resolution.resolved_host == "10.10.10.250"
+    assert snapshot.endpoint_resolution.model_source == "scd-first"
+    assert snapshot.ui_state["endpoint_resolution"]["resolved_host"] == "10.10.10.250"
 
 
 def test_client_control_configures_external_target_with_multiple_report_controls_and_select(tmp_path) -> None:
@@ -813,6 +859,8 @@ def test_external_mms_target_can_connect_and_discover_without_scd(monkeypatch: p
         )
     )
     assert snapshot.endpoint.ied_name == ""
+    assert snapshot.endpoint_resolution.transport_source == "explicit_request"
+    assert snapshot.endpoint_resolution.model_source == "discovery-fallback"
     assert snapshot.ui_state["session"]["endpoint_label"] == "host.docker.internal:12447"
     assert snapshot.candidate.report_control_name == ""
     assert snapshot.ui_state["discovery"]["available_report_controls"] == []
@@ -840,6 +888,7 @@ def test_external_mms_target_can_connect_and_discover_without_scd(monkeypatch: p
     assert discover_snapshot.last_discovery["endpoint"]["iedName"] == "KINTE13LVC01"
     assert discover_snapshot.endpoint.ied_name == "KINTE13LVC01"
     assert discover_snapshot.endpoint.id == "mms:KINTE13LVC01@host.docker.internal:12447"
+    assert discover_snapshot.endpoint_resolution.model_source == "discovery-fallback"
     assert discover_snapshot.ui_state["session"]["endpoint_label"] == "KINTE13LVC01@host.docker.internal:12447"
     assert discover_snapshot.candidate.report_control_name == "brcbA"
     assert discover_snapshot.candidate.ied_name == "KINTE13LVC01"
@@ -894,6 +943,7 @@ def test_external_mms_target_can_discover_when_summary_arrives_before_ready(monk
 
     assert snapshot.last_discovery is not None
     assert snapshot.ui_state["session"]["phase"] == "discovered"
+    assert snapshot.endpoint_resolution.model_source == "discovery-fallback"
     assert snapshot.ui_state["discovery"]["logical_devices"] == 1
     assert stdin_commands[0] == "discover"
     assert process_commands[0][-1] == "--mms-client-start"
@@ -981,7 +1031,7 @@ def test_external_mms_target_can_connect_and_enable_reporting_from_scd_without_d
     assert rptena_snapshot.ui_state["subscription"]["runtime_status"] == "enabled"
     assert rptena_snapshot.ui_state["session"]["phase"] == "subscribed"
     assert "discover" not in stdin_commands
-    assert "rptena 0" in stdin_commands
+    assert any(cmd.startswith("write-bool KINTE13LVC01CTRL LLN0$BR$brcbA$RptEna true") for cmd in stdin_commands)
     assert process_commands[0][-1] == "--mms-client-start"
 
 
@@ -1198,6 +1248,7 @@ def test_external_mms_target_connects_and_reports_from_scd_without_discover(monk
 
     assert connect_snapshot.session_open is True
     assert connect_snapshot.last_discovery is None
+    assert connect_snapshot.endpoint_resolution.model_source == "scd-first"
     assert connect_snapshot.ui_state["session"]["phase"] == "associated"
     assert connect_snapshot.ui_state["discovery"]["discovered"] is False
     assert connect_snapshot.ui_state["actions"]["can_rptena"] is True
