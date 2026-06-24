@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Callable
 from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +14,11 @@ from app.schemas.verification_schema import (
     VerificationRunDetailResponseSchema,
     VerificationRunSchema,
     VerificationVerdictExplanationSchema,
+)
+from app.services.iec61850.report_runtime import (
+    Iec61850DeviceEndpoint,
+    Iec61850ReportSubscriptionPlanDevice,
+    build_simulator_endpoint_for_plan_device,
 )
 from app.services.verification_evidence import VerificationEvidenceRepository
 from app.services.verification_execution import execute_simulated_verification_run
@@ -45,6 +51,7 @@ async def execute_single_signal_verification_run(
     db: AsyncSession,
     triggered_at: datetime | None = None,
     client_id: str | None = None,
+    endpoint_for_device: Callable[[Iec61850ReportSubscriptionPlanDevice], Iec61850DeviceEndpoint] = build_simulator_endpoint_for_plan_device,
 ) -> VerificationAutoRunResult:
     selected_signal_ids = [int(signal_id) for signal_id in payload.signal_ids if int(signal_id) > 0]
     if not selected_signal_ids:
@@ -92,6 +99,7 @@ async def execute_single_signal_verification_run(
         repository=evidence_repo,
         triggered_at=start_at,
         client_id=client_id or payload.client_id,
+        endpoint_for_device=endpoint_for_device,
     )
 
     verdict_explanation = build_verification_verdict_explanation(

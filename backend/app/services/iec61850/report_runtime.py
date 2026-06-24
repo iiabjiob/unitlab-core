@@ -648,14 +648,16 @@ def run_simulator_report_subscription_plan(
     *,
     plan: Iec61850ReportSubscriptionPlan,
     client_id: str = "unitlab-backend-simulator",
+    endpoint_for_device: Callable[[Iec61850ReportSubscriptionPlanDevice], Iec61850DeviceEndpoint] | None = None,
     now: Callable[[], datetime] | None = None,
 ) -> Iec61850SimulatorSubscriptionRunResult:
     adapter = create_iec61850_simulator_adapter(now=now)
+    endpoint_mapper = endpoint_for_device or build_simulator_endpoint_for_plan_device
     result = run_report_subscription_plan(
         plan=plan,
         adapter=adapter,
         client_id=client_id,
-        endpoint_for_device=build_simulator_endpoint_for_plan_device,
+        endpoint_for_device=endpoint_mapper,
         now=now,
     )
     return Iec61850SimulatorSubscriptionRunResult(

@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.schemas.verification_schema import VerificationExecutionContextSchema
+from app.services.iec61850.report_runtime import Iec61850DeviceEndpoint, Iec61850RuntimeMode
 from app.services.verification_execution import execute_simulated_verification_run
 from app.services.verification_planner import VerificationTargetSource, build_verification_subscription_plan
 
@@ -246,6 +247,17 @@ def _build_fallback_plan():
     )
 
 
+def _virtual_endpoint_for_plan_device(device) -> Iec61850DeviceEndpoint:
+    return Iec61850DeviceEndpoint(
+        id=f"sim:{device.ied_name}/{device.access_point_name}@10.10.10.250:12447",
+        mode=Iec61850RuntimeMode.SIMULATOR,
+        ied_name=device.ied_name,
+        access_point_name=device.access_point_name,
+        host="10.10.10.250",
+        port=12447,
+    )
+
+
 @pytest.mark.anyio
 async def test_execute_simulated_verification_run_records_observed_evidence_and_passes() -> None:
     plan = _build_plan()
@@ -290,6 +302,39 @@ async def test_execute_simulated_verification_run_records_observed_evidence_and_
     assert repo.rows[0]["evidence_status"] == "observed"
     assert repo.rows[0]["source_generation"] == 1
     assert repo.evidence_sets[0]["evidence"][0].signal_id == 101
+
+
+@pytest.mark.anyio
+async def test_execute_simulated_verification_run_uses_custom_endpoint_mapper() -> None:
+    plan = _build_plan()
+    repo = _FakeVerificationEvidenceRepository()
+    triggered_at = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
+
+    result = await execute_simulated_verification_run(
+        workspace_id=7,
+        test_run_id="run-custom-endpoint",
+        verification_targets=plan.targets,
+        subscription_plan=plan,
+        execution_context=VerificationExecutionContextSchema(
+            project_id=1,
+            signal_list_revision_id=2,
+            planner_version="test",
+            runtime_version="simulator",
+            policy_version="v1",
+        ),
+        repository=repo,  # type: ignore[arg-type]
+        triggered_at=triggered_at,
+        latency_ms=250,
+        now=lambda: triggered_at + timedelta(milliseconds=250),
+        endpoint_for_device=_virtual_endpoint_for_plan_device,
+    )
+
+    assert result.verification_run.verdict_state == "pass"
+    assert result.verification_run.verification_confidence == "exact_report_match"
+    assert result.verification_run.session_snapshots[0].endpoint_id == "sim:IED-A/P1@10.10.10.250:12447"
+    assert result.verification_run.subscription_snapshots[0].endpoint_id == "sim:IED-A/P1@10.10.10.250:12447"
+    assert result.verification_run.verification_steps[0].source_session_id == "run-custom-endpoint:sim:IED-A/P1@10.10.10.250:12447"
+    assert result.evidence_set.evidence[0].endpoint_id == "sim:IED-A/P1@10.10.10.250:12447"
 
 
 @pytest.mark.anyio

@@ -234,9 +234,15 @@ class Iec61850MmsClientRuntime:
         *,
         plan: Iec61850ReportSubscriptionPlan,
         client_id: str = "unitlab-backend-client",
+        endpoint_for_device: Callable[[Iec61850ReportSubscriptionPlanDevice], Iec61850DeviceEndpoint] = build_simulator_endpoint_for_plan_device,
         now: Callable[[], datetime] | None = None,
     ) -> Iec61850SimulatorSubscriptionRunResult:
-        result = run_simulator_report_subscription_plan(plan=plan, client_id=client_id, now=now)
+        result = run_simulator_report_subscription_plan(
+            plan=plan,
+            client_id=client_id,
+            endpoint_for_device=endpoint_for_device,
+            now=now,
+        )
         for report in result.reports:
             self._append_event(
                 kind="simulator-subscription-report",

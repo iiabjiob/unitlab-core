@@ -19,6 +19,7 @@ from app.schemas.verification_schema import (
     VerificationTargetSchema,
     VerificationVerdictExplanationSchema,
 )
+from app.services.iec61850.report_runtime import Iec61850DeviceEndpoint, Iec61850RuntimeMode
 from app.services import verification_run_service as run_service
 from app.services.verification_run_service import (
     execute_single_signal_verification_run,
@@ -166,6 +167,17 @@ def _build_verification_run(signal_reference: str = "Breaker Close") -> Verifica
                 diagnostics=[],
             )
         ],
+    )
+
+
+def _virtual_endpoint_for_plan_device(device) -> Iec61850DeviceEndpoint:
+    return Iec61850DeviceEndpoint(
+        id=f"sim:{device.ied_name}/{device.access_point_name}@10.10.10.250:12447",
+        mode=Iec61850RuntimeMode.SIMULATOR,
+        ied_name=device.ied_name,
+        access_point_name=device.access_point_name,
+        host="10.10.10.250",
+        port=12447,
     )
 
 
@@ -497,6 +509,41 @@ async def test_execute_single_signal_verification_run_persists_run_snapshot_and_
     assert result.verification_run.reason == result.verdict_explanation.summary
     assert result.as_response().test_run_id == result.test_run_id
     assert db.flushed >= 1
+
+
+@pytest.mark.anyio
+async def test_execute_single_signal_verification_run_uses_custom_endpoint_mapper(monkeypatch) -> None:
+    db = _FakeDb()
+    triggered_at = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
+
+    monkeypatch.setattr(run_service, "SignalsRepository", _FakeSignalsRepository)
+    monkeypatch.setattr(run_service, "SignalSheetRepository", _FakeSignalSheetRepository)
+    monkeypatch.setattr(run_service, "VerificationEvidenceRepository", _FakeEvidenceRepository)
+    monkeypatch.setattr(run_service, "VerificationRunRepository", _FakeRunRepository)
+
+    result = await execute_single_signal_verification_run(
+        workspace_id=7,
+        payload=VerificationAutoRunStartSchema(
+            signal_ids=[101],
+            execution_context=VerificationExecutionContextSchema(
+                project_id=1,
+                signal_list_revision_id=2,
+                planner_version="test",
+                runtime_version="simulator",
+                policy_version="v1",
+            ),
+            client_id="unitlab-backend-simulator",
+            test_run_id="vr-custom-endpoint",
+        ),
+        db=db,  # type: ignore[arg-type]
+        triggered_at=triggered_at,
+        endpoint_for_device=_virtual_endpoint_for_plan_device,
+    )
+
+    assert result.verification_run.session_snapshots[0].endpoint_id == "sim:IED-A/P1@10.10.10.250:12447"
+    assert result.verification_run.subscription_snapshots[0].endpoint_id == "sim:IED-A/P1@10.10.10.250:12447"
+    assert result.verification_run.verification_steps[0].source_session_id == "vr-custom-endpoint:sim:IED-A/P1@10.10.10.250:12447"
+    assert result.verification_run.verification_confidence == "exact_report_match"
 
 
 @pytest.mark.anyio

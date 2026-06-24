@@ -20,6 +20,7 @@ from app.schemas.verification_schema import (
     VerificationTargetSchema,
 )
 from app.services.iec61850.report_runtime import (
+    Iec61850DeviceEndpoint,
     Iec61850DataSetMember,
     Iec61850OptionalFields,
     Iec61850ReportControlCandidate,
@@ -30,6 +31,7 @@ from app.services.iec61850.report_runtime import (
     Iec61850ReportSubscriptionPlanSignal,
     Iec61850SelectedSignal,
     Iec61850RuntimeTriggerOptions,
+    build_simulator_endpoint_for_plan_device,
     run_simulator_report_subscription_plan,
 )
 from app.services.verification_evidence import (
@@ -114,6 +116,7 @@ async def execute_simulated_verification_run(
     triggered_at: datetime | None = None,
     latency_ms: int = 250,
     client_id: str = "unitlab-backend-simulator",
+    endpoint_for_device: Callable[[Iec61850ReportSubscriptionPlanDevice], Iec61850DeviceEndpoint] = build_simulator_endpoint_for_plan_device,
     now: Callable[[], datetime] | None = None,
     simulate_missing_signal_ids: Sequence[int] = (),
     simulate_stale_signal_ids: Sequence[int] = (),
@@ -127,6 +130,7 @@ async def execute_simulated_verification_run(
     runtime_result = run_simulator_report_subscription_plan(
         plan=runtime_plan,
         client_id=client_id,
+        endpoint_for_device=endpoint_for_device,
         now=runtime_now,
     )
     connection_generation = _resolve_connection_generation(runtime_result)
