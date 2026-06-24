@@ -136,6 +136,23 @@ The C runtime should only receive the execution-side subset of the plan:
 
 The C runtime must not infer product-level verdict semantics.
 
+### Endpoint resolution policy
+
+The Python layer should resolve the transport endpoint before asking the C runtime to connect.
+
+Resolution order:
+1. explicit host/port from the workspace runtime configuration or operator-provided target input;
+2. endpoint catalog entry for the selected IED/access point when present;
+3. SCD-derived endpoint metadata only as a model hint, not as the sole transport source;
+4. discovery metadata for reconciling the connected endpoint, not for inventing a connection address.
+
+Practical rules:
+- MMS host/port must be known before a real MMS connect attempt;
+- SCD is preferred for model binding when it is present and matches the selected IED/access point;
+- discovery is used when SCD is missing, incomplete, or does not contain enough report-control detail;
+- if SCD and discovery disagree, keep the transport host from the explicit endpoint source and surface a diagnostic instead of silently rewriting the target;
+- discovery should enrich report-control and dataset identity after the transport target exists.
+
 ### Report update / evidence input
 
 The C runtime should emit report updates with:

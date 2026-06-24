@@ -56,6 +56,19 @@ Optional fields:
 - `window_policy`
 - `execution_context`
 
+`endpoint_context` should carry transport identity when the caller already knows the real MMS target. It may include:
+- `endpoint_id`
+- `host`
+- `port`
+- `ied_name`
+- `access_point_name`
+- `scl_path`
+- `discovery_snapshot_id`
+
+Transport identity should come from the endpoint context or an endpoint catalog, not from signal-list rows.
+`scd_hints` are preferred for model binding when a loaded SCD is available.
+`discovery_hints` are fallback model hints when SCD is missing or incomplete.
+
 ## 1.2 VerificationTargetNormalizationResult
 
 Represents the output of signal-list normalization before planning.
@@ -190,6 +203,14 @@ Each grouped plan item should keep the source classification explicit:
 - `not found`
 
 Source classification should be stable and deterministic for the same inputs.
+Use the following precedence when model sources compete:
+- exact SCD match;
+- discovery match;
+- fallback;
+- not found.
+
+SCD should remain the first choice for model binding when it exists and matches the selected IED/access-point identity.
+Discovery should only fill in missing model detail after the transport target is already known.
 
 Example:
 

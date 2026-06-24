@@ -52,6 +52,28 @@ The runtime-provided snapshot of discovered devices, nodes, datasets, report con
 
 Discovery snapshots are versioned or identifiable and should not be mutated into a different identity.
 
+Discovery is a model source, not a transport source.
+It can enrich or validate an endpoint that is already known, but it does not invent the MMS host/IP for the first connect.
+
+### SCD
+
+An SCL/SCD file or imported SCD snapshot used as the preferred source of IEC 61850 model binding.
+
+When present and complete, SCD should be used first for:
+- report-control naming;
+- dataset binding;
+- logical device / logical node identity;
+- exact feedback-path reconstruction.
+
+If SCD is missing or incomplete, discovery may be used as a fallback model source after the transport endpoint is known.
+
+### MMS endpoint catalog
+
+The explicit runtime mapping from IED/access-point identity to host/port.
+
+This is the authoritative source for transport reachability in real MMS flows.
+It is separate from the SCD model source and separate from discovery metadata.
+
 ### Subscription plan
 
 The per-IED / per-RCB execution plan produced from verification targets.

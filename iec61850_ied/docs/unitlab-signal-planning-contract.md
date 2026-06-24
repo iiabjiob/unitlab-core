@@ -97,6 +97,24 @@ Suggested source labels:
 - planner must not execute MMS writes directly.
 - coverage must keep total, covered, uncovered, partially covered, group, and endpoint counts explicit.
 
+## Endpoint source policy
+
+The planner must treat transport identity and model identity as separate inputs.
+
+- `host` / `port` are transport concerns and must come from explicit endpoint configuration or an endpoint catalog.
+- `SCD` is a model source for report-control and dataset binding.
+- discovery is a runtime model source used when SCD is missing, incomplete, or does not cover the selected report-control path.
+- discovery does not define the transport host for a first connect.
+
+Recommended precedence for model binding:
+1. exact SCD match;
+2. discovery match;
+3. fallback;
+4. uncovered.
+
+When SCD is present and complete, the planner should prefer it for report-control naming and dataset binding.
+When SCD is absent or incomplete, the planner may use discovery-derived candidates after a transport target exists.
+
 ## Evidence contract
 
 The Python layer should create an evidence record for each observed feedback path with:

@@ -27,7 +27,7 @@ This is the first point where UnitLab behaves like a product instead of a set of
 - [x] Phase F - Multi-signal same IED verification
 - [x] Phase G - Multi-IED verification
 - [x] Phase H - Recovery and reconnect verification
-- [ ] Phase I - Virtual-substation-backed automated regression testing
+- [x] Phase I - Virtual-substation-backed automated regression testing
 - [ ] Phase J - Real MMS integration
 
 ## Phase A
@@ -444,13 +444,13 @@ Purpose
 
 Implementation
 - Goal: replace simulator-only verification execution with real MMS control and report handling for the already-proven product slices.
-- Scope: real client/session wiring, target-to-endpoint reconciliation, report subscription/enable/disable, runtime fallback handling, production readiness checks.
+- Scope: real client/session wiring, target-to-endpoint reconciliation, report subscription/enable/disable, runtime fallback handling, endpoint resolution policy, production readiness checks.
 - Out of scope: reopening planner contracts, renaming evidence or verdict models, redesigning the product workflow, speculative fleet orchestration.
 - Required models: the existing verification contracts plus any thin runtime adapter state needed for real endpoint sessions.
 - Required API endpoints: verification run start/detail, runtime session control, recovery state, evidence detail, failure diagnostics.
 - Required backend services: MMS-backed runtime adapter, session supervisor, report-control binder, reconnect/recovery coordinator.
 - Required persistence: runtime session snapshots, evidence rows, recovery attempts, execution diagnostics.
-- Required runtime integration: native MMS client/server, discovery, subscriptions, reconnect, generation protection, report delivery.
+- Required runtime integration: native MMS client/server, endpoint catalog or explicit host/port configuration, SCD-first model binding when available, discovery fallback when SCD is missing or incomplete, subscriptions, reconnect, generation protection, report delivery.
 - Required UI changes: runtime source indicator, real-MMS status and diagnostics if the operator needs to distinguish live device proof from simulator-backed proof.
 
 Tests
@@ -462,6 +462,10 @@ Acceptance Criteria
 - The existing product flow can run against a real MMS endpoint without changing the user workflow contract.
 - Evidence and verdict semantics remain stable when the transport changes from simulator to real MMS.
 - Recovery and reconnect continue to preserve evidence and desired work.
+- MMS host/port resolution is explicit and deterministic.
+- If a loaded SCD is present and matches the IED/access-point model, it is used first for candidate binding.
+- If SCD is missing or incomplete, discovery is used to fill the gap after transport reachability exists.
+- Discovery never invents the transport host; it only validates or enriches model data once a connection target exists.
 
 Do Not Build Yet
 - New verdict semantics.
@@ -473,6 +477,7 @@ Demo scenario
 
 Evidence
 - Real endpoint session snapshots, report captures, preserved evidence, and pass/fail output from the live MMS path.
+- Endpoint-resolution diagnostics showing whether the run used explicit host/port, SCD-first binding, or discovery fallback.
 
 Rollback risk
 - Real MMS wiring reintroduces transport-specific assumptions into the product flow or weakens the simulator-backed regression harness.

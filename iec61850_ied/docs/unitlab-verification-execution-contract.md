@@ -49,6 +49,20 @@ For multi-IED runs, the source of truth for transport health is the set of `sess
 
 The workflow should preserve the source `ExecutionContext` so the run remains reconstructable later.
 
+## Endpoint source policy
+
+Real MMS verification needs two distinct inputs:
+
+- transport identity: the MMS host/port and endpoint catalog identity used to connect;
+- model identity: the SCD or discovery data used to resolve report-control and dataset binding.
+
+Policy:
+- transport identity must be known before a real MMS connection is attempted;
+- SCD is the preferred model source when it is loaded and matches the selected IED/access-point;
+- discovery is used when SCD is missing, incomplete, or does not provide enough report-control detail;
+- discovery can reconcile the connected endpoint and enrich the runtime model, but it must not silently rewrite the transport host;
+- if model sources disagree, keep the transport source explicit and record a diagnostic instead of merging the disagreement away.
+
 ## Evidence immutability
 
 Evidence records should be append-only once created.
