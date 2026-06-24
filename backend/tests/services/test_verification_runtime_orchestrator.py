@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 import pytest
 
 from app.schemas.verification_schema import VerificationExecutionContextSchema
+from app.services.iec61850.report_runtime import Iec61850DeviceEndpoint, Iec61850RuntimeMode
 from app.services.verification_planner import VerificationTargetSource, build_verification_subscription_plan
 from app.services.verification_runtime_orchestrator import VerificationRuntimeOrchestrator
 
@@ -82,6 +83,17 @@ def _build_multi_ied_plan():
     )
 
 
+def _custom_endpoint_for_device(device) -> Iec61850DeviceEndpoint:
+    return Iec61850DeviceEndpoint(
+        id=f"custom:{device.ied_name}/{device.access_point_name}",
+        mode=Iec61850RuntimeMode.SIMULATOR,
+        ied_name=device.ied_name,
+        access_point_name=device.access_point_name,
+        host=None,
+        port=102,
+    )
+
+
 @pytest.mark.anyio
 async def test_runtime_orchestrator_opens_sessions_and_keeps_live_state() -> None:
     plan = _build_multi_ied_plan()
@@ -135,6 +147,36 @@ async def test_runtime_orchestrator_opens_sessions_and_keeps_live_state() -> Non
 
     with pytest.raises(RuntimeError):
         orchestrator.snapshot(result.orchestration_id)
+
+
+@pytest.mark.anyio
+async def test_runtime_orchestrator_uses_injected_endpoint_for_device() -> None:
+    plan = _build_multi_ied_plan()
+    orchestrator = VerificationRuntimeOrchestrator(now=lambda: datetime(2026, 6, 23, 12, 0, tzinfo=UTC))
+
+    result = orchestrator.start(
+        workspace_id=7,
+        test_run_id="run-custom-endpoint",
+        verification_targets=plan.targets,
+        subscription_plan=plan,
+        execution_context=VerificationExecutionContextSchema(
+            project_id=1,
+            signal_list_revision_id=2,
+            planner_version="test",
+            runtime_version="simulator",
+            policy_version="v1",
+        ),
+        endpoint_for_device=_custom_endpoint_for_device,
+    )
+
+    assert {snapshot.endpoint_id for snapshot in result.session_snapshots} == {
+        "custom:IED-A/P1",
+        "custom:IED-B/P1",
+    }
+    assert {snapshot.endpoint_id for snapshot in result.subscription_snapshots} == {
+        "custom:IED-A/P1",
+        "custom:IED-B/P1",
+    }
 
 
 @pytest.mark.anyio

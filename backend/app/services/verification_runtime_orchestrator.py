@@ -119,6 +119,7 @@ class _VerificationRuntimeOrchestrationHandle:
     started_at: datetime
     diagnostics: list[VerificationEvidenceDiagnosticSchema]
     reconnecting_session_ids: set[str] = field(default_factory=set)
+    endpoint_for_device: Callable[[Any], Iec61850DeviceEndpoint] = build_simulator_endpoint_for_plan_device
 
 
 class VerificationRuntimeOrchestrator:
@@ -139,6 +140,7 @@ class VerificationRuntimeOrchestrator:
         subscription_plan: VerificationSubscriptionPlanSchema,
         execution_context: VerificationExecutionContextSchema,
         client_id: str = "unitlab-backend-simulator",
+        endpoint_for_device: Callable[[Any], Iec61850DeviceEndpoint] = build_simulator_endpoint_for_plan_device,
     ) -> VerificationRuntimeOrchestrationResult:
         orchestration_id = f"{workspace_id}:{test_run_id}:{uuid4().hex[:8]}"
         if orchestration_id in self._handles:
@@ -156,7 +158,7 @@ class VerificationRuntimeOrchestrator:
 
         try:
             for device_index, device in enumerate(runtime_plan.devices):
-                endpoint = build_simulator_endpoint_for_plan_device(device)
+                endpoint = endpoint_for_device(device)
                 session_id = f"{orchestration_id}:{device_index}:{device.ied_name}/{device.access_point_name}"
                 runtime_service.open_session(
                     session_id=session_id,
@@ -202,6 +204,7 @@ class VerificationRuntimeOrchestrator:
             client_id=client_id,
             started_at=started_at,
             diagnostics=diagnostics,
+            endpoint_for_device=endpoint_for_device,
         )
         self._handles[orchestration_id] = handle
         return self.snapshot(orchestration_id)
@@ -293,8 +296,8 @@ class VerificationRuntimeOrchestrator:
         handle.reconnecting_session_ids.add(session_id)
         try:
             runtime_plan = build_runtime_subscription_plan(handle.subscription_plan)
-            device = self._resolve_runtime_plan_device(runtime_plan, session_state.endpoint_id)
-            endpoint = build_simulator_endpoint_for_plan_device(device)
+            device = self._resolve_runtime_plan_device(runtime_plan, session_state.endpoint_id, endpoint_for_device=handle.endpoint_for_device)
+            endpoint = handle.endpoint_for_device(device)
             candidates = [report.candidate for report in device.reports]
             session_subscription_ids = [
                 subscription_id
@@ -423,9 +426,11 @@ class VerificationRuntimeOrchestrator:
         self,
         runtime_plan,
         endpoint_id: str,
+        *,
+        endpoint_for_device: Callable[[Any], Iec61850DeviceEndpoint] = build_simulator_endpoint_for_plan_device,
     ):
         for device in runtime_plan.devices:
-            if build_simulator_endpoint_for_plan_device(device).id == endpoint_id:
+            if endpoint_for_device(device).id == endpoint_id:
                 return device
         raise RuntimeError(f'Runtime device for endpoint "{endpoint_id}" not found.')
 
