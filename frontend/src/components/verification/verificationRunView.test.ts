@@ -68,7 +68,33 @@ function buildPassResult(): VerificationRunDetailResponse {
       verification_confidence: "simulated_fallback",
       confidence_reason: "fallback_planning_used",
       diagnostics: [],
-      verification_steps: [],
+      verification_steps: [
+        {
+          step_id: "step-101",
+          signal_id: 101,
+          target_index: 0,
+          group_id: "group-1",
+          step_state: "completed",
+          expected_path: "kint_5",
+          expected_window_ms: 1000,
+          freshness: "live",
+          evidence_status: "observed",
+          verdict_state: "pass",
+          evidence_ids: ["ev-1"],
+          actual_report_path: "LD0/XCBR1.Pos.stVal",
+          source_session_id: "run-42:sim:DO-002/unknown",
+          source_generation: 1,
+          source_report_rpt_id: "brcbA",
+          source_report_dat_set: "ds-a",
+          verification_confidence: "simulated_fallback",
+          confidence_reason: "fallback_planning_used",
+          triggered_at: null,
+          observed_at: null,
+          latency_ms: 43,
+          reason: "report_received",
+          diagnostics: [{ code: "report_received", message: "Report received within the verification window." }],
+        },
+      ],
     },
     verdict_explanation: {
       test_run_id: "run-42",
@@ -118,6 +144,8 @@ describe("verificationRunView", () => {
 
     expect(view?.headline).toBe("PASS")
     expect(view?.summary).toContain("43 ms")
+    expect(view?.verificationConfidence).toBe("SIMULATED FALLBACK")
+    expect(view?.confidenceReason).toBe("fallback_planning_used")
     expect(view?.signals[0]).toMatchObject({
       title: "Breaker Close",
       output: "breaker_close",
@@ -129,6 +157,8 @@ describe("verificationRunView", () => {
       dataset: "ds-a",
       latency: "43 ms",
       reason: "expected feedback observed within the verification window",
+      verificationConfidence: "SIMULATED FALLBACK",
+      confidenceReason: "fallback_planning_used",
       verdictState: "PASS",
       evidenceStatus: "OBSERVED",
     })

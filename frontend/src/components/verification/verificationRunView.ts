@@ -11,6 +11,8 @@ export type VerificationRunViewSignal = {
   dataset: string
   latency: string
   reason: string
+  verificationConfidence: string
+  confidenceReason: string
   verdictState: string
   evidenceStatus: string
 }
@@ -20,6 +22,8 @@ export type VerificationRunViewModel = {
   summary: string
   testRunId: string
   verdictState: string
+  verificationConfidence: string
+  confidenceReason: string
   evidenceCount: number
   signals: VerificationRunViewSignal[]
   diagnostics: string[]
@@ -38,6 +42,11 @@ function resolveLatency(latencyMs: number | null | undefined): string {
   return Number.isFinite(latencyMs as number) ? `${Number(latencyMs)} ms` : "—"
 }
 
+function resolveConfidenceLabel(value: string | null | undefined): string {
+  const text = String(value ?? "").trim().split("_").join(" ")
+  return text ? text.toUpperCase() : "—"
+}
+
 export function buildVerificationRunView(result: VerificationRunDetailResponse | null): VerificationRunViewModel | null {
   if (!result) {
     return null
@@ -45,6 +54,9 @@ export function buildVerificationRunView(result: VerificationRunDetailResponse |
 
   const targetBySignalId = new Map(
     result.verification_run.verification_targets.map((target) => [target.signal_id, target]),
+  )
+  const stepBySignalId = new Map(
+    result.verification_run.verification_steps.map((step) => [step.signal_id, step]),
   )
 
   const signals = result.verdict_explanation.signals.map((signal) => ({
@@ -58,6 +70,8 @@ export function buildVerificationRunView(result: VerificationRunDetailResponse |
     dataset: resolveFieldValue(signal.dataset),
     latency: resolveLatency(signal.latency_ms),
     reason: resolveFieldValue(signal.reason),
+    verificationConfidence: resolveConfidenceLabel(stepBySignalId.get(signal.signal_id)?.verification_confidence),
+    confidenceReason: resolveFieldValue(stepBySignalId.get(signal.signal_id)?.confidence_reason),
     verdictState: signal.verdict_state.toUpperCase(),
     evidenceStatus: signal.evidence_status.toUpperCase(),
   }))
@@ -67,6 +81,8 @@ export function buildVerificationRunView(result: VerificationRunDetailResponse |
     summary: result.verdict_explanation.summary,
     testRunId: result.test_run_id,
     verdictState: result.verdict_explanation.verdict_state.toUpperCase(),
+    verificationConfidence: resolveConfidenceLabel(result.verdict_explanation.verification_confidence),
+    confidenceReason: resolveFieldValue(result.verdict_explanation.confidence_reason),
     evidenceCount: result.verification_run.evidence_set.summary.evidence_count,
     signals,
     diagnostics: result.verdict_explanation.diagnostics.map((diagnostic) => `${diagnostic.code}: ${diagnostic.message}`),

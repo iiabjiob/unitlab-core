@@ -41,8 +41,16 @@
           <span class="verification-run-panel__fact-value">{{ viewModel.verdictState }}</span>
         </div>
         <div class="verification-run-panel__fact">
+          <span class="verification-run-panel__fact-label">Confidence</span>
+          <span class="verification-run-panel__fact-value">{{ viewModel.verificationConfidence }}</span>
+        </div>
+        <div class="verification-run-panel__fact">
           <span class="verification-run-panel__fact-label">Evidence</span>
           <span class="verification-run-panel__fact-value">{{ viewModel.evidenceCount }}</span>
+        </div>
+        <div class="verification-run-panel__fact verification-run-panel__fact--wide">
+          <span class="verification-run-panel__fact-label">Confidence reason</span>
+          <span class="verification-run-panel__fact-value">{{ viewModel.confidenceReason }}</span>
         </div>
       </div>
 
@@ -85,6 +93,14 @@
             <div class="verification-run-panel__signal-row">
               <span class="verification-run-panel__signal-label">Why</span>
               <span class="verification-run-panel__signal-value">{{ signal.reason }}</span>
+            </div>
+            <div class="verification-run-panel__signal-row">
+              <span class="verification-run-panel__signal-label">Confidence</span>
+              <span class="verification-run-panel__signal-value">{{ signal.verificationConfidence }}</span>
+            </div>
+            <div class="verification-run-panel__signal-row">
+              <span class="verification-run-panel__signal-label">Confidence reason</span>
+              <span class="verification-run-panel__signal-value">{{ signal.confidenceReason }}</span>
             </div>
           </div>
           <div class="verification-run-panel__signal-badges">
@@ -263,6 +279,10 @@ const verdictToneClass = computed(() => {
   font-weight: 600;
   margin-top: 0.25rem;
   overflow-wrap: anywhere;
+}
+
+.verification-run-panel__fact--wide {
+  grid-column: 1 / -1;
 }
 
 .verification-run-panel__signals {
