@@ -112,6 +112,9 @@ async def execute_single_signal_verification_run(
         active_runtime_selection_import_id=(
             active_runtime_selection.import_id if active_runtime_selection is not None else None
         ),
+        active_runtime_selection_selected_ied=(
+            active_runtime_selection.selected_ied if active_runtime_selection is not None else None
+        ),
         active_runtime_selection_revision=(
             active_runtime_selection.runtime_revision if active_runtime_selection is not None else None
         ),

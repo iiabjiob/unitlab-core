@@ -761,7 +761,7 @@ async def test_execute_single_signal_verification_run_uses_loaded_scd_for_model_
             pass
 
         async def get_active_runtime_selection(self, *, workspace_id: int):
-            return SimpleNamespace(import_id="import-7", runtime_revision=12)
+            return SimpleNamespace(import_id="import-7", selected_ied="IED-A", runtime_revision=12)
 
     monkeypatch.setattr(run_service, "SignalsRepository", _FakeSignalsRepository)
     monkeypatch.setattr(run_service, "SignalSheetRepository", _FakeSignalSheetRepository)
@@ -799,6 +799,7 @@ async def test_execute_single_signal_verification_run_uses_loaded_scd_for_model_
     assert result.verdict_explanation.summary.startswith("FAIL: no confirmation arrived before the timeout expired.")
     assert "transport from explicit request" in result.verdict_explanation.summary
     assert "model binding from loaded SCD" in result.verdict_explanation.summary
+    assert "loaded runtime SCD selected IED IED-A" in result.verification_run.diagnostics[-1].details["notes"]
 
 
 @pytest.mark.anyio

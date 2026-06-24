@@ -84,17 +84,20 @@ def test_resolve_verification_endpoint_policy_marks_loaded_scd_model_binding() -
     policy = resolve_verification_endpoint_resolution_policy(
         execution_context=_build_context("mms"),
         active_runtime_selection_import_id="import-7",
+        active_runtime_selection_selected_ied="IED-A",
         active_runtime_selection_revision=12,
     )
 
     assert policy.model_source == "loaded_scd"
     assert policy.selected_runtime_import_id == "import-7"
+    assert policy.selected_runtime_selected_ied == "IED-A"
     assert policy.selected_runtime_revision == 12
 
     diagnostic = build_verification_endpoint_resolution_diagnostic(policy)
     assert diagnostic.details is not None
     assert diagnostic.details["model_source"] == "loaded_scd"
     assert diagnostic.details["selected_runtime_import_id"] == "import-7"
+    assert diagnostic.details["selected_runtime_selected_ied"] == "IED-A"
 
 
 def test_resolve_verification_endpoint_policy_rejects_invalid_settings_catalog_json() -> None:
