@@ -16,6 +16,11 @@ from app.schemas.verification_schema import (
     VerificationSubscriptionPlanSchema,
     VerificationTargetSchema,
 )
+from app.services.iec61850.report_runtime import (
+    Iec61850DeviceEndpoint,
+    Iec61850ReportSubscriptionPlanDevice,
+    build_simulator_endpoint_for_plan_device,
+)
 from app.services.iec61850.ied_simulator_fixture import (
     IED_SIMULATOR_FIXTURE_SCHEMA,
     build_ied_simulator_fixture_from_subscription_plan,
@@ -57,6 +62,7 @@ class VerificationRegressionCase:
     simulate_missing_signal_ids: tuple[int, ...] = ()
     simulate_stale_signal_ids: tuple[int, ...] = ()
     reconnect_session_index: int = 0
+    endpoint_for_device: Callable[[Iec61850ReportSubscriptionPlanDevice], Iec61850DeviceEndpoint] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,6 +191,7 @@ async def _run_verification_regression_case(
         triggered_at=started_at,
         latency_ms=case.latency_ms,
         client_id=case.client_id,
+        endpoint_for_device=case.endpoint_for_device or build_simulator_endpoint_for_plan_device,
         now=now,
         simulate_missing_signal_ids=case.simulate_missing_signal_ids,
         simulate_stale_signal_ids=case.simulate_stale_signal_ids,
@@ -233,6 +240,7 @@ def _run_reconnect_regression_case(
         subscription_plan=case.subscription_plan,
         execution_context=case.execution_context,
         client_id=case.client_id,
+        endpoint_for_device=case.endpoint_for_device or build_simulator_endpoint_for_plan_device,
     )
     session_id = start_result.session_snapshots[case.reconnect_session_index].session_id
     reconnect_result = orchestrator.reconnect(start_result.orchestration_id, session_id, workspace_id=1)

@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.schemas.verification_schema import VerificationExecutionContextSchema
+from app.services.iec61850.report_runtime import Iec61850DeviceEndpoint, Iec61850RuntimeMode
 from app.services.verification_planner import VerificationTargetSource, build_verification_subscription_plan
 from app.services.verification_regression_harness import (
     VerificationRegressionCase,
@@ -127,6 +128,17 @@ def _build_multi_ied_plan():
     )
 
 
+def _virtual_endpoint_for_device(device) -> Iec61850DeviceEndpoint:
+    return Iec61850DeviceEndpoint(
+        id=f"sim:{device.ied_name}/{device.access_point_name}@10.10.10.250:12447",
+        mode=Iec61850RuntimeMode.SIMULATOR,
+        ied_name=device.ied_name,
+        access_point_name=device.access_point_name,
+        host="10.10.10.250",
+        port=12447,
+    )
+
+
 @pytest.mark.anyio
 async def test_verification_regression_case_captures_pass_fixture_and_report() -> None:
     plan = _build_exact_plan()
@@ -169,6 +181,48 @@ async def test_verification_regression_case_captures_pass_fixture_and_report() -
     assert result.report_payload["verification_run"]["verification_confidence"] == "exact_report_match"
     assert result.report_payload["verification_run"]["runtime_state"] == "reporting"
     assert result.report_payload["evidence_set"]["summary"]["evidence_count"] == 1
+
+
+@pytest.mark.anyio
+async def test_verification_regression_case_uses_custom_endpoint_mapper() -> None:
+    plan = _build_exact_plan()
+    triggered_at = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
+    case = VerificationRegressionCase(
+        scenario_id="reg-custom-endpoint",
+        mode="verification_run",
+        description="single-signal run on virtual endpoint",
+        verification_targets=tuple(plan.targets),
+        subscription_plan=plan,
+        execution_context=VerificationExecutionContextSchema(
+            project_id=1,
+            signal_list_revision_id=2,
+            planner_version="test",
+            runtime_version="simulator",
+            policy_version="v1",
+        ),
+        expectation=VerificationRegressionExpectation(
+            verdict_state="pass",
+            verification_confidence="exact_report_match",
+            confidence_reason="exact_dataset_match",
+            runtime_state="reporting",
+            evidence_count=1,
+            session_count=1,
+            subscription_count=1,
+            step_count=1,
+        ),
+        endpoint_for_device=_virtual_endpoint_for_device,
+    )
+
+    result = await run_verification_regression_case(
+        case,
+        triggered_at=triggered_at,
+        now=lambda: triggered_at + timedelta(milliseconds=250),
+    )
+
+    assert result.passed is True
+    assert result.verification_run is not None
+    assert result.verification_run.session_snapshots[0].endpoint_id == "sim:IED-A/P1@10.10.10.250:12447"
+    assert result.verification_run.subscription_snapshots[0].endpoint_id == "sim:IED-A/P1@10.10.10.250:12447"
 
 
 @pytest.mark.anyio
