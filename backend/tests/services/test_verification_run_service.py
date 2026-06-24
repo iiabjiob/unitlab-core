@@ -21,6 +21,7 @@ from app.schemas.verification_schema import (
 )
 from app.services.iec61850.mms_adapter import Iec61850MmsEndpointCatalogEntry, build_mms_endpoint_catalog
 from app.services.iec61850.report_runtime import Iec61850DeviceEndpoint, Iec61850RuntimeMode
+from app.services.iec61850.report_runtime import Iec61850ReportControlRef, Iec61850ReportEvent, Iec61850ReportEventValue, Iec61850ReportReason, to_report_control_ref
 from app.services import verification_run_service as run_service
 from app.services.verification_run_service import (
     execute_single_signal_verification_run,
@@ -473,6 +474,59 @@ class _FakeRunRepository:
         return SimpleNamespace(workspace_id=workspace_id, test_run_id=test_run_id, payload=dict(payload))
 
 
+class _FakeClientControlService:
+    def __init__(self, *, session_id: str, client_id: str, endpoint: Iec61850DeviceEndpoint, candidate) -> None:
+        self.session_id = session_id
+        self.client_id = client_id
+        self.endpoint = endpoint
+        self.candidate = candidate
+        self.calls: list[str] = []
+        self._report = Iec61850ReportEvent(
+            id=f"{session_id}:report-1",
+            endpoint_id=endpoint.id,
+            received_at="2026-06-23T12:00:00.250000Z",
+            report_control=to_report_control_ref(candidate),
+            rpt_id=candidate.rpt_id,
+            data_set_ref=candidate.data_set_ref,
+            conf_rev=candidate.conf_rev,
+            sequence_number=1,
+            time_of_entry="2026-06-23T12:00:00.250000Z",
+            entry_id=f"{endpoint.id}:entry-1",
+            buffer_overflow=False,
+            reason=Iec61850ReportReason.GENERAL_INTERROGATION,
+            values=(
+                Iec61850ReportEventValue(
+                    data_set_index=0,
+                    reference="LD0/XCBR1.Pos.stVal[ST]",
+                    data_reference="LD0/XCBR1.Pos.stVal[ST]",
+                    value=1,
+                    reason_code=Iec61850ReportReason.DATA_CHANGE,
+                    timestamp="2026-06-23T12:00:00.250000Z",
+                ),
+            ),
+        )
+
+    def discover_ied(self):
+        self.calls.append("discover")
+        return SimpleNamespace(last_report=None)
+
+    def enable_reporting(self):
+        self.calls.append("enable")
+        return SimpleNamespace()
+
+    def send_general_interrogation(self):
+        self.calls.append("gi")
+        return SimpleNamespace()
+
+    def snapshot(self):
+        self.calls.append("snapshot")
+        return SimpleNamespace(last_report=self._report)
+
+    def close_ied(self):
+        self.calls.append("close")
+        return SimpleNamespace()
+
+
 @pytest.mark.anyio
 async def test_execute_single_signal_verification_run_persists_run_snapshot_and_explanation(monkeypatch) -> None:
     db = _FakeDb()
@@ -582,6 +636,7 @@ async def test_execute_single_signal_verification_run_selects_mms_runtime_from_c
         db=db,  # type: ignore[arg-type]
         triggered_at=triggered_at,
         mms_endpoint_catalog=catalog,
+        mms_control_service_factory=_FakeClientControlService,
     )
 
     assert result.verification_run.verdict_state == "fail"

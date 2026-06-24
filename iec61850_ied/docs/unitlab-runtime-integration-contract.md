@@ -153,6 +153,11 @@ Practical rules:
 - if SCD and discovery disagree, keep the transport host from the explicit endpoint source and surface a diagnostic instead of silently rewriting the target;
 - discovery should enrich report-control and dataset identity after the transport target exists.
 
+Current product implementation uses a runtime-selection seam in the Python layer:
+- `runtime_version="simulator"` routes through the simulator-backed verification adapter;
+- `runtime_version="mms"` routes through the MMS endpoint catalog and a client-control-backed MMS wrapper;
+- the MMS wrapper is currently supported as a one-candidate-per-session live slice and fails closed for multi-candidate sessions.
+
 ### Test fixture override policy
 
 For automated validation only, the Python layer may remap a real device endpoint to a virtual MMS endpoint.
