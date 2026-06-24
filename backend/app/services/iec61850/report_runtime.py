@@ -211,6 +211,12 @@ class Iec61850ReportSubscriptionPlanDiagnostic:
 
 
 @dataclass(frozen=True, slots=True)
+class Iec61850ReportSubscriptionEndpointGroup:
+    endpoint: Iec61850DeviceEndpoint
+    devices: tuple[Iec61850ReportSubscriptionPlanDevice, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class Iec61850ReportSubscriptionPlan:
     selected_signal_count: int
     matched_signal_count: int
@@ -580,6 +586,30 @@ def normalize_report_data_reference(data_reference: str, candidate: Iec61850Repo
     return value
 
 
+def group_report_subscription_plan_devices_by_endpoint(
+    *,
+    plan: Iec61850ReportSubscriptionPlan,
+    endpoint_for_device: Callable[[Iec61850ReportSubscriptionPlanDevice], Iec61850DeviceEndpoint],
+) -> tuple[Iec61850ReportSubscriptionEndpointGroup, ...]:
+    grouped: list[Iec61850ReportSubscriptionEndpointGroup] = []
+    grouped_indexes: dict[str, int] = {}
+    for device in plan.devices:
+        endpoint = endpoint_for_device(device)
+        group_index = grouped_indexes.get(endpoint.id)
+        if group_index is None:
+            grouped_indexes[endpoint.id] = len(grouped)
+            grouped.append(
+                Iec61850ReportSubscriptionEndpointGroup(endpoint=endpoint, devices=(device,))
+            )
+            continue
+        existing = grouped[group_index]
+        grouped[group_index] = Iec61850ReportSubscriptionEndpointGroup(
+            endpoint=existing.endpoint,
+            devices=(*existing.devices, device),
+        )
+    return tuple(grouped)
+
+
 def run_report_subscription_plan(
     *,
     plan: Iec61850ReportSubscriptionPlan,
@@ -595,14 +625,15 @@ def run_report_subscription_plan(
     reports: list[Iec61850ReportSubscriptionRunReportResult] = []
     diagnostics: list[Iec61850ReportSubscriptionPlanDiagnostic | Iec61850RuntimeDiagnostic | Iec61850ReportObservationDiagnostic] = list(plan.diagnostics)
 
-    for device_index, device in enumerate(plan.devices):
-        endpoint = endpoint_for_device(device)
-        session_id = f"{session_id_prefix}:{device_index}:{device.ied_name}/{device.access_point_name}"
+    for group_index, group in enumerate(group_report_subscription_plan_devices_by_endpoint(plan=plan, endpoint_for_device=endpoint_for_device)):
+        endpoint = group.endpoint
+        session_id = f"{session_id_prefix}:{group_index}:{endpoint.ied_name}/{endpoint.access_point_name}"
+        group_reports = tuple(report for device in group.devices for report in device.reports)
         try:
             service.open_session(
                 session_id=session_id,
                 endpoint=endpoint,
-                candidates=[report.candidate for report in device.reports],
+                candidates=[report.candidate for report in group_reports],
             )
         except Iec61850ReportRuntimeError as error:
             failed_reports = tuple(
@@ -613,7 +644,7 @@ def run_report_subscription_plan(
                     diagnostics=(_runtime_diagnostic_from_error(report.candidate, error.code, error),),
                     endpoint=endpoint,
                 )
-                for report in device.reports
+                for report in group_reports
             )
             reports.extend(failed_reports)
             for failed_report in failed_reports:
@@ -621,7 +652,7 @@ def run_report_subscription_plan(
             continue
 
         try:
-            for report in device.reports:
+            for report in group_reports:
                 result = _run_plan_report(
                     service=service,
                     session_id=session_id,

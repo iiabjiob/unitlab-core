@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 
 import pytest
@@ -83,6 +84,66 @@ def _build_multi_ied_plan():
     )
 
 
+def _build_same_endpoint_multi_report_plan():
+    first_candidate = VerificationTargetSource(
+        signal_id=101,
+        signal_reference="Breaker Close A",
+        signal_path="breaker_close_a",
+        signal_metadata={
+            "protocol": "iec61850",
+            "protocol_metadata": {
+                "ied_name": "IED-A",
+                "access_point_name": "P1",
+                "report_control_reference_hint": "IED-A/P1/LLN0.brA/buffered",
+                "report_control_name": "brA",
+                "report_kind": "buffered",
+                "rpt_id": "IED-A/LLN0.brA",
+                "data_set_reference": "IED-A/LLN0.dsA",
+                "expected_feedback_path": "LD0/XCBR1.Pos.stVal[ST]",
+            },
+        },
+        allocation_id=1,
+        allocation_status="assigned",
+        allocation_health={
+            "conflict": False,
+            "invalid_type": False,
+            "missing_device": False,
+            "missing_channel": False,
+            "offline_device": False,
+            "stale_device": False,
+        },
+        channel_id=11,
+        channel_label="DO-11",
+        unit_id="IED-A/P1",
+        unit_online=True,
+        source_row_id="signal-101",
+    )
+    second_candidate = replace(
+        first_candidate,
+        signal_id=102,
+        signal_reference="Breaker Close B",
+        signal_path="breaker_close_b",
+        signal_metadata={
+            "protocol": "iec61850",
+            "protocol_metadata": {
+                "ied_name": "IED-A",
+                "access_point_name": "P1",
+                "report_control_reference_hint": "IED-A/P1/LLN0.brB/buffered",
+                "report_control_name": "brB",
+                "report_kind": "buffered",
+                "rpt_id": "IED-A/LLN0.brB",
+                "data_set_reference": "IED-A/LLN0.dsB",
+                "expected_feedback_path": "LD0/XCBR2.Pos.stVal[ST]",
+            },
+        },
+        allocation_id=2,
+        channel_id=12,
+        channel_label="DO-12",
+        source_row_id="signal-102",
+    )
+    return build_verification_subscription_plan([first_candidate, second_candidate])
+
+
 def _custom_endpoint_for_device(device) -> Iec61850DeviceEndpoint:
     return Iec61850DeviceEndpoint(
         id=f"custom:{device.ied_name}/{device.access_point_name}",
@@ -92,6 +153,34 @@ def _custom_endpoint_for_device(device) -> Iec61850DeviceEndpoint:
         host=None,
         port=102,
     )
+
+
+@pytest.mark.anyio
+async def test_runtime_orchestrator_reuses_one_session_for_multiple_reports_on_same_endpoint() -> None:
+    plan = _build_same_endpoint_multi_report_plan()
+    orchestrator = VerificationRuntimeOrchestrator(now=lambda: datetime(2026, 6, 23, 12, 0, tzinfo=UTC))
+
+    result = orchestrator.start(
+        workspace_id=7,
+        test_run_id="run-same-endpoint",
+        verification_targets=plan.targets,
+        subscription_plan=plan,
+        execution_context=VerificationExecutionContextSchema(
+            project_id=1,
+            signal_list_revision_id=2,
+            planner_version="test",
+            runtime_version="simulator",
+            policy_version="v1",
+        ),
+    )
+
+    assert len(result.session_snapshots) == 1
+    assert len(result.subscription_snapshots) == 2
+    assert result.session_snapshots[0].endpoint_id == "sim:IED-A/P1"
+    assert {snapshot.session_id for snapshot in result.subscription_snapshots} == {
+        result.session_snapshots[0].session_id,
+    }
+    assert {snapshot.endpoint_id for snapshot in result.subscription_snapshots} == {"sim:IED-A/P1"}
 
 
 @pytest.mark.anyio

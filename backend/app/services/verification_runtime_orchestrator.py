@@ -23,6 +23,7 @@ from app.services.iec61850.report_runtime import (
     Iec61850RuntimeDiagnostic,
     build_simulator_endpoint_for_plan_device,
     create_iec61850_simulator_adapter,
+    group_report_subscription_plan_devices_by_endpoint,
 )
 from app.services.verification_evidence import build_signal_verification_evidence_set
 from app.services.verification_execution import (
@@ -157,13 +158,19 @@ class VerificationRuntimeOrchestrator:
         diagnostics: list[VerificationEvidenceDiagnosticSchema] = []
 
         try:
-            for device_index, device in enumerate(runtime_plan.devices):
-                endpoint = endpoint_for_device(device)
-                session_id = f"{orchestration_id}:{device_index}:{device.ied_name}/{device.access_point_name}"
+            for group_index, device_group in enumerate(
+                group_report_subscription_plan_devices_by_endpoint(
+                    plan=runtime_plan,
+                    endpoint_for_device=endpoint_for_device,
+                )
+            ):
+                endpoint = device_group.endpoint
+                session_id = f"{orchestration_id}:{group_index}:{endpoint.ied_name}/{endpoint.access_point_name}"
+                group_reports = tuple(report for device in device_group.devices for report in device.reports)
                 runtime_service.open_session(
                     session_id=session_id,
                     endpoint=endpoint,
-                    candidates=[report.candidate for report in device.reports],
+                    candidates=[report.candidate for report in group_reports],
                 )
                 session_order.append(session_id)
                 session_states[session_id] = VerificationRuntimeSessionState(
@@ -172,7 +179,7 @@ class VerificationRuntimeOrchestrator:
                 )
                 self._transition(session_states[session_id], "discovering", "discovering")
 
-                for report in device.reports:
+                for report in group_reports:
                     subscription_state = self._activate_report_subscription(
                         runtime_service=runtime_service,
                         session_state=session_states[session_id],
