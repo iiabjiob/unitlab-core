@@ -810,6 +810,110 @@ async def test_execute_single_signal_verification_run_uses_loaded_scd_for_transp
 
 
 @pytest.mark.anyio
+async def test_execute_single_signal_verification_run_passes_loaded_scd_path_to_real_mms_factory(monkeypatch) -> None:
+    db = _FakeDb()
+    triggered_at = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
+    recorded_target_scl_paths: list[str | None] = []
+
+    class _FakeRuntimeSelectionRepository:
+        def __init__(self, _db):
+            self._source = (
+                b"<SCL>"
+                b"<Communication><SubNetwork type='8-MMS'>"
+                b"<ConnectedAP apName='P1' iedName='IED-A'><Address><P type='IP'>10.10.10.250</P></Address></ConnectedAP>"
+                b"</SubNetwork></Communication>"
+                b"</SCL>"
+            )
+
+        async def get_active_runtime_selection(self, *, workspace_id: int):
+            return SimpleNamespace(import_id="import-7", selected_ied="IED-A", runtime_revision=12)
+
+        async def get_import_source(self, *, workspace_id: int, import_id: str):
+            return self._source if workspace_id == 7 and import_id == "import-7" else None
+
+    class _RecordingClientControlService(_FakeClientControlService):
+        def __init__(self, *, target_scl_path=None, **kwargs):
+            recorded_target_scl_paths.append(target_scl_path)
+            super().__init__(**kwargs)
+
+    monkeypatch.setattr(run_service, "SignalsRepository", _FakeSignalsRepository)
+    monkeypatch.setattr(run_service, "SignalSheetRepository", _FakeSignalSheetRepository)
+    monkeypatch.setattr(run_service, "VerificationEvidenceRepository", _FakeEvidenceRepository)
+    monkeypatch.setattr(run_service, "VerificationRunRepository", _FakeRunRepository)
+    monkeypatch.setattr(run_service, "Iec61850SqlAlchemySclImportRepository", _FakeRuntimeSelectionRepository)
+    monkeypatch.setattr(run_service, "Iec61850ClientControlService", _RecordingClientControlService)
+
+    result = await execute_single_signal_verification_run(
+        workspace_id=7,
+        payload=VerificationAutoRunStartSchema(
+            signal_ids=[101],
+            execution_context=VerificationExecutionContextSchema(
+                project_id=1,
+                signal_list_revision_id=2,
+                planner_version="test",
+                runtime_version="mms",
+                policy_version="v1",
+            ),
+            client_id="unitlab-backend-simulator",
+            test_run_id="vr-mms-scd-path",
+        ),
+        db=db,  # type: ignore[arg-type]
+        triggered_at=triggered_at,
+    )
+
+    assert result.verification_run.diagnostics[-1].details is not None
+    assert result.verification_run.diagnostics[-1].details.get("transport_source") == "loaded_scd"
+    assert recorded_target_scl_paths and recorded_target_scl_paths[0] is not None
+    assert recorded_target_scl_paths[0].endswith("IED-A.scd")
+
+
+@pytest.mark.anyio
+async def test_execute_single_signal_verification_run_applies_validation_override_transport(monkeypatch) -> None:
+    db = _FakeDb()
+    triggered_at = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
+
+    monkeypatch.setattr(run_service, "SignalsRepository", _FakeSignalsRepository)
+    monkeypatch.setattr(run_service, "SignalSheetRepository", _FakeSignalSheetRepository)
+    monkeypatch.setattr(run_service, "VerificationEvidenceRepository", _FakeEvidenceRepository)
+    monkeypatch.setattr(run_service, "VerificationRunRepository", _FakeRunRepository)
+
+    result = await execute_single_signal_verification_run(
+        workspace_id=7,
+        payload=VerificationAutoRunStartSchema(
+            signal_ids=[101],
+            execution_context=VerificationExecutionContextSchema(
+                project_id=1,
+                signal_list_revision_id=2,
+                planner_version="test",
+                runtime_version="mms",
+                policy_version="v1",
+                transport_override_host="10.10.10.99",
+                transport_override_port=12447,
+            ),
+            client_id="unitlab-backend-simulator",
+            test_run_id="vr-mms-override",
+        ),
+        db=db,  # type: ignore[arg-type]
+        triggered_at=triggered_at,
+        mms_endpoint_catalog=build_mms_endpoint_catalog((
+            Iec61850MmsEndpointCatalogEntry(
+                ied_name="IED-A",
+                access_point_name="P1",
+                host="10.10.10.250",
+                port=12447,
+            ),
+        )),
+        mms_control_service_factory=_FakeClientControlService,
+    )
+
+    assert result.verification_run.session_snapshots[0].endpoint_id == "mms:IED-A/P1@10.10.10.99:12447"
+    assert result.verification_run.subscription_snapshots[0].endpoint_id == "mms:IED-A/P1@10.10.10.99:12447"
+    assert result.verification_run.diagnostics[-1].details is not None
+    assert result.verification_run.diagnostics[-1].details.get("transport_source") == "validation_override"
+    assert "transport from validation override" in result.verdict_explanation.summary
+
+
+@pytest.mark.anyio
 async def test_execute_single_signal_verification_run_allows_multiple_signals_on_same_ied(monkeypatch) -> None:
     db = _FakeDb()
     triggered_at = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)

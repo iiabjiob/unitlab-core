@@ -110,6 +110,35 @@ def test_resolve_verification_endpoint_policy_rejects_invalid_settings_catalog_j
     assert error.value.code == "INVALID_MMS_ENDPOINT_CATALOG"
 
 
+def test_resolve_verification_endpoint_policy_uses_validation_override_for_transport() -> None:
+    catalog = build_mms_endpoint_catalog(
+        (
+            Iec61850MmsEndpointCatalogEntry(
+                ied_name="IED-A",
+                access_point_name="P1",
+                host="10.10.10.250",
+                port=12447,
+            ),
+        )
+    )
+
+    policy = resolve_verification_endpoint_resolution_policy(
+        execution_context=_build_context("mms"),
+        explicit_mms_endpoint_catalog=catalog,
+        transport_override_host="10.10.10.99",
+        transport_override_port=12447,
+    )
+
+    assert policy.transport_source == "validation_override"
+    assert policy.transport_override_host == "10.10.10.99"
+    assert policy.transport_override_port == 12447
+
+    diagnostic = build_verification_endpoint_resolution_diagnostic(policy)
+    assert diagnostic.details is not None
+    assert diagnostic.details["transport_source"] == "validation_override"
+    assert diagnostic.details["transport_override_host"] == "10.10.10.99"
+
+
 def test_resolve_verification_endpoint_policy_uses_loaded_scd_for_transport() -> None:
     catalog = build_mms_endpoint_catalog_from_scd_source(
         b"<SCL><Communication><SubNetwork type='8-MMS'>"

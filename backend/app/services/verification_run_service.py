@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from contextlib import ExitStack
+from pathlib import Path
+import tempfile
 from datetime import UTC, datetime
 from typing import Callable
 from uuid import uuid4
@@ -104,76 +107,96 @@ async def execute_single_signal_verification_run(
     active_runtime_selection = None
     loaded_runtime_scd_endpoint_catalog = None
     loaded_runtime_scd_available = False
-    if runtime_mode in {"mms", "live", "live-mms", "real-mms"} and hasattr(db, "execute"):
-        scl_repository = Iec61850SqlAlchemySclImportRepository(db)
-        active_runtime_selection = await scl_repository.get_active_runtime_selection(workspace_id=workspace_id)
-        if active_runtime_selection is not None:
-            loaded_runtime_scd_available = True
-            source_bytes = await scl_repository.get_import_source(
-                workspace_id=workspace_id,
-                import_id=active_runtime_selection.import_id,
-            )
-            if source_bytes is not None:
-                loaded_runtime_scd_endpoint_catalog = build_mms_endpoint_catalog_from_scd_source(
-                    source_bytes,
-                    selected_ied=active_runtime_selection.selected_ied,
+
+    with ExitStack() as stack:
+        loaded_runtime_scd_path: str | None = None
+        if runtime_mode in {"mms", "live", "live-mms", "real-mms"} and hasattr(db, "execute"):
+            scl_repository = Iec61850SqlAlchemySclImportRepository(db)
+            active_runtime_selection = await scl_repository.get_active_runtime_selection(workspace_id=workspace_id)
+            if active_runtime_selection is not None:
+                loaded_runtime_scd_available = True
+                source_bytes = await scl_repository.get_import_source(
+                    workspace_id=workspace_id,
+                    import_id=active_runtime_selection.import_id,
                 )
+                if source_bytes is not None:
+                    loaded_runtime_scd_endpoint_catalog = build_mms_endpoint_catalog_from_scd_source(
+                        source_bytes,
+                        selected_ied=active_runtime_selection.selected_ied,
+                    )
+                    if loaded_runtime_scd_endpoint_catalog is not None:
+                        temp_dir = stack.enter_context(tempfile.TemporaryDirectory(prefix="unitlab-mms-scd-"))
+                        scl_path = Path(temp_dir) / f"{active_runtime_selection.selected_ied or 'runtime'}.scd"
+                        scl_path.write_bytes(source_bytes)
+                        loaded_runtime_scd_path = str(scl_path)
 
-    endpoint_resolution_policy = resolve_verification_endpoint_resolution_policy(
-        execution_context=execution_context,
-        explicit_mms_endpoint_catalog=mms_endpoint_catalog,
-        settings_mms_endpoint_catalog_json=getattr(get_settings(), "iec61850_mms_endpoint_catalog_json", None),
-        loaded_runtime_scd_endpoint_catalog=loaded_runtime_scd_endpoint_catalog,
-        loaded_runtime_scd_available=loaded_runtime_scd_available,
-        active_runtime_selection_import_id=(
-            active_runtime_selection.import_id if active_runtime_selection is not None else None
-        ),
-        active_runtime_selection_selected_ied=(
-            active_runtime_selection.selected_ied if active_runtime_selection is not None else None
-        ),
-        active_runtime_selection_revision=(
-            active_runtime_selection.runtime_revision if active_runtime_selection is not None else None
-        ),
-    )
-    endpoint_resolution_diagnostic = build_verification_endpoint_resolution_diagnostic(endpoint_resolution_policy)
+        endpoint_resolution_policy = resolve_verification_endpoint_resolution_policy(
+            execution_context=execution_context,
+            explicit_mms_endpoint_catalog=mms_endpoint_catalog,
+            settings_mms_endpoint_catalog_json=getattr(get_settings(), "iec61850_mms_endpoint_catalog_json", None),
+            loaded_runtime_scd_endpoint_catalog=loaded_runtime_scd_endpoint_catalog,
+            loaded_runtime_scd_available=loaded_runtime_scd_available,
+            active_runtime_selection_import_id=(
+                active_runtime_selection.import_id if active_runtime_selection is not None else None
+            ),
+            active_runtime_selection_selected_ied=(
+                active_runtime_selection.selected_ied if active_runtime_selection is not None else None
+            ),
+            active_runtime_selection_revision=(
+                active_runtime_selection.runtime_revision if active_runtime_selection is not None else None
+            ),
+            transport_override_host=execution_context.transport_override_host,
+            transport_override_port=execution_context.transport_override_port,
+        )
+        endpoint_resolution_diagnostic = build_verification_endpoint_resolution_diagnostic(endpoint_resolution_policy)
 
-    runtime_selection = resolve_verification_runtime(
-        execution_context=execution_context,
-        now=lambda: start_at,
-        endpoint_catalog=endpoint_resolution_policy.endpoint_catalog,
-        transport_source=endpoint_resolution_policy.transport_source,
-        model_source=endpoint_resolution_policy.model_source,
-        simulator_endpoint_for_device=endpoint_for_device,
-        mms_control_service_factory=mms_control_service_factory or Iec61850ClientControlService,
-    )
-    execution_result = await execute_verification_run(
-        workspace_id=workspace_id,
-        test_run_id=run_id,
-        verification_targets=subscription_plan.targets,
-        subscription_plan=subscription_plan,
-        execution_context=execution_context,
-        adapter=runtime_selection.adapter,
-        endpoint_for_device=runtime_selection.endpoint_for_device,
-        repository=evidence_repo,
-        triggered_at=start_at,
-        client_id=client_id or payload.client_id,
-    )
+        effective_mms_control_service_factory = mms_control_service_factory or Iec61850ClientControlService
+        if loaded_runtime_scd_path is not None and effective_mms_control_service_factory is Iec61850ClientControlService:
+            def _mms_control_service_factory_with_loaded_scd(**kwargs):
+                kwargs.setdefault("target_scl_path", loaded_runtime_scd_path)
+                return Iec61850ClientControlService(**kwargs)
 
-    verification_run = execution_result.verification_run.model_copy(
-        update={
-            "diagnostics": [*execution_result.verification_run.diagnostics, endpoint_resolution_diagnostic],
-        }
-    )
-    verdict_explanation = build_verification_verdict_explanation(
-        verification_run=verification_run,
-        verification_steps=verification_run.verification_steps,
-        evidence_rows=execution_result.evidence_rows,
-    )
-    verification_run = verification_run.model_copy(
-        update={
-            "reason": verdict_explanation.summary,
-        }
-    )
+            effective_mms_control_service_factory = _mms_control_service_factory_with_loaded_scd
+
+        runtime_selection = resolve_verification_runtime(
+            execution_context=execution_context,
+            now=lambda: start_at,
+            endpoint_catalog=endpoint_resolution_policy.endpoint_catalog,
+            transport_source=endpoint_resolution_policy.transport_source,
+            model_source=endpoint_resolution_policy.model_source,
+            transport_override_host=endpoint_resolution_policy.transport_override_host,
+            transport_override_port=endpoint_resolution_policy.transport_override_port,
+            simulator_endpoint_for_device=endpoint_for_device,
+            mms_control_service_factory=effective_mms_control_service_factory,
+        )
+        execution_result = await execute_verification_run(
+            workspace_id=workspace_id,
+            test_run_id=run_id,
+            verification_targets=subscription_plan.targets,
+            subscription_plan=subscription_plan,
+            execution_context=execution_context,
+            adapter=runtime_selection.adapter,
+            endpoint_for_device=runtime_selection.endpoint_for_device,
+            repository=evidence_repo,
+            triggered_at=start_at,
+            client_id=client_id or payload.client_id,
+        )
+
+        verification_run = execution_result.verification_run.model_copy(
+            update={
+                "diagnostics": [*execution_result.verification_run.diagnostics, endpoint_resolution_diagnostic],
+            }
+        )
+        verdict_explanation = build_verification_verdict_explanation(
+            verification_run=verification_run,
+            verification_steps=verification_run.verification_steps,
+            evidence_rows=execution_result.evidence_rows,
+        )
+        verification_run = verification_run.model_copy(
+            update={
+                "reason": verdict_explanation.summary,
+            }
+        )
     response = VerificationRunDetailResponseSchema(
         test_run_id=run_id,
         verification_run=verification_run,

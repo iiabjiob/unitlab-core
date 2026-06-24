@@ -148,6 +148,7 @@ class Iec61850ClientControlService:
         endpoint: Iec61850DeviceEndpoint | None = None,
         candidate: Iec61850ReportControlCandidate | None = None,
         endpoint_catalog: Iec61850MmsEndpointCatalog | None = None,
+        target_scl_path: str | None = None,
         live_wire_binary_path: str | None = None,
         live_wire_service_host: str | None = None,
         live_wire_data_port: int | None = None,
@@ -161,7 +162,7 @@ class Iec61850ClientControlService:
         self._endpoint_resolution = _default_endpoint_resolution(self._endpoint)
         self._endpoint_catalog = endpoint_catalog
         self._candidate = candidate or _default_candidate()
-        self._target_scl_path: str | None = None
+        self._target_scl_path: str | None = target_scl_path.strip() if target_scl_path is not None and target_scl_path.strip() else None
         self._last_read: Iec61850ReportControlReadResult | None = None
         self._last_discovery: dict | None = None
         self._last_state: Iec61850ReportControlState | None = None

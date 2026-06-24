@@ -158,7 +158,7 @@ Current product implementation uses a runtime-selection seam in the Python layer
 - `runtime_version="mms"` routes through the MMS endpoint catalog and a client-control-backed MMS wrapper;
 - if no catalog is passed explicitly, the backend can load a settings-driven JSON MMS endpoint catalog for auto-run execution;
 - the MMS wrapper routes one physical session per endpoint and can manage multiple report-control candidates through client-control-backed per-candidate control services;
-- endpoint resolution now reports transport source and model source separately so the run can explain whether the transport address came from an explicit request, settings catalog, loaded SCD, or was unavailable, and whether the model binding came from loaded SCD or discovery fallback.
+- endpoint resolution now reports transport source and model source separately so the run can explain whether the transport address came from an explicit request, settings catalog, loaded SCD, validation override, or was unavailable, and whether the model binding came from loaded SCD or discovery fallback.
 
 ### Test fixture override policy
 

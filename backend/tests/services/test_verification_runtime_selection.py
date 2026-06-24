@@ -231,6 +231,36 @@ def test_resolve_verification_runtime_preserves_selection_sources() -> None:
     assert selection.runtime_source == "settings_catalog"
 
 
+def test_resolve_verification_runtime_applies_validation_override_to_mms_endpoint() -> None:
+    catalog = build_mms_endpoint_catalog((
+        Iec61850MmsEndpointCatalogEntry(
+            ied_name="IED-A",
+            access_point_name="P1",
+            host="10.10.10.250",
+            port=12447,
+        ),
+    ))
+
+    selection = resolve_verification_runtime(
+        execution_context=VerificationExecutionContextSchema(
+            project_id=1,
+            signal_list_revision_id=2,
+            planner_version="test",
+            runtime_version="mms",
+            policy_version="v1",
+        ),
+        endpoint_catalog=catalog,
+        transport_override_host="10.10.10.99",
+        transport_override_port=12447,
+        mms_control_service_factory=_FakeClientControlService,
+    )
+
+    endpoint = selection.endpoint_for_device(SimpleNamespace(ied_name="IED-A", access_point_name="P1"))
+    assert endpoint.id == "mms:IED-A/P1@10.10.10.99:12447"
+    assert selection.transport_source == "validation_override"
+    assert selection.runtime_source == "validation_override"
+
+
 def test_mms_runtime_adapter_surfaces_report_from_control_service() -> None:
     catalog = build_mms_endpoint_catalog((
         Iec61850MmsEndpointCatalogEntry(

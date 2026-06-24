@@ -73,6 +73,7 @@ The explicit runtime mapping from IED/access-point identity to host/port.
 
 This is the authoritative source for transport reachability in real MMS flows.
 In validation flows, a loaded SCD may also be parsed into a transport catalog for the selected IED/access-point when it contains ConnectedAP/IP metadata.
+A validation-only transport override may then remap the final host/port for virtual-substation runs.
 That derived view is still separate from the operator-configured MMS endpoint catalog, the SCD model source, and discovery metadata.
 
 ### Subscription plan

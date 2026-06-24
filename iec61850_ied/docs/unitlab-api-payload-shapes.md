@@ -101,6 +101,8 @@ Optional fields:
 - `scd_revision_id`
 - `discovery_snapshot_id`
 - `operator_id`
+- `transport_override_host`
+- `transport_override_port`
 - `created_at`
 - `triggered_at`
 

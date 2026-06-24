@@ -175,6 +175,8 @@ class VerificationExecutionContextSchema(BaseModel):
     scd_revision_id: int | None = None
     discovery_snapshot_id: int | None = None
     operator_id: str | None = None
+    transport_override_host: str | None = None
+    transport_override_port: int | None = None
     created_at: datetime | None = None
     triggered_at: datetime | None = None
 

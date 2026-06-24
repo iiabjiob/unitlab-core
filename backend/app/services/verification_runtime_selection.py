@@ -29,7 +29,7 @@ from app.services.iec61850.report_runtime import (
 
 
 VerificationRuntimeMode = Literal["simulator", "mms"]
-VerificationRuntimeTransportSource = Literal["simulator", "explicit_request", "settings_catalog", "loaded_scd", "unavailable"]
+VerificationRuntimeTransportSource = Literal["simulator", "explicit_request", "settings_catalog", "loaded_scd", "validation_override", "unavailable"]
 VerificationRuntimeModelSource = Literal["simulator", "loaded_scd", "discovery_fallback"]
 
 
@@ -226,6 +226,8 @@ def resolve_verification_runtime(
     endpoint_catalog: Iec61850MmsEndpointCatalog | None = None,
     transport_source: VerificationRuntimeTransportSource | None = None,
     model_source: VerificationRuntimeModelSource | None = None,
+    transport_override_host: str | None = None,
+    transport_override_port: int | None = None,
     simulator_endpoint_for_device: Callable[[Iec61850ReportSubscriptionPlanDevice], Iec61850DeviceEndpoint] = build_simulator_endpoint_for_plan_device,
     mms_control_service_factory: Callable[..., Iec61850ClientControlService] = Iec61850ClientControlService,
 ) -> VerificationRuntimeSelection:
@@ -233,11 +235,29 @@ def resolve_verification_runtime(
     if runtime_mode == "mms":
         if endpoint_catalog is None:
             raise ValueError("MMS runtime requires an endpoint catalog.")
+        if transport_override_host is not None and transport_override_host.strip() or (transport_override_port is not None and transport_override_port > 0):
+            override_host = transport_override_host.strip() if transport_override_host is not None and transport_override_host.strip() else None
+            override_port = transport_override_port if transport_override_port is not None and transport_override_port > 0 else None
+
+            def _endpoint_for_device_with_override(device: Iec61850ReportSubscriptionPlanDevice) -> Iec61850DeviceEndpoint:
+                endpoint, _notes = endpoint_catalog.resolve_transport_endpoint(
+                    ied_name=device.ied_name,
+                    access_point_name=device.access_point_name,
+                    requested_host=override_host,
+                    requested_port=override_port,
+                )
+                return endpoint
+
+            endpoint_for_device = _endpoint_for_device_with_override
+            resolved_transport_source: VerificationRuntimeTransportSource = "validation_override"
+        else:
+            endpoint_for_device = endpoint_catalog.endpoint_for_plan_device
+            resolved_transport_source = transport_source or "explicit_request"
         return VerificationRuntimeSelection(
             runtime_mode="mms",
             adapter=_ClientControlMmsRuntimeAdapter(control_service_factory=mms_control_service_factory),
-            endpoint_for_device=endpoint_catalog.endpoint_for_plan_device,
-            transport_source=transport_source or "explicit_request",
+            endpoint_for_device=endpoint_for_device,
+            transport_source=resolved_transport_source,
             model_source=model_source or "discovery_fallback",
         )
 
