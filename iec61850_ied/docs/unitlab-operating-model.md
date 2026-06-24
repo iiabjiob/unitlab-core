@@ -9,10 +9,13 @@ This document describes how the product should behave end-to-end when a user sel
 1. The user selects one or more signal-list rows.
 2. The product normalizes those rows into verification targets.
 3. The planner groups targets into per-IED / per-RCB subscription plans.
-4. The runtime opens sessions, discovers where needed, creates subscriptions, and waits for reports.
-5. The report stream is converted into signal/evidence state.
-6. The verdict engine derives `pending`, `pass`, `fail`, `inconclusive`, or `aborted` from evidence, freshness, and policy.
-7. The confidence model derives proof strength independently from the verdict.
+4. Before execution, the product checks network readiness and endpoint reachability and shows a clear operator hint when the host is not on a usable subnet.
+5. The product may auto-suggest or auto-configure a suitable network adapter/IP configuration from signal-list and allocation data, while still allowing manual override.
+6. The operator presses `Run Test` once after selection and allocation.
+7. The runtime opens sessions, discovers where needed, creates subscriptions, executes the chosen scenario internally, and waits for reports.
+8. The report stream is converted into signal/evidence state.
+9. The verdict engine derives `pending`, `pass`, `fail`, `inconclusive`, or `aborted` from evidence, freshness, and policy.
+10. The confidence model derives proof strength independently from the verdict.
 
 ## Ownership boundaries
 
@@ -20,6 +23,7 @@ This document describes how the product should behave end-to-end when a user sel
 
 - collects user intent;
 - shows current state and results;
+- surfaces network readiness and next-step guidance before execution;
 - does not own execution truth;
 - does not decide planner or verdict semantics.
 
@@ -45,6 +49,7 @@ This document describes how the product should behave end-to-end when a user sel
 ### Execution ownership decision
 
 - The product layer should use a backend-owned worker inside the Python/FastAPI process for long-lived verification orchestration.
+- The main operator path should stay as a single `Run Test` action; scenario choice belongs to the product layer, not the operator.
 - A separate process is not required for the current slice and would add IPC, serialization, and duplicate ownership complexity without solving a known bottleneck yet.
 - Keep the process boundary available as a future deployment option if isolation or scale eventually requires it.
 
@@ -141,7 +146,8 @@ The product layer should pass the runtime:
 - desired session action;
 - selected report-control / dataset references;
 - timeout / timing window policy;
-- explicit source identity when available.
+- explicit source identity when available;
+- local network readiness and adapter guidance when the run depends on a real MMS target.
 
 The runtime should return:
 - session snapshot;

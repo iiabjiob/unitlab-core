@@ -3,6 +3,7 @@
 Status: living execution tracker for the UnitLab workflow above the reusable IEC 61850 C runtime.
 
 This tracker is intentionally product-layer only:
+- the main operator flow stays one-button simple (`Run Test`); scenario selection, report binding, and network-readiness guidance are internal orchestration concerns;
 - Python/FastAPI owns planning, evidence, and verdicts;
 - the C runtime owns reusable IEC 61850 discovery/session/report primitives;
 - do not move product-specific heuristics into the C layer.
@@ -219,6 +220,7 @@ Done when:
 ### Mandatory
 
 - signal-list to IED/report planning without manual tuning;
+- network preflight with actionable guidance when the workstation is not on a usable MMS subnet;
 - report evidence in the verdict path;
 - reconnect preserving desired work;
 - stale/late frames not corrupting current evidence;

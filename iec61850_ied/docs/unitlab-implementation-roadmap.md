@@ -4,6 +4,18 @@ Status: working execution roadmap for the first real UnitLab verification flow.
 
 This is the file to use for delivery tracking. Update phase status here as work lands.
 
+Primary operator flow:
+- import signal list;
+- allocate channels;
+- physically connect peripheral modules;
+- ensure the workstation is on a usable network for the selected MMS target;
+- select `n` signal rows;
+- press `Run Test` once;
+- receive live `tested` / `verified` / `failed` updates in the grid.
+
+The operator should not have to choose the underlying test scenario in the normal flow.
+Scenario selection, target planning, endpoint binding, network readiness checks, report subscription, and evidence collection are system responsibilities.
+
 ## Product milestone
 
 Milestone 1:
@@ -451,7 +463,7 @@ Implementation
 - Required backend services: MMS-backed runtime adapter, session supervisor, report-control binder, reconnect/recovery coordinator.
 - Required persistence: runtime session snapshots, evidence rows, recovery attempts, execution diagnostics.
 - Required runtime integration: native MMS client/server, endpoint catalog or explicit host/port configuration, SCD-first model binding when available, discovery fallback when SCD is missing or incomplete, subscriptions, reconnect, generation protection, report delivery.
-- Required UI changes: runtime source indicator, real-MMS status and diagnostics if the operator needs to distinguish live device proof from simulator-backed proof.
+- Required UI changes: runtime source indicator, real-MMS status and diagnostics, network-readiness warning, and a short actionable hint if the operator is not on a usable subnet.
 
 Tests
 - Unit tests: adapter mapping, session state, report correlation, endpoint override policy.
@@ -463,6 +475,8 @@ Acceptance Criteria
 - Evidence and verdict semantics remain stable when the transport changes from simulator to real MMS.
 - Recovery and reconnect continue to preserve evidence and desired work.
 - MMS host/port resolution is explicit and deterministic.
+- The operator receives a clear preflight warning when the local adapter/IP cannot reach the selected MMS target subnet.
+- The product may suggest or auto-configure a local adapter/IP/subnet from signal-list and allocation data, but manual override remains available.
 - If a loaded SCD is present and matches the IED/access-point model, it is used first for candidate binding.
 - If SCD is missing or incomplete, discovery is used to fill the gap after transport reachability exists.
 - Discovery never invents the transport host; it only validates or enriches model data once a connection target exists.
