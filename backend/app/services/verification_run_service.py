@@ -100,8 +100,9 @@ async def execute_single_signal_verification_run(
         allocation_rows_by_signal_id=allocation_rows_by_signal_id,
     )
     subscription_plan = build_verification_subscription_plan(sources)
+    runtime_mode = str(execution_context.runtime_version or "").strip().lower()
     active_runtime_selection = None
-    if hasattr(db, "execute"):
+    if runtime_mode in {"mms", "live", "live-mms", "real-mms"} and hasattr(db, "execute"):
         active_runtime_selection = await Iec61850SqlAlchemySclImportRepository(db).get_active_runtime_selection(workspace_id=workspace_id)
 
     endpoint_resolution_policy = resolve_verification_endpoint_resolution_policy(
