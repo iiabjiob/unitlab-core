@@ -9,6 +9,7 @@ from app.schemas.verification_schema import (
     VerificationRunDetailResponseSchema,
     VerificationRunEvidenceResponseSchema,
     VerificationRuntimeOrchestrationResponseSchema,
+    VerificationRuntimeOrchestrationReconnectSchema,
     VerificationRuntimeOrchestrationStartSchema,
     VerificationRunStepDetailsSchema,
 )
@@ -118,6 +119,22 @@ async def stop_verification_runtime_orchestration(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     if not result.orchestration_id.startswith(f"{workspace_id}:"):
         raise HTTPException(status_code=404, detail="Orchestration not found")
+    return VerificationRuntimeOrchestrationResponseSchema(
+        orchestration_id=result.orchestration_id,
+        verification_run=result.verification_run,
+    )
+
+
+@router.post("/orchestrations/{orchestration_id}/reconnect", response_model=VerificationRuntimeOrchestrationResponseSchema)
+async def reconnect_verification_runtime_orchestration(
+    workspace_id: int,
+    orchestration_id: str,
+    payload: VerificationRuntimeOrchestrationReconnectSchema,
+):
+    try:
+        result = _orchestrator.reconnect(orchestration_id, payload.session_id, workspace_id=workspace_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     return VerificationRuntimeOrchestrationResponseSchema(
         orchestration_id=result.orchestration_id,
         verification_run=result.verification_run,

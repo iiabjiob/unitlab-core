@@ -10,6 +10,7 @@ from app.schemas.verification_schema import (
     SignalVerificationEvidenceSetSchema,
     VerificationExecutionContextSchema,
     VerificationEvidenceDiagnosticSchema,
+    VerificationRecoveryStateSchema,
     VerificationRunSchema,
     VerificationSessionSnapshotSchema,
     VerificationSubscriptionSnapshotSchema,
@@ -24,7 +25,12 @@ from app.services.iec61850.report_runtime import (
     create_iec61850_simulator_adapter,
 )
 from app.services.verification_evidence import build_signal_verification_evidence_set
-from app.services.verification_execution import _parse_timestamp, _resolve_runtime_state, build_runtime_subscription_plan
+from app.services.verification_execution import (
+    _parse_timestamp,
+    _resolve_runtime_state,
+    _unique_non_empty_strings,
+    build_runtime_subscription_plan,
+)
 
 
 @dataclass
@@ -112,6 +118,7 @@ class _VerificationRuntimeOrchestrationHandle:
     client_id: str
     started_at: datetime
     diagnostics: list[VerificationEvidenceDiagnosticSchema]
+    reconnecting_session_ids: set[str] = field(default_factory=set)
 
 
 class VerificationRuntimeOrchestrator:
@@ -221,7 +228,14 @@ class VerificationRuntimeOrchestrator:
             subscription_snapshots=list(subscription_snapshots),
             evidence_set=evidence_set,
             execution_context=handle.execution_context,
-            recovery_state=None,
+            recovery_state=_build_recovery_state_for_orchestration(
+                test_run_id=handle.test_run_id,
+                verification_targets=handle.verification_targets,
+                subscription_plan=handle.subscription_plan,
+                execution_context=handle.execution_context,
+                session_snapshots=session_snapshots,
+                subscription_snapshots=subscription_snapshots,
+            ),
             workflow_state=workflow_state,
             verdict_state=verdict_state,
             triggered_at=handle.started_at,
@@ -259,6 +273,89 @@ class VerificationRuntimeOrchestrator:
         result = self.snapshot(orchestration_id)
         self._handles.pop(orchestration_id, None)
         return result
+
+    def reconnect(
+        self,
+        orchestration_id: str,
+        session_id: str,
+        *,
+        workspace_id: int | None = None,
+    ) -> VerificationRuntimeOrchestrationResult:
+        handle = self._require_handle(orchestration_id)
+        if workspace_id is not None and handle.workspace_id != workspace_id:
+            raise RuntimeError(f'Verification orchestration "{orchestration_id}" not found.')
+        session_state = handle.session_states.get(session_id)
+        if session_state is None:
+            raise RuntimeError(f'Verification session "{session_id}" not found.')
+        if session_id in handle.reconnecting_session_ids:
+            return self.snapshot(orchestration_id)
+
+        handle.reconnecting_session_ids.add(session_id)
+        try:
+            runtime_plan = build_runtime_subscription_plan(handle.subscription_plan)
+            device = self._resolve_runtime_plan_device(runtime_plan, session_state.endpoint_id)
+            endpoint = build_simulator_endpoint_for_plan_device(device)
+            candidates = [report.candidate for report in device.reports]
+            session_subscription_ids = [
+                subscription_id
+                for subscription_id in handle.subscription_order
+                if handle.subscription_states[subscription_id].session_id == session_id
+            ]
+
+            session_state.runtime_state = "reconnecting"
+            session_state.discovery_status = "discovering"
+            session_state.last_error = None
+            session_state.diagnostic_code = "USER_RECONNECT"
+            for subscription_id in session_subscription_ids:
+                subscription_state = handle.subscription_states[subscription_id]
+                subscription_state.subscription_state = "reconnecting"
+                subscription_state.report_health = "degraded"
+                subscription_state.last_error = None
+                subscription_state.diagnostic_code = "USER_RECONNECT"
+
+            with suppress(Exception):
+                handle.runtime_service.close_session(session_id)
+
+            handle.runtime_service.open_session(
+                session_id=session_id,
+                endpoint=endpoint,
+                candidates=candidates,
+            )
+            session_state.connection_generation += 1
+            self._transition(session_state, "discovering", "discovering")
+
+            for report in device.reports:
+                subscription_state = self._activate_report_subscription(
+                    runtime_service=handle.runtime_service,
+                    session_state=session_state,
+                    endpoint=endpoint,
+                    report=report,
+                    client_id=handle.client_id,
+                    diagnostics=handle.diagnostics,
+                    session_id=session_id,
+                )
+                handle.subscription_states[subscription_state.subscription_id] = subscription_state
+                if subscription_state.subscription_id not in handle.subscription_order:
+                    handle.subscription_order.append(subscription_state.subscription_id)
+            session_state.last_error = None
+            session_state.diagnostic_code = None
+            return self.snapshot(orchestration_id)
+        except Exception as exc:  # noqa: BLE001
+            session_state.runtime_state = "failed"
+            session_state.discovery_status = "available"
+            session_state.last_error = str(exc)
+            session_state.diagnostic_code = "RECONNECT_FAILED"
+            for subscription_id in handle.subscription_order:
+                subscription_state = handle.subscription_states[subscription_id]
+                if subscription_state.session_id != session_id:
+                    continue
+                subscription_state.subscription_state = "failed"
+                subscription_state.report_health = "degraded"
+                subscription_state.last_error = str(exc)
+                subscription_state.diagnostic_code = "RECONNECT_FAILED"
+            return self.snapshot(orchestration_id)
+        finally:
+            handle.reconnecting_session_ids.discard(session_id)
 
     def _activate_report_subscription(
         self,
@@ -322,6 +419,16 @@ class VerificationRuntimeOrchestrator:
             raise RuntimeError(f'Verification orchestration "{orchestration_id}" not found.')
         return handle
 
+    def _resolve_runtime_plan_device(
+        self,
+        runtime_plan,
+        endpoint_id: str,
+    ):
+        for device in runtime_plan.devices:
+            if build_simulator_endpoint_for_plan_device(device).id == endpoint_id:
+                return device
+        raise RuntimeError(f'Runtime device for endpoint "{endpoint_id}" not found.')
+
 
 def _runtime_diagnostics_to_evidence_diagnostics(
     diagnostics: Sequence[Iec61850RuntimeDiagnostic],
@@ -379,3 +486,114 @@ def _build_runtime_summary_for_orchestration(
         "session_states": [_runtime_summary_key(snapshot) for snapshot in session_snapshots],
     }
     return summary
+
+
+def _build_recovery_state_for_orchestration(
+    *,
+    test_run_id: str,
+    verification_targets: Sequence[VerificationTargetSchema],
+    subscription_plan: VerificationSubscriptionPlanSchema,
+    execution_context: VerificationExecutionContextSchema,
+    session_snapshots: Sequence[VerificationSessionSnapshotSchema],
+    subscription_snapshots: Sequence[VerificationSubscriptionSnapshotSchema],
+) -> VerificationRecoveryStateSchema | None:
+    if not session_snapshots and not subscription_snapshots:
+        return None
+
+    if session_snapshots and all(snapshot.runtime_state == "closed" for snapshot in session_snapshots) and all(
+        snapshot.subscription_state == "closed" for snapshot in subscription_snapshots
+    ):
+        return None
+
+    if all(snapshot.runtime_state == "reporting" for snapshot in session_snapshots) and all(
+        snapshot.subscription_state in {"reporting", "enabled"} for snapshot in subscription_snapshots
+    ):
+        return None
+
+    representative_session = next(
+        (snapshot for snapshot in session_snapshots if snapshot.runtime_state != "reporting"),
+        session_snapshots[0] if session_snapshots else None,
+    )
+    representative_subscription = next(
+        (snapshot for snapshot in subscription_snapshots if snapshot.subscription_state not in {"reporting", "enabled"}),
+        subscription_snapshots[0] if subscription_snapshots else None,
+    )
+    if any(snapshot.runtime_state == "reconnecting" for snapshot in session_snapshots) or any(
+        snapshot.subscription_state == "reconnecting" for snapshot in subscription_snapshots
+    ):
+        desired_state = "reconnecting"
+        recovery_reason = "user_reconnect"
+    elif any(snapshot.runtime_state == "degraded" for snapshot in session_snapshots) or any(
+        snapshot.subscription_state == "degraded" for snapshot in subscription_snapshots
+    ):
+        desired_state = "reconnecting"
+        recovery_reason = "report_health_degraded"
+    elif any(snapshot.runtime_state == "failed" for snapshot in session_snapshots) or any(
+        snapshot.subscription_state == "failed" for snapshot in subscription_snapshots
+    ):
+        desired_state = "reconnecting"
+        recovery_reason = "runtime_failure"
+    else:
+        desired_state = "reporting"
+        recovery_reason = None
+
+    recovery_diagnostics: list[VerificationEvidenceDiagnosticSchema] = []
+    if representative_session is not None and representative_session.last_error is not None:
+        recovery_diagnostics.append(
+            VerificationEvidenceDiagnosticSchema(
+                code=representative_session.diagnostic_code or "SESSION_RECOVERY",
+                message=representative_session.last_error,
+                severity="warning" if representative_session.runtime_state != "failed" else "error",
+                details={
+                    "session_id": representative_session.session_id,
+                    "endpoint_id": representative_session.endpoint_id,
+                },
+            )
+        )
+    if representative_subscription is not None and representative_subscription.last_error is not None:
+        recovery_diagnostics.append(
+            VerificationEvidenceDiagnosticSchema(
+                code=representative_subscription.diagnostic_code or "SUBSCRIPTION_RECOVERY",
+                message=representative_subscription.last_error,
+                severity="warning" if representative_subscription.subscription_state != "failed" else "error",
+                details={
+                    "subscription_id": representative_subscription.subscription_id,
+                    "session_id": representative_subscription.session_id,
+                    "endpoint_id": representative_subscription.endpoint_id,
+                },
+            )
+        )
+
+    return VerificationRecoveryStateSchema(
+        session_id=representative_session.session_id if representative_session is not None else f"{test_run_id}:recovery",
+        endpoint_id=representative_session.endpoint_id if representative_session is not None else execution_context.selected_group_id or test_run_id,
+        runtime_state=_resolve_runtime_state(session_snapshots, subscription_snapshots) or "reporting",
+        desired_state=desired_state,
+        active_generation=max((snapshot.connection_generation for snapshot in session_snapshots), default=1),
+        recovery_reason=recovery_reason,
+        desired_subscription_plan_id=subscription_plan.plan_id or test_run_id,
+        desired_group_ids=_unique_non_empty_strings(
+            [
+                execution_context.selected_group_id,
+                *(group.group_id for group in subscription_plan.groups),
+            ]
+        ),
+        desired_report_controls=_unique_non_empty_strings(
+            [
+                group.report_control_reference or group.rpt_id or group.report_control_name or group.group_id
+                for group in subscription_plan.groups
+            ]
+        ),
+        desired_target_ids=[int(target.signal_id) for target in verification_targets],
+        active_verification_run_id=test_run_id,
+        preserved_evidence_count=0,
+        in_flight=desired_state != "reporting",
+        preserved_verification_targets=list(verification_targets),
+        stale_signal_count=sum(
+            1
+            for snapshot in subscription_snapshots
+            if snapshot.subscription_state in {"reconnecting", "degraded", "failed"}
+            or snapshot.report_health == "degraded"
+        ),
+        diagnostics=recovery_diagnostics,
+    )

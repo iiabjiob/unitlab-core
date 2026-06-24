@@ -108,6 +108,19 @@ Response:
 - recovery state;
 - diagnostics.
 
+#### `POST /api/v1/workspaces/{workspace_id}/verification/orchestrations/{orchestration_id}/reconnect`
+
+Requests a product-layer reconnect for one live verification session.
+
+Request:
+- `session_id`.
+
+Response:
+- updated `verification_run`;
+- session and subscription snapshots;
+- recovery state when the session is degraded or reconnecting;
+- diagnostics.
+
 #### `POST /api/v1/iec61850/sessions/{session_id}/disconnect`
 
 Closes the runtime session cleanly.

@@ -318,6 +318,10 @@ class VerificationRuntimeOrchestrationStartSchema(BaseModel):
     client_id: str = "unitlab-backend-simulator"
 
 
+class VerificationRuntimeOrchestrationReconnectSchema(BaseModel):
+    session_id: str
+
+
 class VerificationRuntimeOrchestrationResponseSchema(BaseModel):
     orchestration_id: str
     verification_run: VerificationRunSchema

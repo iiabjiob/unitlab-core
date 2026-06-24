@@ -135,3 +135,77 @@ async def test_runtime_orchestrator_opens_sessions_and_keeps_live_state() -> Non
 
     with pytest.raises(RuntimeError):
         orchestrator.snapshot(result.orchestration_id)
+
+
+@pytest.mark.anyio
+async def test_runtime_orchestrator_reconnects_one_session_without_affecting_the_other() -> None:
+    plan = _build_multi_ied_plan()
+    orchestrator = VerificationRuntimeOrchestrator(now=lambda: datetime(2026, 6, 23, 12, 0, tzinfo=UTC))
+
+    result = orchestrator.start(
+        workspace_id=7,
+        test_run_id="run-2",
+        verification_targets=plan.targets,
+        subscription_plan=plan,
+        execution_context=VerificationExecutionContextSchema(
+            project_id=1,
+            signal_list_revision_id=2,
+            planner_version="test",
+            runtime_version="simulator",
+            policy_version="v1",
+        ),
+    )
+
+    session_ids = [snapshot.session_id for snapshot in result.session_snapshots]
+    reconnected = orchestrator.reconnect(result.orchestration_id, session_ids[0])
+
+    session_snapshots = {snapshot.session_id: snapshot for snapshot in reconnected.session_snapshots}
+    subscription_snapshots = {snapshot.session_id: snapshot for snapshot in reconnected.subscription_snapshots}
+
+    assert reconnected.verification_run.runtime_state == "reporting"
+    assert reconnected.verification_run.recovery_state is None
+    assert session_snapshots[session_ids[0]].connection_generation == 2
+    assert session_snapshots[session_ids[0]].runtime_state == "reporting"
+    assert session_snapshots[session_ids[1]].connection_generation == 1
+    assert session_snapshots[session_ids[1]].runtime_state == "reporting"
+    assert subscription_snapshots[session_ids[0]].subscription_state == "reporting"
+    assert subscription_snapshots[session_ids[1]].subscription_state == "reporting"
+
+
+@pytest.mark.anyio
+async def test_runtime_orchestrator_reconnect_failure_surfaces_recovery_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    plan = _build_multi_ied_plan()
+    orchestrator = VerificationRuntimeOrchestrator(now=lambda: datetime(2026, 6, 23, 12, 0, tzinfo=UTC))
+
+    result = orchestrator.start(
+        workspace_id=7,
+        test_run_id="run-3",
+        verification_targets=plan.targets,
+        subscription_plan=plan,
+        execution_context=VerificationExecutionContextSchema(
+            project_id=1,
+            signal_list_revision_id=2,
+            planner_version="test",
+            runtime_version="simulator",
+            policy_version="v1",
+        ),
+    )
+
+    handle = orchestrator._handles[result.orchestration_id]  # noqa: SLF001
+    session_id = result.session_snapshots[0].session_id
+
+    def _raise_open_session(**kwargs):  # noqa: ANN001
+        raise RuntimeError("simulated reconnect failure")
+
+    monkeypatch.setattr(handle.runtime_service, "open_session", _raise_open_session)
+
+    recovered = orchestrator.reconnect(result.orchestration_id, session_id)
+    session_snapshots = {snapshot.session_id: snapshot for snapshot in recovered.session_snapshots}
+
+    assert recovered.verification_run.runtime_state == "degraded"
+    assert recovered.verification_run.recovery_state is not None
+    assert recovered.verification_run.recovery_state.recovery_reason == "runtime_failure"
+    assert recovered.verification_run.recovery_state.desired_state == "reconnecting"
+    assert session_snapshots[session_id].runtime_state == "failed"
+    assert session_snapshots[session_id].connection_generation == 1
+    assert session_snapshots[result.session_snapshots[1].session_id].runtime_state == "reporting"
