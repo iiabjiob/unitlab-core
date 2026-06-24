@@ -148,8 +148,8 @@ Resolution order:
 
 Practical rules:
 - MMS host/port must be known before a real MMS connect attempt;
-- the product should preflight local network readiness before a real connect attempt and warn when the operator is not on a usable subnet for the selected target;
-- the product may auto-suggest or auto-configure a local adapter/IP/subnet from the selected signal-list and allocation context, but manual configuration must remain possible;
+- the product should preflight host-agent-reported network readiness before a real connect attempt and warn when the agent does not report a usable path to the selected target;
+- the product may auto-suggest or auto-configure a network path from the selected signal-list, allocation context, and agent-reported host state, but manual configuration must remain possible;
 - SCD is preferred for model binding when it is present and matches the selected IED/access point;
 - discovery is used when SCD is missing, incomplete, or does not contain enough report-control detail;
 - if SCD and discovery disagree, keep the transport host from the explicit endpoint source and surface a diagnostic instead of silently rewriting the target;

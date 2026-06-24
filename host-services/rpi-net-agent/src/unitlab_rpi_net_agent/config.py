@@ -34,13 +34,23 @@ class AgentConfig:
     command_block_ms: int
 
     wifi_interface: str
+    ethernet_interface: str
     ap_profile_name: str
+    ethernet_profile_name: str
     sta_profile_prefix: str
     ap_ssid_prefix: str
     ap_password_prefix: str
     ap_ip_cidr: str
     ap_channel: int
     ap_band: str
+    ethernet_default_mode: str
+    ethernet_default_address_cidr: str | None
+    ethernet_default_gateway: str | None
+    ethernet_default_dns_servers: list[str]
+    proxy_url: str | None
+    proxy_no_proxy: list[str]
+    host_network_settings_file: str
+    proxy_environment_file: str
     sta_connect_timeout_sec: int
     status_publish_interval_sec: int
     status_scan_interval_sec: int
@@ -48,6 +58,12 @@ class AgentConfig:
 
     log_level: str
     dry_run: bool
+
+
+def _split_csv(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    return [item.strip() for item in raw.split(",") if item.strip()]
 
 
 def load_config() -> AgentConfig:
@@ -63,13 +79,29 @@ def load_config() -> AgentConfig:
         redis_stream_maxlen=max(100, _env_int("UNITLAB_NET_AGENT_STREAM_MAXLEN", 2000)),
         command_block_ms=max(100, _env_int("UNITLAB_NET_AGENT_COMMAND_BLOCK_MS", 5000)),
         wifi_interface=os.getenv("UNITLAB_NET_AGENT_WIFI_IFACE", "wlan0"),
+        ethernet_interface=os.getenv("UNITLAB_NET_AGENT_ETHERNET_IFACE", "eth0"),
         ap_profile_name=os.getenv("UNITLAB_NET_AGENT_AP_PROFILE", "unitlab-ap"),
+        ethernet_profile_name=os.getenv("UNITLAB_NET_AGENT_ETHERNET_PROFILE", "unitlab-lan"),
         sta_profile_prefix=os.getenv("UNITLAB_NET_AGENT_STA_PROFILE_PREFIX", "unitlab-sta"),
         ap_ssid_prefix=os.getenv("UNITLAB_NET_AGENT_AP_SSID_PREFIX", "[unitlab]-core"),
         ap_password_prefix=os.getenv("UNITLAB_NET_AGENT_AP_PASSWORD_PREFIX", "pwd!"),
         ap_ip_cidr=os.getenv("UNITLAB_NET_AGENT_AP_IP_CIDR", "10.42.0.1/24"),
         ap_channel=max(1, _env_int("UNITLAB_NET_AGENT_AP_CHANNEL", 6)),
         ap_band=os.getenv("UNITLAB_NET_AGENT_AP_BAND", "bg"),
+        ethernet_default_mode=os.getenv("UNITLAB_NET_AGENT_ETHERNET_DEFAULT_MODE", "auto").strip().lower() or "auto",
+        ethernet_default_address_cidr=os.getenv("UNITLAB_NET_AGENT_ETHERNET_DEFAULT_ADDRESS_CIDR") or None,
+        ethernet_default_gateway=os.getenv("UNITLAB_NET_AGENT_ETHERNET_DEFAULT_GATEWAY") or None,
+        ethernet_default_dns_servers=_split_csv(os.getenv("UNITLAB_NET_AGENT_ETHERNET_DEFAULT_DNS_SERVERS")),
+        proxy_url=os.getenv("UNITLAB_NET_AGENT_PROXY_URL") or None,
+        proxy_no_proxy=_split_csv(os.getenv("UNITLAB_NET_AGENT_PROXY_NO_PROXY")),
+        host_network_settings_file=os.getenv(
+            "UNITLAB_NET_AGENT_HOST_NETWORK_SETTINGS_FILE",
+            "/etc/unitlab/rpi-net-agent-network.json",
+        ),
+        proxy_environment_file=os.getenv(
+            "UNITLAB_NET_AGENT_PROXY_ENV_FILE",
+            "/etc/environment.d/50-unitlab-proxy.conf",
+        ),
         sta_connect_timeout_sec=max(5, _env_int("UNITLAB_NET_AGENT_STA_CONNECT_TIMEOUT_SEC", 35)),
         status_publish_interval_sec=max(2, _env_int("UNITLAB_NET_AGENT_STATUS_PUBLISH_INTERVAL_SEC", 5)),
         status_scan_interval_sec=max(5, _env_int("UNITLAB_NET_AGENT_STATUS_SCAN_INTERVAL_SEC", 5)),

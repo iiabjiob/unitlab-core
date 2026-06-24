@@ -3,7 +3,7 @@
 Status: living execution tracker for the UnitLab workflow above the reusable IEC 61850 C runtime.
 
 This tracker is intentionally product-layer only:
-- the main operator flow stays one-button simple (`Run Test`); scenario selection, report binding, and network-readiness guidance are internal orchestration concerns;
+- the main operator flow stays one-button simple (`Run Test`); scenario selection, report binding, and network-readiness guidance are internal orchestration concerns, and host-network setup is exposed through a separate settings tab rather than hidden in the test flow;
 - Python/FastAPI owns planning, evidence, and verdicts;
 - the C runtime owns reusable IEC 61850 discovery/session/report primitives;
 - do not move product-specific heuristics into the C layer.
@@ -24,7 +24,7 @@ The workflow should be built in this order:
 6. multi-IED selected-group flow;
 7. recovery hardening;
 8. virtual-substation regression harness;
-9. real MMS integration.
+9. real MMS integration, including host-network configuration and RJ45 readiness.
 
 ## Slice tracker
 
@@ -220,7 +220,7 @@ Done when:
 ### Mandatory
 
 - signal-list to IED/report planning without manual tuning;
-- network preflight with actionable guidance when the workstation is not on a usable MMS subnet;
+- network preflight with actionable guidance when the host agent is not reporting a usable MMS path;
 - report evidence in the verdict path;
 - reconnect preserving desired work;
 - stale/late frames not corrupting current evidence;

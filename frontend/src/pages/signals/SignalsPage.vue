@@ -31,6 +31,7 @@
       :busy="verificationRunBusy"
       :can-run="canRunSingleVerification"
       :error-text="verificationRunError"
+      :network-preflight="verificationNetworkPreflight"
       :selected-signal-label="selectedVerificationSignalLabel"
       :result="verificationRunResult"
       @run="runSingleSignalVerification"
@@ -214,7 +215,7 @@ import { formatDate } from "@/utils/datetime"
 import { formatAoValue, parseAoInput } from "@/utils/channel"
 import { resolveRuntimeChannelTypeForSignal } from "@/utils/signalRuntimeMapping"
 import type { SignalAllocationJob, SignalAllocationRow } from "@/types/signal"
-import type { VerificationAutoRunStartPayload, VerificationRunDetailResponse } from "@/types/verification"
+import type { VerificationAutoRunStartPayload, VerificationNetworkPreflightResponse, VerificationRunDetailResponse } from "@/types/verification"
 import type { SignalRowsPatchedEvent, SignalRowsPatchedRowPatch } from "@/types/ws/events"
 
 const workspaceStore = useWorkspaceStore()
@@ -260,6 +261,8 @@ const testRunInProgress = ref(false)
 const verificationRunBusy = ref(false)
 const verificationRunError = ref<string | null>(null)
 const verificationRunResult = ref<VerificationRunDetailResponse | null>(null)
+const verificationNetworkPreflight = ref<VerificationNetworkPreflightResponse | null>(null)
+let verificationNetworkPreflightRequestId = 0
 const testRunIntervalMs = ref(1000)
 const testRunToggleMode = ref<"single" | "double">("single")
 const activeAoControlSignalId = ref<number | null>(null)
@@ -2139,6 +2142,57 @@ async function runTestVisualOnly() {
   await startTestRunJob({ resumeFromCursor: false })
 }
 
+function buildVerificationRunPayload(options: { runtimeVersion: "simulator" | "mms"; signalIds: number[]; workspaceId: number; activeSheetId: number; startedAt: string }): VerificationAutoRunStartPayload {
+  return {
+    signal_ids: options.signalIds,
+    client_id: "unitlab-frontend",
+    execution_context: {
+      project_id: options.workspaceId,
+      signal_list_revision_id: options.activeSheetId,
+      planner_version: "ui-auto-run",
+      runtime_version: options.runtimeVersion,
+      policy_version: "v1",
+      created_at: options.startedAt,
+      triggered_at: options.startedAt,
+    },
+  }
+}
+
+async function refreshVerificationNetworkPreflight() {
+  const selection = verificationSelection.value
+  const workspaceId = workspaceStore.activeWorkspaceId
+  const activeSheetId = activeSignalSheet.value?.id ?? null
+
+  if (!workspaceId || !selection.canRun) {
+    verificationNetworkPreflight.value = null
+    return null
+  }
+
+  const startedAt = new Date().toISOString()
+  const payload = buildVerificationRunPayload({
+    runtimeVersion: "mms",
+    signalIds: selection.signalIds,
+    workspaceId,
+    activeSheetId: Number(activeSheetId ?? workspaceId),
+    startedAt,
+  })
+
+  const requestId = ++verificationNetworkPreflightRequestId
+  try {
+    const { data } = await VerificationAPI.preflightSingleSignalRun(workspaceId, payload)
+    if (requestId !== verificationNetworkPreflightRequestId) {
+      return verificationNetworkPreflight.value
+    }
+    verificationNetworkPreflight.value = data
+    return data
+  } catch (error) {
+    if (requestId === verificationNetworkPreflightRequestId) {
+      verificationNetworkPreflight.value = null
+    }
+    return null
+  }
+}
+
 async function runSingleSignalVerification() {
   if (verificationRunBusy.value) return
 
@@ -2155,20 +2209,15 @@ async function runSingleSignalVerification() {
     return
   }
 
-  const startedAt = new Date().toISOString()
-  const payload: VerificationAutoRunStartPayload = {
-    signal_ids: selection.signalIds,
-    client_id: "unitlab-frontend",
-    execution_context: {
-      project_id: workspaceId,
-      signal_list_revision_id: Number(activeSheetId ?? workspaceId),
-      planner_version: "ui-auto-run",
-      runtime_version: "simulator",
-      policy_version: "v1",
-      created_at: startedAt,
-      triggered_at: startedAt,
-    },
-  }
+  const preflight = (await refreshVerificationNetworkPreflight())?.preflight ?? verificationNetworkPreflight.value?.preflight ?? null
+  const runtimeVersion = preflight?.recommended_runtime_version ?? "simulator"
+  const payload = buildVerificationRunPayload({
+    runtimeVersion,
+    signalIds: selection.signalIds,
+    workspaceId,
+    activeSheetId: Number(activeSheetId ?? workspaceId),
+    startedAt: new Date().toISOString(),
+  })
 
   verificationRunBusy.value = true
   verificationRunError.value = null
@@ -2900,6 +2949,14 @@ onMounted(() => {
   void refreshPromise
   syncImportModalFromRoute()
 })
+
+watch(
+  () => [workspaceStore.activeWorkspaceId, verificationSelection.value.signalIds.join(","), activeSignalSheet.value?.id] as const,
+  () => {
+    void refreshVerificationNetworkPreflight()
+  },
+  { immediate: true },
+)
 
 onBeforeUnmount(() => {
   if (signalsGridStatePersistTimer !== null) {

@@ -13,7 +13,7 @@ from app.services.iec61850.mms_adapter import (
 )
 
 VerificationEndpointRuntimeMode = Literal["simulator", "mms"]
-VerificationEndpointTransportSource = Literal["simulator", "explicit_request", "settings_catalog", "loaded_scd", "validation_override", "unavailable"]
+VerificationEndpointTransportSource = Literal["simulator", "explicit_request", "settings_catalog", "loaded_scd", "validation_override", "signal_list_fallback", "unavailable"]
 VerificationEndpointModelSource = Literal["simulator", "loaded_scd", "discovery_fallback"]
 
 
@@ -128,6 +128,8 @@ def build_verification_endpoint_resolution_diagnostic(
         message = f"MMS runtime selected without an endpoint catalog; model binding uses {model_label}."
     elif policy.transport_source == "validation_override":
         message = f"MMS transport remapped by validation override; model binding uses {model_label}."
+    elif policy.transport_source == "signal_list_fallback":
+        message = f"MMS transport derived from signal list metadata fallback; model binding uses {model_label}."
     else:
         message = f"MMS transport resolved from {transport_label}; model binding uses {model_label}."
     return VerificationEvidenceDiagnosticSchema(

@@ -155,6 +155,8 @@ def _resolve_source_clause(verification_run: VerificationRunSchema) -> str | Non
             source_parts.append("transport from loaded SCD")
         elif transport_source == "validation_override":
             source_parts.append("transport from validation override")
+        elif transport_source == "signal_list_fallback":
+            source_parts.append("transport from signal list fallback")
         elif transport_source == "simulator":
             source_parts.append("simulator transport")
         if model_source == "loaded_scd":

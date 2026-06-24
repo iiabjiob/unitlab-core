@@ -703,6 +703,81 @@ async def test_execute_single_signal_verification_run_selects_mms_runtime_from_c
 
 
 @pytest.mark.anyio
+async def test_execute_single_signal_verification_run_uses_signal_list_fallback_catalog_when_no_scd_or_settings(monkeypatch) -> None:
+    db = _FakeDb()
+    triggered_at = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
+
+    class _FallbackSignalsRepository:
+        def __init__(self, db: _FakeDb) -> None:
+            self.db = db
+
+        async def ensure_workspace(self, workspace_id: int) -> bool:
+            return workspace_id == 7
+
+        async def list_by_ids(self, workspace_id: int, signal_ids):
+            if workspace_id != 7:
+                return []
+            return [
+                SimpleNamespace(
+                    id=101,
+                    key="breaker_close",
+                    name="Breaker Close",
+                    signal_metadata={
+                        "protocol": "iec61850",
+                        "protocol_metadata": {
+                            "ied_name": "IED-A",
+                            "access_point_name": "P1",
+                            "transport_host": "10.10.10.250",
+                            "report_control_name": "brA",
+                            "report_kind": "buffered",
+                            "rpt_id": "IED-A/LLN0.brA",
+                            "data_set_reference": "IED-A/LLN0.dsA",
+                            "expected_feedback_path": "LD0/XCBR1.Pos.stVal",
+                        },
+                    },
+                )
+            ]
+
+    monkeypatch.setattr(run_service, "SignalsRepository", _FallbackSignalsRepository)
+    monkeypatch.setattr(run_service, "SignalSheetRepository", _FakeSignalSheetRepository)
+    monkeypatch.setattr(run_service, "VerificationEvidenceRepository", _FakeEvidenceRepository)
+    monkeypatch.setattr(run_service, "VerificationRunRepository", _FakeRunRepository)
+
+    result = await execute_single_signal_verification_run(
+        workspace_id=7,
+        payload=VerificationAutoRunStartSchema(
+            signal_ids=[101],
+            execution_context=VerificationExecutionContextSchema(
+                project_id=1,
+                signal_list_revision_id=2,
+                planner_version="test",
+                runtime_version="mms",
+                policy_version="v1",
+            ),
+            client_id="unitlab-backend-simulator",
+            test_run_id="vr-mms-signal-fallback",
+        ),
+        db=db,  # type: ignore[arg-type]
+        triggered_at=triggered_at,
+        mms_control_service_factory=_FakeClientControlService,
+    )
+
+    assert result.verification_run.session_snapshots[0].endpoint_id == "mms:IED-A/P1@10.10.10.250:102"
+    assert result.verification_run.subscription_snapshots[0].endpoint_id == "mms:IED-A/P1@10.10.10.250:102"
+    assert any(
+        diagnostic.code == "signal_list_endpoint_catalog_fallback"
+        for diagnostic in result.verification_run.diagnostics
+    )
+    assert any(
+        diagnostic.code == "endpoint_resolution_policy"
+        and diagnostic.details is not None
+        and diagnostic.details.get("transport_source") == "signal_list_fallback"
+        for diagnostic in result.verification_run.diagnostics
+    )
+    assert "transport from signal list fallback" in result.verdict_explanation.summary
+
+
+@pytest.mark.anyio
 async def test_execute_single_signal_verification_run_loads_mms_endpoint_catalog_from_settings(monkeypatch) -> None:
     db = _FakeDb()
     triggered_at = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)

@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.services.core_network_service import (
+    CoreNetworkApplySettingsPayload,
     CoreNetworkCommandAccepted,
     CoreNetworkCommandScanPayload,
     CoreNetworkConnectPayload,
@@ -77,3 +78,11 @@ async def restart_core_network_ap() -> CoreNetworkCommandAcceptedResponse:
     accepted = await enqueue_core_network_command("restart_ap")
     return _accepted_to_response(accepted)
 
+
+@router.put("/settings", response_model=CoreNetworkCommandAcceptedResponse)
+async def apply_core_network_settings(payload: CoreNetworkApplySettingsPayload) -> CoreNetworkCommandAcceptedResponse:
+    accepted = await enqueue_core_network_command(
+        "apply_network_settings",
+        payload=payload.model_dump(exclude_none=True),
+    )
+    return _accepted_to_response(accepted)

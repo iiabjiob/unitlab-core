@@ -1,6 +1,6 @@
 import { httpData } from "./http"
 import { API_V1 } from "./utils"
-import type { CoreNetworkCommandAccepted, CoreNetworkStateResponse } from "@/types/coreNetwork"
+import type { CoreNetworkCommandAccepted, CoreNetworkStateResponse, CoreNetIpv4Mode } from "@/types/coreNetwork"
 
 export async function fetchCoreNetworkState() {
   return httpData.get<CoreNetworkStateResponse>(`${API_V1}/core-network/state`)
@@ -30,4 +30,17 @@ export async function enqueueCoreNetworkDisconnect() {
 
 export async function enqueueCoreNetworkRestartAp() {
   return httpData.post<CoreNetworkCommandAccepted>(`${API_V1}/core-network/restart-ap`)
+}
+
+export async function applyCoreNetworkSettings(payload: {
+  interface?: string | null
+  profile?: string | null
+  ipv4_mode: CoreNetIpv4Mode
+  address_cidr?: string | null
+  gateway?: string | null
+  dns_servers?: string[]
+  proxy_url?: string | null
+  proxy_no_proxy?: string[]
+}) {
+  return httpData.put<CoreNetworkCommandAccepted>(`${API_V1}/core-network/settings`, payload)
 }

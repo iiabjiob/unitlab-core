@@ -33,6 +33,12 @@ const baseItems: SettingsNavItem[] = [
     routeName: "settings.ntp",
   },
   {
+    id: "network",
+    label: "Network / RJ45",
+    description: "Host Ethernet IP, subnet, DNS and proxy",
+    routeName: "settings.network",
+  },
+  {
     id: "updates",
     label: "Updates",
     description: "Core software updates (planned)",
@@ -57,6 +63,7 @@ const selectedId = computed<string | null>(() => {
   const name = String(route.name ?? "")
   if (SETTINGS_SERVICE_MODE_ENABLED && name === "settings.provisioning") return "provisioning"
   if (SETTINGS_SERVICE_MODE_ENABLED && name === "settings.updates") return "updates"
+  if (name === "settings.network") return "network"
   if (name === "settings.ntp") return "ntp"
   if (name === "settings.diagnostics") return "diagnostics"
   return "diagnostics"

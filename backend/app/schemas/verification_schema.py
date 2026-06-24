@@ -181,6 +181,49 @@ class VerificationExecutionContextSchema(BaseModel):
     triggered_at: datetime | None = None
 
 
+class VerificationNetworkInterfaceSchema(BaseModel):
+    interface_name: str
+    local_ip: str
+    netmask: str | None = None
+    network: str | None = None
+    matches_target: bool = False
+    recommended: bool = False
+    reason: str | None = None
+
+
+class VerificationNetworkPreflightGroupSchema(BaseModel):
+    group_id: str
+    endpoint_id: str | None = None
+    ied_name: str | None = None
+    access_point_name: str | None = None
+    target_host: str | None = None
+    target_port: int | None = None
+    readiness_state: Literal["ready", "attention_required", "unknown"]
+    operator_hint: str
+    recommended_interface_name: str | None = None
+    recommended_local_ip: str | None = None
+    recommended_netmask: str | None = None
+    observed_ips: list[str] = Field(default_factory=list)
+    observed_network_hints: list[str] = Field(default_factory=list)
+    interfaces: list[VerificationNetworkInterfaceSchema] = Field(default_factory=list)
+    diagnostics: list[VerificationEvidenceDiagnosticSchema] = Field(default_factory=list)
+
+
+class VerificationNetworkPreflightSchema(BaseModel):
+    workspace_id: int
+    test_run_id: str | None = None
+    requested_runtime_version: Literal["simulator", "mms"]
+    recommended_runtime_version: Literal["simulator", "mms"]
+    overall_state: Literal["ready", "attention_required", "unknown"]
+    overall_hint: str
+    groups: list[VerificationNetworkPreflightGroupSchema] = Field(default_factory=list)
+    diagnostics: list[VerificationEvidenceDiagnosticSchema] = Field(default_factory=list)
+
+
+class VerificationNetworkPreflightResponseSchema(BaseModel):
+    preflight: VerificationNetworkPreflightSchema
+
+
 class VerificationSessionSnapshotSchema(BaseModel):
     session_id: str
     endpoint_id: str

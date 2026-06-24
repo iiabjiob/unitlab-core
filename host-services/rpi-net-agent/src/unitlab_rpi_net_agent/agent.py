@@ -1,14 +1,25 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
+import json
 from contextlib import suppress
 import logging
 import re
-from dataclasses import replace
+from dataclasses import asdict, replace
+from pathlib import Path
 from typing import Any
 
 from .config import AgentConfig
-from .models import AccessPointInfo, CommandEnvelope, CoreNetworkSnapshot, StaInfo, WifiNetwork
+from .models import (
+    AccessPointInfo,
+    CommandEnvelope,
+    CoreNetworkSnapshot,
+    HostNetworkSettings,
+    NetworkInterfaceInfo,
+    StaInfo,
+    WifiNetwork,
+)
 from .nmcli_adapter import DeviceStatus, NmcliAdapter, NmcliError
 from .redis_protocol import RedisProtocol
 
@@ -39,16 +50,19 @@ class CoreNetworkAgent:
                 active=False,
             ),
             sta=StaInfo(state="disconnected"),
+            host_network=self._default_host_network_settings(),
             wifi_iface=config.wifi_interface,
             mac=None,
             suffix=None,
         )
+        self._load_host_network_settings_best_effort()
 
     async def start(self) -> None:
         await self._initialize_ap_identity()
         reused_existing_ap = await self._restore_existing_ap_mode()
         if not reused_existing_ap:
             await self._enter_ap_mode(reason="boot")
+        await self._refresh_interface_snapshots()
         await self._ensure_redis_group_best_effort("startup")
         self._status_task = asyncio.create_task(self._status_loop(), name="unitlab-net-agent-status")
         self._command_task = asyncio.create_task(self._command_loop(), name="unitlab-net-agent-commands")
@@ -92,6 +106,120 @@ class CoreNetworkAgent:
         value = (prefix or fallback).strip()
         value = value.replace("\\", "")
         return value or fallback
+
+    @staticmethod
+    def _sanitize_text(value: Any) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+    @staticmethod
+    def _normalize_text_list(value: Any) -> list[str]:
+        if value is None:
+            return []
+        items: list[str] = []
+        if isinstance(value, str):
+            value = [part.strip() for part in value.split(",")]
+        if isinstance(value, list):
+            for item in value:
+                text = str(item).strip()
+                if text:
+                    items.append(text)
+        return items
+
+    def _default_host_network_settings(self) -> HostNetworkSettings:
+        mode = (self.config.ethernet_default_mode or "auto").strip().lower()
+        if mode not in {"auto", "manual"}:
+            mode = "auto"
+        address_cidr = self.config.ethernet_default_address_cidr if mode == "manual" else None
+        gateway = self.config.ethernet_default_gateway if mode == "manual" else None
+        return HostNetworkSettings(
+            interface=self.config.ethernet_interface,
+            profile=self.config.ethernet_profile_name,
+            ipv4_mode=mode,
+            address_cidr=address_cidr,
+            gateway=gateway,
+            dns_servers=list(self.config.ethernet_default_dns_servers),
+            proxy_url=self.config.proxy_url,
+            proxy_no_proxy=list(self.config.proxy_no_proxy),
+            last_applied_at=None,
+            last_error=None,
+        )
+
+    def _load_host_network_settings_best_effort(self) -> None:
+        path = Path(self.config.host_network_settings_file)
+        if not path.exists():
+            return
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8", errors="ignore"))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to read host network settings file | path=%s error=%s", path, exc)
+            return
+        if not isinstance(raw, dict):
+            return
+        self._snapshot.host_network = self._host_network_settings_from_mapping(raw)
+
+    def _host_network_settings_from_mapping(self, raw: dict[str, Any]) -> HostNetworkSettings:
+        mode = self._sanitize_text(raw.get("ipv4_mode")) or self._snapshot.host_network.ipv4_mode
+        mode = mode if mode in {"auto", "manual"} else self._snapshot.host_network.ipv4_mode
+        return HostNetworkSettings(
+            interface=self._sanitize_text(raw.get("interface")) or self.config.ethernet_interface,
+            profile=self._sanitize_text(raw.get("profile")) or self.config.ethernet_profile_name,
+            ipv4_mode=mode,
+            address_cidr=self._sanitize_text(raw.get("address_cidr")),
+            gateway=self._sanitize_text(raw.get("gateway")),
+            dns_servers=self._normalize_text_list(raw.get("dns_servers")),
+            proxy_url=self._sanitize_text(raw.get("proxy_url")),
+            proxy_no_proxy=self._normalize_text_list(raw.get("proxy_no_proxy")),
+            last_applied_at=self._sanitize_text(raw.get("last_applied_at")),
+            last_error=self._sanitize_text(raw.get("last_error")),
+        )
+
+    async def _persist_host_network_settings(self) -> None:
+        path = Path(self.config.host_network_settings_file)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = json.dumps(asdict(self._snapshot.host_network), indent=2, ensure_ascii=True)
+        if self.config.dry_run:
+            logger.info("[dry-run] write host network settings %s\n%s", path, payload)
+            return
+        tmp_path = path.with_suffix(path.suffix + ".tmp")
+        tmp_path.write_text(payload + "\n", encoding="utf-8")
+        tmp_path.replace(path)
+
+    async def _write_proxy_environment_file(self, settings: HostNetworkSettings) -> None:
+        path = Path(self.config.proxy_environment_file)
+        if not settings.proxy_url and not settings.proxy_no_proxy:
+            if self.config.dry_run:
+                logger.info("[dry-run] clear proxy environment file %s", path)
+                return
+            if path.exists():
+                path.unlink()
+            return
+        content_lines = [
+            "# Managed by UnitLab net agent",
+        ]
+        if settings.proxy_url:
+            content_lines.extend([
+                f"http_proxy={settings.proxy_url}",
+                f"https_proxy={settings.proxy_url}",
+                f"HTTP_PROXY={settings.proxy_url}",
+                f"HTTPS_PROXY={settings.proxy_url}",
+            ])
+        if settings.proxy_no_proxy:
+            no_proxy = ",".join(settings.proxy_no_proxy)
+            content_lines.extend([
+                f"no_proxy={no_proxy}",
+                f"NO_PROXY={no_proxy}",
+            ])
+        content = "\n".join(content_lines) + "\n"
+        if self.config.dry_run:
+            logger.info("[dry-run] write proxy environment file %s\n%s", path, content)
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = path.with_suffix(path.suffix + ".tmp")
+        tmp_path.write_text(content, encoding="utf-8")
+        tmp_path.replace(path)
 
     async def _initialize_ap_identity(self) -> None:
         self._mac = await self.nmcli.get_mac()
@@ -217,6 +345,8 @@ class CoreNetworkAgent:
                 await self._handle_disconnect_sta(cmd)
             elif action == "restart_ap":
                 await self._enter_ap_mode(reason="restart_ap", request_id=cmd.request_id)
+            elif action == "apply_network_settings":
+                await self._handle_apply_network_settings(cmd)
             else:
                 await self._publish_event_best_effort(
                     "command_rejected",
@@ -308,6 +438,102 @@ class CoreNetworkAgent:
         await self.nmcli.disconnect_device()
         await self._enter_ap_mode(reason="disconnect_sta", request_id=cmd.request_id)
 
+    async def _handle_apply_network_settings(self, cmd: CommandEnvelope) -> None:
+        settings = self._normalize_host_network_settings(cmd.payload)
+        self._snapshot.host_network = replace(settings, last_error=None)
+        self._snapshot.host_network.last_applied_at = None
+        await self._publish_snapshot(last_event="network_settings_applying", request_id=cmd.request_id)
+        await self._publish_event_best_effort(
+            "network_settings_applying",
+            {
+                "request_id": cmd.request_id,
+                "interface": settings.interface,
+                "profile": settings.profile,
+                "ipv4_mode": settings.ipv4_mode,
+            },
+        )
+        try:
+            await self.nmcli.ensure_ethernet_profile(
+                profile=settings.profile,
+                iface=settings.interface,
+                ipv4_method=settings.ipv4_mode,
+                address_cidr=settings.address_cidr,
+                gateway=settings.gateway,
+                dns_servers=settings.dns_servers,
+            )
+            await self._write_proxy_environment_file(settings)
+            await self.nmcli.activate_connection(settings.profile)
+            status = await self.nmcli.device_status(settings.interface)
+            await self._apply_host_network_settings(status=status, settings=settings, request_id=cmd.request_id)
+        except Exception as exc:  # noqa: BLE001
+            err = str(exc)
+            logger.warning("Host network settings apply failed | request=%s error=%s", cmd.request_id, err)
+            self._snapshot.host_network = replace(self._snapshot.host_network, last_error=err)
+            self._snapshot.last_error = err
+            await self._publish_snapshot(last_event="network_settings_failed", request_id=cmd.request_id)
+            await self._publish_event_best_effort(
+                "network_settings_failed",
+                {
+                    "request_id": cmd.request_id,
+                    "error": err,
+                    "interface": settings.interface,
+                    "profile": settings.profile,
+                },
+            )
+            raise
+
+    def _normalize_host_network_settings(self, payload: dict[str, Any]) -> HostNetworkSettings:
+        interface = self._sanitize_text(payload.get("interface")) or self.config.ethernet_interface
+        profile = self._sanitize_text(payload.get("profile")) or self.config.ethernet_profile_name
+        ipv4_mode = (self._sanitize_text(payload.get("ipv4_mode")) or self._snapshot.host_network.ipv4_mode).lower()
+        if ipv4_mode not in {"auto", "manual"}:
+            raise ValueError(f"Invalid ipv4_mode: {ipv4_mode}")
+        address_cidr = self._sanitize_text(payload.get("address_cidr"))
+        gateway = self._sanitize_text(payload.get("gateway"))
+        dns_servers = self._normalize_text_list(payload.get("dns_servers"))
+        proxy_url = self._sanitize_text(payload.get("proxy_url"))
+        proxy_no_proxy = self._normalize_text_list(payload.get("proxy_no_proxy"))
+        return HostNetworkSettings(
+            interface=interface,
+            profile=profile,
+            ipv4_mode=ipv4_mode,
+            address_cidr=address_cidr,
+            gateway=gateway,
+            dns_servers=dns_servers,
+            proxy_url=proxy_url,
+            proxy_no_proxy=proxy_no_proxy,
+            last_applied_at=self._snapshot.host_network.last_applied_at,
+            last_error=self._snapshot.host_network.last_error,
+        )
+
+    async def _apply_host_network_settings(
+        self,
+        *,
+        status: DeviceStatus,
+        settings: HostNetworkSettings,
+        request_id: str | None,
+    ) -> None:
+        applied_at = self._current_timestamp()
+        self._snapshot.host_network = replace(settings, last_applied_at=applied_at, last_error=None)
+        self._snapshot.interfaces = self._build_interface_snapshots(
+            wifi_status=await self._safe_device_status(self.config.wifi_interface),
+            ethernet_status=status,
+        )
+        self._snapshot.last_error = None
+        await self._persist_host_network_settings()
+        await self._publish_snapshot(last_event="network_settings_applied", request_id=request_id)
+        await self._publish_event_best_effort(
+            "network_settings_applied",
+            {
+                "request_id": request_id,
+                "interface": settings.interface,
+                "profile": settings.profile,
+                "ipv4_mode": settings.ipv4_mode,
+                "ip": status.ip4,
+                "ip_cidr": status.ip4_cidr,
+            },
+        )
+
     async def _enter_ap_mode(self, *, reason: str, request_id: str | None = None, error: str | None = None) -> None:
         if not self._ap_ssid or not self._ap_password:
             try:
@@ -341,6 +567,7 @@ class CoreNetworkAgent:
         )
         self._snapshot.sta = StaInfo(state="disconnected")
         self._snapshot.last_error = error
+        await self._refresh_interface_snapshots()
         await self._publish_snapshot(last_event="ap_active", request_id=request_id)
         await self._publish_event_best_effort(
             "ap_active",
@@ -371,7 +598,56 @@ class CoreNetworkAgent:
             last_error=None,
         )
         self._snapshot.last_error = None
+        await self._refresh_interface_snapshots()
         await self._publish_snapshot(last_event="sta_connected", request_id=request_id)
+
+    async def _safe_device_status(self, interface: str) -> DeviceStatus | None:
+        try:
+            return await self.nmcli.device_status(interface)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Failed to read device status | interface=%s error=%s", interface, exc)
+            return None
+
+    def _build_interface_snapshots(
+        self,
+        *,
+        wifi_status: DeviceStatus | None,
+        ethernet_status: DeviceStatus | None,
+    ) -> list[NetworkInterfaceInfo]:
+        items: list[NetworkInterfaceInfo] = []
+        for interface_name, status in (
+            (self.config.wifi_interface, wifi_status),
+            (self.config.ethernet_interface, ethernet_status),
+        ):
+            if status is None:
+                continue
+            local_ip = status.ip4
+            netmask = str(status.ip4_prefix) if status.ip4_prefix is not None else None
+            network = None
+            if status.ip4_cidr:
+                try:
+                    network = str(ipaddress.ip_interface(status.ip4_cidr).network)
+                except ValueError:
+                    network = None
+            items.append(
+                NetworkInterfaceInfo(
+                    interface_name=interface_name,
+                    local_ip=local_ip,
+                    netmask=netmask,
+                    network=network,
+                    connection=status.connection,
+                    state=status.state_text,
+                )
+            )
+        return items
+
+    async def _refresh_interface_snapshots(self) -> None:
+        wifi_status = await self._safe_device_status(self.config.wifi_interface)
+        ethernet_status = await self._safe_device_status(self.config.ethernet_interface)
+        self._snapshot.interfaces = self._build_interface_snapshots(
+            wifi_status=wifi_status,
+            ethernet_status=ethernet_status,
+        )
 
     async def _refresh_runtime_status(
         self,
@@ -410,6 +686,7 @@ class CoreNetworkAgent:
                 self._snapshot.sta = StaInfo(state="disconnected")
         elif self._snapshot.mode not in {"switching", "error"}:
             self._snapshot.mode = "unknown"
+        await self._refresh_interface_snapshots()
         if publish:
             await self._publish_snapshot(last_event=last_event, request_id=request_id)
 
@@ -461,3 +738,9 @@ class CoreNetworkAgent:
             "security": item.security,
             "in_use": item.in_use,
         }
+
+    @staticmethod
+    def _current_timestamp() -> str:
+        from datetime import datetime, timezone
+
+        return datetime.now(timezone.utc).isoformat()

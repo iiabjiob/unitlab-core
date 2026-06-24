@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
@@ -17,6 +17,28 @@ class CoreNetworkCommandAccepted(BaseModel):
     request_id: str
     action: str
     queued_at: datetime
+
+
+class CoreNetworkConnectPayload(BaseModel):
+    ssid: str
+    password: str | None = None
+    hidden: bool = False
+    timeout_sec: int | None = Field(default=None, ge=5, le=120)
+
+
+class CoreNetworkCommandScanPayload(BaseModel):
+    timeout_sec: int | None = Field(default=None, ge=5, le=120)
+
+
+class CoreNetworkApplySettingsPayload(BaseModel):
+    interface: str | None = None
+    profile: str | None = None
+    ipv4_mode: Literal["auto", "manual"] = "auto"
+    address_cidr: str | None = None
+    gateway: str | None = None
+    dns_servers: list[str] = Field(default_factory=list)
+    proxy_url: str | None = None
+    proxy_no_proxy: list[str] = Field(default_factory=list)
 
 
 def _now_utc() -> datetime:
@@ -64,15 +86,3 @@ async def enqueue_core_network_command(
         approximate=True,
     )
     return CoreNetworkCommandAccepted(request_id=rid, action=action, queued_at=queued_at)
-
-
-class CoreNetworkConnectPayload(BaseModel):
-    ssid: str
-    password: str | None = None
-    hidden: bool = False
-    timeout_sec: int | None = Field(default=None, ge=5, le=120)
-
-
-class CoreNetworkCommandScanPayload(BaseModel):
-    timeout_sec: int | None = Field(default=None, ge=5, le=120)
-

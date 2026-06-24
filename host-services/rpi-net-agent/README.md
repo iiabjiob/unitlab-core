@@ -5,6 +5,7 @@ Host-side Wi-Fi control service for the UnitLab core (Raspberry Pi 5, Bookworm, 
 Purpose:
 - always boot into AP mode (`[unitlab]-core-ABCD`, `pwd!ABCD`)
 - accept Wi-Fi scan / STA connect requests via Redis
+- own host RJ45 configuration for MMS/SCADA reachability via Redis commands
 - publish status/events back to Redis for backend/frontend
 - fallback to AP if STA connect fails
 
@@ -21,7 +22,7 @@ This service is intended to run on the **host OS** (not inside Docker containers
   - ensures and activates `NetworkManager` AP profile (`unitlab-ap`)
 - During runtime:
   - listens for Redis stream commands
-  - runs `nmcli` for scan / connect / AP restart
+  - runs `nmcli` for scan / connect / AP restart / Ethernet profile updates
   - stores latest snapshot in Redis (`core_net:state`)
   - writes events to Redis stream (`core_net:events`)
 
@@ -77,6 +78,7 @@ Supported actions:
 - `connect_sta`
 - `disconnect_sta`
 - `restart_ap`
+- `apply_network_settings`
 
 ### Event stream
 
@@ -122,6 +124,36 @@ Snapshot example:
     "ip": null,
     "last_error": null
   },
+  "host_network": {
+    "interface": "eth0",
+    "profile": "unitlab-lan",
+    "ipv4_mode": "auto",
+    "address_cidr": null,
+    "gateway": null,
+    "dns_servers": [],
+    "proxy_url": null,
+    "proxy_no_proxy": [],
+    "last_applied_at": null,
+    "last_error": null
+  },
+  "interfaces": [
+    {
+      "interface_name": "wlan0",
+      "local_ip": "10.42.0.1",
+      "netmask": "24",
+      "network": "10.42.0.0/24",
+      "connection": "unitlab-ap",
+      "state": "activated"
+    },
+    {
+      "interface_name": "eth0",
+      "local_ip": null,
+      "netmask": null,
+      "network": null,
+      "connection": null,
+      "state": "disconnected"
+    }
+  ],
   "request_in_flight": null,
   "last_event": "ap_active",
   "last_error": null,
@@ -138,6 +170,16 @@ Snapshot example:
 - `UNITLAB_NET_AGENT_AP_SSID_PREFIX` (default `[unitlab]-core`)
 - `UNITLAB_NET_AGENT_AP_PASSWORD_PREFIX` (default `pwd!`)
 - `UNITLAB_NET_AGENT_AP_IP_CIDR` (default `10.42.0.1/24`)
+- `UNITLAB_NET_AGENT_ETHERNET_IFACE` (default `eth0`)
+- `UNITLAB_NET_AGENT_ETHERNET_PROFILE` (default `unitlab-lan`)
+- `UNITLAB_NET_AGENT_ETHERNET_DEFAULT_MODE` (default `auto`)
+- `UNITLAB_NET_AGENT_ETHERNET_DEFAULT_ADDRESS_CIDR` (default unset)
+- `UNITLAB_NET_AGENT_ETHERNET_DEFAULT_GATEWAY` (default unset)
+- `UNITLAB_NET_AGENT_ETHERNET_DEFAULT_DNS_SERVERS` (comma-separated, default unset)
+- `UNITLAB_NET_AGENT_PROXY_URL` (default unset)
+- `UNITLAB_NET_AGENT_PROXY_NO_PROXY` (comma-separated, default unset)
+- `UNITLAB_NET_AGENT_HOST_NETWORK_SETTINGS_FILE` (default `/etc/unitlab/rpi-net-agent-network.json`)
+- `UNITLAB_NET_AGENT_PROXY_ENV_FILE` (default `/etc/environment.d/50-unitlab-proxy.conf`)
 - `UNITLAB_NET_AGENT_STA_CONNECT_TIMEOUT_SEC` (default `35`)
 - `UNITLAB_NET_AGENT_LOG_LEVEL` (default `INFO`)
 - `UNITLAB_NET_AGENT_DRY_RUN` (`true`/`false`)
@@ -145,5 +187,6 @@ Snapshot example:
 ## Notes / current limitations
 
 - The agent currently assumes single-radio mode transitions (AP or STA active).
+- Host Ethernet settings are persisted through the host agent and applied via `nmcli` on the host OS.
 - `scan` parsing uses `nmcli -t` output and may need escaping hardening for exotic SSIDs containing separators.
 - Backend API/UI integration is expected to talk to Redis using the contract above (separate step).

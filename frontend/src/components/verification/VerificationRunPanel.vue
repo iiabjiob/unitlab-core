@@ -12,6 +12,16 @@
         <p v-if="errorText" class="verification-run-panel__error">
           {{ errorText }}
         </p>
+        <div v-if="networkPreflightView" class="verification-run-panel__network" :class="`verification-run-panel__network--${networkPreflightView.stateTone}`">
+          <div class="verification-run-panel__network-headline">{{ networkPreflightView.headline }}</div>
+          <div class="verification-run-panel__network-summary">{{ networkPreflightView.summary }}</div>
+          <div class="verification-run-panel__network-runtime">{{ networkPreflightView.runtimeSummary }}</div>
+          <ul v-if="networkPreflightView.groupHints.length > 0" class="verification-run-panel__network-list">
+            <li v-for="item in networkPreflightView.groupHints" :key="item" class="verification-run-panel__network-item">
+              {{ item }}
+            </li>
+          </ul>
+        </div>
       </div>
       <div class="verification-run-panel__actions">
         <UiButton
@@ -130,13 +140,15 @@
 import { computed } from "vue"
 
 import UiButton from "@/components/ui/UiButton.vue"
+import { buildVerificationNetworkPreflightView } from "@/components/verification/verificationNetworkPreflightView"
 import { buildVerificationRunView } from "@/components/verification/verificationRunView"
-import type { VerificationRunDetailResponse } from "@/types/verification"
+import type { VerificationNetworkPreflightResponse, VerificationRunDetailResponse } from "@/types/verification"
 
 const props = defineProps<{
   busy: boolean
   canRun: boolean
   errorText: string | null
+  networkPreflight: VerificationNetworkPreflightResponse | null
   selectedSignalLabel: string | null
   result: VerificationRunDetailResponse | null
 }>()
@@ -146,6 +158,7 @@ const emit = defineEmits<{
 }>()
 
 const viewModel = computed(() => buildVerificationRunView(props.result))
+const networkPreflightView = computed(() => buildVerificationNetworkPreflightView(props.networkPreflight))
 const verdictToneClass = computed(() => {
   const verdict = viewModel.value?.verdictState ?? ""
   if (verdict === "PASS") return "verification-run-panel__verdict--pass"
@@ -203,6 +216,50 @@ const verdictToneClass = computed(() => {
   color: var(--color-red-700);
   font-size: var(--text-xs);
   margin-top: 0.5rem;
+}
+
+.verification-run-panel__network {
+  border-radius: 0.875rem;
+  margin-top: 0.75rem;
+  padding: 0.75rem 0.875rem;
+}
+
+.verification-run-panel__network--ready {
+  background: color-mix(in srgb, var(--color-emerald-50) 82%, white);
+  border: 1px solid color-mix(in srgb, var(--color-emerald-500) 24%, transparent);
+}
+
+.verification-run-panel__network--attention_required {
+  background: color-mix(in srgb, var(--color-amber-50) 86%, white);
+  border: 1px solid color-mix(in srgb, var(--color-amber-500) 28%, transparent);
+}
+
+.verification-run-panel__network--unknown {
+  background: color-mix(in srgb, var(--color-neutral-50) 94%, white);
+  border: 1px solid color-mix(in srgb, var(--color-neutral-300) 24%, transparent);
+}
+
+.verification-run-panel__network-headline {
+  color: var(--color-neutral-900);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.verification-run-panel__network-summary,
+.verification-run-panel__network-runtime {
+  color: var(--color-neutral-700);
+  font-size: var(--text-xs);
+  margin-top: 0.25rem;
+}
+
+.verification-run-panel__network-list {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.verification-run-panel__network-item {
+  color: var(--color-neutral-600);
+  font-size: var(--text-xs);
 }
 
 .verification-run-panel__actions {

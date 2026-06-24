@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from contextlib import ExitStack
 from pathlib import Path
 import tempfile
@@ -15,6 +15,7 @@ from app.api.v1.signals.repository import SignalsRepository
 from app.core.config import get_settings
 from app.schemas.verification_schema import (
     VerificationAutoRunStartSchema,
+    VerificationEvidenceDiagnosticSchema,
     VerificationRunDetailResponseSchema,
     VerificationRunSchema,
     VerificationVerdictExplanationSchema,
@@ -37,6 +38,7 @@ from app.services.verification_planner import (
     build_verification_subscription_plan,
     build_verification_target_sources,
 )
+from app.services.verification_signal_endpoint_catalog import build_verification_signal_endpoint_catalog
 from app.services.verification_run_repository import VerificationRunRepository
 from app.services.verification_runtime_selection import resolve_verification_runtime
 from app.services.verification_verdict_explanation_service import build_verification_verdict_explanation
@@ -148,6 +150,27 @@ async def execute_single_signal_verification_run(
             transport_override_host=execution_context.transport_override_host,
             transport_override_port=execution_context.transport_override_port,
         )
+        derived_signal_catalog = build_verification_signal_endpoint_catalog(
+            sources=sources,
+            subscription_plan=subscription_plan,
+        )
+        endpoint_resolution_diagnostics: list[VerificationEvidenceDiagnosticSchema] = []
+        if endpoint_resolution_policy.endpoint_catalog is None and derived_signal_catalog is not None:
+            endpoint_resolution_policy = replace(
+                endpoint_resolution_policy,
+                endpoint_catalog=derived_signal_catalog,
+                transport_source="signal_list_fallback",
+            )
+            endpoint_resolution_diagnostics.append(
+                VerificationEvidenceDiagnosticSchema(
+                    code="signal_list_endpoint_catalog_fallback",
+                    message="Signal list metadata supplied the MMS endpoint catalog fallback.",
+                    severity="info",
+                    details={
+                        "group_count": len(subscription_plan.groups),
+                    },
+                )
+            )
         endpoint_resolution_diagnostic = build_verification_endpoint_resolution_diagnostic(endpoint_resolution_policy)
 
         effective_mms_control_service_factory = mms_control_service_factory or Iec61850ClientControlService
@@ -184,7 +207,7 @@ async def execute_single_signal_verification_run(
 
         verification_run = execution_result.verification_run.model_copy(
             update={
-                "diagnostics": [*execution_result.verification_run.diagnostics, endpoint_resolution_diagnostic],
+                "diagnostics": [*execution_result.verification_run.diagnostics, *endpoint_resolution_diagnostics, endpoint_resolution_diagnostic],
             }
         )
         verdict_explanation = build_verification_verdict_explanation(

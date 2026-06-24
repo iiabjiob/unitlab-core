@@ -1,6 +1,7 @@
 import { computed, ref } from "vue"
 import { defineStore } from "pinia"
 import {
+  applyCoreNetworkSettings,
   enqueueCoreNetworkConnect,
   enqueueCoreNetworkDisconnect,
   enqueueCoreNetworkRestartAp,
@@ -8,7 +9,7 @@ import {
   enqueueCoreNetworkStatus,
   fetchCoreNetworkState,
 } from "@/api/core_network.api"
-import type { CoreNetworkCommandAccepted, CoreNetworkSnapshot } from "@/types/coreNetwork"
+import type { CoreNetworkCommandAccepted, CoreNetworkSnapshot, CoreNetHostNetworkSettings } from "@/types/coreNetwork"
 import { getLogger } from "@/utils/logger"
 
 const logger = getLogger("CORE-NET")
@@ -109,6 +110,19 @@ export const useCoreNetworkStore = defineStore("coreNetworkStore", () => {
     return _runCommand(() => enqueueCoreNetworkRestartAp(), "Queued core-network restart_ap")
   }
 
+  async function applySettings(payload: {
+    interface?: string | null
+    profile?: string | null
+    ipv4_mode: CoreNetHostNetworkSettings["ipv4_mode"]
+    address_cidr?: string | null
+    gateway?: string | null
+    dns_servers?: string[]
+    proxy_url?: string | null
+    proxy_no_proxy?: string[]
+  }) {
+    return _runCommand(() => applyCoreNetworkSettings(payload), "Queued core-network apply_network_settings")
+  }
+
   function startMonitoring() {
     if (typeof window === "undefined") return
     monitorSubscribers += 1
@@ -142,6 +156,8 @@ export const useCoreNetworkStore = defineStore("coreNetworkStore", () => {
   const mode = computed(() => snapshot.value?.mode ?? "unknown")
   const ap = computed(() => snapshot.value?.ap ?? null)
   const sta = computed(() => snapshot.value?.sta ?? null)
+  const hostNetwork = computed(() => snapshot.value?.host_network ?? null)
+  const interfaces = computed(() => snapshot.value?.interfaces ?? [])
   const networks = computed(() => snapshot.value?.available_networks ?? [])
   const isApActive = computed(() => snapshot.value?.mode === "ap" && snapshot.value.ap?.active)
   const isStaConnected = computed(() => snapshot.value?.sta?.state === "connected")
@@ -159,6 +175,8 @@ export const useCoreNetworkStore = defineStore("coreNetworkStore", () => {
     mode,
     ap,
     sta,
+    hostNetwork,
+    interfaces,
     networks,
     isApActive,
     isStaConnected,
@@ -173,6 +191,6 @@ export const useCoreNetworkStore = defineStore("coreNetworkStore", () => {
     connectSta,
     disconnectSta,
     restartAp,
+    applySettings,
   }
 })
-

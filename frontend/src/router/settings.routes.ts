@@ -25,6 +25,7 @@ export const settingsRoutes: RouteRecordRaw[] = [
           const allowedRouteNames = new Set([
             "settings.diagnostics",
             "settings.ntp",
+            "settings.network",
             "settings.updates",
             "settings.provisioning",
           ])
@@ -43,6 +44,11 @@ export const settingsRoutes: RouteRecordRaw[] = [
         path: "ntp",
         name: "settings.ntp",
         component: () => import("@/pages/settings/SettingsNtpPage.vue"),
+      },
+      {
+        path: "network",
+        name: "settings.network",
+        component: () => import("@/pages/settings/SettingsNetworkPage.vue"),
       },
       {
         path: "updates",

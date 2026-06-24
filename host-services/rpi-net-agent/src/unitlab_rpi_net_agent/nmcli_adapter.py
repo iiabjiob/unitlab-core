@@ -23,6 +23,8 @@ class DeviceStatus:
     state_text: str | None
     connection: str | None
     ip4: str | None
+    ip4_prefix: int | None = None
+    ip4_cidr: str | None = None
 
 
 class NmcliAdapter:
@@ -131,6 +133,69 @@ class NmcliAdapter:
             "ignore",
         )
 
+    async def ensure_ethernet_profile(
+        self,
+        *,
+        profile: str,
+        iface: str,
+        ipv4_method: str,
+        address_cidr: str | None,
+        gateway: str | None,
+        dns_servers: list[str],
+    ) -> None:
+        if not await self.connection_exists(profile):
+            await self._run(
+                "connection",
+                "add",
+                "type",
+                "ethernet",
+                "ifname",
+                iface,
+                "con-name",
+                profile,
+            )
+
+        cmd: list[str] = [
+            "connection",
+            "modify",
+            profile,
+            "connection.autoconnect",
+            "yes",
+            "connection.interface-name",
+            iface,
+            "ipv6.method",
+            "ignore",
+        ]
+        if ipv4_method == "manual":
+            if not address_cidr:
+                raise NmcliError("address_cidr is required for manual IPv4 configuration")
+            cmd.extend([
+                "ipv4.method",
+                "manual",
+                "ipv4.addresses",
+                address_cidr,
+                "ipv4.gateway",
+                gateway or "",
+                "ipv4.dns",
+                ",".join(dns_servers),
+                "ipv4.ignore-auto-dns",
+                "yes",
+            ])
+        else:
+            cmd.extend([
+                "ipv4.method",
+                "auto",
+                "ipv4.addresses",
+                "",
+                "ipv4.gateway",
+                "",
+                "ipv4.dns",
+                "",
+                "ipv4.ignore-auto-dns",
+                "no",
+            ])
+        await self._run(*cmd)
+
     async def activate_connection(self, profile_name: str) -> None:
         await self._run("connection", "up", profile_name)
 
@@ -217,14 +282,14 @@ class NmcliAdapter:
         )
         return profile
 
-    async def current_device_status(self) -> DeviceStatus:
+    async def device_status(self, interface: str) -> DeviceStatus:
         out = await self._run(
             "-t",
             "-f",
             "GENERAL.STATE,GENERAL.CONNECTION,IP4.ADDRESS[1]",
             "device",
             "show",
-            self.config.wifi_interface,
+            interface,
             check=False,
         )
         kv: dict[str, str] = {}
@@ -245,17 +310,32 @@ class NmcliAdapter:
         connection = kv.get("GENERAL.CONNECTION")
         if connection == "--":
             connection = None
-        ip = kv.get("IP4.ADDRESS[1]")
-        if ip == "--":
-            ip = None
-        if ip and "/" in ip:
-            ip = ip.split("/", 1)[0]
+        ip_cidr = kv.get("IP4.ADDRESS[1]")
+        if ip_cidr == "--":
+            ip_cidr = None
+        ip4 = None
+        ip4_prefix = None
+        if ip_cidr:
+            if "/" in ip_cidr:
+                ip4, prefix_raw = ip_cidr.split("/", 1)
+                ip4 = ip4.strip() or None
+                try:
+                    ip4_prefix = int(prefix_raw.strip())
+                except ValueError:
+                    ip4_prefix = None
+            else:
+                ip4 = ip_cidr.strip() or None
         return DeviceStatus(
             state_code=state_code,
             state_text=state_text,
             connection=connection,
-            ip4=ip,
+            ip4=ip4,
+            ip4_prefix=ip4_prefix,
+            ip4_cidr=ip_cidr,
         )
+
+    async def current_device_status(self) -> DeviceStatus:
+        return await self.device_status(self.config.wifi_interface)
 
     async def wait_for_sta_connected(self, expected_profile: str, timeout_sec: int) -> DeviceStatus:
         deadline = asyncio.get_event_loop().time() + timeout_sec
@@ -270,4 +350,3 @@ class NmcliAdapter:
             f"STA connection timeout for profile={expected_profile}; "
             f"last_state={last_status.state_code}/{last_status.state_text}, conn={last_status.connection}, ip={last_status.ip4}"
         )
-

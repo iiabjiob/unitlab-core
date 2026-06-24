@@ -9,8 +9,8 @@ This document describes how the product should behave end-to-end when a user sel
 1. The user selects one or more signal-list rows.
 2. The product normalizes those rows into verification targets.
 3. The planner groups targets into per-IED / per-RCB subscription plans.
-4. Before execution, the product checks network readiness and endpoint reachability and shows a clear operator hint when the host is not on a usable subnet.
-5. The product may auto-suggest or auto-configure a suitable network adapter/IP configuration from signal-list and allocation data, while still allowing manual override.
+4. Before execution, the product checks agent-reported network readiness and endpoint reachability and shows a clear operator hint when the host agent is not reporting a usable path to the selected target.
+5. The product may auto-suggest or auto-configure a suitable network path from signal-list, allocation, and host-agent data, while still allowing manual override through the operator tooling.
 6. The operator presses `Run Test` once after selection and allocation.
 7. The runtime opens sessions, discovers where needed, creates subscriptions, executes the chosen scenario internally, and waits for reports.
 8. The report stream is converted into signal/evidence state.
@@ -147,7 +147,7 @@ The product layer should pass the runtime:
 - selected report-control / dataset references;
 - timeout / timing window policy;
 - explicit source identity when available;
-- local network readiness and adapter guidance when the run depends on a real MMS target.
+- agent-reported network readiness and adapter guidance when the run depends on a real MMS target.
 
 The runtime should return:
 - session snapshot;

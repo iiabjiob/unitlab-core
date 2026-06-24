@@ -41,13 +41,39 @@ class WifiNetwork:
 
 
 @dataclass
+class NetworkInterfaceInfo:
+    interface_name: str
+    local_ip: str | None
+    netmask: str | None
+    network: str | None
+    connection: str | None = None
+    state: str | None = None
+
+
+@dataclass
+class HostNetworkSettings:
+    interface: str
+    profile: str
+    ipv4_mode: Literal["auto", "manual"]
+    address_cidr: str | None
+    gateway: str | None
+    dns_servers: list[str]
+    proxy_url: str | None
+    proxy_no_proxy: list[str]
+    last_applied_at: str | None = None
+    last_error: str | None = None
+
+
+@dataclass
 class CoreNetworkSnapshot:
     mode: NetMode
     ap: AccessPointInfo
     sta: StaInfo
+    host_network: HostNetworkSettings
     wifi_iface: str
     mac: str | None
     suffix: str | None
+    interfaces: list[NetworkInterfaceInfo] = field(default_factory=list)
     request_in_flight: dict[str, Any] | None = None
     last_event: str | None = None
     last_error: str | None = None
@@ -66,4 +92,3 @@ class CommandEnvelope:
     request_id: str
     action: str
     payload: dict[str, Any]
-

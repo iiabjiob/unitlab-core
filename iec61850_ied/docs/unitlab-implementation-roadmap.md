@@ -456,14 +456,14 @@ Purpose
 
 Implementation
 - Goal: replace simulator-only verification execution with real MMS control and report handling for the already-proven product slices.
-- Scope: real client/session wiring, target-to-endpoint reconciliation, report subscription/enable/disable, runtime fallback handling, endpoint resolution policy, production readiness checks.
+- Scope: real client/session wiring, target-to-endpoint reconciliation, report subscription/enable/disable, runtime fallback handling, endpoint resolution policy, production readiness checks, and host-agent-owned RJ45/IP/subnet/proxy configuration for the MMS path.
 - Out of scope: reopening planner contracts, renaming evidence or verdict models, redesigning the product workflow, speculative fleet orchestration.
 - Required models: the existing verification contracts plus any thin runtime adapter state needed for real endpoint sessions.
 - Required API endpoints: verification run start/detail, runtime session control, recovery state, evidence detail, failure diagnostics.
 - Required backend services: MMS-backed runtime adapter, session supervisor, report-control binder, reconnect/recovery coordinator.
 - Required persistence: runtime session snapshots, evidence rows, recovery attempts, execution diagnostics.
 - Required runtime integration: native MMS client/server, endpoint catalog or explicit host/port configuration, SCD-first model binding when available, discovery fallback when SCD is missing or incomplete, subscriptions, reconnect, generation protection, report delivery.
-- Required UI changes: runtime source indicator, real-MMS status and diagnostics, network-readiness warning, and a short actionable hint if the operator is not on a usable subnet.
+- Required UI changes: runtime source indicator, real-MMS status and diagnostics, agent-readiness warning, a short actionable hint if the host agent is not reporting a usable path, and a dedicated Network / RJ45 settings tab for IP/subnet/proxy configuration.
 
 Tests
 - Unit tests: adapter mapping, session state, report correlation, endpoint override policy.
@@ -475,8 +475,8 @@ Acceptance Criteria
 - Evidence and verdict semantics remain stable when the transport changes from simulator to real MMS.
 - Recovery and reconnect continue to preserve evidence and desired work.
 - MMS host/port resolution is explicit and deterministic.
-- The operator receives a clear preflight warning when the local adapter/IP cannot reach the selected MMS target subnet.
-- The product may suggest or auto-configure a local adapter/IP/subnet from signal-list and allocation data, but manual override remains available.
+- The operator receives a clear preflight warning when the host agent does not report a usable path to the selected MMS target subnet.
+- The product may suggest or auto-configure a network path from signal-list, allocation data, and host-agent state, but manual override remains available through the host-service-owned network settings flow.
 - If a loaded SCD is present and matches the IED/access-point model, it is used first for candidate binding.
 - If SCD is missing or incomplete, discovery is used to fill the gap after transport reachability exists.
 - Discovery never invents the transport host; it only validates or enriches model data once a connection target exists.

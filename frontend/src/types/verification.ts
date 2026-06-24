@@ -70,6 +70,49 @@ export interface VerificationExecutionContext {
   triggered_at?: string | null
 }
 
+export interface VerificationNetworkInterface {
+  interface_name: string
+  local_ip: string
+  netmask?: string | null
+  network?: string | null
+  matches_target: boolean
+  recommended: boolean
+  reason?: string | null
+}
+
+export interface VerificationNetworkPreflightGroup {
+  group_id: string
+  endpoint_id?: string | null
+  ied_name?: string | null
+  access_point_name?: string | null
+  target_host?: string | null
+  target_port?: number | null
+  readiness_state: "ready" | "attention_required" | "unknown"
+  operator_hint: string
+  recommended_interface_name?: string | null
+  recommended_local_ip?: string | null
+  recommended_netmask?: string | null
+  observed_ips: string[]
+  observed_network_hints: string[]
+  interfaces: VerificationNetworkInterface[]
+  diagnostics: VerificationEvidenceDiagnostic[]
+}
+
+export interface VerificationNetworkPreflight {
+  workspace_id: number
+  test_run_id?: string | null
+  requested_runtime_version: "simulator" | "mms"
+  recommended_runtime_version: "simulator" | "mms"
+  overall_state: "ready" | "attention_required" | "unknown"
+  overall_hint: string
+  groups: VerificationNetworkPreflightGroup[]
+  diagnostics: VerificationEvidenceDiagnostic[]
+}
+
+export interface VerificationNetworkPreflightResponse {
+  preflight: VerificationNetworkPreflight
+}
+
 export interface VerificationAutoRunStartPayload {
   signal_ids: number[]
   execution_context: VerificationExecutionContext
