@@ -295,6 +295,30 @@ Optional fields:
 - `evidence_kind`
 - `diagnostics`
 
+## 3.1 VerificationRunEvidenceResponse
+
+Represents the persisted evidence view for one verification run.
+
+Required fields:
+- `test_run_id`
+- `evidence_set`
+- `evidence_rows`
+- `verification_steps`
+- `diagnostics`
+
+This response is a read view over persisted evidence rows and evidence-set summary, not a new execution request.
+
+## 3.2 VerificationRunStepDetails
+
+Represents the step-level projection derived from persisted evidence.
+
+Required fields:
+- `test_run_id`
+- `verification_steps`
+- `diagnostics`
+
+This is a read-only inspection shape for operator and API consumers.
+
 `signal_path` is the canonical stable path used by the product layer.
 Fields derived from the observed report may be null for timeout, invalid, or stale evidence.
 `actual_report_path` should remain the raw observed report path when one exists.

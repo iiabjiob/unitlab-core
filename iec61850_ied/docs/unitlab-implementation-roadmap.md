@@ -22,7 +22,7 @@ This is the first point where UnitLab behaves like a product instead of a set of
 - [x] Phase B - SubscriptionPlan generation
 - [x] Phase B.5 - Planner Validation
 - [x] Phase C - Runtime session orchestration
-- [ ] Phase D - Evidence capture
+- [x] Phase D - Evidence capture
 - [ ] Phase E - First single-signal auto verification
 - [ ] Phase F - Multi-signal same IED verification
 - [ ] Phase G - Multi-IED verification

@@ -1,16 +1,26 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.infrastructure.db.database import get_db
 from app.schemas.verification_schema import (
+    VerificationRunEvidenceResponseSchema,
     VerificationRuntimeOrchestrationResponseSchema,
     VerificationRuntimeOrchestrationStartSchema,
+    VerificationRunStepDetailsSchema,
 )
+from app.services.verification_evidence import VerificationEvidenceRepository
+from app.services.verification_run_evidence_service import load_verification_run_evidence
 from app.services.verification_runtime_orchestrator import VerificationRuntimeOrchestrator
 
 router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/verification", tags=["Verification"])
 
 _orchestrator = VerificationRuntimeOrchestrator()
+
+
+def get_verification_evidence_repo(db: AsyncSession = Depends(get_db)) -> VerificationEvidenceRepository:
+    return VerificationEvidenceRepository(db)
 
 
 @router.post("/orchestrations", response_model=VerificationRuntimeOrchestrationResponseSchema)
@@ -67,3 +77,31 @@ async def stop_verification_runtime_orchestration(
         orchestration_id=result.orchestration_id,
         verification_run=result.verification_run,
     )
+
+
+@router.get("/runs/{test_run_id}/evidence", response_model=VerificationRunEvidenceResponseSchema)
+async def get_verification_run_evidence(
+    workspace_id: int,
+    test_run_id: str,
+    repo: VerificationEvidenceRepository = Depends(get_verification_evidence_repo),
+):
+    result = await load_verification_run_evidence(
+        workspace_id=workspace_id,
+        test_run_id=test_run_id,
+        repository=repo,
+    )
+    return result.as_response()
+
+
+@router.get("/runs/{test_run_id}/steps", response_model=VerificationRunStepDetailsSchema)
+async def get_verification_run_steps(
+    workspace_id: int,
+    test_run_id: str,
+    repo: VerificationEvidenceRepository = Depends(get_verification_evidence_repo),
+):
+    result = await load_verification_run_evidence(
+        workspace_id=workspace_id,
+        test_run_id=test_run_id,
+        repository=repo,
+    )
+    return result.as_step_response()

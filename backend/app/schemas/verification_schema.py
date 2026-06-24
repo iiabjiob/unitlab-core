@@ -269,3 +269,17 @@ class VerificationRuntimeOrchestrationStartSchema(BaseModel):
 class VerificationRuntimeOrchestrationResponseSchema(BaseModel):
     orchestration_id: str
     verification_run: VerificationRunSchema
+
+
+class VerificationRunEvidenceResponseSchema(BaseModel):
+    test_run_id: str
+    evidence_set: SignalVerificationEvidenceSetSchema
+    evidence_rows: list[SignalVerificationEvidenceSchema] = Field(default_factory=list)
+    verification_steps: list[VerificationStepSchema] = Field(default_factory=list)
+    diagnostics: list[VerificationEvidenceDiagnosticSchema] = Field(default_factory=list)
+
+
+class VerificationRunStepDetailsSchema(BaseModel):
+    test_run_id: str
+    verification_steps: list[VerificationStepSchema] = Field(default_factory=list)
+    diagnostics: list[VerificationEvidenceDiagnosticSchema] = Field(default_factory=list)
