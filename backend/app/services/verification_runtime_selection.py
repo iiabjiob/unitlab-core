@@ -29,6 +29,8 @@ from app.services.iec61850.report_runtime import (
 
 
 VerificationRuntimeMode = Literal["simulator", "mms"]
+VerificationRuntimeTransportSource = Literal["simulator", "explicit_request", "settings_catalog", "unavailable"]
+VerificationRuntimeModelSource = Literal["simulator", "loaded_scd", "discovery_fallback"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,7 +38,12 @@ class VerificationRuntimeSelection:
     runtime_mode: VerificationRuntimeMode
     adapter: Iec61850ReportRuntimeAdapter
     endpoint_for_device: Callable[[Iec61850ReportSubscriptionPlanDevice], Iec61850DeviceEndpoint]
-    runtime_source: Literal["simulator", "catalog", "unavailable-mms"]
+    transport_source: VerificationRuntimeTransportSource
+    model_source: VerificationRuntimeModelSource
+
+    @property
+    def runtime_source(self) -> VerificationRuntimeTransportSource:
+        return self.transport_source
 
 
 class _ClientControlMmsRuntimeAdapter:
@@ -217,6 +224,8 @@ def resolve_verification_runtime(
     execution_context: VerificationExecutionContextSchema,
     now: Callable[[], datetime] | None = None,
     endpoint_catalog: Iec61850MmsEndpointCatalog | None = None,
+    transport_source: VerificationRuntimeTransportSource | None = None,
+    model_source: VerificationRuntimeModelSource | None = None,
     simulator_endpoint_for_device: Callable[[Iec61850ReportSubscriptionPlanDevice], Iec61850DeviceEndpoint] = build_simulator_endpoint_for_plan_device,
     mms_control_service_factory: Callable[..., Iec61850ClientControlService] = Iec61850ClientControlService,
 ) -> VerificationRuntimeSelection:
@@ -228,14 +237,16 @@ def resolve_verification_runtime(
             runtime_mode="mms",
             adapter=_ClientControlMmsRuntimeAdapter(control_service_factory=mms_control_service_factory),
             endpoint_for_device=endpoint_catalog.endpoint_for_plan_device,
-            runtime_source="catalog",
+            transport_source=transport_source or "explicit_request",
+            model_source=model_source or "discovery_fallback",
         )
 
     return VerificationRuntimeSelection(
         runtime_mode="simulator",
         adapter=create_iec61850_simulator_adapter(now=now),
         endpoint_for_device=simulator_endpoint_for_device,
-        runtime_source="simulator",
+        transport_source="simulator",
+        model_source="simulator",
     )
 
 

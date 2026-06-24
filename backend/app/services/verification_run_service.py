@@ -121,6 +121,8 @@ async def execute_single_signal_verification_run(
         execution_context=execution_context,
         now=lambda: start_at,
         endpoint_catalog=endpoint_resolution_policy.endpoint_catalog,
+        transport_source=endpoint_resolution_policy.transport_source,
+        model_source=endpoint_resolution_policy.model_source,
         simulator_endpoint_for_device=endpoint_for_device,
         mms_control_service_factory=mms_control_service_factory or Iec61850ClientControlService,
     )

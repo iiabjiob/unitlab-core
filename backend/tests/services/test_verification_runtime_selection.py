@@ -163,6 +163,8 @@ def test_resolve_verification_runtime_selects_simulator_by_default() -> None:
     )
 
     assert selection.runtime_mode == "simulator"
+    assert selection.transport_source == "simulator"
+    assert selection.model_source == "simulator"
     assert selection.runtime_source == "simulator"
     assert selection.endpoint_for_device(
         SimpleNamespace(ied_name="IED-A", access_point_name="P1")
@@ -192,10 +194,41 @@ def test_resolve_verification_runtime_selects_mms_adapter_from_catalog() -> None
     )
 
     assert selection.runtime_mode == "mms"
-    assert selection.runtime_source == "catalog"
+    assert selection.transport_source == "explicit_request"
+    assert selection.model_source == "discovery_fallback"
+    assert selection.runtime_source == "explicit_request"
     assert selection.endpoint_for_device(
         SimpleNamespace(ied_name="IED-A", access_point_name="P1")
     ).id == "mms:IED-A/P1@10.10.10.250:12447"
+
+
+def test_resolve_verification_runtime_preserves_selection_sources() -> None:
+    catalog = build_mms_endpoint_catalog((
+        Iec61850MmsEndpointCatalogEntry(
+            ied_name="IED-A",
+            access_point_name="P1",
+            host="10.10.10.250",
+            port=12447,
+        ),
+    ))
+
+    selection = resolve_verification_runtime(
+        execution_context=VerificationExecutionContextSchema(
+            project_id=1,
+            signal_list_revision_id=2,
+            planner_version="test",
+            runtime_version="mms",
+            policy_version="v1",
+        ),
+        endpoint_catalog=catalog,
+        transport_source="settings_catalog",
+        model_source="loaded_scd",
+        mms_control_service_factory=_FakeClientControlService,
+    )
+
+    assert selection.transport_source == "settings_catalog"
+    assert selection.model_source == "loaded_scd"
+    assert selection.runtime_source == "settings_catalog"
 
 
 def test_mms_runtime_adapter_surfaces_report_from_control_service() -> None:
