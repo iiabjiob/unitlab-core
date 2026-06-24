@@ -283,3 +283,42 @@ class VerificationRunStepDetailsSchema(BaseModel):
     test_run_id: str
     verification_steps: list[VerificationStepSchema] = Field(default_factory=list)
     diagnostics: list[VerificationEvidenceDiagnosticSchema] = Field(default_factory=list)
+
+
+class VerificationVerdictExplanationSignalSchema(BaseModel):
+    signal_id: int
+    signal_reference: str
+    signal_path: str
+    expected_path: str
+    observed_path: str | None = None
+    source_ied: str | None = None
+    endpoint_id: str | None = None
+    rpt_id: str | None = None
+    dataset: str | None = None
+    evidence_status: Literal["observed", "stale", "timeout", "invalid", "late", "out_of_window"]
+    verdict_state: Literal["pending", "pass", "fail", "inconclusive", "aborted"]
+    latency_ms: int | None = None
+    reason: str | None = None
+    diagnostics: list[VerificationEvidenceDiagnosticSchema] = Field(default_factory=list)
+
+
+class VerificationVerdictExplanationSchema(BaseModel):
+    test_run_id: str
+    verdict_state: Literal["pending", "pass", "fail", "inconclusive", "aborted"]
+    headline: str
+    summary: str
+    signals: list[VerificationVerdictExplanationSignalSchema] = Field(default_factory=list)
+    diagnostics: list[VerificationEvidenceDiagnosticSchema] = Field(default_factory=list)
+
+
+class VerificationAutoRunStartSchema(BaseModel):
+    signal_ids: list[int] = Field(default_factory=list, min_length=1)
+    execution_context: VerificationExecutionContextSchema
+    client_id: str = "unitlab-backend-simulator"
+    test_run_id: str | None = None
+
+
+class VerificationRunDetailResponseSchema(BaseModel):
+    test_run_id: str
+    verification_run: VerificationRunSchema
+    verdict_explanation: VerificationVerdictExplanationSchema

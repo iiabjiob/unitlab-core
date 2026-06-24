@@ -319,6 +319,57 @@ Required fields:
 
 This is a read-only inspection shape for operator and API consumers.
 
+## 3.3 VerificationAutoRunStart
+
+Represents a single-signal auto verification request.
+
+Required fields:
+- `signal_ids`
+- `execution_context`
+
+Optional fields:
+- `client_id`
+- `test_run_id`
+
+The backend should normalize the selected signal-list row(s), execute the run, persist the evidence trail, and return a run snapshot with an explanation.
+
+## 3.4 VerificationVerdictExplanation
+
+Represents the product-facing explanation for why a verification run passed or failed.
+
+Required fields:
+- `test_run_id`
+- `verdict_state`
+- `headline`
+- `summary`
+- `signals`
+- `diagnostics`
+
+Signal-level explanation fields should include:
+- `signal_id`
+- `signal_reference`
+- `signal_path`
+- `expected_path`
+- `observed_path`
+- `source_ied`
+- `endpoint_id`
+- `rpt_id`
+- `dataset`
+- `evidence_status`
+- `verdict_state`
+- `latency_ms`
+- `reason`
+- `diagnostics`
+
+## 3.5 VerificationRunDetailResponse
+
+Represents the persisted run snapshot plus the derived verdict explanation.
+
+Required fields:
+- `test_run_id`
+- `verification_run`
+- `verdict_explanation`
+
 `signal_path` is the canonical stable path used by the product layer.
 Fields derived from the observed report may be null for timeout, invalid, or stale evidence.
 `actual_report_path` should remain the raw observed report path when one exists.

@@ -5,12 +5,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infrastructure.db.database import get_db
 from app.schemas.verification_schema import (
+    VerificationAutoRunStartSchema,
+    VerificationRunDetailResponseSchema,
     VerificationRunEvidenceResponseSchema,
     VerificationRuntimeOrchestrationResponseSchema,
     VerificationRuntimeOrchestrationStartSchema,
     VerificationRunStepDetailsSchema,
 )
 from app.services.verification_evidence import VerificationEvidenceRepository
+from app.services.verification_run_service import (
+    execute_single_signal_verification_run,
+    load_verification_run_detail,
+)
 from app.services.verification_run_evidence_service import load_verification_run_evidence
 from app.services.verification_runtime_orchestrator import VerificationRuntimeOrchestrator
 
@@ -21,6 +27,45 @@ _orchestrator = VerificationRuntimeOrchestrator()
 
 def get_verification_evidence_repo(db: AsyncSession = Depends(get_db)) -> VerificationEvidenceRepository:
     return VerificationEvidenceRepository(db)
+
+
+@router.post("/runs", response_model=VerificationRunDetailResponseSchema)
+async def start_verification_run(
+    workspace_id: int,
+    payload: VerificationAutoRunStartSchema,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        result = await execute_single_signal_verification_run(
+            workspace_id=workspace_id,
+            payload=payload,
+            db=db,
+        )
+        await db.commit()
+    except ValueError as exc:
+        await db.rollback()
+        status_code = 404 if str(exc) == "Workspace not found" else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return result.as_response()
+
+
+@router.get("/runs/{test_run_id}", response_model=VerificationRunDetailResponseSchema)
+async def get_verification_run(
+    workspace_id: int,
+    test_run_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await load_verification_run_detail(
+            workspace_id=workspace_id,
+            test_run_id=test_run_id,
+            db=db,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.post("/orchestrations", response_model=VerificationRuntimeOrchestrationResponseSchema)

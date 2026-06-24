@@ -245,6 +245,7 @@ Implementation
 - Required persistence: run record, step records, evidence rows, verdict state, execution diagnostics.
 - Required runtime integration: trigger output action, await IEC 61850 confirmation, correlate report to the target.
 - Required UI changes: one-click run action, live run state, verdict banner, Explain Why panel.
+- Backend slice now implemented: single-signal auto-run endpoint, persisted run snapshot, and verdict explanation response; UI wiring remains to be attached.
 
 Tests
 - Unit tests: verdict rules, step state transitions, explanation fields.
