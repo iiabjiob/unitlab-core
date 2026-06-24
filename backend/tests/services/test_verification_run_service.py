@@ -539,7 +539,7 @@ async def test_execute_single_signal_verification_run_allows_multiple_signals_on
 
 
 @pytest.mark.anyio
-async def test_execute_single_signal_verification_run_rejects_multi_ied_selection(monkeypatch) -> None:
+async def test_execute_single_signal_verification_run_allows_multi_ied_selection(monkeypatch) -> None:
     db = _FakeDb()
     triggered_at = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
 
@@ -548,23 +548,27 @@ async def test_execute_single_signal_verification_run_rejects_multi_ied_selectio
     monkeypatch.setattr(run_service, "VerificationEvidenceRepository", _FakeEvidenceRepository)
     monkeypatch.setattr(run_service, "VerificationRunRepository", _FakeRunRepository)
 
-    with pytest.raises(ValueError, match="one IED only"):
-        await execute_single_signal_verification_run(
-            workspace_id=7,
-            payload=VerificationAutoRunStartSchema(
-                signal_ids=[101, 202],
-                execution_context=VerificationExecutionContextSchema(
-                    project_id=1,
-                    signal_list_revision_id=2,
-                    planner_version="test",
-                    runtime_version="simulator",
-                    policy_version="v1",
-                ),
-                client_id="unitlab-backend-simulator",
+    result = await execute_single_signal_verification_run(
+        workspace_id=7,
+        payload=VerificationAutoRunStartSchema(
+            signal_ids=[101, 202],
+            execution_context=VerificationExecutionContextSchema(
+                project_id=1,
+                signal_list_revision_id=2,
+                planner_version="test",
+                runtime_version="simulator",
+                policy_version="v1",
             ),
-            db=db,  # type: ignore[arg-type]
-            triggered_at=triggered_at,
-        )
+            client_id="unitlab-backend-simulator",
+        ),
+        db=db,  # type: ignore[arg-type]
+        triggered_at=triggered_at,
+    )
+
+    assert result.verification_run.verdict_state == "pass"
+    assert len(result.verification_run.session_snapshots) == 2
+    assert len(result.verification_run.subscription_snapshots) == 2
+    assert {step.group_id for step in result.verification_run.verification_steps} == {"group-1", "group-2"}
 
 
 @pytest.mark.anyio

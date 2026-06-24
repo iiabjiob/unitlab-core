@@ -2144,7 +2144,7 @@ async function runSingleSignalVerification() {
 
   const selection = verificationSelection.value
   if (!selection.canRun) {
-    verificationRunError.value = selection.error ?? "Select one or more allocated signals from the same IED."
+    verificationRunError.value = selection.error ?? "Select one or more allocated signals."
     return
   }
 

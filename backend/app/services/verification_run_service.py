@@ -81,15 +81,6 @@ async def execute_single_signal_verification_run(
         signals_by_id=signals_by_id,
         allocation_rows_by_signal_id=allocation_rows_by_signal_id,
     )
-    unit_ids = sorted(
-        {
-            str(source.unit_id).strip()
-            for source in sources
-            if source.unit_id is not None and str(source.unit_id).strip()
-        }
-    )
-    if len(unit_ids) != 1:
-        raise ValueError("Verification requires selected signals from one IED only.")
     subscription_plan = build_verification_subscription_plan(sources)
 
     execution_result = await execute_simulated_verification_run(

@@ -20,24 +20,16 @@ export function resolveVerificationSelection(rows: SignalAllocationRow[]): Verif
       unitId: null,
       label: null,
       canRun: false,
-      error: "Select one or more allocated signals on the same IED.",
+      error: "Select one or more allocated signals.",
     }
   }
 
   const unitIds = [...new Set(selectedRows.map((row) => String(row.unit_id ?? "").trim()).filter(Boolean))]
-  if (unitIds.length !== 1) {
-    return {
-      signalIds: selectedRows.map((row) => row.signal_id),
-      unitId: null,
-      label: null,
-      canRun: false,
-      error: "Select signals from one IED only.",
-    }
-  }
-
-  const unitId = unitIds[0]
   const signalIds = selectedRows.map((row) => row.signal_id)
-  const label = `${signalIds.length} selected signal${signalIds.length === 1 ? "" : "s"} on ${unitId}`
+  const unitId = unitIds.length === 1 ? unitIds[0] : null
+  const label = unitIds.length === 1
+    ? `${signalIds.length} selected signal${signalIds.length === 1 ? "" : "s"} on ${unitIds[0]}`
+    : `${signalIds.length} selected signal${signalIds.length === 1 ? "" : "s"} across ${unitIds.length} IEDs`
 
   return {
     signalIds,

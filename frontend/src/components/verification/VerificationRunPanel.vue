@@ -4,7 +4,7 @@
       <div class="verification-run-panel__copy">
         <p class="verification-run-panel__eyebrow">Verification</p>
         <p class="verification-run-panel__meta">
-          One or more allocated signals on the same IED. Automatic discovery. Persisted evidence.
+          One or more allocated signals across selected IEDs. Automatic discovery. Persisted evidence.
         </p>
         <p v-if="selectedSignalLabel" class="verification-run-panel__subtle">
           Selected: <span class="verification-run-panel__subtle-strong">{{ selectedSignalLabel }}</span>
@@ -121,7 +121,7 @@
     </div>
 
     <p v-else class="verification-run-panel__empty">
-      Select one allocated row, then run automatic verification.
+      Select one or more allocated rows, then run automatic verification.
     </p>
   </section>
 </template>

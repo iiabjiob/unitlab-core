@@ -41,13 +41,15 @@ describe("resolveVerificationSelection", () => {
     expect(result.label).toBe("2 selected signals on IED-A/P1")
   })
 
-  it("rejects mixed IED selections", () => {
+  it("allows mixed IED selections", () => {
     const result = resolveVerificationSelection([
       buildRow({ signal_id: 101 }),
       buildRow({ signal_id: 202, signal_key: "signal-2", signal_name: "Signal 2", unit_id: "IED-B/P1" }),
     ])
 
-    expect(result.canRun).toBe(false)
-    expect(result.error).toBe("Select signals from one IED only.")
+    expect(result.canRun).toBe(true)
+    expect(result.unitId).toBeNull()
+    expect(result.signalIds).toEqual([101, 202])
+    expect(result.label).toBe("2 selected signals across 2 IEDs")
   })
 })

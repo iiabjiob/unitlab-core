@@ -25,7 +25,7 @@ This is the first point where UnitLab behaves like a product instead of a set of
 - [x] Phase D - Evidence capture
 - [x] Phase E - First single-signal auto verification
 - [x] Phase F - Multi-signal same IED verification
-- [ ] Phase G - Multi-IED verification
+- [x] Phase G - Multi-IED verification
 - [ ] Phase H - Recovery and reconnect verification
 - [ ] Phase I - Virtual-substation-backed automated regression testing
 - [ ] Phase J - Real MMS integration
