@@ -5,6 +5,7 @@ import hashlib
 import logging
 import re
 from dataclasses import dataclass
+from pathlib import Path
 
 from .config import AgentConfig
 from .models import WifiNetwork
@@ -27,6 +28,10 @@ class DeviceStatus:
     ip4: str | None
     ip4_prefix: int | None = None
     ip4_cidr: str | None = None
+    carrier: bool | None = None
+    oper_state: str | None = None
+    is_default_route: bool = False
+    default_route_metric: int | None = None
 
 
 class NmcliAdapter:
@@ -56,6 +61,47 @@ class NmcliAdapter:
         if check and proc.returncode != 0:
             raise NmcliError(f"nmcli failed ({proc.returncode}): {' '.join(cmd)} :: {err or out}")
         return out
+
+    @staticmethod
+    def _read_text(path: Path) -> str | None:
+        try:
+            if not path.exists():
+                return None
+            return path.read_text(encoding="utf-8", errors="ignore").strip() or None
+        except Exception:  # noqa: BLE001
+            return None
+
+    def _read_interface_carrier(self, interface_name: str) -> bool | None:
+        raw = self._read_text(Path("/sys/class/net") / interface_name / "carrier")
+        if raw == "1":
+            return True
+        if raw == "0":
+            return False
+        return None
+
+    def _read_interface_operstate(self, interface_name: str) -> str | None:
+        return self._read_text(Path("/sys/class/net") / interface_name / "operstate")
+
+    def _read_default_route_metrics(self) -> dict[str, int]:
+        routes: dict[str, int] = {}
+        raw = self._read_text(Path("/proc/net/route"))
+        if not raw:
+            return routes
+        for line in raw.splitlines()[1:]:
+            parts = line.split()
+            if len(parts) < 8:
+                continue
+            iface, destination, _gateway, _flags, _refcnt, _use, metric_raw, _mask = parts[:8]
+            if destination != "00000000":
+                continue
+            try:
+                metric = int(metric_raw, 10)
+            except ValueError:
+                metric = 0
+            current = routes.get(iface)
+            if current is None or metric < current:
+                routes[iface] = metric
+        return routes
 
     async def wifi_radio_on(self) -> None:
         await self._run("radio", "wifi", "on")
@@ -293,6 +339,7 @@ class NmcliAdapter:
             "status",
             check=False,
         )
+        default_route_metrics = self._read_default_route_metrics()
         statuses: list[DeviceStatus] = []
         for line in out.splitlines():
             parts = line.split(":", 4)
@@ -340,6 +387,10 @@ class NmcliAdapter:
                     ip4=ip4,
                     ip4_prefix=ip4_prefix,
                     ip4_cidr=ip_cidr,
+                    carrier=self._read_interface_carrier(device_name),
+                    oper_state=self._read_interface_operstate(device_name),
+                    is_default_route=device_name in default_route_metrics,
+                    default_route_metric=default_route_metrics.get(device_name),
                 )
             )
         return statuses
@@ -387,6 +438,7 @@ class NmcliAdapter:
                     ip4_prefix = None
             else:
                 ip4 = ip_cidr.strip() or None
+        default_route_metrics = self._read_default_route_metrics()
         return DeviceStatus(
             interface_name=interface,
             device_type=None,
@@ -396,6 +448,10 @@ class NmcliAdapter:
             ip4=ip4,
             ip4_prefix=ip4_prefix,
             ip4_cidr=ip_cidr,
+            carrier=self._read_interface_carrier(interface),
+            oper_state=self._read_interface_operstate(interface),
+            is_default_route=interface in default_route_metrics,
+            default_route_metric=default_route_metrics.get(interface),
         )
 
     async def current_device_status(self) -> DeviceStatus:

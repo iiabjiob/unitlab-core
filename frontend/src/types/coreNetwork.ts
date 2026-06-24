@@ -34,6 +34,10 @@ export interface CoreNetNetworkInterfaceInfo {
   network: string | null
   connection?: string | null
   state?: string | null
+  carrier?: boolean | null
+  oper_state?: string | null
+  is_default_route?: boolean
+  default_route_metric?: number | null
 }
 
 export interface CoreNetHostNetworkSettings {

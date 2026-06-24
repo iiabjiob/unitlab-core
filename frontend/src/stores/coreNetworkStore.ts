@@ -94,6 +94,12 @@ export const useCoreNetworkStore = defineStore("coreNetworkStore", () => {
     return _runCommand(() => enqueueCoreNetworkStatus(), "Queued core-network status")
   }
 
+  async function refreshInterfaces() {
+    const accepted = await requestStatus()
+    await refreshState({ force: true })
+    return accepted
+  }
+
   async function scan(timeoutSec?: number | null) {
     return _runCommand(() => enqueueCoreNetworkScan(timeoutSec), "Queued core-network scan")
   }
@@ -187,6 +193,7 @@ export const useCoreNetworkStore = defineStore("coreNetworkStore", () => {
     startMonitoring,
     stopMonitoring,
     requestStatus,
+    refreshInterfaces,
     scan,
     connectSta,
     disconnectSta,

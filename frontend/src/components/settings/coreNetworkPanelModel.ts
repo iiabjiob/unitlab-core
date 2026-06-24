@@ -30,6 +30,9 @@ export function buildInterfaceDisplayLabel(entry: CoreNetNetworkInterfaceInfo): 
   if (entry.device_type) {
     parts.push(entry.device_type)
   }
+  if (entry.is_default_route) {
+    parts.push("default route")
+  }
   if (entry.local_ip) {
     parts.push(entry.netmask ? `${entry.local_ip}/${entry.netmask}` : entry.local_ip)
   }
@@ -42,7 +45,52 @@ export function buildInterfaceDetailText(entry: CoreNetNetworkInterfaceInfo | nu
   if (entry.state) parts.push(entry.state)
   if (entry.connection) parts.push(entry.connection)
   if (entry.network) parts.push(entry.network)
+  if (entry.is_default_route) parts.push("default route")
   return parts.join(" · ")
+}
+
+export function buildCoreNetworkInterfaceWarnings(entry: CoreNetNetworkInterfaceInfo | null | undefined): string[] {
+  if (!entry) return []
+  const warnings: string[] = []
+  if (entry.carrier === false) {
+    warnings.push("No carrier detected on this interface")
+  }
+  if (!entry.local_ip) {
+    warnings.push("No IPv4 address detected")
+  }
+  if (!isCoreNetworkInterfaceHealthy(entry)) {
+    warnings.push(`Interface state: ${entry.state || entry.oper_state}`)
+  }
+  return warnings
+}
+
+export function buildRecommendedCoreNetworkInterface(
+  interfaces: CoreNetNetworkInterfaceInfo[],
+  fallbackInterface: string,
+): CoreNetNetworkInterfaceInfo | null {
+  if (!interfaces.length) return null
+  const normalizedFallback = fallbackInterface.trim()
+  const ranked = [...interfaces].sort((left, right) => {
+    return scoreCoreNetworkInterface(right, normalizedFallback) - scoreCoreNetworkInterface(left, normalizedFallback)
+  })
+  return ranked[0] ?? null
+}
+
+function scoreCoreNetworkInterface(entry: CoreNetNetworkInterfaceInfo, fallbackInterface: string): number {
+  let score = 0
+  if (entry.is_default_route) score += 1000
+  if ((entry.device_type || "").toLowerCase() === "ethernet") score += 200
+  if (entry.carrier === true) score += 80
+  if (isCoreNetworkInterfaceHealthy(entry)) score += 60
+  if (entry.local_ip) score += 40
+  if (entry.interface_name === fallbackInterface) score += 20
+  return score
+}
+
+function isCoreNetworkInterfaceHealthy(entry: CoreNetNetworkInterfaceInfo): boolean {
+  const state = (entry.state || "").toLowerCase()
+  const operState = (entry.oper_state || "").toLowerCase()
+  return state.startsWith("connected") || state.startsWith("activated") || state === "up" || operState === "up"
 }
 
 export function buildCoreNetworkInterfaceChoices(

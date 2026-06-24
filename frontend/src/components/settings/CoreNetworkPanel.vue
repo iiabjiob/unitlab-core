@@ -12,6 +12,7 @@
         </p>
         <p class="core-network-panel__subtle">
           Select the active host interface, then review its live IP, mask, network and connection state before applying MMS/SCADA settings.
+          The recommendation follows the live default route when the host reports one.
         </p>
         <p v-if="networkErrorText" class="core-network-panel__error">{{ networkErrorText }}</p>
       </div>
@@ -110,12 +111,21 @@
               <span class="core-network-panel__fact-value">{{ selectedInterface.state || '—' }}</span>
             </div>
           </div>
-          <p v-else class="core-network-panel__empty">
+          <div v-if="selectedInterfaceWarnings.length" class="core-network-panel__warnings">
+            <p class="core-network-panel__warnings-title">Interface warnings</p>
+            <ul>
+              <li v-for="warning in selectedInterfaceWarnings" :key="warning">{{ warning }}</li>
+            </ul>
+          </div>
+          <p v-else-if="!selectedInterface" class="core-network-panel__empty">
             No live details for the selected interface yet.
           </p>
         </div>
 
         <div class="core-network-panel__actions">
+          <button type="button" class="btn btn-base btn-secondary" :disabled="networkBusy" @click="refreshNetworkInterfaces">
+            Refresh interfaces
+          </button>
           <button type="button" class="btn btn-base btn-secondary" :disabled="networkBusy" @click="resetDraft">
             Reset
           </button>
@@ -146,12 +156,16 @@
             <div class="core-network-panel__interface-main">
               <span class="core-network-panel__interface-name">{{ entry.interface_name }}</span>
               <span class="core-network-panel__interface-state">{{ entry.device_type || 'unknown' }}</span>
+              <span v-if="entry.is_default_route || recommendedInterface?.interface_name === entry.interface_name" class="core-network-panel__interface-badge">recommended</span>
               <span v-if="entry.connection" class="core-network-panel__interface-connection">{{ entry.connection }}</span>
             </div>
             <div class="core-network-panel__interface-meta">
               <span>{{ entry.local_ip || '—' }}</span>
               <span>{{ entry.network || '—' }}</span>
               <span>{{ entry.netmask ? `/${entry.netmask}` : '—' }}</span>
+              <span v-if="entry.carrier === false" class="core-network-panel__interface-warning">no carrier</span>
+              <span v-if="!entry.local_ip" class="core-network-panel__interface-warning">no IPv4</span>
+              <span v-if="entry.oper_state" class="core-network-panel__interface-operstate">{{ entry.oper_state }}</span>
             </div>
           </div>
           <p v-if="interfaces.length === 0" class="core-network-panel__empty">
@@ -177,7 +191,9 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue"
 import { useCoreNetworkStore } from "@/stores/coreNetworkStore"
 import {
   buildCoreNetworkInterfaceChoices,
+  buildCoreNetworkInterfaceWarnings,
   buildCoreNetworkSettingsPayload,
+  buildRecommendedCoreNetworkInterface,
   createCoreNetworkDraft,
   getSelectedCoreNetworkInterface,
 } from "./coreNetworkPanelModel"
@@ -195,9 +211,11 @@ const hostModeLabel = computed(() => hostNetwork.value?.ipv4_mode?.toUpperCase()
 const draft = reactive(createCoreNetworkDraft(hostNetwork.value, configuredInterfaceLabel.value))
 const draftDirty = ref(false)
 
+const recommendedInterface = computed(() => buildRecommendedCoreNetworkInterface(interfaces.value, configuredInterfaceLabel.value))
+
 function syncDraftFromSnapshot() {
   if (draftDirty.value) return
-  const next = createCoreNetworkDraft(hostNetwork.value, configuredInterfaceLabel.value)
+  const next = createCoreNetworkDraft(hostNetwork.value, recommendedInterface.value?.interface_name || configuredInterfaceLabel.value)
   draft.interface = next.interface
   draft.profile = next.profile
   draft.ipv4Mode = next.ipv4Mode
@@ -234,6 +252,7 @@ async function applyNetworkSettings() {
 
 const interfaceChoices = computed(() => buildCoreNetworkInterfaceChoices(interfaces.value, draft.interface))
 const selectedInterface = computed(() => getSelectedCoreNetworkInterface(interfaces.value, draft.interface))
+const selectedInterfaceWarnings = computed(() => buildCoreNetworkInterfaceWarnings(selectedInterface.value))
 const selectedInterfaceSummary = computed(() => {
   const item = selectedInterface.value
   if (!item) return null
@@ -241,6 +260,7 @@ const selectedInterfaceSummary = computed(() => {
   if (item.state) parts.push(item.state)
   if (item.connection) parts.push(item.connection)
   if (item.device_type) parts.push(item.device_type)
+  if (item.is_default_route) parts.push("default route")
   return parts.length ? parts.join(" · ") : null
 })
 const canApplySettings = computed(() => {
@@ -269,6 +289,10 @@ watch(interfaces, () => {
     syncDraftFromSnapshot()
   }
 })
+
+async function refreshNetworkInterfaces() {
+  await coreNetworkStore.refreshInterfaces()
+}
 
 onMounted(() => {
   coreNetworkStore.startMonitoring()
@@ -481,8 +505,32 @@ onUnmounted(() => {
 }
 
 .core-network-panel__interface-state,
-.core-network-panel__interface-connection {
+.core-network-panel__interface-connection,
+.core-network-panel__interface-operstate,
+.core-network-panel__interface-badge,
+.core-network-panel__interface-warning {
   color: var(--color-neutral-500);
+}
+
+.core-network-panel__interface-badge {
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-primary-100) 70%, transparent);
+  color: var(--color-primary-700);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.core-network-panel__interface-warning {
+  color: var(--color-amber-700);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.core-network-panel__interface-operstate {
+  font-size: 11px;
 }
 
 .core-network-panel__interface-meta {
@@ -506,6 +554,28 @@ onUnmounted(() => {
 .core-network-panel__notes ul {
   padding-left: 1rem;
   color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+}
+
+.core-network-panel__warnings {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--color-amber-300) 65%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-amber-50) 60%, transparent);
+}
+
+.core-network-panel__warnings-title {
+  margin-bottom: 0.35rem;
+  color: var(--color-amber-800);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.core-network-panel__warnings ul {
+  padding-left: 1rem;
+  color: var(--color-amber-900);
   font-size: var(--text-xs);
 }
 

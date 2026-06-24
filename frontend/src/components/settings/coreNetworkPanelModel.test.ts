@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest"
-import { buildCoreNetworkInterfaceChoices, buildCoreNetworkSettingsPayload, createCoreNetworkDraft, getSelectedCoreNetworkInterface, splitList } from "./coreNetworkPanelModel"
+import {
+  buildCoreNetworkInterfaceChoices,
+  buildCoreNetworkInterfaceWarnings,
+  buildCoreNetworkSettingsPayload,
+  buildRecommendedCoreNetworkInterface,
+  createCoreNetworkDraft,
+  getSelectedCoreNetworkInterface,
+  splitList,
+} from "./coreNetworkPanelModel"
 
 describe("coreNetworkPanelModel", () => {
   it("splits comma-separated lists", () => {
@@ -38,7 +46,63 @@ describe("coreNetworkPanelModel", () => {
     })
   })
 
+  it("prefers the default route interface when recommending a host interface", () => {
+    const recommended = buildRecommendedCoreNetworkInterface(
+      [
+        {
+          interface_name: "eth0",
+          device_type: "ethernet",
+          local_ip: "192.168.10.21",
+          netmask: "24",
+          network: "192.168.10.0/24",
+          connection: "Wired connection 1",
+          state: "connected",
+          carrier: true,
+          oper_state: "up",
+          is_default_route: true,
+          default_route_metric: 100,
+        },
+        {
+          interface_name: "eth1",
+          device_type: "ethernet",
+          local_ip: null,
+          netmask: null,
+          network: null,
+          connection: null,
+          state: "disconnected",
+          carrier: false,
+          oper_state: "down",
+          is_default_route: false,
+          default_route_metric: null,
+        },
+      ],
+      "eth1",
+    )
 
+    expect(recommended?.interface_name).toBe("eth0")
+  })
+
+  it("reports interface warnings for no carrier, no IPv4 and down state", () => {
+    expect(
+      buildCoreNetworkInterfaceWarnings({
+        interface_name: "eth1",
+        device_type: "ethernet",
+        local_ip: null,
+        netmask: null,
+        network: null,
+        connection: null,
+        state: "disconnected",
+        carrier: false,
+        oper_state: "down",
+        is_default_route: false,
+        default_route_metric: null,
+      }),
+    ).toEqual([
+      "No carrier detected on this interface",
+      "No IPv4 address detected",
+      "Interface state: disconnected",
+    ])
+  })
 
   it("builds interface choices and keeps the configured fallback visible", () => {
     const choices = buildCoreNetworkInterfaceChoices(
@@ -51,6 +115,10 @@ describe("coreNetworkPanelModel", () => {
           network: "192.168.10.0/24",
           connection: "Wired connection 1",
           state: "connected",
+          carrier: true,
+          oper_state: "up",
+          is_default_route: true,
+          default_route_metric: 100,
         },
       ],
       "eth1",
@@ -64,7 +132,7 @@ describe("coreNetworkPanelModel", () => {
       },
       {
         value: "eth0",
-        label: "eth0 · ethernet · 192.168.10.21/24",
+        label: "eth0 · ethernet · default route · 192.168.10.21/24",
         selected: false,
       },
     ])
@@ -81,6 +149,10 @@ describe("coreNetworkPanelModel", () => {
           network: "192.168.10.0/24",
           connection: "Wired connection 1",
           state: "connected",
+          carrier: true,
+          oper_state: "up",
+          is_default_route: true,
+          default_route_metric: 100,
         },
       ],
       "eth0",

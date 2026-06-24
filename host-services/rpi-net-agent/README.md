@@ -6,6 +6,7 @@ Purpose:
 - always boot into AP mode (`[unitlab]-core-ABCD`, `pwd!ABCD`)
 - accept Wi-Fi scan / STA connect requests via Redis
 - own host RJ45 configuration for MMS/SCADA reachability via Redis commands
+- recommend the host interface from the live Linux default route / carrier state when available
 - publish status/events back to Redis for backend/frontend
 - fallback to AP if STA connect fails
 
@@ -188,5 +189,7 @@ Snapshot example:
 
 - The agent currently assumes single-radio mode transitions (AP or STA active).
 - Host Ethernet settings are persisted through the host agent and applied via `nmcli` on the host OS.
+- Interface snapshots expose link and route hints (`carrier`, `oper_state`, `is_default_route`, `default_route_metric`) when Linux host data is available.
+- Interface recommendation and link warnings depend on Linux host data from `nmcli`, `/proc/net/route`, and `/sys/class/net`.
 - `scan` parsing uses `nmcli -t` output and may need escaping hardening for exotic SSIDs containing separators.
 - Backend API/UI integration is expected to talk to Redis using the contract above (separate step).

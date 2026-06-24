@@ -71,6 +71,10 @@ def test_core_network_agent_builds_interface_snapshots_from_device_statuses(tmp_
                 ip4="192.168.10.21",
                 ip4_prefix=24,
                 ip4_cidr="192.168.10.21/24",
+                carrier=True,
+                oper_state="up",
+                is_default_route=True,
+                default_route_metric=100,
             ),
             DeviceStatus(
                 interface_name="wlan0",
@@ -81,6 +85,10 @@ def test_core_network_agent_builds_interface_snapshots_from_device_statuses(tmp_
                 ip4=None,
                 ip4_prefix=None,
                 ip4_cidr=None,
+                carrier=False,
+                oper_state="down",
+                is_default_route=False,
+                default_route_metric=None,
             ),
         ]
     )
@@ -90,4 +98,9 @@ def test_core_network_agent_builds_interface_snapshots_from_device_statuses(tmp_
     assert snapshots[0].local_ip == "192.168.10.21"
     assert snapshots[0].netmask == "24"
     assert snapshots[0].network == "192.168.10.0/24"
+    assert snapshots[0].carrier is True
+    assert snapshots[0].oper_state == "up"
+    assert snapshots[0].is_default_route is True
+    assert snapshots[0].default_route_metric == 100
     assert snapshots[1].device_type == "wifi"
+    assert snapshots[1].carrier is False

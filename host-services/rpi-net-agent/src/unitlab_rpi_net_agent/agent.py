@@ -629,6 +629,10 @@ class CoreNetworkAgent:
                     network=network,
                     connection=status.connection,
                     state=status.state_text,
+                    carrier=status.carrier,
+                    oper_state=status.oper_state,
+                    is_default_route=status.is_default_route,
+                    default_route_metric=status.default_route_metric,
                 )
             )
         return items

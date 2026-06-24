@@ -49,6 +49,10 @@ class NetworkInterfaceInfo:
     network: str | None
     connection: str | None = None
     state: str | None = None
+    carrier: bool | None = None
+    oper_state: str | None = None
+    is_default_route: bool = False
+    default_route_metric: int | None = None
 
 
 @dataclass
