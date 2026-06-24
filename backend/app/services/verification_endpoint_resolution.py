@@ -13,7 +13,7 @@ from app.services.iec61850.mms_adapter import (
 )
 
 VerificationEndpointRuntimeMode = Literal["simulator", "mms"]
-VerificationEndpointTransportSource = Literal["simulator", "explicit_request", "settings_catalog", "unavailable"]
+VerificationEndpointTransportSource = Literal["simulator", "explicit_request", "settings_catalog", "loaded_scd", "unavailable"]
 VerificationEndpointModelSource = Literal["simulator", "loaded_scd", "discovery_fallback"]
 
 
@@ -34,6 +34,8 @@ def resolve_verification_endpoint_resolution_policy(
     execution_context: VerificationExecutionContextSchema,
     explicit_mms_endpoint_catalog: Iec61850MmsEndpointCatalog | None = None,
     settings_mms_endpoint_catalog_json: str | None = None,
+    loaded_runtime_scd_endpoint_catalog: Iec61850MmsEndpointCatalog | None = None,
+    loaded_runtime_scd_available: bool = False,
     active_runtime_selection_import_id: str | None = None,
     active_runtime_selection_selected_ied: str | None = None,
     active_runtime_selection_revision: int | None = None,
@@ -58,8 +60,16 @@ def resolve_verification_endpoint_resolution_policy(
             transport_source = "settings_catalog"
             notes.append("loaded MMS endpoint catalog from settings")
 
+    if endpoint_catalog is None and loaded_runtime_scd_endpoint_catalog is not None:
+        endpoint_catalog = loaded_runtime_scd_endpoint_catalog
+        transport_source = "loaded_scd"
+        notes.append("loaded MMS endpoint catalog from runtime SCD")
+
     if endpoint_catalog is None:
-        notes.append("no MMS endpoint catalog available")
+        if loaded_runtime_scd_available:
+            notes.append("loaded runtime SCD did not yield MMS transport endpoints")
+        else:
+            notes.append("no MMS endpoint catalog available")
 
     model_source: VerificationEndpointModelSource = "loaded_scd" if active_runtime_selection_import_id else "discovery_fallback"
     if active_runtime_selection_import_id:

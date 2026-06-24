@@ -29,7 +29,7 @@ from app.services.iec61850.report_runtime import (
 
 
 VerificationRuntimeMode = Literal["simulator", "mms"]
-VerificationRuntimeTransportSource = Literal["simulator", "explicit_request", "settings_catalog", "unavailable"]
+VerificationRuntimeTransportSource = Literal["simulator", "explicit_request", "settings_catalog", "loaded_scd", "unavailable"]
 VerificationRuntimeModelSource = Literal["simulator", "loaded_scd", "discovery_fallback"]
 
 

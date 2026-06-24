@@ -59,6 +59,7 @@ Real MMS verification needs two distinct inputs:
 Policy:
 - transport identity must be known before a real MMS connection is attempted;
 - SCD is the preferred model source when it is loaded and matches the selected IED/access-point;
+- if the imported SCD contains ConnectedAP/IP address data for the selected IED/access-point, the Python layer may also derive the MMS transport host/port from that same loaded SCD for validation runs;
 - discovery is used when SCD is missing, incomplete, or does not provide enough report-control detail;
 - discovery can reconcile the connected endpoint and enrich the runtime model, but it must not silently rewrite the transport host;
 - if model sources disagree, keep the transport source explicit and record a diagnostic instead of merging the disagreement away.

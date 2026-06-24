@@ -67,6 +67,7 @@ from .mms_adapter import (
     Iec61850MmsEndpointCatalogEntry,
     Iec61850UnavailableMmsAdapter,
     build_mms_endpoint_catalog,
+    build_mms_endpoint_catalog_from_scd_source,
     create_unavailable_mms_adapter,
 )
 from .ied_simulator_fixture import (
@@ -163,6 +164,7 @@ __all__ = [
     "Iec61850MmsEndpointCatalog",
     "Iec61850MmsEndpointCatalogEntry",
     "Iec61850UnavailableMmsAdapter",
+    "build_mms_endpoint_catalog_from_scd_source",
     "IED_SIMULATOR_FIXTURE_SCHEMA",
     "Iec61850IedSimulatorFixture",
     "Iec61850IedSimulatorFixtureDataSet",

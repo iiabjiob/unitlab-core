@@ -151,6 +151,8 @@ def _resolve_source_clause(verification_run: VerificationRunSchema) -> str | Non
             source_parts.append("transport from explicit request")
         elif transport_source == "settings_catalog":
             source_parts.append("transport from settings catalog")
+        elif transport_source == "loaded_scd":
+            source_parts.append("transport from loaded SCD")
         elif transport_source == "simulator":
             source_parts.append("simulator transport")
         if model_source == "loaded_scd":

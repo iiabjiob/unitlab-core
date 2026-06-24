@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from xml.etree import ElementTree as ET
 from typing import Sequence
 
 from .report_runtime import (
@@ -112,6 +113,51 @@ def build_mms_endpoint_catalog(
     return Iec61850MmsEndpointCatalog(entries)
 
 
+def build_mms_endpoint_catalog_from_scd_source(
+    source: bytes,
+    *,
+    selected_ied: str | None = None,
+) -> Iec61850MmsEndpointCatalog | None:
+    text = source.decode("utf-8", errors="replace").strip()
+    if not text:
+        return None
+
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError as exc:
+        raise Iec61850ReportRuntimeError(
+            "INVALID_MMS_ENDPOINT_CATALOG",
+            "IEC 61850 SCD source is invalid XML.",
+        ) from exc
+
+    selected_ied_normalized = selected_ied.strip().lower() if selected_ied is not None else None
+    entries: list[Iec61850MmsEndpointCatalogEntry] = []
+    for connected_ap in _iter_elements(root, "ConnectedAP"):
+        ied_name = (connected_ap.attrib.get("iedName") or connected_ap.attrib.get("ied_name") or "").strip()
+        access_point_name = (connected_ap.attrib.get("apName") or connected_ap.attrib.get("accessPointName") or "AP1").strip() or "AP1"
+        if not ied_name:
+            continue
+        if selected_ied_normalized is not None and ied_name.lower() != selected_ied_normalized:
+            continue
+
+        address = _first_child(connected_ap, "Address")
+        host = _first_text_child_value_by_attr(address, "P", "type", "IP") if address is not None else None
+        if host is None or not host.strip():
+            continue
+        entries.append(
+            Iec61850MmsEndpointCatalogEntry(
+                ied_name=ied_name,
+                access_point_name=access_point_name,
+                host=host.strip(),
+                port=102,
+            )
+        )
+
+    if not entries:
+        return None
+    return build_mms_endpoint_catalog(entries)
+
+
 def build_mms_endpoint_catalog_from_json(payload: str | None) -> Iec61850MmsEndpointCatalog | None:
     text = payload.strip() if payload is not None else ""
     if not text:
@@ -193,3 +239,45 @@ def create_unavailable_mms_adapter() -> Iec61850UnavailableMmsAdapter:
 
 def _endpoint_key(ied_name: str, access_point_name: str) -> tuple[str, str]:
     return (ied_name.strip().lower(), access_point_name.strip().lower())
+
+def _iter_elements(element: ET.Element, local_name: str) -> tuple[ET.Element, ...]:
+    return tuple(child for child in element.iter() if _local_name(child.tag) == local_name)
+
+
+def _first_child(element: ET.Element, local_name: str) -> ET.Element | None:
+    for child in element:
+        if _local_name(child.tag) == local_name:
+            return child
+    return None
+
+
+def _first_text_child_value(element: ET.Element | None, local_name: str) -> str | None:
+    if element is None:
+        return None
+    child = _first_child(element, local_name)
+    if child is None or child.text is None:
+        return None
+    return child.text
+
+
+def _first_text_child_value_by_attr(
+    element: ET.Element | None,
+    local_name: str,
+    attr_name: str,
+    attr_value: str,
+) -> str | None:
+    if element is None:
+        return None
+    for child in element:
+        if _local_name(child.tag) != local_name:
+            continue
+        if str(child.attrib.get(attr_name, "")).strip() != attr_value:
+            continue
+        if child.text is None:
+            return None
+        return child.text
+    return None
+
+
+def _local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]

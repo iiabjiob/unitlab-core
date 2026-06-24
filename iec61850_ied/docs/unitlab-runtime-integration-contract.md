@@ -143,7 +143,7 @@ The Python layer should resolve the transport endpoint before asking the C runti
 Resolution order:
 1. explicit host/port from the workspace runtime configuration or operator-provided target input;
 2. endpoint catalog entry for the selected IED/access point when present;
-3. SCD-derived endpoint metadata only as a model hint, not as the sole transport source;
+3. SCD-derived endpoint metadata can also be turned into a loaded-SCD transport catalog when the imported SCD already carries ConnectedAP/IP address data for the selected IED/access-point;
 4. discovery metadata for reconciling the connected endpoint, not for inventing a connection address.
 
 Practical rules:
@@ -158,7 +158,7 @@ Current product implementation uses a runtime-selection seam in the Python layer
 - `runtime_version="mms"` routes through the MMS endpoint catalog and a client-control-backed MMS wrapper;
 - if no catalog is passed explicitly, the backend can load a settings-driven JSON MMS endpoint catalog for auto-run execution;
 - the MMS wrapper routes one physical session per endpoint and can manage multiple report-control candidates through client-control-backed per-candidate control services;
-- endpoint resolution now reports transport source and model source separately so the run can explain whether the transport address came from an explicit request, settings catalog, or was unavailable, and whether the model binding came from loaded SCD or discovery fallback.
+- endpoint resolution now reports transport source and model source separately so the run can explain whether the transport address came from an explicit request, settings catalog, loaded SCD, or was unavailable, and whether the model binding came from loaded SCD or discovery fallback.
 
 ### Test fixture override policy
 

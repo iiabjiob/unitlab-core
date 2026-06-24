@@ -72,7 +72,8 @@ If SCD is missing or incomplete, discovery may be used as a fallback model sourc
 The explicit runtime mapping from IED/access-point identity to host/port.
 
 This is the authoritative source for transport reachability in real MMS flows.
-It is separate from the SCD model source and separate from discovery metadata.
+In validation flows, a loaded SCD may also be parsed into a transport catalog for the selected IED/access-point when it contains ConnectedAP/IP metadata.
+That derived view is still separate from the operator-configured MMS endpoint catalog, the SCD model source, and discovery metadata.
 
 ### Subscription plan
 

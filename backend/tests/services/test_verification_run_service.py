@@ -752,16 +752,25 @@ async def test_execute_single_signal_verification_run_loads_mms_endpoint_catalog
 
 
 @pytest.mark.anyio
-async def test_execute_single_signal_verification_run_uses_loaded_scd_for_model_binding(monkeypatch) -> None:
+async def test_execute_single_signal_verification_run_uses_loaded_scd_for_transport_and_model_binding(monkeypatch) -> None:
     db = _FakeDb()
     triggered_at = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
 
     class _FakeRuntimeSelectionRepository:
         def __init__(self, _db):
-            pass
+            self._source = (
+                b"<SCL>"
+                b"<Communication><SubNetwork type='8-MMS'>"
+                b"<ConnectedAP apName='P1' iedName='IED-A'><Address><P type='IP'>10.10.10.250</P></Address></ConnectedAP>"
+                b"</SubNetwork></Communication>"
+                b"</SCL>"
+            )
 
         async def get_active_runtime_selection(self, *, workspace_id: int):
             return SimpleNamespace(import_id="import-7", selected_ied="IED-A", runtime_revision=12)
+
+        async def get_import_source(self, *, workspace_id: int, import_id: str):
+            return self._source if workspace_id == 7 and import_id == "import-7" else None
 
     monkeypatch.setattr(run_service, "SignalsRepository", _FakeSignalsRepository)
     monkeypatch.setattr(run_service, "SignalSheetRepository", _FakeSignalSheetRepository)
@@ -786,20 +795,18 @@ async def test_execute_single_signal_verification_run_uses_loaded_scd_for_model_
         db=db,  # type: ignore[arg-type]
         triggered_at=triggered_at,
         mms_control_service_factory=_FakeClientControlService,
-        mms_endpoint_catalog=build_mms_endpoint_catalog((
-            Iec61850MmsEndpointCatalogEntry(
-                ied_name="IED-A",
-                access_point_name="P1",
-                host="10.10.10.250",
-                port=12447,
-            ),
-        )),
     )
 
     assert result.verdict_explanation.summary.startswith("FAIL: no confirmation arrived before the timeout expired.")
-    assert "transport from explicit request" in result.verdict_explanation.summary
+    assert "transport from loaded SCD" in result.verdict_explanation.summary
     assert "model binding from loaded SCD" in result.verdict_explanation.summary
-    assert "loaded runtime SCD selected IED IED-A" in result.verification_run.diagnostics[-1].details["notes"]
+    assert any(
+        diagnostic.code == "endpoint_resolution_policy"
+        and diagnostic.details is not None
+        and diagnostic.details.get("transport_source") == "loaded_scd"
+        for diagnostic in result.verification_run.diagnostics
+    )
+    assert result.verification_run.session_snapshots[0].endpoint_id == "mms:IED-A/P1@10.10.10.250:102"
 
 
 @pytest.mark.anyio

@@ -16,7 +16,7 @@ from app.schemas.verification_schema import (
     VerificationRunSchema,
     VerificationVerdictExplanationSchema,
 )
-from app.services.iec61850.mms_adapter import Iec61850MmsEndpointCatalog
+from app.services.iec61850.mms_adapter import Iec61850MmsEndpointCatalog, build_mms_endpoint_catalog_from_scd_source
 from app.services.iec61850.scl_import import Iec61850SqlAlchemySclImportRepository
 from app.services.verification_endpoint_resolution import (
     build_verification_endpoint_resolution_diagnostic,
@@ -102,13 +102,29 @@ async def execute_single_signal_verification_run(
     subscription_plan = build_verification_subscription_plan(sources)
     runtime_mode = str(execution_context.runtime_version or "").strip().lower()
     active_runtime_selection = None
+    loaded_runtime_scd_endpoint_catalog = None
+    loaded_runtime_scd_available = False
     if runtime_mode in {"mms", "live", "live-mms", "real-mms"} and hasattr(db, "execute"):
-        active_runtime_selection = await Iec61850SqlAlchemySclImportRepository(db).get_active_runtime_selection(workspace_id=workspace_id)
+        scl_repository = Iec61850SqlAlchemySclImportRepository(db)
+        active_runtime_selection = await scl_repository.get_active_runtime_selection(workspace_id=workspace_id)
+        if active_runtime_selection is not None:
+            loaded_runtime_scd_available = True
+            source_bytes = await scl_repository.get_import_source(
+                workspace_id=workspace_id,
+                import_id=active_runtime_selection.import_id,
+            )
+            if source_bytes is not None:
+                loaded_runtime_scd_endpoint_catalog = build_mms_endpoint_catalog_from_scd_source(
+                    source_bytes,
+                    selected_ied=active_runtime_selection.selected_ied,
+                )
 
     endpoint_resolution_policy = resolve_verification_endpoint_resolution_policy(
         execution_context=execution_context,
         explicit_mms_endpoint_catalog=mms_endpoint_catalog,
         settings_mms_endpoint_catalog_json=getattr(get_settings(), "iec61850_mms_endpoint_catalog_json", None),
+        loaded_runtime_scd_endpoint_catalog=loaded_runtime_scd_endpoint_catalog,
+        loaded_runtime_scd_available=loaded_runtime_scd_available,
         active_runtime_selection_import_id=(
             active_runtime_selection.import_id if active_runtime_selection is not None else None
         ),
