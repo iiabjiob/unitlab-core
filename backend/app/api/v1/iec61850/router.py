@@ -52,6 +52,8 @@ class Iec61850ClientTargetRequestSchema(BaseModel):
     scl_path: str | None = "/workspace/.refs/sld-rev2.scd"
     access_point_name: str = "AP1"
     selected_rcb_ref: str | None = None
+    transport_override_host: str | None = None
+    transport_override_port: int | None = None
 
 
 class Iec61850ClientReportControlSelectionRequestSchema(BaseModel):
@@ -84,6 +86,8 @@ async def configure_client_target(payload: Iec61850ClientTargetRequestSchema) ->
         scl_path=payload.scl_path,
         access_point_name=payload.access_point_name,
         selected_rcb_ref=payload.selected_rcb_ref,
+        transport_override_host=payload.transport_override_host,
+        transport_override_port=payload.transport_override_port,
     )
     return _run_action("configure-target", lambda: get_iec61850_client_control_service().configure_target(request))
 

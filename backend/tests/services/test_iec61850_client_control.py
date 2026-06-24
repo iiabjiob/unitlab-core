@@ -778,16 +778,19 @@ def test_client_control_can_remap_a_real_device_ip_to_a_virtual_endpoint(tmp_pat
     snapshot = service.configure_target(
         client_control_module.Iec61850ClientTargetRequest(
             mode="external-mms",
-            host="10.10.10.250",
+            host="172.16.40.128",
             port=12447,
             ied_name="C264_BCU_01",
             scl_path=str(scl_path),
+            transport_override_host="10.10.10.250",
         )
     )
 
     assert snapshot.endpoint.id == "mms:C264_BCU_01@10.10.10.250:12447"
+    assert snapshot.endpoint_resolution.requested_host == "172.16.40.128"
+    assert snapshot.endpoint_resolution.override_host == "10.10.10.250"
+    assert snapshot.endpoint_resolution.override_applied is True
     assert snapshot.endpoint_resolution.transport_source == "explicit_request"
-    assert snapshot.endpoint_resolution.requested_host == "10.10.10.250"
     assert snapshot.endpoint_resolution.resolved_host == "10.10.10.250"
     assert snapshot.endpoint_resolution.model_source == "scd-first"
     assert snapshot.ui_state["endpoint_resolution"]["resolved_host"] == "10.10.10.250"

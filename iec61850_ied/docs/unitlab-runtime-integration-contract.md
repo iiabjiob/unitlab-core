@@ -162,6 +162,12 @@ This override is allowed only when:
 - the override is recorded in diagnostics and artifacts;
 - production endpoint resolution still remains explicit and catalog-driven.
 
+Validation requests may expose explicit override fields such as:
+- `transport_override_host`
+- `transport_override_port`
+
+These fields should be treated as validation-only transport selectors, not as the authoritative production endpoint identity.
+
 This is useful for:
 - lib-server based smoke tests;
 - iDiscover simulator-based smoke tests;

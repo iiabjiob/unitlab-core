@@ -67,6 +67,7 @@ Test-only override:
 - automated regression runs may temporarily remap a real device IP to a virtual MMS endpoint;
 - the override must be explicit in diagnostics and artifact output;
 - the override is validation-only and must not change the production endpoint contract.
+- the override may be carried with explicit fields such as `transport_override_host` and `transport_override_port`.
 
 ## Evidence immutability
 

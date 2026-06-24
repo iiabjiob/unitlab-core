@@ -74,6 +74,9 @@ class Iec61850EndpointResolution:
     requested_port: int | None
     resolved_host: str | None
     resolved_port: int | None
+    override_host: str | None
+    override_port: int | None
+    override_applied: bool
     scl_path: str | None
     notes: tuple[str, ...] = ()
 
@@ -91,6 +94,8 @@ class Iec61850ClientTargetRequest:
     scl_path: str | None = None
     access_point_name: str = "AP1"
     selected_rcb_ref: str | None = None
+    transport_override_host: str | None = None
+    transport_override_port: int | None = None
 
 
 def _candidate_is_unselected(candidate: Iec61850ReportControlCandidate) -> bool:
@@ -1480,6 +1485,9 @@ def _build_ui_state(
             "requested_port": endpoint_resolution.requested_port,
             "resolved_host": endpoint_resolution.resolved_host,
             "resolved_port": endpoint_resolution.resolved_port,
+            "override_host": endpoint_resolution.override_host,
+            "override_port": endpoint_resolution.override_port,
+            "override_applied": endpoint_resolution.override_applied,
             "scl_path": endpoint_resolution.scl_path,
             "notes": list(endpoint_resolution.notes),
         },
@@ -1669,6 +1677,9 @@ def _default_endpoint_resolution(endpoint: Iec61850DeviceEndpoint) -> Iec61850En
         requested_port=endpoint.port,
         resolved_host=endpoint.host,
         resolved_port=endpoint.port,
+        override_host=None,
+        override_port=None,
+        override_applied=False,
         scl_path=None,
         notes=(),
     )
@@ -2019,39 +2030,45 @@ def _build_target_endpoint_and_candidate(
         raise Iec61850ReportRuntimeError("CLIENT_TARGET_IED_REQUIRED", "IEC 61850 external MMS target IED name is required.")
     requested_host = request.host.strip() if request.host is not None else ""
     requested_port = request.port if request.port > 0 else None
+    override_host = request.transport_override_host.strip() if request.transport_override_host is not None and request.transport_override_host.strip() else ""
+    override_port = request.transport_override_port if request.transport_override_port is not None and request.transport_override_port > 0 else None
+    transport_host = override_host or requested_host
+    transport_port = override_port if override_port is not None else requested_port
     notes: tuple[str, ...] = ()
+    if override_host or override_port is not None:
+        notes = ("test-only transport override applied",)
     if endpoint_catalog is not None and ied_name:
         try:
             endpoint, notes = endpoint_catalog.resolve_transport_endpoint(
                 ied_name=ied_name,
                 access_point_name=access_point_name,
-                requested_host=requested_host or None,
-                requested_port=requested_port,
+                requested_host=transport_host or None,
+                requested_port=transport_port,
             )
         except Iec61850ReportRuntimeError:
-            if not requested_host:
+            if not transport_host:
                 raise
             endpoint = Iec61850DeviceEndpoint(
-                id=f"mms:{ied_name}@{requested_host}:{requested_port}" if ied_name else f"mms:{requested_host}:{requested_port}",
+                id=f"mms:{ied_name}@{transport_host}:{transport_port}" if ied_name else f"mms:{transport_host}:{transport_port}",
                 mode=Iec61850RuntimeMode.MMS,
                 ied_name=ied_name,
                 access_point_name=access_point_name,
-                host=requested_host,
-                port=requested_port or 102,
+                host=transport_host,
+                port=transport_port or 102,
             )
             notes = ("explicit transport request",)
     else:
-        if not requested_host:
+        if not transport_host:
             raise Iec61850ReportRuntimeError("CLIENT_TARGET_HOST_REQUIRED", "IEC 61850 external MMS target host is required.")
-        if requested_port is None:
+        if transport_port is None:
             raise Iec61850ReportRuntimeError("CLIENT_TARGET_PORT_INVALID", "IEC 61850 external MMS target port must be in range 1..65535.")
         endpoint = Iec61850DeviceEndpoint(
-            id=f"mms:{ied_name}@{requested_host}:{requested_port}" if ied_name else f"mms:{requested_host}:{requested_port}",
+            id=f"mms:{ied_name}@{transport_host}:{transport_port}" if ied_name else f"mms:{transport_host}:{transport_port}",
             mode=Iec61850RuntimeMode.MMS,
             ied_name=ied_name,
             access_point_name=access_point_name,
-            host=requested_host,
-            port=requested_port,
+            host=transport_host,
+            port=transport_port,
         )
     if request.scl_path is None or not request.scl_path.strip():
         return (
@@ -2061,10 +2078,13 @@ def _build_target_endpoint_and_candidate(
             Iec61850EndpointResolution(
                 transport_source="explicit_request",
                 model_source="discovery-fallback",
-                requested_host=requested_host or endpoint.host,
+                requested_host=requested_host or None,
                 requested_port=requested_port,
                 resolved_host=endpoint.host,
                 resolved_port=endpoint.port,
+                override_host=override_host or None,
+                override_port=override_port,
+                override_applied=bool(override_host or override_port is not None),
                 scl_path=None,
                 notes=("discovery required for model binding",) + notes,
             ),
@@ -2085,10 +2105,13 @@ def _build_target_endpoint_and_candidate(
         Iec61850EndpointResolution(
             transport_source="explicit_request",
             model_source="scd-first",
-            requested_host=requested_host or endpoint.host,
+            requested_host=requested_host or None,
             requested_port=requested_port,
             resolved_host=endpoint.host,
             resolved_port=endpoint.port,
+            override_host=override_host or None,
+            override_port=override_port,
+            override_applied=bool(override_host or override_port is not None),
             scl_path=str(scl_path),
             notes=("loaded SCD used for model binding",) + notes,
         ),
