@@ -13,6 +13,7 @@ This roadmap sits above the protocol/client/server audit:
 - contract ownership map lives in `docs/unitlab-contract-ownership-map.md`.
 
 The goal here is the UnitLab product flow:
+- project inputs are imported once and normalized once per revision or file change;
 - signal list with IEC 61850 endpoint references;
 - optional SCD as a functional hint, not a hard dependency;
 - automatic grouping of signals into per-device subscription plans;
@@ -52,6 +53,7 @@ The library and runtime must support this flow without engineer-heavy setup:
 
 ## Current product gaps
 
+- No first-class project input intake yet normalizes signal-list columns and optional SCD metadata once at import time.
 - No first-class planner yet turns signal-list rows into a subscription plan across one or more IEDs.
 - SCD is still a hint path, not a fully integrated optional input layer for the product workflow.
 - Test-step evidence and verdict logic are not yet a first-class contract above the runtime.

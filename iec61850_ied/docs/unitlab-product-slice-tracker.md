@@ -16,17 +16,42 @@ Execution ownership:
 ## Slice order
 
 The workflow should be built in this order:
-1. signal selection normalization;
-2. subscription planning;
-3. evidence capture;
-4. first auto verification flow;
-5. same-IED multi-signal flow;
-6. multi-IED selected-group flow;
-7. recovery hardening;
-8. virtual-substation regression harness;
-9. real MMS integration, including host-network configuration and RJ45 readiness.
+1. project input intake and normalization profiles;
+2. signal selection normalization;
+3. subscription planning;
+4. evidence capture;
+5. first auto verification flow;
+6. same-IED multi-signal flow;
+7. multi-IED selected-group flow;
+8. recovery hardening;
+9. virtual-substation regression harness;
+10. real MMS integration, including host-network configuration and RJ45 readiness.
 
 ## Slice tracker
+
+### PR0 - Project input intake and normalization profiles
+
+Status: pending.
+
+Input:
+- imported signal list;
+- optional imported SCD;
+- optional endpoint catalog or network context;
+- column samples and import profile hints.
+
+Output:
+- normalized project input set;
+- saved column mapping / import profile;
+- resolved signal-list fields;
+- optional SCD-backed model hints;
+- endpoint / network diagnostics;
+- import preview summary.
+
+Done when:
+- signal list columns are mapped once at import time, not on each run;
+- the user can review what was resolved, what was inferred, and what remains missing;
+- imported signal list data can be reused across many test runs without remapping;
+- SCD import is an explicit, separate action and can enrich model binding without becoming mandatory.
 
 ### PR1 - Signal list to verification targets
 
@@ -215,10 +240,20 @@ Done when:
 - Automated validation can temporarily remap a real device IP to a virtual endpoint without changing the production contract.
 - The main validation matrix should prioritize C264/BCU-style endpoints.
 
+### Slice closure notes
+
+When a slice is closed, update:
+- the slice `Status` field in this tracker;
+- the `Done when` bullets if acceptance shifted;
+- the roadmap phase status if the slice maps to a roadmap phase;
+- any dependent docs that now describe implemented behavior instead of planned behavior.
+
 ## Mandatory vs optional
 
 ### Mandatory
 
+- imported signal list normalization before repeated runs;
+- explicit SCD import as a separate project input;
 - signal-list to IED/report planning without manual tuning;
 - network preflight with actionable guidance when the host agent is not reporting a usable MMS path;
 - report evidence in the verdict path;
