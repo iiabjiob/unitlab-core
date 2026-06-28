@@ -1,104 +1,57 @@
 <template>
-  <UiModal :open="open" title="Import Signal List" max-width="3xl" desktop-height="80vh" @close="emitClose">
+  <UiModal
+    :open="open"
+    title="Import Signal List"
+    max-width="3xl"
+    desktop-height="80vh"
+    :content-scroll="false"
+    @close="emitClose"
+  >
     <form id="signal-import-form" class="signal-import-modal__form" @submit.prevent="handleSubmit">
-      <!-- <UiAlert
-        type="info"
-        message="Upload an Excel signal list (.xls, .xlsx, .xlsm). Include headers and any metadata columns required by your workspace schema."
-      /> -->
-
-      <div
-        class="signal-import-modal__steps-card"
-      >
-        <div class="signal-import-modal__steps-row">
-          <template v-for="(item, index) in stepItems" :key="item.id">
-            <div class="signal-import-modal__step">
-              <span :class="stepIndicatorClass(item.id)">{{ index + 1 }}. {{ item.label }}</span>
-              <span v-if="index < stepItems.length - 1" class="signal-import-modal__step-separator">→</span>
-            </div>
-          </template>
-        </div>
-      </div>
-
-      <div v-if="error" ref="errorAnchorRef">
-        <UiAlert type="error" :message="error" />
-      </div>
-
-      <div v-if="step === 'upload'" class="signal-import-modal__upload-field">
-        <label for="signal-import-file" class="signal-import-modal__strong-label">Signal list file</label>
-        <div
-          class="signal-import-modal__dropzone"
-          :class="{
-            'signal-import-modal__dropzone--active': dropActive,
-            'signal-import-modal__dropzone--idle': !dropActive,
-            'signal-import-modal__dropzone--disabled': parsing || loading,
-          }"
-          tabindex="0"
-          role="button"
-          aria-label="Upload signal list file"
-          :aria-disabled="parsing || loading"
-          @click="triggerFileDialog"
-          @keydown.enter.prevent="triggerFileDialog"
-          @keydown.space.prevent="triggerFileDialog"
-          @dragenter.prevent="onDragEnter"
-          @dragover.prevent="onDragOver"
-          @dragleave.prevent="onDragLeave"
-          @drop.prevent="onDrop"
-        >
-          <div class="signal-import-modal__dropzone-content">
-            <p class="signal-import-modal__dropzone-title">Drag & drop your spreadsheet</p>
-            <p class="signal-import-modal__muted signal-import-modal__muted--xs">
-              or <span class="signal-import-modal__browse-link">browse files</span>
-            </p>
+      <input
+        ref="fileInput"
+        class="signal-import-modal__file-input"
+        type="file"
+        accept=".xls,.xlsx,.xlsm"
+        tabindex="-1"
+        aria-hidden="true"
+        @change="onFileChange"
+      />
+      <div class="signal-import-modal__body">
+        <div class="signal-import-modal__steps-card">
+          <div class="signal-import-modal__steps-row">
+            <template v-for="(item, index) in stepItems" :key="item.id">
+              <div class="signal-import-modal__step">
+                <span :class="stepIndicatorClass(item.id)">{{ index + 1 }}. {{ item.label }}</span>
+                <span v-if="index < stepItems.length - 1" class="signal-import-modal__step-separator">→</span>
+              </div>
+            </template>
           </div>
-          <p class="signal-import-modal__file-help">Supported: .xls, .xlsx, .xlsm</p>
-          <p class="signal-import-modal__file-meta" v-if="fileName">
-            Selected: <span class="signal-import-modal__file-name">{{ fileName }}</span>
-          </p>
-          <p v-if="parsing" class="signal-import-modal__parsing-text">Analyzing workbook…</p>
         </div>
-        <input
-          ref="fileInput"
-          type="file"
-          autocomplete="off"
-          id="signal-import-file"
-          name="signal-import-file"
-          accept=".xls,.xlsx,.xlsm"
-          class="signal-import-modal__file-input"
-          :disabled="parsing || loading"
-          @change="onFileChange"
-        />
 
-        <div class="signal-import-modal__preset-block">
-          <p class="signal-import-modal__eyebrow">
-            Preset (optional)
-          </p>
-          <UiAffinoListbox
-            v-model="selectedPresetId"
-            :options="presetListboxOptions"
-            placeholder="Manual wizard"
-            aria-label="Preset"
-            :disabled="loading || parsing"
-          />
+        <div v-if="error" ref="errorAnchorRef">
+          <UiAlert type="error" :message="error" />
+        </div>
+
+        <div v-if="!file" class="signal-import-modal__empty-state">
+          <p class="signal-import-modal__ready-title">Choose a signal list file to start.</p>
           <p class="signal-import-modal__muted signal-import-modal__muted--xs">
-            Choose a saved preset to prefill sheet/column/type mapping in the wizard.
+            You can drag and drop .xls, .xlsx, or .xlsm files here.
           </p>
-          <div class="signal-import-modal__inline-actions">
+          <div class="signal-import-modal__inline-actions signal-import-modal__inline-actions--start">
             <UiButton
-              v-if="selectedPreset"
               type="button"
-              variant="ghost"
-              size="xs"
+              variant="secondary"
+              size="sm"
+              @click="triggerFileDialog"
               :disabled="loading || parsing"
-              @click="requestDeleteSelectedPreset"
             >
-              Delete selected preset
+              Choose file
             </UiButton>
           </div>
         </div>
-      </div>
 
-      <template v-else>
-        <div class="signal-import-modal__ready-card">
+        <div v-else class="signal-import-modal__ready-card">
           <div class="signal-import-modal__ready-row">
             <div>
               <p class="signal-import-modal__ready-title">File ready</p>
@@ -123,156 +76,226 @@
           />
         </div>
 
-        <div v-if="step === 'columns'" class="signal-import-modal__section-stack">
-          <div class="signal-import-modal__field">
-            <p class="signal-import-modal__strong-label">Worksheet</p>
-            <UiAffinoListbox
-              v-model="selectedSheetName"
-              :options="worksheetListboxOptions"
-              placeholder="Select worksheet"
-              aria-label="Worksheet"
-              :disabled="loading || parsing || worksheetListboxOptions.length === 0"
-            />
-            <p v-if="!selectedSheetName" class="signal-import-modal__warning-text">
-              Choose a worksheet from the uploaded file to continue. The Next button stays disabled until selected.
-            </p>
-          </div>
-
-          <div v-if="availableColumns.length">
-            <div class="signal-import-modal__section-heading">
-              <div>
-                <p class="signal-import-modal__section-title">Columns</p>
-                <p class="signal-import-modal__muted signal-import-modal__muted--xs">
-                  {{ selectedColumnCount }} of {{ availableColumns.length }} selected
-                </p>
-              </div>
-              <div class="signal-import-modal__button-pair">
-                <UiButton type="button" variant="ghost" size="xs" @click="selectAllColumns" :disabled="loading">
-                  Select all
-                </UiButton>
-                <UiButton type="button" variant="ghost" size="xs" @click="clearAllColumns" :disabled="loading">
-                  Clear
-                </UiButton>
-              </div>
+        <div v-if="file" class="signal-import-modal__step-content">
+          <div v-if="step === 'columns'" class="signal-import-modal__section-stack">
+            <div class="signal-import-modal__field">
+              <p class="signal-import-modal__strong-label">Worksheet</p>
+              <UiAffinoListbox
+                v-model="selectedSheetName"
+                :options="worksheetListboxOptions"
+                placeholder="Select worksheet"
+                aria-label="Worksheet"
+                :disabled="loading || parsing || worksheetListboxOptions.length === 0"
+              />
+              <p v-if="!selectedSheetName" class="signal-import-modal__warning-text">
+                Choose a worksheet from the uploaded file to continue. The Next button stays disabled until selected.
+              </p>
             </div>
-            <div class="signal-import-modal__option-list">
-              <label
-                v-for="column in availableColumns"
-                :key="column.index"
-                class="signal-import-modal__option"
-              >
-                <input
-                  type="checkbox"
-                  autocomplete="off"
-                  :id="`signal-import-column-${column.index}`"
-                  :name="`signal-import-columns-${column.index}`"
-                  class="signal-import-modal__checkbox"
-                  :checked="isColumnSelected(column.index)"
-                  @change="toggleColumn(column.index)"
-                />
-                <span class="signal-import-modal__option-label">{{ column.header }}</span>
-              </label>
-            </div>
-          </div>
-          <p v-else class="signal-import-modal__muted">
-            Selected worksheet has no detectable header row. Choose another sheet or upload a different file.
-          </p>
-        </div>
 
-        <div v-else-if="step === 'terminal'" class="signal-import-modal__section-stack">
-          <div>
-            <p class="signal-import-modal__section-title">Terminal column</p>
-            <p class="signal-import-modal__muted signal-import-modal__muted--xs">
-              Select column that contains terminal block values.
-            </p>
-            <p class="signal-import-modal__muted signal-import-modal__muted--xs signal-import-modal__spaced-xs">
-              Terminal block of cabinet will be used for physical device connection to cabinet.
-            </p>
-          </div>
-
-          <div class="signal-import-modal__field">
-            <p class="signal-import-modal__label">Terminal column</p>
-            <UiAffinoListbox
-              v-model="terminalColumnIndex"
-              id="signal-import-terminal-column"
-              name="signal-import-terminal-column"
-              :options="terminalColumnListboxOptions"
-              placeholder="Select terminal column"
-              aria-label="Terminal column"
-              :disabled="loading || parsing || terminalColumnListboxOptions.length === 0"
-            />
-            <p v-if="terminalColumnIndex === null" class="signal-import-modal__warning-text">
-              Select terminal column to continue.
-            </p>
-          </div>
-        </div>
-
-        <div v-else-if="step === 'types'" class="signal-import-modal__section-stack">
-          <div>
-            <p class="signal-import-modal__section-title">Type mapping</p>
-            <p class="signal-import-modal__muted signal-import-modal__muted--xs">
-              Select the column that contains vendor type codes, then map each code to an internal signal type.
-            </p>
-            <p class="signal-import-modal__muted signal-import-modal__muted--xs signal-import-modal__spaced-xs">
-              Example: <span class="signal-import-modal__strong">SPS → DI</span>, <span class="signal-import-modal__strong">SPC → DO</span>. Unmapped codes are skipped.
-            </p>
-          </div>
-          <div class="signal-import-modal__field">
-            <p class="signal-import-modal__label">Type column</p>
-            <UiAffinoListbox
-              v-model="typeColumnIndex"
-              :options="typeColumnListboxOptions"
-              placeholder="Select type column"
-              aria-label="Type column"
-              :disabled="loading || parsing || typeColumnListboxOptions.length === 0"
-            />
-            <p v-if="typeColumnIndex === null" class="signal-import-modal__warning-text">
-              Select the column that contains vendor type codes to continue import.
-            </p>
-          </div>
-          <div v-if="typeValueOptions.length" class="signal-import-modal__mapping-list">
-            <div
-              v-for="option in typeValueOptions"
-              :key="option.key"
-              class="signal-import-modal__mapping-row"
-            >
-              <div>
-                <p class="signal-import-modal__mapping-title">{{ option.label }}</p>
-                <p class="signal-import-modal__muted signal-import-modal__muted--xs">{{ option.count }} rows</p>
-              </div>
-              <div class="signal-import-modal__mapping-control">
-                <UiAffinoListbox
-                  :model-value="typeMapping[option.key] ?? ''"
-                  :options="typeMappingListboxOptions"
-                  aria-label="Internal type mapping"
+            <div class="signal-import-modal__preset-block">
+              <p class="signal-import-modal__eyebrow">
+                Preset (optional)
+              </p>
+              <UiAffinoListbox
+                v-model="selectedPresetId"
+                :options="presetListboxOptions"
+                placeholder="Manual wizard"
+                aria-label="Preset"
+                :disabled="loading || parsing"
+              />
+              <p class="signal-import-modal__muted signal-import-modal__muted--xs">
+                Choose a saved preset to prefill sheet/column/type mapping in the wizard.
+              </p>
+              <div class="signal-import-modal__inline-actions">
+                <UiButton
+                  v-if="selectedPreset"
+                  type="button"
+                  variant="ghost"
+                  size="xs"
                   :disabled="loading || parsing"
-                  @update:model-value="value => onTypeMappingChange(option.key, value)"
-                />
+                  @click="requestDeleteSelectedPreset"
+                >
+                  Delete selected preset
+                </UiButton>
               </div>
             </div>
+
+            <div v-if="availableColumns.length" class="signal-import-modal__columns-panel">
+              <div class="signal-import-modal__section-heading">
+                <div>
+                  <p class="signal-import-modal__section-title">Columns</p>
+                  <p class="signal-import-modal__muted signal-import-modal__muted--xs">
+                    {{ selectedColumnCount }} of {{ availableColumns.length }} selected
+                  </p>
+                </div>
+                <div class="signal-import-modal__button-pair">
+                  <UiButton type="button" variant="ghost" size="xs" @click="selectAllColumns" :disabled="loading">
+                    Select all
+                  </UiButton>
+                  <UiButton type="button" variant="ghost" size="xs" @click="clearAllColumns" :disabled="loading">
+                    Clear
+                  </UiButton>
+                </div>
+              </div>
+              <div class="signal-import-modal__option-scroll">
+                <div class="signal-import-modal__option-list">
+                  <label
+                    v-for="column in availableColumns"
+                    :key="column.index"
+                    class="signal-import-modal__option"
+                  >
+                    <input
+                      type="checkbox"
+                      autocomplete="off"
+                      :id="`signal-import-column-${column.index}`"
+                      :name="`signal-import-columns-${column.index}`"
+                      class="signal-import-modal__checkbox"
+                      :checked="isColumnSelected(column.index)"
+                      @change="toggleColumn(column.index)"
+                    />
+                    <span class="signal-import-modal__option-label">{{ column.header }}</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+            <p v-else class="signal-import-modal__muted">
+              Selected worksheet has no detectable header row. Choose another sheet or upload a different file.
+            </p>
           </div>
-          <p v-else class="signal-import-modal__muted">
-            Selected column has no recognizable values. Choose a different column.
-          </p>
-          <UiAlert
-            type="warning"
-            message="Rows with types left as 'Skip' will not be imported."
-          />
-          <div class="signal-import-modal__field">
-            <label class="signal-import-modal__label">Save as preset (optional)</label>
-            <input
-              v-model="savePresetName"
-              type="text"
-              autocomplete="off"
-              id="signal-import-save-preset-name"
-              name="signal-import-save-preset-name"
-              maxlength="120"
-              class="signal-import-modal__input"
-              placeholder="e.g. Project SCADA import"
+
+          <div v-else-if="step === 'terminal'" class="signal-import-modal__section-stack">
+            <div>
+              <p class="signal-import-modal__section-title">Terminal column</p>
+              <p class="signal-import-modal__muted signal-import-modal__muted--xs">
+                Select column that contains terminal block values.
+              </p>
+              <p class="signal-import-modal__muted signal-import-modal__muted--xs signal-import-modal__spaced-xs">
+                Terminal block of cabinet will be used for physical device connection to cabinet.
+              </p>
+            </div>
+
+            <div class="signal-import-modal__field">
+              <p class="signal-import-modal__label">Terminal column</p>
+              <UiAffinoListbox
+                v-model="terminalColumnIndex"
+                id="signal-import-terminal-column"
+                name="signal-import-terminal-column"
+                :options="terminalColumnListboxOptions"
+                placeholder="Select terminal column"
+                aria-label="Terminal column"
+                :disabled="loading || parsing || terminalColumnListboxOptions.length === 0"
+              />
+              <p v-if="terminalColumnIndex === null" class="signal-import-modal__warning-text">
+                Select terminal column to continue.
+              </p>
+            </div>
+          </div>
+
+          <div v-else-if="step === 'types'" class="signal-import-modal__section-stack">
+            <div>
+              <p class="signal-import-modal__section-title">Type mapping</p>
+              <p class="signal-import-modal__muted signal-import-modal__muted--xs">
+                Select the column that contains vendor type codes, then map each code to an internal signal type.
+              </p>
+              <p class="signal-import-modal__muted signal-import-modal__muted--xs signal-import-modal__spaced-xs">
+                Example: <span class="signal-import-modal__strong">SPS → DI</span>, <span class="signal-import-modal__strong">SPC → DO</span>. Unmapped codes are skipped.
+              </p>
+            </div>
+            <div class="signal-import-modal__field">
+              <p class="signal-import-modal__label">Type column</p>
+              <UiAffinoListbox
+                v-model="typeColumnIndex"
+                :options="typeColumnListboxOptions"
+                placeholder="Select type column"
+                aria-label="Type column"
+                :disabled="loading || parsing || typeColumnListboxOptions.length === 0"
+              />
+              <p v-if="typeColumnIndex === null" class="signal-import-modal__warning-text">
+                Select the column that contains vendor type codes to continue import.
+              </p>
+            </div>
+            <div v-if="typeValueOptions.length" class="signal-import-modal__mapping-list">
+              <div
+                v-for="option in typeValueOptions"
+                :key="option.key"
+                class="signal-import-modal__mapping-row"
+              >
+                <div>
+                  <p class="signal-import-modal__mapping-title">{{ option.label }}</p>
+                  <p class="signal-import-modal__muted signal-import-modal__muted--xs">{{ option.count }} rows</p>
+                </div>
+                <div class="signal-import-modal__mapping-control">
+                  <UiAffinoListbox
+                    :model-value="typeMapping[option.key] ?? ''"
+                    :options="typeMappingListboxOptions"
+                    aria-label="Internal type mapping"
+                    :disabled="loading || parsing"
+                    @update:model-value="value => onTypeMappingChange(option.key, value)"
+                  />
+                </div>
+              </div>
+            </div>
+            <p v-else class="signal-import-modal__muted">
+              Selected column has no recognizable values. Choose a different column.
+            </p>
+            <UiAlert
+              type="warning"
+              message="Rows with types left as 'Skip' will not be imported."
             />
           </div>
+
+          <div v-else-if="step === 'verification'" class="signal-import-modal__section-stack">
+            <div>
+              <p class="signal-import-modal__section-title">IEC 61850</p>
+              <p class="signal-import-modal__muted signal-import-modal__muted--xs">
+                Choose the exact columns that carry the IP address and IEC 61850 address for real MMS verification.
+                Leave both empty to import without verification metadata.
+              </p>
+            </div>
+
+            <div class="signal-import-modal__field">
+              <p class="signal-import-modal__label">IP address column</p>
+              <UiAffinoListbox
+                v-model="transportHostColumnName"
+                :options="verificationColumnListboxOptions"
+                placeholder="Skip verification"
+                aria-label="IP address column"
+                :disabled="loading || parsing || verificationColumnListboxOptions.length === 0"
+              />
+            </div>
+
+            <div class="signal-import-modal__field">
+              <p class="signal-import-modal__label">IEC 61850 address column</p>
+              <UiAffinoListbox
+                v-model="iec61850AddressColumnName"
+                :options="verificationColumnListboxOptions"
+                placeholder="Skip verification"
+                aria-label="IEC 61850 address column"
+                :disabled="loading || parsing || verificationColumnListboxOptions.length === 0"
+              />
+            </div>
+
+            <UiAlert
+              :type="verificationSelectionNotice.type"
+              class="signal-import-modal__card-alert"
+              :message="verificationSelectionNotice.message"
+            />
+            <div class="signal-import-modal__field">
+              <label class="signal-import-modal__label">Save as preset (optional)</label>
+              <input
+                v-model="savePresetName"
+                type="text"
+                autocomplete="off"
+                id="signal-import-save-preset-name"
+                name="signal-import-save-preset-name"
+                maxlength="120"
+                class="signal-import-modal__input"
+                placeholder="e.g. Project SCADA import"
+              />
+            </div>
+          </div>
         </div>
-      </template>
+      </div>
 
     </form>
 
@@ -338,9 +361,14 @@ import UiButton from "@/components/ui/UiButton.vue"
 import UiModal from "@/components/ui/UiModal.vue"
 import { useSignalSheetStore } from "@/stores/signalSheetStore"
 import { useToastStore } from "@/stores/toastStore"
-import type { InternalSignalType, SignalImportMeta, SignalSheetPreset } from "@/types/signal"
+import type {
+  InternalSignalType,
+  SignalImportMeta,
+  SignalImportVerificationMeta,
+  SignalSheetPreset,
+} from "@/types/signal"
 
-const props = defineProps<{ open: boolean }>()
+const props = defineProps<{ open: boolean; seedFile?: File | null }>()
 
 const emit = defineEmits<{ (e: "close"): void; (e: "imported", sheetId: number): void }>()
 
@@ -348,17 +376,15 @@ const signalSheetStore = useSignalSheetStore()
 const toastStore = useToastStore()
 const ALLOWED_EXTENSIONS = ["xls", "xlsx", "xlsm"]
 
-const STEP_ITEMS = [
-  { id: "upload", label: "Upload file" },
+const BASE_STEP_ITEMS = [
   { id: "columns", label: "Columns" },
   { id: "terminal", label: "Terminal" },
   { id: "types", label: "Type mapping" },
 ] as const
-type WizardStep = (typeof STEP_ITEMS)[number]["id"]
-const stepOrder: WizardStep[] = STEP_ITEMS.map(item => item.id)
-const stepItems = STEP_ITEMS
+const VERIFICATION_STEP_ITEM = { id: "verification", label: "IEC61850" } as const
+type WizardStep = (typeof BASE_STEP_ITEMS)[number]["id"] | typeof VERIFICATION_STEP_ITEM.id
 
-const step = ref<WizardStep>("upload")
+const step = ref<WizardStep>("columns")
 const file = ref<File | null>(null)
 const fileName = ref("")
 const loading = ref(false)
@@ -368,7 +394,6 @@ const fileInput = ref<HTMLInputElement | null>(null)
 const parsing = ref(false)
 const dropActive = ref(false)
 const dragCounter = ref(0)
-
 type SheetColumn = {
   header: string
   index: number
@@ -383,10 +408,15 @@ const typeColumnIndex = ref<number | null>(null)
 const typeMapping = ref<Record<string, InternalSignalType>>({})
 const selectedPresetId = ref<number | null>(null)
 const savePresetName = ref("")
+const transportHostColumnName = ref<string | null>(null)
+const iec61850AddressColumnName = ref<string | null>(null)
 const applyingPreset = ref(false)
 const suppressTypeMappingReset = ref(false)
 const deletePresetOpen = ref(false)
+const lastSeedFileKey = ref("")
 
+const stepItems = computed(() => [...BASE_STEP_ITEMS, VERIFICATION_STEP_ITEM])
+const stepOrder = computed<WizardStep[]>(() => stepItems.value.map(item => item.id))
 const internalTypeOptions: Array<{ value: InternalSignalType; label: string }> = [
   { value: "di", label: "Digital input (DI)" },
   { value: "do", label: "Digital output (DO)" },
@@ -415,9 +445,9 @@ const terminalColumnListboxOptions = computed(() =>
 )
 const typeValueOptions = computed(() => buildTypeValueOptions())
 const hasTypeMappings = computed(() => Object.keys(typeMapping.value).length > 0)
-const activeStepIndex = computed(() => stepOrder.indexOf(step.value))
-const isFinalStep = computed(() => step.value === "types")
-const canGoBack = computed(() => step.value === "terminal" || step.value === "types")
+const activeStepIndex = computed(() => stepOrder.value.indexOf(step.value))
+const isFinalStep = computed(() => activeStepIndex.value === stepOrder.value.length - 1)
+const canGoBack = computed(() => activeStepIndex.value > 0)
 const columnsStepValid = computed(
   () => !!selectedSheetName.value && availableColumns.value.length > 0 && selectedColumnCount.value > 0,
 )
@@ -430,9 +460,18 @@ const typeStepValid = computed(
 const canAdvance = computed(() => {
   if (step.value === "columns") return columnsStepValid.value
   if (step.value === "terminal") return terminalStepValid.value
+  if (step.value === "types") return typeStepValid.value
   return false
 })
-const canSubmitFinal = computed(() => step.value === "types" && typeStepValid.value)
+const canSubmitFinal = computed(() => {
+  if (!isFinalStep.value) {
+    return false
+  }
+  if (step.value === "verification") {
+    return typeStepValid.value && (verificationSelectionState.value === "empty" || verificationSelectionState.value === "ready")
+  }
+  return typeStepValid.value
+})
 const presets = computed(() => signalSheetStore.presets)
 const presetListboxOptions = computed(() => [
   { value: null, label: "Manual wizard" },
@@ -447,6 +486,36 @@ const typeColumnListboxOptions = computed(() =>
 const selectedPreset = computed<SignalSheetPreset | null>(() =>
   presets.value.find(item => item.id === selectedPresetId.value) ?? null,
 )
+const verificationColumnListboxOptions = computed(() =>
+  availableColumns.value.map(column => ({ value: column.header, label: column.header })),
+)
+const verificationSelectionState = computed(() => {
+  const host = transportHostColumnName.value
+  const address = iec61850AddressColumnName.value
+  if (!host && !address) return "empty"
+  if (host && address) {
+    return host === address ? "conflict" : "ready"
+  }
+  return "partial"
+})
+const verificationSelectionNotice = computed(() => {
+  if (verificationSelectionState.value === "partial") {
+    return {
+      type: "warning" as const,
+      message: "Choose both columns to save MMS verification metadata, or clear both to import without it.",
+    }
+  }
+  if (verificationSelectionState.value === "conflict") {
+    return {
+      type: "warning" as const,
+      message: "Choose two different columns, or clear both to import without it.",
+    }
+  }
+  return {
+    type: "info" as const,
+    message: "Both columns are optional. Leave them empty to import without MMS verification metadata.",
+  }
+})
 const deletePresetMessage = computed(() => {
   const preset = selectedPreset.value
   if (!preset) return ""
@@ -454,7 +523,7 @@ const deletePresetMessage = computed(() => {
 })
 
 function stepIndicatorClass(target: WizardStep) {
-  const targetIndex = stepOrder.indexOf(target)
+  const targetIndex = stepOrder.value.indexOf(target)
   const currentIndex = activeStepIndex.value
   if (targetIndex === currentIndex) return "signal-import-modal__step-label signal-import-modal__step-label--active"
   if (targetIndex < currentIndex) return "signal-import-modal__step-label signal-import-modal__step-label--complete"
@@ -465,15 +534,15 @@ function goToNextStep() {
   if (loading.value || parsing.value) return
   if (!canAdvance.value) return
   const currentIndex = activeStepIndex.value
-  if (currentIndex === -1 || currentIndex >= stepOrder.length - 1) return
-  step.value = stepOrder[currentIndex + 1]
+  if (currentIndex === -1 || currentIndex >= stepOrder.value.length - 1) return
+  step.value = stepOrder.value[currentIndex + 1]
 }
 
 function goToPreviousStep() {
   if (loading.value || parsing.value) return
   const currentIndex = activeStepIndex.value
   if (currentIndex <= 0) return
-  step.value = stepOrder[currentIndex - 1]
+  step.value = stepOrder.value[currentIndex - 1]
 }
 
 function emitClose() {
@@ -497,6 +566,8 @@ function resetWorkflowState(options: { preserveError?: boolean } = {}) {
   typeColumnIndex.value = null
   typeMapping.value = {}
   savePresetName.value = ""
+  transportHostColumnName.value = null
+  iec61850AddressColumnName.value = null
   if (!options.preserveError) {
     error.value = null
   }
@@ -513,11 +584,11 @@ function clearWorkbookState() {
   selectedSheetName.value = null
   selectedColumnsBySheet.value = {}
   terminalColumnIndex.value = null
-  step.value = "upload"
+  step.value = "columns"
 }
 
 async function handleSubmit() {
-  if (!canSubmitFinal.value || loading.value || parsing.value || step.value !== "types") return
+  if (!canSubmitFinal.value || loading.value || parsing.value || !isFinalStep.value) return
   loading.value = true
   error.value = null
   try {
@@ -605,22 +676,21 @@ function toReadableImportError(err: unknown): string {
 
 async function handleSelectedFile(selected: File | null) {
   if (!selected) {
-    resetWorkflowState()
     return
   }
 
   const ext = selected.name.split(".").pop()?.toLowerCase()
   if (!ext || !ALLOWED_EXTENSIONS.includes(ext)) {
     error.value = "Unsupported file type. Please upload .xls, .xlsx, or .xlsm."
-    resetWorkflowState({ preserveError: true })
     if (fileInput.value) fileInput.value.value = ""
     return
   }
 
   try {
-    await parseWorkbook(selected)
+    resetWorkflowState()
     file.value = selected
     fileName.value = selected.name
+    await parseWorkbook(selected)
     error.value = null
   } catch {
     if (fileInput.value) fileInput.value.value = ""
@@ -653,17 +723,36 @@ function clearAllColumns() {
   selectedColumnsBySheet.value[selectedSheetName.value] = []
 }
 
-async function replaceFile() {
+function openFileDialog() {
   if (loading.value || parsing.value) return
-  resetWorkflowState()
-  await nextTick()
-  fileInput.value?.click()
+  const input = fileInput.value
+  if (!input) return
+
+  input.value = ""
+  const picker = input as HTMLInputElement & { showPicker?: () => void }
+  try {
+    if (typeof picker.showPicker === "function") {
+      picker.showPicker()
+      return
+    }
+  } catch {
+    // Fallback below.
+  }
+
+  input.click()
+}
+
+function replaceFile() {
+  openFileDialog()
 }
 
 function triggerFileDialog() {
-  if (loading.value || parsing.value) return
-  fileInput.value?.click()
+  openFileDialog()
 }
+
+defineExpose({
+  triggerFileDialog,
+})
 
 function onDragEnter(event: DragEvent) {
   if (loading.value || parsing.value) return
@@ -769,9 +858,6 @@ function applySelectedPreset() {
   if (!preset) return
   applyPresetToSelection(preset.import_meta)
 
-  if (step.value !== "upload" && typeStepValid.value) {
-    step.value = "types"
-  }
 }
 
 function requestDeleteSelectedPreset() {
@@ -802,7 +888,14 @@ function applyPresetToSelection(meta: SignalImportMeta) {
   applyingPreset.value = true
   try {
     typeMapping.value = {}
-
+    const verification = meta.verification
+    transportHostColumnName.value = verification?.transport_host_column
+      ?? verification?.transport_host_column_hint?.column
+      ?? verification?.transport_reference_column_hint?.column
+      ?? null
+    iec61850AddressColumnName.value = verification?.iec61850_address_column
+      ?? verification?.iec61850_address_column_hint?.column
+      ?? null
     const requestedSheetName = meta.source_sheet_name || meta.sheet_name || null
     if (requestedSheetName && sheetColumns.value[requestedSheetName]) {
       selectedSheetName.value = requestedSheetName
@@ -890,31 +983,6 @@ function normalizeHeaderValue(value: unknown): string {
   if (typeof value === "string") return value.trim()
   if (value instanceof Date) return value.toISOString()
   return String(value).trim()
-}
-
-function sampleColumnValues(columnIndex: number | null, limit = 5): string[] {
-  if (!selectedSheetName.value || columnIndex === null) return []
-  const rows = sheetRows.value[selectedSheetName.value] ?? []
-  const samples: string[] = []
-  for (let rowIndex = 1; rowIndex < rows.length; rowIndex += 1) {
-    const row = Array.isArray(rows[rowIndex]) ? rows[rowIndex] : []
-    const formatted = formatCellValue(row[columnIndex])
-    if (!formatted) continue
-    samples.push(formatted)
-    if (samples.length >= limit) break
-  }
-  return samples
-}
-
-function formatCellValue(value: unknown): string {
-  if (value === null || value === undefined) return ""
-  if (typeof value === "string") {
-    const trimmed = value.trim()
-    return trimmed || "(blank)"
-  }
-  if (value instanceof Date) return value.toISOString()
-  const stringValue = String(value).trim()
-  return stringValue || "(blank)"
 }
 
 function normalizeTypeKey(value: unknown): string {
@@ -1056,19 +1124,48 @@ async function buildPreparedImportPayload(): Promise<{ file: File; metadata: Sig
     throw new Error("No rows match the selected type mapping.")
   }
   if (!file.value) {
-    throw new Error("Upload file before importing.")
+    throw new Error("Select a file before importing.")
+  }
+
+  const verificationMetadata = buildVerificationMetadata()
+  const selectedHeaders = new Set(orderedColumns.map(column => column.header))
+  if (verificationMetadata) {
+    if (verificationMetadata.transport_host_column) {
+      selectedHeaders.add(verificationMetadata.transport_host_column)
+    }
+    if (verificationMetadata.iec61850_address_column) {
+      selectedHeaders.add(verificationMetadata.iec61850_address_column)
+    }
   }
 
   const metadata: SignalImportMeta = {
     sheet_name: selectedSheetName.value,
     source_sheet_name: selectedSheetName.value,
-    selected_columns: orderedColumns.map(column => column.header),
+    selected_columns: Array.from(selectedHeaders),
     terminal_column: terminalColumn.header,
     type_column: typeColumn.header,
     type_mapping: presetTypeMapping,
+    verification: verificationMetadata,
   }
 
   return { file: file.value, metadata }
+}
+
+function buildVerificationMetadata(): SignalImportVerificationMeta | null {
+  const hostColumn = transportHostColumnName.value?.trim() || null
+  const iecColumn = iec61850AddressColumnName.value?.trim() || null
+  if (!hostColumn && !iecColumn) {
+    return null
+  }
+  if (!hostColumn || !iecColumn) {
+    throw new Error("Choose both IP and IEC 61850 columns, or clear both to import without verification metadata.")
+  }
+
+  return {
+    enabled: true,
+    transport_host_column: hostColumn,
+    iec61850_address_column: iecColumn,
+  }
 }
 
 watch(
@@ -1079,6 +1176,20 @@ watch(
       selectedColumnsBySheet.value[sheet] = sheetColumns.value[sheet]?.map(column => column.index) ?? []
     }
   },
+)
+
+watch(
+  () => availableColumns.value.map(column => column.header).join("\u0000"),
+  () => {
+    const availableHeaders = new Set(availableColumns.value.map(column => column.header))
+    if (transportHostColumnName.value && !availableHeaders.has(transportHostColumnName.value)) {
+      transportHostColumnName.value = null
+    }
+    if (iec61850AddressColumnName.value && !availableHeaders.has(iec61850AddressColumnName.value)) {
+      iec61850AddressColumnName.value = null
+    }
+  },
+  { immediate: true },
 )
 
 watch(
@@ -1133,6 +1244,28 @@ watch(
   },
   { immediate: true },
 )
+
+watch(
+  [() => props.open, () => props.seedFile],
+  ([open, seedFile]) => {
+    if (!open) {
+      lastSeedFileKey.value = ""
+      return
+    }
+    if (!seedFile) {
+      return
+    }
+
+    const seedKey = `${seedFile.name}:${seedFile.size}:${seedFile.lastModified}`
+    if (seedKey === lastSeedFileKey.value) {
+      return
+    }
+
+    lastSeedFileKey.value = seedKey
+    void handleSelectedFile(seedFile)
+  },
+  { immediate: true },
+)
 </script>
 
 <style scoped>
@@ -1140,6 +1273,21 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  height: 100%;
+  min-height: 0;
+}
+
+.signal-import-modal__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 1rem;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: 1rem;
+  padding-right: 0.25rem;
+  scroll-padding-bottom: 1rem;
 }
 
 .signal-import-modal__steps-card {
@@ -1364,15 +1512,124 @@ watch(
   margin-top: 0.75rem;
 }
 
+.signal-import-modal__empty-state {
+  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.signal-import-modal__inline-actions--start {
+  justify-content: flex-start;
+}
+
+.signal-import-modal__step-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-height: 0;
+}
+
 .signal-import-modal__section-stack {
   flex-direction: column;
   gap: 1rem;
+}
+
+.signal-import-modal__columns-panel {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 0;
+}
+
+.signal-import-modal__option-scroll {
+  max-height: min(24rem, 42vh);
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 0.25rem;
 }
 
 .signal-import-modal__warning-text {
   color: var(--color-amber-700);
   font-size: var(--text-xs);
   margin-top: 0.5rem;
+}
+
+.signal-import-modal__verification-toggle {
+  background: var(--color-neutral-50);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding: 0.75rem;
+}
+
+.signal-import-modal__verification-checkbox-row {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.signal-import-modal__verification-checkbox {
+  accent-color: var(--color-blue-600);
+  height: 1rem;
+  width: 1rem;
+}
+
+.signal-import-modal__verification-checkbox-label {
+  color: var(--color-neutral-800);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.signal-import-modal__verification-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.signal-import-modal__verification-row {
+  background: var(--color-white);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: 0.75rem;
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.75rem;
+}
+
+.signal-import-modal__verification-label {
+  color: var(--color-neutral-800);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.signal-import-modal__verification-value {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.signal-import-modal__verification-column {
+  color: var(--color-neutral-700);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.signal-import-modal__verification-samples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.signal-import-modal__verification-sample {
+  background: var(--color-neutral-100);
+  border-radius: 999px;
+  color: var(--color-neutral-700);
+  font-size: var(--text-xs);
+  padding: 0.125rem 0.5rem;
 }
 
 .signal-import-modal__section-heading {
@@ -1389,7 +1646,6 @@ watch(
 .signal-import-modal__option-list {
   display: grid;
   gap: 0.5rem;
-  margin-top: 0.5rem;
 }
 
 .signal-import-modal__option {
@@ -1525,6 +1781,31 @@ watch(
 :global(.dark .signal-import-modal__dropzone--idle:hover) {
   background: var(--color-neutral-800);
   border-color: var(--color-blue-500);
+}
+
+:global(.dark .signal-import-modal__verification-toggle) {
+  background: color-mix(in srgb, var(--color-neutral-900) 55%, transparent);
+  border-color: var(--color-neutral-700);
+}
+
+:global(.dark .signal-import-modal__verification-checkbox-label),
+:global(.dark .signal-import-modal__verification-label),
+:global(.dark .signal-import-modal__verification-column) {
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .signal-import-modal__verification-row) {
+  background: var(--color-neutral-900);
+  border-color: var(--color-neutral-700);
+}
+
+:global(.dark .signal-import-modal__verification-sample) {
+  background: var(--color-neutral-800);
+  color: var(--color-neutral-200);
+}
+
+:global(.dark .signal-import-modal__option-scroll) {
+  scrollbar-color: var(--color-neutral-600) var(--color-neutral-900);
 }
 
 :global(.dark .signal-import-modal__browse-link) {

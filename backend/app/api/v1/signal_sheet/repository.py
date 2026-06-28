@@ -143,10 +143,9 @@ class SignalSheetRepository:
         await self.db.flush()
         return sheet
 
-    async def list_presets(self, workspace_id: int) -> list[SignalSheetPreset]:
+    async def list_presets(self, _workspace_id: int) -> list[SignalSheetPreset]:
         stmt = (
             select(SignalSheetPreset)
-            .where(SignalSheetPreset.workspace_id == workspace_id)
             .order_by(SignalSheetPreset.updated_at.desc(), SignalSheetPreset.id.desc())
         )
         rows = await self.db.execute(stmt)

@@ -22,6 +22,31 @@ export interface SignalImportMeta {
   type_column?: string | null
   type_mapping?: Record<string, InternalSignalType>
   internal_type_column?: string | null
+  verification?: SignalImportVerificationMeta | null
+}
+
+export interface SignalImportVerificationColumnHint {
+  column?: string | null
+  confidence?: string | null
+  reason?: string | null
+  sample_values?: string[]
+}
+
+export interface SignalImportVerificationMeta {
+  enabled?: boolean
+  transport_host_column?: string | null
+  iec61850_address_column?: string | null
+  transport_reference_column_hint?: SignalImportVerificationColumnHint
+  transport_host_column_hint?: SignalImportVerificationColumnHint
+  transport_port_column_hint?: SignalImportVerificationColumnHint
+  ied_name_column_hint?: SignalImportVerificationColumnHint
+  access_point_name_column_hint?: SignalImportVerificationColumnHint
+  iec61850_address_column_hint?: SignalImportVerificationColumnHint
+  logical_device_inst_column_hint?: SignalImportVerificationColumnHint
+  logical_node_name_column_hint?: SignalImportVerificationColumnHint
+  data_set_reference_column_hint?: SignalImportVerificationColumnHint
+  report_control_reference_column_hint?: SignalImportVerificationColumnHint
+  notes?: string[]
 }
 
 // --- Live signal domain (in-progress migration) ---

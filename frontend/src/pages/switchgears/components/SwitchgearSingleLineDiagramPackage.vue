@@ -325,6 +325,12 @@ function loadStoredState() {
       title="Select a workspace"
       description="Choose a workspace to compare and edit the package-based SLD projection."
     />
+    <WorkspacePlaceholder
+      v-else-if="switchgearStore.switchgears.length === 0"
+      tag="Single Line Diagram"
+      title="No switchgears yet"
+      description="Create switchgears from the sidebar or import an SCD overlay."
+    />
     <SwitchgearSingleLineDiagramPackageCanvas
       v-else-if="storageKey"
       :key="sceneModel.sceneKey"

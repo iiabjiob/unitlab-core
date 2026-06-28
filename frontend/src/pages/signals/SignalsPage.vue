@@ -27,14 +27,14 @@
       @set-interval-ms="setTestRunIntervalMs"
     />
 
-      <VerificationRunPanel
-      :busy="verificationRunBusy"
-      :can-run="canRunSingleVerification"
-      :error-text="verificationRunError"
-      :network-preflight="verificationNetworkPreflight"
-      :selected-signal-label="selectedVerificationSignalLabel"
-      :result="verificationRunResult"
-      @run="runSingleSignalVerification"
+    <input
+      ref="signalListFileInputRef"
+      class="signals-page__file-input"
+      type="file"
+      accept=".xls,.xlsx,.xlsm"
+      tabindex="-1"
+      aria-hidden="true"
+      @change="handleSignalListFileSelected"
     />
 
     <div
@@ -55,7 +55,25 @@
       v-else-if="!loading && allocationProjectionRowsCount === 0"
       class="signals-page__empty"
     >
-      No signals found.
+      <div
+        class="signals-page__empty-panel"
+        :class="{ 'signals-page__empty-panel--active': signalListDropActive }"
+        aria-label="Drop a spreadsheet here"
+        @dragenter.prevent="onSignalListDragEnter"
+        @dragover.prevent="onSignalListDragOver"
+        @dragleave.prevent="onSignalListDragLeave"
+        @drop.prevent="onSignalListDrop"
+      >
+        <p class="signals-page__empty-title">No signals found.</p>
+        <p class="signals-page__empty-copy">
+          Drop a signal list workbook here to start importing, or open the signal list wizard.
+        </p>
+        <div class="signals-page__empty-actions">
+          <button type="button" class="signals-page__empty-link" @click.stop="openImportModal">
+            Open signal list
+          </button>
+        </div>
+      </div>
     </div>
 
     <section v-else class="affino-native-data-grid signals-page__grid-section">
@@ -137,7 +155,12 @@
       @select="handleAllocationChannelPicked"
     />
 
-    <SignalImportModal :open="importModalOpen" @close="closeImportModal" @imported="handleImported" />
+    <SignalImportModal
+      :open="importModalOpen"
+      :seed-file="importSeedFile"
+      @close="closeImportModal"
+      @imported="handleImported"
+    />
     <SignalExportModal
       :open="exportModalOpen"
       :workspace-id="workspaceStore.activeWorkspaceId"
@@ -167,7 +190,6 @@ import { defineDataGridComponent, parseDataGridSavedView, useDataGridRef, type D
 import { SignalsAPI } from "@/api/signals.api"
 import type { AoChannel, DoChannel } from "@/types/channel"
 import AllocationEditorHeader from "@/pages/signals/components/AllocationEditorHeader.vue"
-import VerificationRunPanel from "@/components/verification/VerificationRunPanel.vue"
 import { VerificationAPI } from "@/api/verification.api"
 import { resolveVerificationSelection } from "@/pages/signals/utils/verificationSelection"
 import { extractSourceRowFromSignalMetadata, resolveAllSourceColumnHeaders, resolveSourceColumnInitialWidth, resolveSourceColumnMinWidth } from "@/pages/signals/utils/sourceColumns"
@@ -236,6 +258,8 @@ const { activeWorkspacePatchEvent, activeWorkspacePatchRevision } = storeToRefs(
 
 const error = ref<string | null>(null)
 const importModalOpen = ref(false)
+const importSeedFile = ref<File | null>(null)
+const signalListFileInputRef = ref<HTMLInputElement | null>(null)
 const exportModalOpen = ref(false)
 const allocationGridRef = useDataGridRef<GridRow>()
 const allocationChannelPickerSignalId = ref<number | null>(null)
@@ -276,6 +300,9 @@ const SIGNAL_GRID_SKELETON_FALLBACK_ROWS = 12
 const BULK_ALLOCATION_COMPLETION_CHUNK_SIZE = 250
 const signalGridSkeletonRef = ref<HTMLElement | null>(null)
 const signalGridSkeletonHeight = ref(0)
+const signalListDropActive = ref(false)
+const SIGNAL_LIST_ALLOWED_EXTENSIONS = new Set(["xls", "xlsx", "xlsm"])
+let signalListDropCounter = 0
 
 type RowSelectionSnapshot = NonNullable<DataGridProps<GridRow>["rowSelectionState"]>
 type DataGridStateUpdate = NonNullable<DataGridProps<Record<string, unknown>>["state"]>
@@ -1515,17 +1542,98 @@ function buildSignalReportRows(rows: readonly SignalAllocationRow[] = resolveRun
 
 function openImportModal() {
   if (workspaceMissing.value) return
+  const input = signalListFileInputRef.value
+  if (!input) return
+  input.value = ""
+  input.click()
+}
+
+function openImportModalWithSeedFile(seedFile: File | null) {
+  if (workspaceMissing.value) return
+  importSeedFile.value = seedFile
   importModalOpen.value = true
+}
+
+function handleSignalListFileSelected(event: Event) {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0] ?? null
+  target.value = ""
+
+  if (!file) {
+    return
+  }
+
+  if (!isSignalListFileAccepted(file)) {
+    toastStore.info("Choose an .xls, .xlsx, or .xlsm file to import a signal list.")
+    return
+  }
+
+  openImportModalWithSeedFile(file)
 }
 
 function closeImportModal() {
   importModalOpen.value = false
+  importSeedFile.value = null
 }
 
 async function handleImported() {
   importModalOpen.value = false
+  importSeedFile.value = null
   await refreshSignalsStatic("import")
   await signalSheetStore.ensurePresetsLoaded({ force: true })
+}
+
+function isSignalListFileAccepted(file: File | null | undefined): boolean {
+  if (!file) {
+    return false
+  }
+  const ext = file.name.split(".").pop()?.toLowerCase()
+  return Boolean(ext && SIGNAL_LIST_ALLOWED_EXTENSIONS.has(ext))
+}
+
+function openImportModalWithDroppedFile(file: File | null) {
+  if (!isSignalListFileAccepted(file)) {
+    toastStore.info("Drop an .xls, .xlsx, or .xlsm file to import a signal list.")
+    return
+  }
+  openImportModalWithSeedFile(file)
+}
+
+function onSignalListDragEnter(event: DragEvent) {
+  if (workspaceMissing.value) return
+  event.preventDefault()
+  signalListDropCounter += 1
+  signalListDropActive.value = true
+}
+
+function onSignalListDragOver(event: DragEvent) {
+  if (workspaceMissing.value) return
+  event.preventDefault()
+  signalListDropActive.value = true
+  if (signalListDropCounter === 0) {
+    signalListDropCounter = 1
+  }
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = "copy"
+  }
+}
+
+function onSignalListDragLeave(event: DragEvent) {
+  if (workspaceMissing.value) return
+  event.preventDefault()
+  signalListDropCounter = Math.max(0, signalListDropCounter - 1)
+  if (signalListDropCounter === 0) {
+    signalListDropActive.value = false
+  }
+}
+
+async function onSignalListDrop(event: DragEvent) {
+  if (workspaceMissing.value) return
+  event.preventDefault()
+  signalListDropActive.value = false
+  signalListDropCounter = 0
+  const file = event.dataTransfer?.files?.[0] ?? null
+  openImportModalWithDroppedFile(file)
 }
 
 function exportCableJournal(optionalColumnKeys: string[] = []) {
@@ -2978,16 +3086,79 @@ onBeforeUnmount(() => {
 }
 
 .signals-page__empty {
-  align-items: center;
-  background: color-mix(in srgb, var(--color-white) 80%, transparent);
-  border: 1px dashed var(--color-neutral-300);
-  border-radius: 1rem;
+  align-items: stretch;
   color: var(--color-neutral-500);
   display: flex;
   flex: 1 1 auto;
   font-size: var(--text-sm);
-  justify-content: center;
+  justify-content: stretch;
   padding: 2rem;
+}
+
+.signals-page__empty-panel {
+  align-items: center;
+  background: color-mix(in srgb, var(--color-white) 84%, transparent);
+  border: 1px dashed var(--color-neutral-300);
+  border-radius: 1rem;
+  color: var(--color-neutral-600);
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  justify-content: center;
+  min-height: 18rem;
+  padding: 2rem;
+  cursor: default;
+  text-align: center;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+  width: 100%;
+}
+
+.signals-page__empty-panel--active {
+  background: color-mix(in srgb, var(--color-blue-50) 80%, var(--color-white));
+  border-color: var(--color-blue-500);
+  color: var(--color-blue-700);
+}
+
+.signals-page__empty-title {
+  color: var(--color-neutral-800);
+  font-size: var(--text-base);
+  font-weight: 600;
+}
+
+.signals-page__empty-copy {
+  color: var(--color-neutral-500);
+  font-size: var(--text-sm);
+  max-width: 26rem;
+}
+
+.signals-page__empty-actions {
+  display: flex;
+  justify-content: center;
+}
+
+.signals-page__empty-link {
+  background: transparent;
+  border: 0;
+  color: var(--color-blue-600);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+.signals-page__empty-link:hover {
+  color: var(--color-blue-700);
+}
+
+.signals-page__file-input {
+  position: fixed;
+  inset: 0 auto auto -10000px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .signals-page__error {
@@ -3097,9 +3268,35 @@ onBeforeUnmount(() => {
 }
 
 :global(.dark .signals-page__empty) {
-  background: color-mix(in srgb, var(--color-neutral-900) 40%, transparent);
-  border-color: var(--color-neutral-700);
   color: var(--color-neutral-400);
+}
+
+:global(.dark .signals-page__empty-panel) {
+  background: color-mix(in srgb, var(--color-neutral-900) 56%, transparent);
+  border-color: var(--color-neutral-700);
+  color: var(--color-neutral-300);
+}
+
+:global(.dark .signals-page__empty-panel--active) {
+  background: color-mix(in srgb, var(--color-blue-950) 52%, var(--color-neutral-900));
+  border-color: var(--color-blue-500);
+  color: var(--color-blue-200);
+}
+
+:global(.dark .signals-page__empty-title) {
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .signals-page__empty-copy) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .signals-page__empty-link) {
+  color: var(--color-blue-300);
+}
+
+:global(.dark .signals-page__empty-link:hover) {
+  color: var(--color-blue-200);
 }
 
 :global(.dark .signals-page__error) {

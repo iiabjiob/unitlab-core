@@ -178,6 +178,35 @@ def test_parse_workbook_projects_only_selected_columns_for_metadata_row() -> Non
     assert all(set(item.keys()) == {"Name", "Type", "Terminal", "Cabinet"} for item in sheet["rows"])
 
 
+def test_parse_workbook_projects_explicit_verification_columns_into_canonical_metadata() -> None:
+    raw = _build_workbook(
+        [
+            ["Name", "IP Address", "61850 Address", "Type"],
+            ["IED A", "10.10.10.250", "IED-A/P1/LLN0.brA", "DI"],
+        ]
+    )
+    meta = SignalImportMetaSchema(
+        sheet_name="Signals",
+        type_column="Type",
+        type_mapping={"DI": "di"},
+        selected_columns=["Name", "Type"],
+        verification={
+            "enabled": True,
+            "transport_host_column": "IP Address",
+            "iec61850_address_column": "61850 Address",
+        },
+    )
+
+    payload = SignalSheetImportService.parse_workbook(raw, filename="verification.xlsx", metadata=meta)
+
+    assert len(payload.signals) == 1
+    signal = payload.signals[0]
+    assert signal.signal_metadata["row"]["transport_host"] == "10.10.10.250"
+    assert signal.signal_metadata["row"]["iec61850_address"] == "IED-A/P1/LLN0.brA"
+    assert signal.signal_metadata["verification"]["transport_host_column"] == "IP Address"
+    assert signal.signal_metadata["verification"]["iec61850_address_column"] == "61850 Address"
+
+
 def test_parse_workbook_detects_header_row_after_preamble() -> None:
     raw = _build_workbook(
         [

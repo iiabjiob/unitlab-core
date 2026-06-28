@@ -31,7 +31,7 @@ The workflow should be built in this order:
 
 ### PR0 - Project input intake and normalization profiles
 
-Status: pending.
+Status: in progress.
 
 Input:
 - imported signal list;
@@ -42,8 +42,13 @@ Input:
 Output:
 - normalized project input set;
 - saved column mapping / import profile;
+- immediate file-picker entry into the import wizard, with Columns as the first visible step;
+- shared preset selection on the Columns step so import mappings can be reused across workspaces;
+- explicit verification step after type mapping where the user chooses the IP and IEC 61850 columns for MMS verification metadata;
+- save-as-preset entry on the final step so the preset captures the full import mapping, including verification columns;
 - resolved signal-list fields;
 - optional SCD-backed model hints;
+- optional verification metadata import for explicit IP and IEC 61850 columns;
 - endpoint / network diagnostics;
 - import preview summary.
 

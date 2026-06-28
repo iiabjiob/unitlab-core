@@ -54,6 +54,10 @@ The library and runtime must support this flow without engineer-heavy setup:
 ## Current product gaps
 
 - No first-class project input intake yet normalizes signal-list columns and optional SCD metadata once at import time.
+- The import wizard opens directly to file selection and then lands on Columns as the first step.
+- The import wizard now has an explicit IEC 61850 step after type mapping where the user chooses the IP and IEC 61850 columns for MMS verification metadata.
+- Saving a preset happens on the final step so the mapping includes the verification columns as part of the saved import profile.
+- Import presets are shared across workspaces so an existing mapping can be reused in a new workspace.
 - No first-class planner yet turns signal-list rows into a subscription plan across one or more IEDs.
 - SCD is still a hint path, not a fully integrated optional input layer for the product workflow.
 - Test-step evidence and verdict logic are not yet a first-class contract above the runtime.

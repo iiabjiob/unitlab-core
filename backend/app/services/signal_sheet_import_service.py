@@ -10,7 +10,7 @@ from typing import Any
 import xlrd
 from openpyxl import load_workbook
 
-from app.schemas.signal_import_schema import SignalImportMetaSchema
+from app.schemas.signal_import_schema import SignalImportMetaSchema, SignalImportVerificationSchema
 
 
 _INTERNAL_TYPE_TO_DIRECTION: dict[str, str] = {
@@ -347,6 +347,7 @@ class SignalSheetImportService:
             for column in ((metadata.selected_columns if metadata else []) or [])
             if column in headers
         ]
+        verification_meta = metadata.verification if metadata and metadata.verification and metadata.verification.enabled else None
 
         for row_index, row in enumerate(rows):
             type_info = SignalSheetImportService._resolve_type_info(
@@ -389,6 +390,11 @@ class SignalSheetImportService:
                         row=row,
                         selected_columns=selected_columns,
                     )
+                    row_payload, verification_payload = SignalSheetImportService._apply_verification_payload(
+                        row=row,
+                        row_payload=row_payload,
+                        verification=verification_meta,
+                    )
                     if (
                         terminal_values
                         and metadata
@@ -413,6 +419,8 @@ class SignalSheetImportService:
                             "role": role.role_key,
                         },
                     }
+                    if verification_payload is not None:
+                        signal_metadata["verification"] = verification_payload
                     projections.append(
                         ImportedSignalProjection(
                             key=packed_key,
@@ -436,6 +444,13 @@ class SignalSheetImportService:
                     selected_columns=selected_columns,
                 ),
             }
+            signal_metadata["row"], verification_payload = SignalSheetImportService._apply_verification_payload(
+                row=row,
+                row_payload=signal_metadata["row"],
+                verification=verification_meta,
+            )
+            if verification_payload is not None:
+                signal_metadata["verification"] = verification_payload
 
             projections.append(
                 ImportedSignalProjection(
@@ -549,6 +564,53 @@ class SignalSheetImportService:
         if not selected_columns:
             return dict(row)
         return {column: row.get(column) for column in selected_columns}
+
+    @staticmethod
+    def _apply_verification_payload(
+        *,
+        row: dict[str, Any],
+        row_payload: dict[str, Any],
+        verification: SignalImportVerificationSchema | None,
+    ) -> tuple[dict[str, Any], dict[str, Any] | None]:
+        if verification is None:
+            return row_payload, None
+
+        verification_payload: dict[str, Any] = {"enabled": True}
+
+        host_column = SignalSheetImportService._resolve_verification_column_name(
+            verification.transport_host_column,
+            verification.transport_host_column_hint.column if verification.transport_host_column_hint else None,
+            verification.transport_reference_column_hint.column if verification.transport_reference_column_hint else None,
+        )
+        if host_column and host_column in row:
+            host_value = row.get(host_column)
+            row_payload["transport_host"] = host_value
+            verification_payload["transport_host_column"] = host_column
+            verification_payload["transport_host"] = host_value
+
+        iec_column = SignalSheetImportService._resolve_verification_column_name(
+            verification.iec61850_address_column,
+            verification.iec61850_address_column_hint.column if verification.iec61850_address_column_hint else None,
+        )
+        if iec_column and iec_column in row:
+            iec_value = row.get(iec_column)
+            row_payload["iec61850_address"] = iec_value
+            verification_payload["iec61850_address_column"] = iec_column
+            verification_payload["iec61850_address"] = iec_value
+
+        if len(verification_payload) == 1:
+            return row_payload, None
+        return row_payload, verification_payload
+
+    @staticmethod
+    def _resolve_verification_column_name(*values: str | None) -> str | None:
+        for value in values:
+            if value is None:
+                continue
+            text = str(value).strip()
+            if text:
+                return text
+        return None
 
     @staticmethod
     def _project_sheet_data_columns(
