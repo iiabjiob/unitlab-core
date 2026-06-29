@@ -8,13 +8,13 @@ Primary operator flow:
 - import signal list;
 - allocate channels;
 - physically connect peripheral modules;
-- ensure the workstation is on a usable network for the selected MMS target;
+- prepare the selected rows with `Online 61850` when real MMS discovery is needed;
 - select `n` signal rows;
 - press `Run Test` once;
 - receive live `tested` / `verified` / `failed` updates in the grid.
 
 The operator should not have to choose the underlying test scenario in the normal flow.
-Scenario selection, target planning, endpoint binding, network readiness checks, report subscription, and evidence collection are system responsibilities.
+Scenario selection, target planning, endpoint binding, network readiness checks, report subscription, online discovery, and evidence collection are system responsibilities.
 
 ## Product milestone
 

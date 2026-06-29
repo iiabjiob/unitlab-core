@@ -4,6 +4,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 import os
 import re
+import socket
 import subprocess
 import time
 from pathlib import Path
@@ -83,6 +84,11 @@ class Iec61850EndpointResolution:
 
 _EXTERNAL_RCB_OPTFLDS_HEX = "067f80"
 _EXTERNAL_RCB_TRGOPS_HEX = "0274"
+_EXTERNAL_MMS_CLIENT_STARTUP_TIMEOUT_SECONDS = 1.5
+_EXTERNAL_MMS_CLIENT_DISCOVER_TIMEOUT_SECONDS = 3.0
+_EXTERNAL_MMS_CLIENT_REPORTING_TIMEOUT_SECONDS = 1.5
+_EXTERNAL_MMS_CLIENT_DISCONNECT_TIMEOUT_SECONDS = 1.5
+_EXTERNAL_MMS_ENDPOINT_PROBE_TIMEOUT_SECONDS = 0.35
 
 
 @dataclass(frozen=True, slots=True)
@@ -612,7 +618,7 @@ class Iec61850ClientControlService:
         self._external_live_discovery = _empty_wire_discovery_structure(self._endpoint, self._build_external_discover_command(), source="live")
         self._write_external_mms_command(self._build_external_discover_command())
         try:
-            self._drain_external_mms_process_stdout(timeout_seconds=60.0, stop_on="native-wire-client: state=ready", refresh_timeout_on_activity=True)
+            self._drain_external_mms_process_stdout(timeout_seconds=_EXTERNAL_MMS_CLIENT_DISCOVER_TIMEOUT_SECONDS, stop_on="native-wire-client: state=ready", refresh_timeout_on_activity=True)
         except Iec61850ReportRuntimeError as exc:
             if exc.code != "EXTERNAL_MMS_CLIENT_COMMAND_FAILED" or not self._external_discover_summary_seen:
                 raise
@@ -632,9 +638,9 @@ class Iec61850ClientControlService:
         self._ensure_external_mms_client_started()
         for command in self._external_rcb_configuration_commands():
             self._write_external_mms_command(command)
-            self._drain_external_mms_process_stdout(timeout_seconds=3.0, stop_on="native-wire-client: state=ready")
+            self._drain_external_mms_process_stdout(timeout_seconds=_EXTERNAL_MMS_CLIENT_REPORTING_TIMEOUT_SECONDS, stop_on="native-wire-client: state=ready")
         self._write_external_mms_command(self._external_rptena_command(True))
-        self._drain_external_mms_process_stdout(timeout_seconds=3.0, stop_on="native-wire-client: state=ready")
+        self._drain_external_mms_process_stdout(timeout_seconds=_EXTERNAL_MMS_CLIENT_REPORTING_TIMEOUT_SECONDS, stop_on="native-wire-client: state=ready")
         self._last_state = self._external_state(Iec61850RuntimeStatus.ENABLED, enabled=True)
         self._runtime._append_event(
             kind="external-report-control-enable",
@@ -650,7 +656,7 @@ class Iec61850ClientControlService:
     def _send_external_mms_general_interrogation(self) -> None:
         self._ensure_external_mms_client_started()
         self._write_external_mms_command(self._external_gi_command())
-        self._drain_external_mms_process_stdout(timeout_seconds=3.0, stop_on="native-wire-client: state=ready")
+        self._drain_external_mms_process_stdout(timeout_seconds=_EXTERNAL_MMS_CLIENT_REPORTING_TIMEOUT_SECONDS, stop_on="native-wire-client: state=ready")
         if self._last_report is None:
             self._last_state = self._external_state(Iec61850RuntimeStatus.GI_PENDING, enabled=True, gi_in_progress=True)
         self._runtime._append_event(
@@ -670,9 +676,9 @@ class Iec61850ClientControlService:
             if self._last_state is not None and self._last_state.enabled:
                 if self._selected_external_discovered_rcb_index() is None:
                     self._write_external_mms_command(self._external_rptena_command(False))
-                    self._drain_external_mms_process_stdout(timeout_seconds=2.0, stop_on="native-wire-client: state=ready")
+                    self._drain_external_mms_process_stdout(timeout_seconds=_EXTERNAL_MMS_CLIENT_DISCONNECT_TIMEOUT_SECONDS, stop_on="native-wire-client: state=ready")
             self._write_external_mms_command("disconnect")
-            self._drain_external_mms_process_stdout(timeout_seconds=2.0, stop_on="native-wire-client: state=stopped")
+            self._drain_external_mms_process_stdout(timeout_seconds=_EXTERNAL_MMS_CLIENT_DISCONNECT_TIMEOUT_SECONDS, stop_on="native-wire-client: state=stopped")
             self._stop_external_mms_client_process()
         self._session_open = False
         self._last_state = self._external_state(Iec61850RuntimeStatus.DISCONNECTED, enabled=False)
@@ -747,6 +753,7 @@ class Iec61850ClientControlService:
             return
         if self._endpoint.host is None or not self._endpoint.host.strip():
             raise Iec61850ReportRuntimeError("EXTERNAL_MMS_HOST_REQUIRED", "IEC 61850 external MMS target host is required.")
+        self._probe_external_mms_endpoint()
         command = [
             self._external_probe_binary_path(),
             "--bind",
@@ -767,7 +774,10 @@ class Iec61850ClientControlService:
         self._external_mms_stdout_buffer.clear()
         self._external_discovered_rcbs.clear()
         try:
-            self._drain_external_mms_process_stdout(timeout_seconds=5.0, stop_on="native-wire-client: state=ready")
+            self._drain_external_mms_process_stdout(
+                timeout_seconds=_EXTERNAL_MMS_CLIENT_STARTUP_TIMEOUT_SECONDS,
+                stop_on="native-wire-client: state=ready",
+            )
         except Exception:
             self._stop_external_mms_client_process()
             raise
@@ -786,6 +796,19 @@ class Iec61850ClientControlService:
             outcome="associated",
             message="Persistent external MMS client associated with the target IED.",
         )
+
+    def _probe_external_mms_endpoint(self) -> None:
+        host = str(self._endpoint.host or "").strip()
+        if not host:
+            return
+        try:
+            with socket.create_connection((host, int(self._endpoint.port)), timeout=_EXTERNAL_MMS_ENDPOINT_PROBE_TIMEOUT_SECONDS):
+                return
+        except OSError as exc:
+            raise Iec61850ReportRuntimeError(
+                "EXTERNAL_MMS_ENDPOINT_UNREACHABLE",
+                f"IEC 61850 endpoint {host}:{self._endpoint.port} is unreachable: {exc}",
+            ) from exc
 
     def _write_external_mms_command(self, command: str) -> None:
         if self._external_mms_process is None or self._external_mms_process.stdin is None or self._external_mms_process.poll() is not None:

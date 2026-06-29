@@ -175,6 +175,10 @@ export type Iec61850ClientTargetPayload = {
   selected_rcb_ref?: string
 }
 
+type Iec61850ClientRequestOptions = {
+  signal?: AbortSignal
+}
+
 export type Iec61850ClientReportControlSelectionPayload = {
   selected_rcb_ref: string
 }
@@ -434,24 +438,24 @@ export const Iec61850ClientAPI = {
     return httpData.post<Iec61850ClientState>(`${API_V1}/iec61850/client/transcript/clear`)
   },
 
-  configureTarget(payload: Iec61850ClientTargetPayload) {
-    return httpData.post<Iec61850ClientState>(`${API_V1}/iec61850/client/target`, payload)
+  configureTarget(payload: Iec61850ClientTargetPayload, options: Iec61850ClientRequestOptions = {}) {
+    return httpData.post<Iec61850ClientState>(`${API_V1}/iec61850/client/target`, payload, options)
   },
 
   selectReportControl(payload: Iec61850ClientReportControlSelectionPayload) {
     return httpData.post<Iec61850ClientState>(`${API_V1}/iec61850/client/report-control/select`, payload)
   },
 
-  openSession() {
-    return httpData.post<Iec61850ClientState>(`${API_V1}/iec61850/client/session/open`)
+  openSession(options: Iec61850ClientRequestOptions = {}) {
+    return httpData.post<Iec61850ClientState>(`${API_V1}/iec61850/client/session/open`, undefined, options)
   },
 
-  discoverIed() {
-    return httpData.post<Iec61850ClientState>(`${API_V1}/iec61850/client/ied/discover`)
+  discoverIed(options: Iec61850ClientRequestOptions = {}) {
+    return httpData.post<Iec61850ClientState>(`${API_V1}/iec61850/client/ied/discover`, undefined, options)
   },
 
-  connectIed() {
-    return httpData.post<Iec61850ClientState>(`${API_V1}/iec61850/client/ied/connect`)
+  connectIed(options: Iec61850ClientRequestOptions = {}) {
+    return httpData.post<Iec61850ClientState>(`${API_V1}/iec61850/client/ied/connect`, undefined, options)
   },
 
   disconnectIed() {
@@ -478,8 +482,8 @@ export const Iec61850ClientAPI = {
     return httpData.post<Iec61850ClientState>(`${API_V1}/iec61850/client/report-control/enable`)
   },
 
-  enableReporting() {
-    return httpData.post<Iec61850ClientState>(`${API_V1}/iec61850/client/report-control/rptena`)
+  enableReporting(options: Iec61850ClientRequestOptions = {}) {
+    return httpData.post<Iec61850ClientState>(`${API_V1}/iec61850/client/report-control/rptena`, undefined, options)
   },
 
   sendGeneralInterrogation() {

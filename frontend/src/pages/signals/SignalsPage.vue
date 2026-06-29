@@ -13,7 +13,9 @@
       :can-resume-active-test-run="canResumeActiveTestRun"
       :can-allocate-selected="selectedUnassignedSignalIds.length > 0 || allocatingSelected"
       :can-deallocate-selected="selectedAllocatedSignalIds.length > 0 || deallocatingSelected"
+      :can-prepare-online-61850="canPrepareOnline61850"
       :can-run-test="selectedVisibleAllocatedPhysicalRows.length > 0 || isTestRunBusy || canResumeActiveTestRun"
+      :is-preparing-online-61850="online61850PreparationBusy"
       :is-test-run-busy="isTestRunBusy"
       :test-run-toggle-mode="testRunToggleMode"
       :test-run-interval-ms="testRunIntervalMs"
@@ -22,6 +24,7 @@
       @export-report="exportSignalReport"
       @allocate-selected="allocateSelectedUnassigned"
       @deallocate-selected="deallocateSelected"
+      @prepare-online-61850="prepareOnline61850"
       @run-test="runTestVisualOnly"
       @set-toggle-mode="setTestRunToggleMode"
       @set-interval-ms="setTestRunIntervalMs"
@@ -178,6 +181,196 @@
       @cancel="closeDeleteSelectedConfirm"
       @confirm="confirmDeleteSelected"
     />
+
+    <div
+      v-if="online61850PreparationBusy"
+      class="signals-page__busy-overlay"
+      aria-live="polite"
+      aria-busy="true"
+    >
+      <div class="signals-page__busy-panel">
+        <p class="signals-page__busy-title">Preparing 61850</p>
+        <div class="signals-page__busy-progress-row">
+          <p class="signals-page__busy-copy">
+            {{ online61850PreparationProgress.done }} / {{ online61850PreparationProgress.total }} targets
+          </p>
+          <p class="signals-page__busy-progress-percent">
+            {{ online61850PreparationProgressPercent.toFixed(1) }}%
+          </p>
+        </div>
+        <div
+          class="signals-page__busy-bar"
+          role="progressbar"
+          :aria-valuenow="online61850PreparationProgress.done"
+          :aria-valuemin="0"
+          :aria-valuemax="online61850PreparationProgress.total"
+          :aria-valuetext="`${online61850PreparationProgress.done} of ${online61850PreparationProgress.total} targets`"
+        >
+          <div
+            class="signals-page__busy-bar-fill"
+            :style="{ width: `${online61850PreparationProgressPercent}%` }"
+          />
+        </div>
+        <div class="signals-page__busy-actions">
+          <UiButton
+            variant="secondary"
+            size="sm"
+            :disabled="online61850PreparationCancelRequested"
+            @click="cancelOnline61850Preparation"
+          >
+            {{ online61850PreparationCancelRequested ? "Cancelling..." : "Cancel" }}
+          </UiButton>
+        </div>
+        <div class="signals-page__busy-log" aria-label="Preparation log">
+          <div
+            v-for="entry in online61850PreparationLog"
+            :key="entry.id"
+            class="signals-page__busy-log-row"
+            :class="`signals-page__busy-log-row--${entry.kind}`"
+          >
+            <span class="signals-page__busy-log-mark" aria-hidden="true">•</span>
+            <span class="signals-page__busy-log-text">{{ entry.message }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <UiModal
+      :open="online61850PreparationOpen"
+      title="Online 61850"
+      max-width="4xl"
+      :content-scroll="false"
+      @close="closeOnline61850PreparationSummary"
+    >
+      <div class="signals-page__online-prep-summary">
+        <div class="signals-page__online-prep-static">
+          <p class="signals-page__online-prep-copy">
+            Prepared {{ online61850PreparationSummary?.preparedTargets.length ?? 0 }} target{{ (online61850PreparationSummary?.preparedTargets.length ?? 0) === 1 ? "" : "s" }} from {{ online61850PreparationSummary?.scannedSignalCount ?? 0 }} signal{{ (online61850PreparationSummary?.scannedSignalCount ?? 0) === 1 ? "" : "s" }} in the sheet.
+          </p>
+          <p class="signals-page__online-prep-copy signals-page__online-prep-copy--meta">
+            Green rows are present in the discovered MMS model and available for test. Gray rows exist in the signal list but were not matched to the discovered model.
+          </p>
+
+          <div class="signals-page__online-prep-filter-row">
+            <label class="signals-page__online-prep-filter">
+              <span class="signals-page__online-prep-filter-label">Quick filter</span>
+              <input
+                v-model="online61850PreparationFilter"
+                type="search"
+                class="signals-page__online-prep-filter-input"
+                placeholder="Filter by name or IP"
+              >
+            </label>
+            <UiButton
+              v-if="online61850PreparationFilter"
+              variant="secondary"
+              size="sm"
+              class="signals-page__online-prep-filter-clear"
+              @click="online61850PreparationFilter = ''"
+            >
+              Clear
+            </UiButton>
+          </div>
+          <p
+            v-if="online61850PreparationFilter"
+            class="signals-page__online-prep-copy signals-page__online-prep-copy--meta"
+          >
+            Showing {{ online61850PreparationVisibleCount }} of {{ online61850PreparationSummary?.preparedTargets.length ?? 0 }} target{{ (online61850PreparationSummary?.preparedTargets.length ?? 0) === 1 ? "" : "s" }}.
+          </p>
+
+          <div
+            v-if="online61850PreparationSummary?.warnings.length"
+            class="signals-page__online-prep-warnings"
+          >
+            <p
+              v-for="warning in online61850PreparationSummary?.warnings ?? []"
+              :key="warning"
+              class="signals-page__online-prep-warning"
+            >
+              {{ warning }}
+            </p>
+          </div>
+        </div>
+
+        <div class="signals-page__online-prep-scroll">
+          <p
+            v-if="online61850PreparationSummary && !online61850PreparationFilteredTargets.length"
+            class="signals-page__online-prep-empty"
+          >
+            No targets match this filter.
+          </p>
+
+          <div
+            v-else
+            class="signals-page__online-prep-list"
+          >
+            <UiAffinoDisclosure
+              v-for="item in online61850PreparationFilteredTargets"
+              :key="item.key"
+              :title="formatOnline61850DisclosureTitle(item)"
+              :default-open="false"
+              :status-label="item.status"
+              :status-tone="item.status === 'ready' ? 'success' : 'danger'"
+              :meta-labels="formatOnline61850DisclosureMetaLabels(item)"
+              container-class="signals-page__online-prep-disclosure"
+              header-class="signals-page__online-prep-disclosure-header"
+              content-class="signals-page__online-prep-disclosure-content"
+            >
+              <div class="signals-page__online-prep-item">
+                <div class="signals-page__online-prep-step-list">
+                  <div
+                    v-for="step in item.steps"
+                    :key="step.label"
+                    class="signals-page__online-prep-step"
+                  >
+                    <span class="signals-page__online-prep-step-label">{{ step.label }}</span>
+                    <UiBadge :variant="stepBadgeVariant(step.status)">
+                      {{ step.status }}
+                    </UiBadge>
+                  </div>
+                </div>
+
+                <p
+                  v-if="item.message"
+                  class="signals-page__online-prep-item-error"
+                >
+                  {{ item.message }}
+                </p>
+                <p
+                  v-else
+                  class="signals-page__online-prep-item-copy"
+                >
+                  Ready for online test.
+                </p>
+
+                <div
+                  v-if="item.signalRows.length"
+                  class="signals-page__online-prep-signal-list"
+                >
+                  <div
+                    v-for="signal in item.signalRows"
+                    :key="`${item.key}:${signal.address ?? signal.label}`"
+                    class="signals-page__online-prep-signal-row"
+                    :class="signal.matched ? 'signals-page__online-prep-signal-row--matched' : 'signals-page__online-prep-signal-row--mismatch'"
+                  >
+                    <span class="signals-page__online-prep-signal-state" aria-hidden="true">
+                      {{ signal.matched ? "●" : "•" }}
+                    </span>
+                    <span class="signals-page__online-prep-signal-address">{{ signal.address ?? "No IEC 61850 address" }}</span>
+                  </div>
+                </div>
+              </div>
+            </UiAffinoDisclosure>
+          </div>
+        </div>
+
+        <div class="signals-page__online-prep-footer">
+          <UiButton variant="secondary" size="sm" @click="closeOnline61850PreparationSummary">
+            Close
+          </UiButton>
+        </div>
+      </div>
+    </UiModal>
   </div>
 </template>
 
@@ -187,12 +380,13 @@ import { useRoute, useRouter } from "vue-router"
 import { storeToRefs } from "pinia"
 import { defineDataGridComponent, parseDataGridSavedView, useDataGridRef, type DataGridAppCellRendererContext, type DataGridAppColumnInput, type DataGridAppToolbarModule, type DataGridProps, type DataGridSavedViewSnapshot, writeDataGridSavedViewToStorage } from "@affino/datagrid-vue-app"
 
+import { normalizeHttpError } from "@/api/http"
+import { Iec61850ClientAPI } from "@/api/iec61850Client.api"
 import { SignalsAPI } from "@/api/signals.api"
 import type { AoChannel, DoChannel } from "@/types/channel"
 import AllocationEditorHeader from "@/pages/signals/components/AllocationEditorHeader.vue"
-import { VerificationAPI } from "@/api/verification.api"
-import { resolveVerificationSelection } from "@/pages/signals/utils/verificationSelection"
 import { extractSourceRowFromSignalMetadata, resolveAllSourceColumnHeaders, resolveSourceColumnInitialWidth, resolveSourceColumnMinWidth } from "@/pages/signals/utils/sourceColumns"
+import { buildOnline61850PreparationTargets, type Online61850PreparationTarget } from "@/pages/signals/utils/online61850Targets"
 import AllocationChannelCell from "@/pages/signals/components/AllocationChannelCell.vue"
 import AllocationChannelPickerPanel from "@/pages/signals/components/AllocationChannelPickerPanel.vue"
 import AllocationControlCell from "@/pages/signals/components/AllocationControlCell.vue"
@@ -224,6 +418,10 @@ import {
 import { useAffinoDataGridTheme } from "@/components/ui/affinoDataGridTheme"
 import "@/components/ui/affinoDataGridNative.css"
 import ConfirmModal from "@/components/ui/ConfirmModal.vue"
+import UiButton from "@/components/ui/UiButton.vue"
+import UiBadge from "@/components/ui/UiBadge.vue"
+import UiAffinoDisclosure from "@/components/ui/UiAffinoDisclosure.vue"
+import UiModal from "@/components/ui/UiModal.vue"
 import { useChannelStore } from "@/stores/channelStore"
 import { useDeviceStore } from "@/stores/deviceStore"
 import { useSignalJobStore } from "@/stores/signalJobStore"
@@ -237,7 +435,6 @@ import { formatDate } from "@/utils/datetime"
 import { formatAoValue, parseAoInput } from "@/utils/channel"
 import { resolveRuntimeChannelTypeForSignal } from "@/utils/signalRuntimeMapping"
 import type { SignalAllocationJob, SignalAllocationRow } from "@/types/signal"
-import type { VerificationAutoRunStartPayload, VerificationNetworkPreflightResponse, VerificationRunDetailResponse } from "@/types/verification"
 import type { SignalRowsPatchedEvent, SignalRowsPatchedRowPatch } from "@/types/ws/events"
 
 const workspaceStore = useWorkspaceStore()
@@ -282,16 +479,25 @@ const deleteSelectedSignalIds = ref<number[]>([])
 const allocatingSelected = ref(false)
 const deallocatingSelected = ref(false)
 const testRunInProgress = ref(false)
-const verificationRunBusy = ref(false)
-const verificationRunError = ref<string | null>(null)
-const verificationRunResult = ref<VerificationRunDetailResponse | null>(null)
-const verificationNetworkPreflight = ref<VerificationNetworkPreflightResponse | null>(null)
-let verificationNetworkPreflightRequestId = 0
 const testRunIntervalMs = ref(1000)
 const testRunToggleMode = ref<"single" | "double">("single")
 const activeAoControlSignalId = ref<number | null>(null)
 const activeAoControlDraftValue = ref("")
 const activeAoSubmittingSignalId = ref<number | null>(null)
+const online61850PreparationBusy = ref(false)
+const online61850PreparationAbortController = ref<AbortController | null>(null)
+const online61850PreparationCancelRequested = ref(false)
+const online61850PreparationProgress = ref({
+  total: 0,
+  done: 0,
+})
+const online61850PreparationLog = ref<Array<{
+  id: number
+  kind: "info" | "success" | "warning" | "error"
+  message: string
+}>>([])
+const online61850PreparationFilter = ref("")
+const online61850PreparationSummary = ref<Online61850PreparationSummary | null>(null)
 const { gridLines, theme } = useAffinoDataGridTheme()
 
 const SIGNAL_GRID_SKELETON_FIXED_HEIGHT = 88
@@ -307,6 +513,36 @@ let signalListDropCounter = 0
 type RowSelectionSnapshot = NonNullable<DataGridProps<GridRow>["rowSelectionState"]>
 type DataGridStateUpdate = NonNullable<DataGridProps<Record<string, unknown>>["state"]>
 type GridCellInteractiveContext = DataGridAppCellRendererContext<GridRow>["interactive"]
+type Online61850PreparationResult = Online61850PreparationTarget & {
+  endpointLabel: string
+  status: "ready" | "failed"
+  message: string | null
+  signalCount: number
+  matchedSignalCount: number
+  mismatchedSignalCount: number
+  steps: Array<{
+    label: string
+    status: "done" | "failed" | "skipped"
+  }>
+  signalRows: Array<{
+    label: string
+    address: string | null
+    matched: boolean
+  }>
+  discovery: {
+    connected: boolean
+    discovered: boolean
+    logicalDevices: number
+    logicalNodes: number
+    dataSets: number
+    reportControls: number
+  }
+}
+type Online61850PreparationSummary = {
+  scannedSignalCount: number
+  preparedTargets: Online61850PreparationResult[]
+  warnings: string[]
+}
 
 const DataGrid = defineDataGridComponent<GridRow>()
 const SIGNAL_GRID_ROW_SELECTION = { enabled: true, columnWidth: 44 } satisfies NonNullable<DataGridProps<GridRow>["rowSelection"]>
@@ -640,17 +876,46 @@ const selectedVisibleAllocatedPhysicalRows = computed(() => (
   ))
 ))
 
-const verificationSelection = computed(() => (
-  resolveVerificationSelection(selectedVisibleAllocatedPhysicalRows.value)
+const canPrepareOnline61850 = computed(() => (
+  allocationProjectionRowsCount.value > 0
+  || online61850PreparationBusy.value
 ))
 
-const selectedVerificationSignalLabel = computed(() => verificationSelection.value.label)
+const online61850PreparationOpen = computed(() => Boolean(online61850PreparationSummary.value))
+const online61850PreparationProgressPercent = computed(() => {
+  const total = Math.max(0, online61850PreparationProgress.value.total)
+  if (total <= 0) {
+    return 0
+  }
+  return Math.max(0, Math.min(100, (online61850PreparationProgress.value.done / total) * 100))
+})
+const online61850PreparationFilterText = computed(() => String(online61850PreparationFilter.value ?? "").trim().toLowerCase())
+const online61850PreparationFilteredTargets = computed(() => {
+  const summary = online61850PreparationSummary.value
+  if (!summary) {
+    return []
+  }
 
-const canRunSingleVerification = computed(() => (
-  verificationSelection.value.canRun
-  && !verificationRunBusy.value
-  && !isTestRunBusy.value
-))
+  const query = online61850PreparationFilterText.value
+  if (!query) {
+    return summary.preparedTargets
+  }
+
+  return summary.preparedTargets.filter((item) => {
+    const haystack = [
+      item.endpointLabel,
+      item.host,
+      String(item.port),
+      item.iedName ?? "",
+      item.accessPointName ?? "",
+      ...item.sourceAddresses,
+    ]
+      .join(" ")
+      .toLowerCase()
+    return haystack.includes(query)
+  })
+})
+const online61850PreparationVisibleCount = computed(() => online61850PreparationFilteredTargets.value.length)
 
 const allocatedCableRows = computed(() => (
   signalAllocationProjectionRows().filter((row) => (
@@ -2250,95 +2515,355 @@ async function runTestVisualOnly() {
   await startTestRunJob({ resumeFromCursor: false })
 }
 
-function buildVerificationRunPayload(options: { runtimeVersion: "simulator" | "mms"; signalIds: number[]; workspaceId: number; activeSheetId: number; startedAt: string }): VerificationAutoRunStartPayload {
-  return {
-    signal_ids: options.signalIds,
-    client_id: "unitlab-frontend",
-    execution_context: {
-      project_id: options.workspaceId,
-      signal_list_revision_id: options.activeSheetId,
-      planner_version: "ui-auto-run",
-      runtime_version: options.runtimeVersion,
-      policy_version: "v1",
-      created_at: options.startedAt,
-      triggered_at: options.startedAt,
-    },
+function closeOnline61850PreparationSummary() {
+  online61850PreparationSummary.value = null
+  online61850PreparationFilter.value = ""
+  online61850PreparationProgress.value = {
+    total: 0,
+    done: 0,
   }
+  online61850PreparationLog.value = []
+  online61850PreparationCancelRequested.value = false
+  online61850PreparationAbortController.value = null
 }
 
-async function refreshVerificationNetworkPreflight() {
-  const selection = verificationSelection.value
-  const workspaceId = workspaceStore.activeWorkspaceId
-  const activeSheetId = activeSignalSheet.value?.id ?? null
+function cancelOnline61850Preparation() {
+  online61850PreparationCancelRequested.value = true
+  online61850PreparationAbortController.value?.abort()
+}
 
-  if (!workspaceId || !selection.canRun) {
-    verificationNetworkPreflight.value = null
-    return null
+function formatOnline61850EndpointLabel(target: Online61850PreparationTarget): string {
+  const identity = [target.iedName, target.accessPointName]
+    .map(value => String(value ?? "").trim())
+    .filter(Boolean)
+    .join("/")
+  return identity ? `${identity} @ ${target.host}:${target.port}` : `${target.host}:${target.port}`
+}
+
+function formatOnline61850DisclosureTitle(target: Online61850PreparationResult): string {
+  return target.endpointLabel
+}
+
+function formatOnline61850DisclosureMetaLabels(target: Online61850PreparationResult): string[] {
+  return [
+    `${target.matchedSignalCount} matched`,
+    `${target.mismatchedSignalCount} unmatched`,
+    `${target.discovery.reportControls} report control${target.discovery.reportControls === 1 ? "" : "s"}`,
+    `${target.discovery.logicalDevices} logical device${target.discovery.logicalDevices === 1 ? "" : "s"}`,
+  ]
+}
+
+function buildOnline61850PreparationSteps(
+  stage: "configured" | "opened" | "discovered" | "subscribed" | "failed",
+  failedAt?: "configured" | "opened" | "discovered" | "subscribed",
+): Online61850PreparationResult["steps"] {
+  const steps: Online61850PreparationResult["steps"] = [
+    { label: "Connect MMS session", status: "done" },
+    { label: "Discover and read model", status: "done" },
+    { label: "Enable report subscription", status: "done" },
+    { label: "GI", status: "skipped" },
+  ]
+
+  if (stage === "failed") {
+    if (failedAt === "opened") {
+      return [
+        { label: "Connect MMS session", status: "done" },
+        { label: "Discover and read model", status: "failed" },
+        { label: "Enable report subscription", status: "skipped" },
+        { label: "GI", status: "skipped" },
+      ]
+    }
+    if (failedAt === "discovered") {
+      return [
+        { label: "Connect MMS session", status: "done" },
+        { label: "Discover and read model", status: "done" },
+        { label: "Enable report subscription", status: "failed" },
+        { label: "GI", status: "skipped" },
+      ]
+    }
+    if (failedAt === "subscribed") {
+      return [
+        { label: "Connect MMS session", status: "done" },
+        { label: "Discover and read model", status: "done" },
+        { label: "Enable report subscription", status: "done" },
+        { label: "GI", status: "failed" },
+      ]
+    }
+    return [
+      { label: "Connect MMS session", status: "failed" },
+      { label: "Discover and read model", status: "skipped" },
+      { label: "Enable report subscription", status: "skipped" },
+      { label: "GI", status: "skipped" },
+    ]
   }
 
-  const startedAt = new Date().toISOString()
-  const payload = buildVerificationRunPayload({
-    runtimeVersion: "mms",
-    signalIds: selection.signalIds,
-    workspaceId,
-    activeSheetId: Number(activeSheetId ?? workspaceId),
-    startedAt,
+  if (stage === "configured") {
+    steps[0].status = "done"
+    steps[1].status = "skipped"
+    steps[2].status = "skipped"
+    return steps
+  }
+
+  if (stage === "opened") {
+    steps[0].status = "done"
+    steps[1].status = "skipped"
+    steps[2].status = "skipped"
+    return steps
+  }
+
+  if (stage === "discovered") {
+    steps[0].status = "done"
+    steps[1].status = "done"
+    steps[2].status = "skipped"
+    return steps
+  }
+
+  return steps
+}
+
+function stepBadgeVariant(status: Online61850PreparationResult["steps"][number]["status"]): "success" | "danger" | "neutral" {
+  if (status === "done") {
+    return "success"
+  }
+  if (status === "failed") {
+    return "danger"
+  }
+  return "neutral"
+}
+
+function trimToNull(value: string | null | undefined): string | null {
+  const text = String(value ?? "").trim()
+  return text ? text : null
+}
+
+function buildSignalRowsForTarget(target: Online61850PreparationTarget, discoveredSignalRefs: readonly string[]): Online61850PreparationResult["signalRows"] {
+  const discovered = new Set(
+    discoveredSignalRefs
+      .map(ref => normalizeIec61850Reference(ref))
+      .filter(Boolean),
+  )
+
+  const signalRows: Online61850PreparationResult["signalRows"] = []
+  const signalCount = Math.max(target.signalLabels.length, target.sourceAddresses.length)
+  for (let index = 0; index < signalCount; index += 1) {
+    const label = String(target.signalLabels[index] ?? `Signal ${index + 1}`).trim() || `Signal ${index + 1}`
+    const address = trimToNull(target.sourceAddresses[index] ?? null)
+    signalRows.push({
+      label,
+      address,
+      matched: Boolean(address && discovered.has(normalizeIec61850Reference(address))),
+    })
+  }
+  return signalRows
+}
+
+function collectDiscoverySignalReferences(rawDiscovery: unknown): string[] {
+  if (!rawDiscovery || typeof rawDiscovery !== "object" || Array.isArray(rawDiscovery)) {
+    return []
+  }
+
+  const payload = rawDiscovery as Record<string, unknown>
+  const references = new Set<string>()
+
+  const signals = Array.isArray(payload.signals) ? payload.signals : []
+  signals.forEach((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      return
+    }
+    const reference = normalizeIec61850Reference(String((item as Record<string, unknown>).reference ?? ""))
+    if (reference) {
+      references.add(reference)
+    }
   })
 
-  const requestId = ++verificationNetworkPreflightRequestId
-  try {
-    const { data } = await VerificationAPI.preflightSingleSignalRun(workspaceId, payload)
-    if (requestId !== verificationNetworkPreflightRequestId) {
-      return verificationNetworkPreflight.value
-    }
-    verificationNetworkPreflight.value = data
-    return data
-  } catch (error) {
-    if (requestId === verificationNetworkPreflightRequestId) {
-      verificationNetworkPreflight.value = null
-    }
-    return null
+  if (references.size > 0) {
+    return [...references]
   }
+
+  const dataSets = Array.isArray(payload.dataSets) ? payload.dataSets : []
+  dataSets.forEach((dataSet) => {
+    if (!dataSet || typeof dataSet !== "object" || Array.isArray(dataSet)) {
+      return
+    }
+    const members = Array.isArray((dataSet as Record<string, unknown>).members) ? (dataSet as Record<string, unknown>).members as unknown[] : []
+    members.forEach((member) => {
+      if (!member || typeof member !== "object" || Array.isArray(member)) {
+        return
+      }
+      const reference = normalizeIec61850Reference(String((member as Record<string, unknown>).reference ?? ""))
+      if (reference) {
+        references.add(reference)
+      }
+    })
+  })
+
+  return [...references]
 }
 
-async function runSingleSignalVerification() {
-  if (verificationRunBusy.value) return
+function normalizeIec61850Reference(reference: string): string {
+  return String(reference ?? "")
+    .trim()
+    .replace(/\s+/g, "")
+    .replace(/\/+/g, "/")
+    .replace(/\[([^\]]+)\]/g, "[$1]")
+}
 
-  const selection = verificationSelection.value
-  if (!selection.canRun) {
-    verificationRunError.value = selection.error ?? "Select one or more allocated signals."
+async function prepareOnline61850() {
+  if (online61850PreparationBusy.value) {
     return
   }
 
-  const workspaceId = workspaceStore.activeWorkspaceId
-  const activeSheetId = activeSignalSheet.value?.id ?? null
-  if (!workspaceId) {
-    verificationRunError.value = "Active workspace is not selected."
+  const allRows = signalAllocationProjectionRows()
+  if (!allRows.length) {
+    toastStore.info("No signal rows are available.")
     return
   }
 
-  const preflight = (await refreshVerificationNetworkPreflight())?.preflight ?? verificationNetworkPreflight.value?.preflight ?? null
-  const runtimeVersion = preflight?.recommended_runtime_version ?? "simulator"
-  const payload = buildVerificationRunPayload({
-    runtimeVersion,
-    signalIds: selection.signalIds,
-    workspaceId,
-    activeSheetId: Number(activeSheetId ?? workspaceId),
-    startedAt: new Date().toISOString(),
-  })
+  const { targets, skippedRows } = buildOnline61850PreparationTargets(allRows)
+  if (!targets.length) {
+    online61850PreparationSummary.value = {
+      scannedSignalCount: allRows.length,
+      preparedTargets: [],
+      warnings: skippedRows.map(item => `${item.signalLabel}: ${item.reason}`),
+    }
+    toastStore.warning("No usable transport host was found in the signal list.")
+    return
+  }
 
-  verificationRunBusy.value = true
-  verificationRunError.value = null
+  online61850PreparationBusy.value = true
+  online61850PreparationSummary.value = null
+  online61850PreparationLog.value = []
+  online61850PreparationCancelRequested.value = false
+  online61850PreparationAbortController.value = new AbortController()
+  online61850PreparationProgress.value = {
+    total: targets.length,
+    done: 0,
+  }
+
+  const preparedTargets: Online61850PreparationResult[] = []
+  const warnings = skippedRows.map(item => `${item.signalLabel}: ${item.reason}`)
+  let online61850PreparationLogId = 0
+  let stopAfterCurrentTarget = false
+  const pushOnline61850PreparationLog = (kind: "info" | "success" | "warning" | "error", message: string) => {
+    online61850PreparationLog.value = [
+      ...online61850PreparationLog.value,
+      {
+        id: online61850PreparationLogId += 1,
+        kind,
+        message,
+      },
+    ].slice(-8)
+  }
+
+  pushOnline61850PreparationLog("info", `Preparing ${targets.length} target${targets.length === 1 ? "" : "s"} from the signal list.`)
+
   try {
-    const { data } = await VerificationAPI.startSingleSignalRun(workspaceId, payload)
-    verificationRunResult.value = data
-    toastStore.success(`${data.verdict_explanation.headline}: ${data.verdict_explanation.summary}`)
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    verificationRunError.value = message
-    toastStore.error(message)
+    for (let index = 0; index < targets.length; index += 1) {
+      const target = targets[index]
+      if (stopAfterCurrentTarget || online61850PreparationAbortController.value?.signal.aborted) {
+        break
+      }
+      let targetStage: "configured" | "opened" | "discovered" | "subscribed" = "configured"
+      pushOnline61850PreparationLog("info", `Connecting ${formatOnline61850EndpointLabel(target)}.`)
+      try {
+        await Iec61850ClientAPI.configureTarget({
+          mode: "external-mms",
+          host: target.host,
+          port: target.port,
+          ied_name: target.iedName ?? "",
+          access_point_name: target.accessPointName ?? "AP1",
+          scl_path: null,
+        }, { signal: online61850PreparationAbortController.value.signal })
+        targetStage = "opened"
+        await Iec61850ClientAPI.connectIed({ signal: online61850PreparationAbortController.value.signal })
+        pushOnline61850PreparationLog("info", `Discovering and reading model for ${formatOnline61850EndpointLabel(target)}.`)
+        const discoveryState = await Iec61850ClientAPI.discoverIed({ signal: online61850PreparationAbortController.value.signal })
+        targetStage = "discovered"
+        pushOnline61850PreparationLog("info", `Enabling report subscription for ${formatOnline61850EndpointLabel(target)}.`)
+        await Iec61850ClientAPI.enableReporting({ signal: online61850PreparationAbortController.value.signal })
+        targetStage = "subscribed"
+        const discovery = discoveryState.ui_state?.discovery
+        const discoveredSignalRefs = collectDiscoverySignalReferences(discoveryState.last_discovery)
+        const signalRows = buildSignalRowsForTarget(target, discoveredSignalRefs)
+        preparedTargets.push({
+          ...target,
+          endpointLabel: formatOnline61850EndpointLabel(target),
+          status: "ready",
+          message: null,
+          signalCount: target.signalIds.length,
+          matchedSignalCount: signalRows.filter(signal => signal.matched).length,
+          mismatchedSignalCount: signalRows.filter(signal => !signal.matched).length,
+          steps: buildOnline61850PreparationSteps("subscribed"),
+          signalRows,
+          discovery: {
+            connected: Boolean(discoveryState.ui_state?.session.connected),
+            discovered: Boolean(discovery?.discovered),
+            logicalDevices: Number(discovery?.logical_devices ?? 0),
+            logicalNodes: Number(discovery?.logical_nodes ?? 0),
+            dataSets: Number(discovery?.data_sets ?? 0),
+            reportControls: Number(discovery?.report_controls ?? 0),
+          },
+        })
+        pushOnline61850PreparationLog("success", `Ready: ${formatOnline61850EndpointLabel(target)}.`)
+      } catch (error) {
+        if (online61850PreparationAbortController.value?.signal.aborted) {
+          pushOnline61850PreparationLog("warning", "Preparation cancelled.")
+          break
+        }
+        const normalizedError = normalizeHttpError(error)
+        const errorMessage = normalizedError.code ? `${normalizedError.code}: ${normalizedError.message}` : normalizedError.message
+        const signalRows = buildSignalRowsForTarget(target, [])
+        preparedTargets.push({
+          ...target,
+          endpointLabel: formatOnline61850EndpointLabel(target),
+          status: "failed",
+          message: errorMessage,
+          signalCount: target.signalIds.length,
+          matchedSignalCount: 0,
+          mismatchedSignalCount: signalRows.length,
+          steps: buildOnline61850PreparationSteps("failed", targetStage),
+          signalRows,
+          discovery: {
+            connected: false,
+            discovered: false,
+            logicalDevices: 0,
+            logicalNodes: 0,
+            dataSets: 0,
+            reportControls: 0,
+          },
+        })
+        pushOnline61850PreparationLog("error", `Failed: ${formatOnline61850EndpointLabel(target)}. ${errorMessage}`)
+        if (normalizedError.code === "LIBIEC61850_NOT_LINKED"
+          || normalizedError.code === "EXTERNAL_MMS_CLIENT_START_FAILED"
+          || normalizedError.code === "EXTERNAL_MMS_CLIENT_EXITED") {
+          pushOnline61850PreparationLog("warning", "MMS backend client is unavailable; stopping preparation early.")
+          stopAfterCurrentTarget = true
+        }
+      }
+      online61850PreparationProgress.value.done = index + 1
+    }
   } finally {
-    verificationRunBusy.value = false
+    online61850PreparationBusy.value = false
+    online61850PreparationAbortController.value = null
+  }
+
+  if (online61850PreparationCancelRequested.value) {
+    toastStore.info("Online 61850 preparation cancelled.")
+    return
+  }
+  pushOnline61850PreparationLog("success", "Preparation completed.")
+  online61850PreparationSummary.value = {
+    scannedSignalCount: allRows.length,
+    preparedTargets,
+    warnings,
+  }
+
+  const readyCount = preparedTargets.filter(item => item.status === "ready").length
+  const failedCount = preparedTargets.length - readyCount
+  if (failedCount > 0) {
+    toastStore.warning(`Online 61850 prepared ${readyCount} target(s), failed ${failedCount}.`)
+  } else {
+    toastStore.success(`Online 61850 prepared ${readyCount} target(s).`)
   }
 }
 
@@ -2798,6 +3323,15 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
   return [
     ...sourceColumns,
     {
+      key: "iec61850_address",
+      label: "IEC 61850",
+      minWidth: 144,
+      initialState: { width: 208 },
+      presentation: { align: "left", headerAlign: "left" },
+      capabilities: { editable: false },
+      cellRenderer: renderDefaultCell,
+    },
+    {
       key: "internal_signal_type",
       label: "Internal Signal Type",
       minWidth: 96,
@@ -3058,14 +3592,6 @@ onMounted(() => {
   syncImportModalFromRoute()
 })
 
-watch(
-  () => [workspaceStore.activeWorkspaceId, verificationSelection.value.signalIds.join(","), activeSignalSheet.value?.id] as const,
-  () => {
-    void refreshVerificationNetworkPreflight()
-  },
-  { immediate: true },
-)
-
 onBeforeUnmount(() => {
   if (signalsGridStatePersistTimer !== null) {
     clearTimeout(signalsGridStatePersistTimer)
@@ -3150,6 +3676,141 @@ onBeforeUnmount(() => {
 
 .signals-page__empty-link:hover {
   color: var(--color-blue-700);
+}
+
+.signals-page__busy-overlay {
+  align-items: center;
+  background: color-mix(in srgb, var(--color-neutral-950) 24%, transparent);
+  backdrop-filter: blur(1px);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 1rem;
+  position: fixed;
+  z-index: 60;
+}
+
+.signals-page__busy-panel {
+  background: var(--color-white);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: 1rem;
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  height: min(22rem, calc(100vh - 2rem));
+  min-height: 18rem;
+  min-width: min(32rem, calc(100vw - 2rem));
+  max-width: min(36rem, calc(100vw - 2rem));
+  overflow: hidden;
+  padding: 1rem 1.125rem;
+}
+
+.signals-page__busy-title {
+  flex: 0 0 auto;
+  color: var(--color-neutral-900);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.signals-page__busy-copy {
+  color: var(--color-neutral-600);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+  min-height: 1.25em;
+}
+
+.signals-page__busy-progress-row {
+  align-items: baseline;
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.signals-page__busy-progress-percent {
+  color: var(--color-neutral-500);
+  flex: 0 0 auto;
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.signals-page__busy-bar {
+  background: var(--color-neutral-200);
+  border-radius: 0.25rem;
+  height: 0.5rem;
+  flex: 0 0 auto;
+  overflow: hidden;
+}
+
+.signals-page__busy-bar-fill {
+  background: var(--color-blue-500);
+  height: 100%;
+  transition: width 300ms ease;
+}
+
+.signals-page__busy-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+  min-height: 2.25rem;
+  position: relative;
+  z-index: 1;
+}
+
+.signals-page__busy-log {
+  flex: 1 1 auto;
+  display: grid;
+  gap: 0.35rem;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 0.15rem;
+  scrollbar-gutter: stable;
+}
+
+@keyframes signals-page-busy-bar-stripes {
+  from {
+    background-position: 0 0;
+  }
+
+  to {
+    background-position: 20px 0;
+  }
+}
+
+.signals-page__busy-log-row {
+  align-items: flex-start;
+  color: var(--color-neutral-500);
+  display: grid;
+  font-size: var(--text-xs);
+  gap: 0.45rem;
+  grid-template-columns: auto minmax(0, 1fr);
+  word-break: break-word;
+}
+
+.signals-page__busy-log-row--success {
+  color: var(--color-emerald-600);
+}
+
+.signals-page__busy-log-row--warning {
+  color: var(--color-amber-700);
+}
+
+.signals-page__busy-log-row--error {
+  color: var(--color-rose-600);
+}
+
+.signals-page__busy-log-mark {
+  line-height: 1.2;
+}
+
+.signals-page__busy-log-text {
+  min-width: 0;
 }
 
 .signals-page__file-input {
@@ -3267,6 +3928,204 @@ onBeforeUnmount(() => {
   font-size: var(--text-xs);
 }
 
+.signals-page__online-prep-summary {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 1rem;
+}
+
+.signals-page__online-prep-static {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.signals-page__online-prep-copy {
+  color: var(--color-neutral-600);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+}
+
+.signals-page__online-prep-copy--meta {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+}
+
+.signals-page__online-prep-filter-row {
+  align-items: flex-end;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+}
+
+.signals-page__online-prep-filter {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.signals-page__online-prep-filter-label {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.signals-page__online-prep-filter-input {
+  background: var(--color-white);
+  border: 1px solid var(--color-neutral-300);
+  border-radius: 0.5rem;
+  color: var(--color-neutral-800);
+  font-size: var(--text-sm);
+  min-height: 2.25rem;
+  padding: 0.45rem 0.65rem;
+  width: 100%;
+}
+
+.signals-page__online-prep-filter-input:focus {
+  border-color: var(--color-blue-500);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-blue-200) 55%, transparent);
+  outline: none;
+}
+
+.signals-page__online-prep-filter-clear {
+  flex: 0 0 auto;
+}
+
+.signals-page__online-prep-empty {
+  color: var(--color-neutral-500);
+  font-size: var(--text-sm);
+}
+
+.signals-page__online-prep-warnings {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.signals-page__online-prep-warning {
+  background: color-mix(in srgb, var(--color-amber-50) 80%, var(--color-white));
+  border: 1px solid color-mix(in srgb, var(--color-amber-200) 70%, var(--color-white));
+  border-radius: 0.75rem;
+  color: var(--color-amber-900);
+  font-size: var(--text-xs);
+  padding: 0.625rem 0.75rem;
+}
+
+.signals-page__online-prep-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.signals-page__online-prep-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.signals-page__online-prep-disclosure {
+  background: var(--color-white);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: 0.75rem;
+  padding: 0.625rem 0.75rem;
+}
+
+.signals-page__online-prep-disclosure-header {
+  align-items: flex-start;
+  color: var(--color-neutral-800);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  margin-bottom: 0;
+  text-align: left;
+  text-transform: none;
+  white-space: normal;
+}
+
+.signals-page__online-prep-disclosure-content {
+  padding-top: 0.75rem;
+}
+
+.signals-page__online-prep-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.signals-page__online-prep-step-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.signals-page__online-prep-step {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+}
+
+.signals-page__online-prep-step-label {
+  color: var(--color-neutral-600);
+  font-size: var(--text-xs);
+  min-width: 0;
+}
+
+.signals-page__online-prep-item-copy,
+.signals-page__online-prep-item-error {
+  color: var(--color-neutral-600);
+  font-size: var(--text-xs);
+  line-height: 1.35;
+}
+
+.signals-page__online-prep-signal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.signals-page__online-prep-signal-row {
+  align-items: center;
+  border-radius: 0.5rem;
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+}
+
+.signals-page__online-prep-signal-row--matched {
+  background: color-mix(in srgb, var(--color-emerald-50) 72%, var(--color-white));
+  color: var(--color-emerald-800);
+}
+
+.signals-page__online-prep-signal-row--mismatch {
+  background: color-mix(in srgb, var(--color-neutral-100) 72%, var(--color-white));
+  color: var(--color-neutral-500);
+}
+
+.signals-page__online-prep-signal-state {
+  flex: 0 0 auto;
+  font-size: var(--text-sm);
+  line-height: 1.2;
+  margin-top: 0.1rem;
+}
+
+.signals-page__online-prep-signal-address {
+  flex: 1 1 auto;
+  font-size: var(--text-xs);
+  opacity: 0.9;
+  word-break: break-word;
+}
+
+.signals-page__online-prep-item-error {
+  color: var(--color-rose-700);
+}
+
 :global(.dark .signals-page__empty) {
   color: var(--color-neutral-400);
 }
@@ -3299,6 +4158,51 @@ onBeforeUnmount(() => {
   color: var(--color-blue-200);
 }
 
+:global(.dark .signals-page__busy-overlay) {
+  background: color-mix(in srgb, var(--color-neutral-950) 58%, transparent);
+}
+
+:global(.dark .signals-page__busy-panel) {
+  background: var(--color-neutral-950);
+  border-color: var(--color-neutral-800);
+}
+
+:global(.dark .signals-page__busy-title) {
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .signals-page__busy-copy) {
+  color: var(--color-neutral-300);
+}
+
+:global(.dark .signals-page__busy-progress-percent) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .signals-page__busy-bar) {
+  background: var(--color-neutral-800);
+}
+
+:global(.dark .signals-page__busy-log) {
+  scrollbar-color: var(--color-neutral-700) transparent;
+}
+
+:global(.dark .signals-page__busy-log-row) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .signals-page__busy-log-row--success) {
+  color: var(--color-emerald-300);
+}
+
+:global(.dark .signals-page__busy-log-row--warning) {
+  color: var(--color-amber-300);
+}
+
+:global(.dark .signals-page__busy-log-row--error) {
+  color: var(--color-rose-300);
+}
+
 :global(.dark .signals-page__error) {
   background: color-mix(in srgb, var(--color-rose-700) 30%, var(--color-neutral-950));
   border-color: color-mix(in srgb, var(--color-rose-700) 60%, var(--color-neutral-950));
@@ -3325,6 +4229,70 @@ onBeforeUnmount(() => {
 
 :global(.dark .signals-page__grid-cell) {
   color: var(--color-neutral-100);
+}
+
+:global(.dark .signals-page__online-prep-copy) {
+  color: var(--color-neutral-300);
+}
+
+:global(.dark .signals-page__online-prep-copy--meta) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .signals-page__online-prep-filter-label) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .signals-page__online-prep-filter-input) {
+  background: var(--color-neutral-950);
+  border-color: var(--color-neutral-700);
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .signals-page__online-prep-filter-input:focus) {
+  border-color: var(--color-blue-500);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-blue-900) 45%, transparent);
+}
+
+:global(.dark .signals-page__online-prep-empty) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .signals-page__online-prep-warning) {
+  background: color-mix(in srgb, var(--color-amber-900) 40%, var(--color-neutral-950));
+  border-color: color-mix(in srgb, var(--color-amber-700) 55%, var(--color-neutral-950));
+  color: var(--color-amber-200);
+}
+
+:global(.dark .signals-page__online-prep-item) {
+  color: inherit;
+}
+
+:global(.dark .signals-page__online-prep-item-copy) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .signals-page__online-prep-disclosure) {
+  background: var(--color-neutral-950);
+  border-color: var(--color-neutral-800);
+}
+
+:global(.dark .signals-page__online-prep-disclosure-header) {
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .signals-page__online-prep-item-error) {
+  color: var(--color-rose-300);
+}
+
+:global(.dark .signals-page__online-prep-signal-row--matched) {
+  background: color-mix(in srgb, var(--color-emerald-950) 55%, var(--color-neutral-950));
+  color: var(--color-emerald-200);
+}
+
+:global(.dark .signals-page__online-prep-signal-row--mismatch) {
+  background: color-mix(in srgb, var(--color-neutral-900) 72%, var(--color-neutral-950));
+  color: var(--color-neutral-400);
 }
 
 @keyframes signals-page-pulse {

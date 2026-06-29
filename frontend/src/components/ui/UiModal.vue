@@ -370,6 +370,8 @@ onBeforeUnmount(() => {
 .ui-modal__content {
   flex: 1 1 auto;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
   padding: 1rem 1.5rem;
 }

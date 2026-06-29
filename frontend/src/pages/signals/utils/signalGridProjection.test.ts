@@ -20,6 +20,7 @@ function buildRow(overrides: Partial<SignalAllocationRow> = {}): SignalAllocatio
       row: {
         Cabinet: "A1",
         Terminal: "X1:1",
+        iec61850_address: "KINTE15BCU01CTRL1/CBCSWI1/Pos/Oper.ctlVal[CO]",
       },
     },
     allocation_id: 10,
@@ -48,6 +49,7 @@ describe("signalGridProjection", () => {
       rowId: "signal-1",
       signal_id: 1,
       internal_signal_type: "di",
+      iec61850_address: "KINTE15BCU01CTRL1/CBCSWI1/Pos/Oper.ctlVal[CO]",
       channel_select: "unit-a/ch3",
       allocation_status: "assigned",
       allocation_health: "OK",

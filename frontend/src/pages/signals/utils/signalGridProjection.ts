@@ -65,16 +65,17 @@ function createSignalGridRow(
   runtime?: SignalGridRuntimeOverlay,
 ): SignalGridRow {
   const projectedRow = applySignalGridRuntimeOverlay(row, runtime)
+  const sourceRow = extractSourceRowFromSignalMetadata(projectedRow.signal_metadata)
   const payload: SignalGridRow = {
     signal_id: projectedRow.signal_id,
     rowId: projectedRow.row_id || `signal-${projectedRow.signal_id}`,
     internal_signal_type: resolveSignalGridInternalSignalType(projectedRow),
+    iec61850_address: String(sourceRow.iec61850_address ?? sourceRow.iec61850Address ?? ""),
     channel_select: resolveSignalAllocationDisplayLabel(projectedRow),
     tested_at: projectedRow.tested_at,
     allocation_status: resolveSignalAllocationStatus(projectedRow),
     allocation_health: resolveSignalAllocationHealthLabel(projectedRow),
   }
-  const sourceRow = extractSourceRowFromSignalMetadata(projectedRow.signal_metadata)
   headers.forEach((header, index) => {
     payload[signalGridSourceColumnKey(index)] = sourceRow[header] ?? ""
   })
