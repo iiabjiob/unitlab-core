@@ -93,7 +93,8 @@ class _ClientControlMmsSession:
         self._session_id = session_id
         self._client_id = client_id
         self._candidate_states: dict[str, dict[str, bool]] = {}
-        self._control_services: dict[str, Iec61850ClientControlService] = {}
+        self._control_service: Iec61850ClientControlService | None = None
+        self._selected_candidate_key: str | None = None
 
     def read_report_control(self, reference: Iec61850ReportControlRef) -> Iec61850ReportControlReadResult:
         candidate = self._candidate_for_reference(reference)
@@ -114,6 +115,10 @@ class _ClientControlMmsSession:
 
     def release_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:
         candidate = self._candidate_for_reference(reference)
+        control_service = self._control_service_for_candidate(candidate)
+        release_report_control = getattr(control_service, "release_report_control", None)
+        if callable(release_report_control):
+            release_report_control()
         state = self._candidate_state(candidate)
         state["reserved"] = False
         state["enabled"] = False
@@ -130,6 +135,10 @@ class _ClientControlMmsSession:
 
     def disable_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:
         candidate = self._candidate_for_reference(reference)
+        control_service = self._control_service_for_candidate(candidate)
+        disable_report_control = getattr(control_service, "disable_report_control", None)
+        if callable(disable_report_control):
+            disable_report_control()
         self._candidate_state(candidate)["enabled"] = False
         return self._build_state(candidate, runtime_status="disabled")
 
@@ -150,10 +159,11 @@ class _ClientControlMmsSession:
         return report
 
     def disconnect(self) -> None:
-        for control_service in self._control_services.values():
+        if self._control_service is not None:
             with suppress(Exception):
-                control_service.close_ied()
-        self._control_services.clear()
+                self._control_service.close_ied()
+        self._control_service = None
+        self._selected_candidate_key = None
         self._candidate_states.clear()
 
     def _candidate_for_reference(self, reference: Iec61850ReportControlRef) -> Iec61850ReportControlCandidate:
@@ -167,16 +177,23 @@ class _ClientControlMmsSession:
 
     def _control_service_for_candidate(self, candidate: Iec61850ReportControlCandidate) -> Iec61850ClientControlService:
         key = report_control_key(to_report_control_ref(candidate))
-        service = self._control_services.get(key)
-        if service is None:
-            service = self._control_service_factory(
+        if self._control_service is None:
+            self._control_service = self._control_service_factory(
                 session_id=self._session_id,
                 client_id=self._client_id,
                 endpoint=self._endpoint,
                 candidate=candidate,
+                available_candidates=self._candidates,
             )
-            self._control_services[key] = service
-        return service
+            self._selected_candidate_key = key
+            return self._control_service
+
+        if self._selected_candidate_key != key:
+            select_report_control = getattr(self._control_service, "select_report_control", None)
+            if callable(select_report_control):
+                select_report_control(candidate.id)
+            self._selected_candidate_key = key
+        return self._control_service
 
     def _candidate_state(self, candidate: Iec61850ReportControlCandidate) -> dict[str, bool]:
         key = report_control_key(to_report_control_ref(candidate))

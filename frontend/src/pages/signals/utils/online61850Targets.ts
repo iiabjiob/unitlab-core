@@ -10,6 +10,7 @@ export type Online61850PreparationTarget = {
   signalIds: number[]
   signalLabels: string[]
   sourceAddresses: string[]
+  signalRows: SignalAllocationRow[]
 }
 
 type Online61850PreparationTargetSource = {
@@ -20,6 +21,7 @@ type Online61850PreparationTargetSource = {
   iedName: string | null
   accessPointName: string | null
   sourceAddress: string | null
+  row: SignalAllocationRow
 }
 
 const TRANSPORT_HOST_KEYS = [
@@ -91,6 +93,20 @@ export function buildOnline61850PreparationTargets(rows: readonly SignalAllocati
   }
 }
 
+export function resolveOnline61850SignalReference(row: SignalAllocationRow): string | null {
+  const sourceRow = extractSourceRowFromSignalMetadata(row.signal_metadata)
+  const verificationMeta = resolveRecordCandidate(row.signal_metadata && typeof row.signal_metadata === "object" && !Array.isArray(row.signal_metadata)
+    ? (row.signal_metadata as Record<string, unknown>).verification
+    : null)
+
+  return firstStringValue(
+    sourceRow,
+    verificationMeta,
+    row.signal_metadata,
+    IEC61850_ADDRESS_KEYS,
+  )
+}
+
 function resolveOnline61850PreparationTargetSource(
   row: SignalAllocationRow,
   signalLabel: string,
@@ -111,12 +127,7 @@ function resolveOnline61850PreparationTargetSource(
     return null
   }
 
-  const addressCandidate = firstStringValue(
-    sourceRow,
-    verificationMeta,
-    row.signal_metadata,
-    IEC61850_ADDRESS_KEYS,
-  )
+  const addressCandidate = resolveOnline61850SignalReference(row)
   const iedCandidate = firstStringValue(
     sourceRow,
     verificationMeta,
@@ -140,6 +151,7 @@ function resolveOnline61850PreparationTargetSource(
     iedName: trimToNull(iedCandidate ?? parsedAddress.iedName),
     accessPointName: trimToNull(accessPointCandidate) ?? "AP1",
     sourceAddress: trimToNull(addressCandidate),
+    row,
   }
 }
 
@@ -163,6 +175,7 @@ function groupOnline61850PreparationTargets(
       if (source.sourceAddress) {
         existing.sourceAddresses.push(source.sourceAddress)
       }
+      existing.signalRows.push(source.row)
       return
     }
 
@@ -175,6 +188,7 @@ function groupOnline61850PreparationTargets(
       signalIds: [source.signalId],
       signalLabels: [source.signalLabel],
       sourceAddresses: source.sourceAddress ? [source.sourceAddress] : [],
+      signalRows: [source.row],
     })
   })
 

@@ -42,6 +42,20 @@ GOOSE and Sampled Values are explicitly out of scope for this plan and stay in a
 11. Process incoming reports into signal-level observations.
 12. Disable and release the RCB during cleanup.
 
+## Backend-Owned Online Orchestration
+
+The verification runtime orchestration endpoint is the backend-owned path for keeping MMS sessions and report subscriptions alive across a test preparation window. When `execution_context.runtime_version` selects MMS, orchestration resolves the MMS endpoint catalog from the submitted subscription plan target metadata and uses the MMS runtime adapter instead of silently falling back to the simulator adapter.
+
+Runtime ownership rules:
+
+- one backend runtime session is opened per resolved IED/access point endpoint;
+- multiple ReportControls on the same endpoint share that session;
+- the MMS adapter keeps one control service for the session and switches the selected ReportControl explicitly before read/enable/GI/cleanup operations;
+- endpoint-resolution diagnostics are included in orchestration snapshots;
+- stop/reconnect remains explicit and scoped to the affected backend session.
+
+This closes the previous diagnostic-only gap where frontend-driven Online 61850 could iterate targets while the backend singleton only retained the most recent target state. The remaining production gap is test-trigger correlation: the prepared subscriptions must feed an awaited report-event window for each triggered FAT step instead of treating GI alone as final test evidence.
+
 ## Slice Plan
 
 ### Slice 1 - Simulator Contracts And Read Manager

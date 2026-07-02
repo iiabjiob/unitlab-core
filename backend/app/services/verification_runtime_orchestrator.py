@@ -19,6 +19,7 @@ from app.schemas.verification_schema import (
 )
 from app.services.iec61850.report_runtime import (
     Iec61850DeviceEndpoint,
+    Iec61850ReportRuntimeAdapter,
     Iec61850ReportRuntimeService,
     Iec61850RuntimeDiagnostic,
     build_simulator_endpoint_for_plan_device,
@@ -142,6 +143,8 @@ class VerificationRuntimeOrchestrator:
         execution_context: VerificationExecutionContextSchema,
         client_id: str = "unitlab-backend-simulator",
         endpoint_for_device: Callable[[Any], Iec61850DeviceEndpoint] = build_simulator_endpoint_for_plan_device,
+        adapter: Iec61850ReportRuntimeAdapter | None = None,
+        initial_diagnostics: Sequence[VerificationEvidenceDiagnosticSchema] = (),
     ) -> VerificationRuntimeOrchestrationResult:
         orchestration_id = f"{workspace_id}:{test_run_id}:{uuid4().hex[:8]}"
         if orchestration_id in self._handles:
@@ -149,13 +152,13 @@ class VerificationRuntimeOrchestrator:
         started_at = self._now()
 
         runtime_plan = build_runtime_subscription_plan(subscription_plan)
-        adapter = create_iec61850_simulator_adapter(now=self._now)
-        runtime_service = Iec61850ReportRuntimeService(adapter)
+        runtime_adapter = adapter or create_iec61850_simulator_adapter(now=self._now)
+        runtime_service = Iec61850ReportRuntimeService(runtime_adapter)
         session_states: dict[str, VerificationRuntimeSessionState] = {}
         subscription_states: dict[str, VerificationRuntimeSubscriptionState] = {}
         session_order: list[str] = []
         subscription_order: list[str] = []
-        diagnostics: list[VerificationEvidenceDiagnosticSchema] = []
+        diagnostics: list[VerificationEvidenceDiagnosticSchema] = list(initial_diagnostics)
 
         try:
             for group_index, device_group in enumerate(

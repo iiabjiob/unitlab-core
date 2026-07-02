@@ -21,6 +21,12 @@ from app.services.verification_run_service import (
     load_verification_run_detail,
 )
 from app.services.verification_run_evidence_service import load_verification_run_evidence
+from app.services.verification_endpoint_resolution import (
+    build_verification_endpoint_resolution_diagnostic,
+    resolve_verification_endpoint_resolution_policy,
+)
+from app.services.verification_runtime_selection import resolve_verification_runtime
+from app.services.verification_signal_endpoint_catalog import build_verification_plan_endpoint_catalog
 from app.services.verification_runtime_orchestrator import VerificationRuntimeOrchestrator
 
 router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/verification", tags=["Verification"])
@@ -97,6 +103,21 @@ async def start_verification_runtime_orchestration(
     payload: VerificationRuntimeOrchestrationStartSchema,
 ):
     try:
+        plan_endpoint_catalog = build_verification_plan_endpoint_catalog(payload.subscription_plan)
+        endpoint_resolution_policy = resolve_verification_endpoint_resolution_policy(
+            execution_context=payload.execution_context,
+            explicit_mms_endpoint_catalog=plan_endpoint_catalog,
+            transport_override_host=payload.execution_context.transport_override_host,
+            transport_override_port=payload.execution_context.transport_override_port,
+        )
+        runtime_selection = resolve_verification_runtime(
+            execution_context=payload.execution_context,
+            endpoint_catalog=endpoint_resolution_policy.endpoint_catalog,
+            transport_source=endpoint_resolution_policy.transport_source,
+            model_source=endpoint_resolution_policy.model_source,
+            transport_override_host=endpoint_resolution_policy.transport_override_host,
+            transport_override_port=endpoint_resolution_policy.transport_override_port,
+        )
         result = _orchestrator.start(
             workspace_id=workspace_id,
             test_run_id=payload.test_run_id,
@@ -104,7 +125,12 @@ async def start_verification_runtime_orchestration(
             subscription_plan=payload.subscription_plan,
             execution_context=payload.execution_context,
             client_id=payload.client_id,
+            endpoint_for_device=runtime_selection.endpoint_for_device,
+            adapter=runtime_selection.adapter,
+            initial_diagnostics=(build_verification_endpoint_resolution_diagnostic(endpoint_resolution_policy),),
         )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return VerificationRuntimeOrchestrationResponseSchema(

@@ -61,6 +61,38 @@ def build_verification_signal_endpoint_catalog(
     return build_mms_endpoint_catalog(list(entries_by_key.values()))
 
 
+def build_verification_plan_endpoint_catalog(
+    subscription_plan: VerificationSubscriptionPlanSchema,
+) -> Iec61850MmsEndpointCatalog | None:
+    entries_by_key: dict[tuple[str, str], Iec61850MmsEndpointCatalogEntry] = {}
+    for group in subscription_plan.groups:
+        if not group.ied_name or not group.access_point_name or group.access_point_name.lower() == "unknown":
+            continue
+        target_metadata = [
+            subscription_plan.targets[target_index].protocol_metadata
+            for target_index in group.target_indexes
+            if 0 <= target_index < len(subscription_plan.targets)
+        ]
+        endpoint = _extract_endpoint_candidate(target_metadata)
+        if endpoint is None:
+            continue
+        host, port = endpoint
+        key = (group.ied_name.strip().lower(), group.access_point_name.strip().lower())
+        existing = entries_by_key.get(key)
+        if existing is not None and (existing.host != host or existing.port != port):
+            continue
+        entries_by_key[key] = Iec61850MmsEndpointCatalogEntry(
+            ied_name=group.ied_name,
+            access_point_name=group.access_point_name,
+            host=host,
+            port=port,
+            endpoint_id=group.endpoint_id,
+        )
+    if not entries_by_key:
+        return None
+    return build_mms_endpoint_catalog(list(entries_by_key.values()))
+
+
 def _extract_target_host_candidates(sources: list[VerificationTargetSource]) -> list[str]:
     prioritized: list[str] = []
     fallback: list[str] = []
@@ -78,6 +110,20 @@ def _extract_target_host_candidates(sources: list[VerificationTargetSource]) -> 
                 if candidate not in fallback:
                     fallback.append(candidate)
     return prioritized or fallback
+
+
+def _extract_endpoint_candidate(metadata_items: list[dict[str, Any]]) -> tuple[str, int] | None:
+    for metadata in metadata_items:
+        for candidate in _extract_by_key_priority(metadata, _HOST_KEY_TOKENS):
+            endpoint = _normalize_host_port_candidate(candidate)
+            if endpoint is not None:
+                return endpoint
+    for metadata in metadata_items:
+        for candidate in _extract_ipv4_strings(metadata):
+            endpoint = _normalize_host_port_candidate(candidate)
+            if endpoint is not None:
+                return endpoint
+    return None
 
 
 def _extract_by_key_priority(payload: Any, key_tokens: tuple[str, ...]) -> list[str]:
@@ -130,3 +176,28 @@ def _normalize_ipv4_candidate(value: str) -> str | None:
         return str(ipaddress.ip_address(text))
     except ValueError:
         return None
+
+
+def _normalize_host_port_candidate(value: str) -> tuple[str, int] | None:
+    text = str(value).strip()
+    if not text:
+        return None
+    first_token = text.split(None, 1)[0].strip()
+    host_text = first_token or text
+    port = 102
+
+    bracket_match = re.fullmatch(r"\[([^\]]+)\](?::(\d{1,5}))?", host_text)
+    if bracket_match:
+        host_text = bracket_match.group(1)
+        if bracket_match.group(2):
+            port = int(bracket_match.group(2))
+    else:
+        host_part, separator, port_part = host_text.rpartition(":")
+        if separator and host_part and port_part.isdigit() and ":" not in host_part:
+            host_text = host_part
+            port = int(port_part)
+
+    host_text = host_text.strip()
+    if not host_text or port <= 0 or port > 65535:
+        return None
+    return host_text, port

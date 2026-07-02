@@ -356,7 +356,15 @@
                     <span class="signals-page__online-prep-signal-state" aria-hidden="true">
                       {{ signal.matched ? "●" : "•" }}
                     </span>
-                    <span class="signals-page__online-prep-signal-address">{{ signal.address ?? "No IEC 61850 address" }}</span>
+                    <div class="signals-page__online-prep-signal-body">
+                      <span class="signals-page__online-prep-signal-address">{{ signal.address ?? "No IEC 61850 address" }}</span>
+                      <span
+                        v-if="signal.stateLabel"
+                        class="signals-page__online-prep-signal-value"
+                      >
+                        GI: {{ signal.stateLabel }}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -386,7 +394,13 @@ import { SignalsAPI } from "@/api/signals.api"
 import type { AoChannel, DoChannel } from "@/types/channel"
 import AllocationEditorHeader from "@/pages/signals/components/AllocationEditorHeader.vue"
 import { extractSourceRowFromSignalMetadata, resolveAllSourceColumnHeaders, resolveSourceColumnInitialWidth, resolveSourceColumnMinWidth } from "@/pages/signals/utils/sourceColumns"
-import { buildOnline61850PreparationTargets, type Online61850PreparationTarget } from "@/pages/signals/utils/online61850Targets"
+import {
+  buildOnline61850PreparationTargets,
+  resolveOnline61850SignalReference,
+  type Online61850PreparationTarget,
+} from "@/pages/signals/utils/online61850Targets"
+import { matchOnline61850TargetSignals } from "@/pages/signals/utils/online61850TargetMatching"
+import { normalizeIec61850Reference } from "@/pages/signals/utils/iec61850Reference"
 import AllocationChannelCell from "@/pages/signals/components/AllocationChannelCell.vue"
 import AllocationChannelPickerPanel from "@/pages/signals/components/AllocationChannelPickerPanel.vue"
 import AllocationControlCell from "@/pages/signals/components/AllocationControlCell.vue"
@@ -528,6 +542,7 @@ type Online61850PreparationResult = Online61850PreparationTarget & {
     label: string
     address: string | null
     matched: boolean
+    stateLabel: string | null
   }>
   discovery: {
     connected: boolean
@@ -2554,14 +2569,14 @@ function formatOnline61850DisclosureMetaLabels(target: Online61850PreparationRes
 }
 
 function buildOnline61850PreparationSteps(
-  stage: "configured" | "opened" | "discovered" | "subscribed" | "failed",
-  failedAt?: "configured" | "opened" | "discovered" | "subscribed",
+  stage: "configured" | "opened" | "discovered" | "subscribed" | "gi" | "failed",
+  failedAt?: "configured" | "opened" | "discovered" | "subscribed" | "gi",
 ): Online61850PreparationResult["steps"] {
   const steps: Online61850PreparationResult["steps"] = [
     { label: "Connect MMS session", status: "done" },
     { label: "Discover and read model", status: "done" },
     { label: "Enable report subscription", status: "done" },
-    { label: "GI", status: "skipped" },
+    { label: "GI", status: "done" },
   ]
 
   if (stage === "failed") {
@@ -2589,6 +2604,14 @@ function buildOnline61850PreparationSteps(
         { label: "GI", status: "failed" },
       ]
     }
+    if (failedAt === "gi") {
+      return [
+        { label: "Connect MMS session", status: "done" },
+        { label: "Discover and read model", status: "done" },
+        { label: "Enable report subscription", status: "done" },
+        { label: "GI", status: "failed" },
+      ]
+    }
     return [
       { label: "Connect MMS session", status: "failed" },
       { label: "Discover and read model", status: "skipped" },
@@ -2601,6 +2624,7 @@ function buildOnline61850PreparationSteps(
     steps[0].status = "done"
     steps[1].status = "skipped"
     steps[2].status = "skipped"
+    steps[3].status = "skipped"
     return steps
   }
 
@@ -2608,6 +2632,7 @@ function buildOnline61850PreparationSteps(
     steps[0].status = "done"
     steps[1].status = "skipped"
     steps[2].status = "skipped"
+    steps[3].status = "skipped"
     return steps
   }
 
@@ -2615,6 +2640,23 @@ function buildOnline61850PreparationSteps(
     steps[0].status = "done"
     steps[1].status = "done"
     steps[2].status = "skipped"
+    steps[3].status = "skipped"
+    return steps
+  }
+
+  if (stage === "subscribed") {
+    steps[0].status = "done"
+    steps[1].status = "done"
+    steps[2].status = "done"
+    steps[3].status = "skipped"
+    return steps
+  }
+
+  if (stage === "gi") {
+    steps[0].status = "done"
+    steps[1].status = "done"
+    steps[2].status = "done"
+    steps[3].status = "done"
     return steps
   }
 
@@ -2636,78 +2678,105 @@ function trimToNull(value: string | null | undefined): string | null {
   return text ? text : null
 }
 
-function buildSignalRowsForTarget(target: Online61850PreparationTarget, discoveredSignalRefs: readonly string[]): Online61850PreparationResult["signalRows"] {
-  const discovered = new Set(
-    discoveredSignalRefs
-      .map(ref => normalizeIec61850Reference(ref))
-      .filter(Boolean),
-  )
+type Online61850ReportSignalState = {
+  reference: string
+  value_data_reference?: string | null
+  quality_data_reference?: string | null
+  source_timestamp_data_reference?: string | null
+  value: string | number | boolean | null
+  reason: string
+  timestamp: string
+}
 
+function formatOnline61850StateValue(value: unknown): string | null {
+  if (value === null || value === undefined) {
+    return null
+  }
+  if (typeof value === "string") {
+    const text = value.trim()
+    return text || null
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value)
+  }
+  if (Array.isArray(value)) {
+    const text = value.map(item => formatOnline61850StateValue(item) ?? "").filter(Boolean).join(", ")
+    return text || null
+  }
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value)
+    } catch {
+      return String(value)
+    }
+  }
+  return String(value)
+}
+
+function buildOnline61850ReportSignalStateMap(
+  reportSignalStates: readonly Online61850ReportSignalState[],
+): Map<string, Online61850ReportSignalState> {
+  const statesByReference = new Map<string, Online61850ReportSignalState>()
+  reportSignalStates.forEach((state) => {
+    const references = [
+      state.reference,
+      state.value_data_reference,
+      state.quality_data_reference,
+      state.source_timestamp_data_reference,
+    ]
+      .map(reference => reference ? normalizeIec61850Reference(String(reference)) : "")
+      .filter(Boolean)
+
+    references.forEach((normalizedReference) => {
+      if (!statesByReference.has(normalizedReference)) {
+        statesByReference.set(normalizedReference, state)
+      }
+    })
+  })
+  return statesByReference
+}
+
+function readOnline61850ReportState(
+  reportSignalStatesByReference: Map<string, Online61850ReportSignalState>,
+  reference: string | null,
+): Online61850ReportSignalState | null {
+  if (!reference) {
+    return null
+  }
+  const normalizedReference = normalizeIec61850Reference(reference)
+  if (!normalizedReference) {
+    return null
+  }
+  return reportSignalStatesByReference.get(normalizedReference) ?? null
+}
+
+function buildSignalRowsForTarget(
+  target: Online61850PreparationTarget,
+  matchedSignalIds: Set<number>,
+  matchedSignalReferencesById: Map<number, string> = new Map<number, string>(),
+  reportSignalStates: readonly Online61850ReportSignalState[] = [],
+): Online61850PreparationResult["signalRows"] {
   const signalRows: Online61850PreparationResult["signalRows"] = []
-  const signalCount = Math.max(target.signalLabels.length, target.sourceAddresses.length)
+  const reportSignalStatesByReference = buildOnline61850ReportSignalStateMap(reportSignalStates)
+  const signalCount = Math.max(target.signalRows.length, target.signalLabels.length, target.sourceAddresses.length, target.signalIds.length)
   for (let index = 0; index < signalCount; index += 1) {
-    const label = String(target.signalLabels[index] ?? `Signal ${index + 1}`).trim() || `Signal ${index + 1}`
-    const address = trimToNull(target.sourceAddresses[index] ?? null)
+    const row = target.signalRows[index] ?? null
+    const label = String(row?.signal_name ?? target.signalLabels[index] ?? `Signal ${index + 1}`).trim() || `Signal ${index + 1}`
+    const signalId = Number(target.signalIds[index] ?? row?.signal_id ?? Number.NaN)
+    const rowReference = row ? resolveOnline61850SignalReference(row) : null
+    const reference = Number.isFinite(signalId) ? matchedSignalReferencesById.get(signalId) ?? rowReference : rowReference
+    const reportState = readOnline61850ReportState(reportSignalStatesByReference, reference)
+    const stateValue = reportState ? formatOnline61850StateValue(reportState.value) : null
+    const matched = Number.isFinite(signalId) && matchedSignalIds.has(signalId)
     signalRows.push({
       label,
-      address,
-      matched: Boolean(address && discovered.has(normalizeIec61850Reference(address))),
+      address: reference ? reference.trim() : trimToNull(target.sourceAddresses[index] ?? null),
+      matched,
+      stateLabel: stateValue ?? (reportState ? reportState.reason : (matched ? "GI state unavailable" : null)),
     })
   }
   return signalRows
 }
-
-function collectDiscoverySignalReferences(rawDiscovery: unknown): string[] {
-  if (!rawDiscovery || typeof rawDiscovery !== "object" || Array.isArray(rawDiscovery)) {
-    return []
-  }
-
-  const payload = rawDiscovery as Record<string, unknown>
-  const references = new Set<string>()
-
-  const signals = Array.isArray(payload.signals) ? payload.signals : []
-  signals.forEach((item) => {
-    if (!item || typeof item !== "object" || Array.isArray(item)) {
-      return
-    }
-    const reference = normalizeIec61850Reference(String((item as Record<string, unknown>).reference ?? ""))
-    if (reference) {
-      references.add(reference)
-    }
-  })
-
-  if (references.size > 0) {
-    return [...references]
-  }
-
-  const dataSets = Array.isArray(payload.dataSets) ? payload.dataSets : []
-  dataSets.forEach((dataSet) => {
-    if (!dataSet || typeof dataSet !== "object" || Array.isArray(dataSet)) {
-      return
-    }
-    const members = Array.isArray((dataSet as Record<string, unknown>).members) ? (dataSet as Record<string, unknown>).members as unknown[] : []
-    members.forEach((member) => {
-      if (!member || typeof member !== "object" || Array.isArray(member)) {
-        return
-      }
-      const reference = normalizeIec61850Reference(String((member as Record<string, unknown>).reference ?? ""))
-      if (reference) {
-        references.add(reference)
-      }
-    })
-  })
-
-  return [...references]
-}
-
-function normalizeIec61850Reference(reference: string): string {
-  return String(reference ?? "")
-    .trim()
-    .replace(/\s+/g, "")
-    .replace(/\/+/g, "/")
-    .replace(/\[([^\]]+)\]/g, "[$1]")
-}
-
 async function prepareOnline61850() {
   if (online61850PreparationBusy.value) {
     return
@@ -2763,7 +2832,7 @@ async function prepareOnline61850() {
       if (stopAfterCurrentTarget || online61850PreparationAbortController.value?.signal.aborted) {
         break
       }
-      let targetStage: "configured" | "opened" | "discovered" | "subscribed" = "configured"
+      let targetStage: "configured" | "opened" | "discovered" | "subscribed" | "gi" = "configured"
       pushOnline61850PreparationLog("info", `Connecting ${formatOnline61850EndpointLabel(target)}.`)
       try {
         await Iec61850ClientAPI.configureTarget({
@@ -2779,24 +2848,41 @@ async function prepareOnline61850() {
         pushOnline61850PreparationLog("info", `Discovering and reading model for ${formatOnline61850EndpointLabel(target)}.`)
         const discoveryState = await Iec61850ClientAPI.discoverIed({ signal: online61850PreparationAbortController.value.signal })
         targetStage = "discovered"
+        const signalMatchResult = matchOnline61850TargetSignals(target.signalRows, discoveryState.last_discovery, target)
+        const reportSignalStates: Online61850ReportSignalState[] = []
         pushOnline61850PreparationLog("info", `Enabling report subscription for ${formatOnline61850EndpointLabel(target)}.`)
         await Iec61850ClientAPI.enableReporting({ signal: online61850PreparationAbortController.value.signal })
         targetStage = "subscribed"
+        pushOnline61850PreparationLog("info", `Running GI for ${formatOnline61850EndpointLabel(target)}.`)
+        targetStage = "gi"
+        const giState = await Iec61850ClientAPI.sendGeneralInterrogation({ signal: online61850PreparationAbortController.value.signal })
+        reportSignalStates.push(...(giState.ui_state?.report?.signal_states ?? []))
+        reportSignalStates.push(...((giState.ui_state?.report?.values ?? []).map(value => ({
+          reference: value.reference,
+          value_data_reference: value.data_reference,
+          value: value.value,
+          reason: value.reason,
+          timestamp: value.timestamp,
+        }))))
         const discovery = discoveryState.ui_state?.discovery
-        const discoveredSignalRefs = collectDiscoverySignalReferences(discoveryState.last_discovery)
-        const signalRows = buildSignalRowsForTarget(target, discoveredSignalRefs)
+        const signalRows = buildSignalRowsForTarget(
+          target,
+          signalMatchResult.matchedSignalIds,
+          signalMatchResult.matchedSignalReferencesById,
+          reportSignalStates,
+        )
         preparedTargets.push({
           ...target,
           endpointLabel: formatOnline61850EndpointLabel(target),
           status: "ready",
           message: null,
           signalCount: target.signalIds.length,
-          matchedSignalCount: signalRows.filter(signal => signal.matched).length,
-          mismatchedSignalCount: signalRows.filter(signal => !signal.matched).length,
-          steps: buildOnline61850PreparationSteps("subscribed"),
+          matchedSignalCount: signalMatchResult.matchedSignalCount,
+          mismatchedSignalCount: signalMatchResult.unmatchedSignalCount,
+          steps: buildOnline61850PreparationSteps("gi"),
           signalRows,
           discovery: {
-            connected: Boolean(discoveryState.ui_state?.session.connected),
+            connected: Boolean(giState.ui_state?.session.connected ?? discoveryState.ui_state?.session.connected),
             discovered: Boolean(discovery?.discovered),
             logicalDevices: Number(discovery?.logical_devices ?? 0),
             logicalNodes: Number(discovery?.logical_nodes ?? 0),
@@ -2812,7 +2898,7 @@ async function prepareOnline61850() {
         }
         const normalizedError = normalizeHttpError(error)
         const errorMessage = normalizedError.code ? `${normalizedError.code}: ${normalizedError.message}` : normalizedError.message
-        const signalRows = buildSignalRowsForTarget(target, [])
+        const signalRows = buildSignalRowsForTarget(target, new Set<number>(), new Map<number, string>())
         preparedTargets.push({
           ...target,
           endpointLabel: formatOnline61850EndpointLabel(target),
@@ -4091,7 +4177,7 @@ onBeforeUnmount(() => {
 }
 
 .signals-page__online-prep-signal-row {
-  align-items: center;
+  align-items: flex-start;
   border-radius: 0.5rem;
   display: flex;
   gap: 0.5rem;
@@ -4112,13 +4198,27 @@ onBeforeUnmount(() => {
   flex: 0 0 auto;
   font-size: var(--text-sm);
   line-height: 1.2;
-  margin-top: 0.1rem;
+  margin-top: 0.15rem;
+}
+
+.signals-page__online-prep-signal-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
 }
 
 .signals-page__online-prep-signal-address {
-  flex: 1 1 auto;
   font-size: var(--text-xs);
   opacity: 0.9;
+  word-break: break-word;
+}
+
+.signals-page__online-prep-signal-value {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  line-height: 1.2;
   word-break: break-word;
 }
 

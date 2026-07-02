@@ -179,6 +179,17 @@ type Iec61850ClientRequestOptions = {
   signal?: AbortSignal
 }
 
+function hasIec61850ClientRequestOptions(options: Iec61850ClientRequestOptions): boolean {
+  return options.signal !== undefined
+}
+
+function postIec61850ClientNoBody<T>(url: string, options: Iec61850ClientRequestOptions = {}) {
+  if (hasIec61850ClientRequestOptions(options)) {
+    return httpData.post<T>(url, undefined, options)
+  }
+  return httpData.post<T>(url)
+}
+
 export type Iec61850ClientReportControlSelectionPayload = {
   selected_rcb_ref: string
 }
@@ -261,6 +272,19 @@ export type Iec61850ClientUiState = {
     value_count: number
     matched_value_count: number
     unmatched_value_count: number
+    signal_states: Array<{
+      index: number
+      reference: string
+      fc: string | null
+      value: string | number | boolean | null
+      value_data_reference: string | null
+      quality: string | number | boolean | null
+      quality_data_reference: string | null
+      source_timestamp: string | number | boolean | null
+      timestamp: string
+      reason: string
+      leaf_count: number
+    }>
     values: Array<{
       index: number
       reference: string
@@ -447,15 +471,15 @@ export const Iec61850ClientAPI = {
   },
 
   openSession(options: Iec61850ClientRequestOptions = {}) {
-    return httpData.post<Iec61850ClientState>(`${API_V1}/iec61850/client/session/open`, undefined, options)
+    return postIec61850ClientNoBody<Iec61850ClientState>(`${API_V1}/iec61850/client/session/open`, options)
   },
 
   discoverIed(options: Iec61850ClientRequestOptions = {}) {
-    return httpData.post<Iec61850ClientState>(`${API_V1}/iec61850/client/ied/discover`, undefined, options)
+    return postIec61850ClientNoBody<Iec61850ClientState>(`${API_V1}/iec61850/client/ied/discover`, options)
   },
 
   connectIed(options: Iec61850ClientRequestOptions = {}) {
-    return httpData.post<Iec61850ClientState>(`${API_V1}/iec61850/client/ied/connect`, undefined, options)
+    return postIec61850ClientNoBody<Iec61850ClientState>(`${API_V1}/iec61850/client/ied/connect`, options)
   },
 
   disconnectIed() {
@@ -483,11 +507,11 @@ export const Iec61850ClientAPI = {
   },
 
   enableReporting(options: Iec61850ClientRequestOptions = {}) {
-    return httpData.post<Iec61850ClientState>(`${API_V1}/iec61850/client/report-control/rptena`, undefined, options)
+    return postIec61850ClientNoBody<Iec61850ClientState>(`${API_V1}/iec61850/client/report-control/rptena`, options)
   },
 
-  sendGeneralInterrogation() {
-    return httpData.post<Iec61850ClientState>(`${API_V1}/iec61850/client/report-control/gi`)
+  sendGeneralInterrogation(options: Iec61850ClientRequestOptions = {}) {
+    return postIec61850ClientNoBody<Iec61850ClientState>(`${API_V1}/iec61850/client/report-control/gi`, options)
   },
 
   disableReportControl() {

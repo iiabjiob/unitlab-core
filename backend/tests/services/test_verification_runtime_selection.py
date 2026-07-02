@@ -26,20 +26,31 @@ from app.services.verification_runtime_selection import resolve_verification_run
 
 
 class _FakeClientControlService:
-    def __init__(self, *, session_id: str, client_id: str, endpoint: Iec61850DeviceEndpoint, candidate: Iec61850ReportControlCandidate) -> None:
+    def __init__(
+        self,
+        *,
+        session_id: str,
+        client_id: str,
+        endpoint: Iec61850DeviceEndpoint,
+        candidate: Iec61850ReportControlCandidate,
+        available_candidates: tuple[Iec61850ReportControlCandidate, ...] = (),
+    ) -> None:
         self.session_id = session_id
         self.client_id = client_id
         self.endpoint = endpoint
         self.candidate = candidate
+        self.available_candidates = available_candidates or (candidate,)
         self.calls: list[str] = []
-        self._report = Iec61850ReportEvent(
-            id=f"{session_id}:report-1",
-            endpoint_id=endpoint.id,
+
+    def _build_report(self) -> Iec61850ReportEvent:
+        return Iec61850ReportEvent(
+            id=f"{self.session_id}:report-1",
+            endpoint_id=self.endpoint.id,
             received_at="2026-06-24T10:11:13.070000Z",
-            report_control=to_report_control_ref(candidate),
-            rpt_id=candidate.rpt_id,
-            data_set_ref=candidate.data_set_ref,
-            conf_rev=candidate.conf_rev,
+            report_control=to_report_control_ref(self.candidate),
+            rpt_id=self.candidate.rpt_id,
+            data_set_ref=self.candidate.data_set_ref,
+            conf_rev=self.candidate.conf_rev,
             sequence_number=1,
             time_of_entry="2026-06-24T10:11:13.070000Z",
             entry_id="entry-1",
@@ -57,6 +68,13 @@ class _FakeClientControlService:
             ),
         )
 
+    def select_report_control(self, selected_rcb_ref: str):
+        self.calls.append(f"select:{selected_rcb_ref}")
+        selected = next((candidate for candidate in self.available_candidates if candidate.id == selected_rcb_ref), None)
+        if selected is not None:
+            self.candidate = selected
+        return SimpleNamespace()
+
     def discover_ied(self):
         self.calls.append("discover")
         return SimpleNamespace(last_report=None)
@@ -71,7 +89,7 @@ class _FakeClientControlService:
 
     def snapshot(self):
         self.calls.append("snapshot")
-        return SimpleNamespace(last_report=self._report)
+        return SimpleNamespace(last_report=self._build_report())
 
     def close_ied(self):
         self.calls.append("close")
@@ -310,11 +328,11 @@ def test_mms_runtime_adapter_supports_multiple_candidates_on_one_session() -> No
             port=12447,
         ),
     ))
-    created_services: dict[str, _FakeClientControlService] = {}
+    created_services: list[_FakeClientControlService] = []
 
     def _factory(**kwargs):
         service = _FakeClientControlService(**kwargs)
-        created_services[kwargs["candidate"].report_control_name] = service
+        created_services.append(service)
         return service
 
     selection = resolve_verification_runtime(
@@ -359,6 +377,16 @@ def test_mms_runtime_adapter_supports_multiple_candidates_on_one_session() -> No
 
     assert report_a.endpoint_id == endpoint.id
     assert report_b.endpoint_id == endpoint.id
-    assert set(created_services) == {"brA", "brB"}
-    assert created_services["brA"].calls == ["discover", "enable", "gi", "snapshot", "close"]
-    assert created_services["brB"].calls == ["discover", "enable", "gi", "snapshot", "close"]
+    assert len(created_services) == 1
+    assert created_services[0].calls == [
+        "discover",
+        "enable",
+        "gi",
+        "snapshot",
+        "select:report-b",
+        "discover",
+        "enable",
+        "gi",
+        "snapshot",
+        "close",
+    ]

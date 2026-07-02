@@ -153,6 +153,7 @@ class Iec61850ClientControlService:
         client_id: str = "unitlab-test-client",
         endpoint: Iec61850DeviceEndpoint | None = None,
         candidate: Iec61850ReportControlCandidate | None = None,
+        available_candidates: Sequence[Iec61850ReportControlCandidate] | None = None,
         endpoint_catalog: Iec61850MmsEndpointCatalog | None = None,
         target_scl_path: str | None = None,
         live_wire_binary_path: str | None = None,
@@ -182,7 +183,12 @@ class Iec61850ClientControlService:
             self._live_wire_binary_path = getattr(settings, "iec61850_ied_live_wire_binary_path", None) or None
         self._live_wire_service_host = live_wire_service_host or getattr(settings, "iec61850_ied_live_wire_host", "iec61850-ied")
         self._live_wire_data_port = live_wire_data_port if live_wire_data_port is not None else int(getattr(settings, "iec61850_ied_live_wire_port", 12447))
-        self._available_candidates = (_default_candidate(),)
+        if available_candidates:
+            self._available_candidates = tuple(available_candidates)
+        elif candidate is not None:
+            self._available_candidates = (candidate,)
+        else:
+            self._available_candidates = (_default_candidate(),)
         self._live_wire_process: Iec61850IedSimulatorProcessHandle | None = None
         self._live_wire_fixture_dir: tempfile.TemporaryDirectory[str] | None = None
         self._live_wire_endpoint: Iec61850DeviceEndpoint | None = None
