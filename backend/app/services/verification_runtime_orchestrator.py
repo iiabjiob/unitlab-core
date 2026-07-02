@@ -19,15 +19,18 @@ from app.schemas.verification_schema import (
 )
 from app.services.iec61850.report_runtime import (
     Iec61850DeviceEndpoint,
+    Iec61850ReportRuntimeError,
     Iec61850ReportRuntimeAdapter,
     Iec61850ReportRuntimeService,
     Iec61850RuntimeDiagnostic,
     build_simulator_endpoint_for_plan_device,
     create_iec61850_simulator_adapter,
     group_report_subscription_plan_devices_by_endpoint,
+    map_report_event_to_signal_observations,
 )
 from app.services.verification_evidence import build_signal_verification_evidence_set
 from app.services.verification_execution import (
+    _build_step_and_evidence,
     _parse_timestamp,
     _resolve_runtime_state,
     _unique_non_empty_strings,
@@ -69,6 +72,8 @@ class VerificationRuntimeSubscriptionState:
     subscription_state: str = "pending"
     report_health: str = "unknown"
     last_report_at: datetime | None = None
+    last_sequence_number: int | None = None
+    last_report_id: str | None = None
     current_rptena_owner: str | None = None
     stale_signal_count: int | None = None
     last_error: str | None = None
@@ -103,6 +108,32 @@ class VerificationRuntimeOrchestrationResult:
     subscription_snapshots: tuple[VerificationSubscriptionSnapshotSchema, ...]
     diagnostics: tuple[VerificationEvidenceDiagnosticSchema, ...]
     active_session_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class VerificationRuntimeSignalCaptureResult:
+    evidence: Any
+    step: Any
+    diagnostics: tuple[VerificationEvidenceDiagnosticSchema, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _CapturedRuntimeResult:
+    diagnostics: tuple[Any, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class _CapturedRuntimeReport:
+    candidate_id: str
+    endpoint_id: str | None
+    ied_name: str
+    access_point_name: str
+    report_control_name: str
+    data_set_ref: str | None
+    event: Any
+    diagnostics: tuple[Any, ...]
+    error_code: str | None
+    error_message: str | None
 
 
 @dataclass
@@ -287,6 +318,115 @@ class VerificationRuntimeOrchestrator:
         self._handles.pop(orchestration_id, None)
         return result
 
+    def capture_triggered_signal(
+        self,
+        orchestration_id: str,
+        *,
+        signal_id: int,
+        triggered_at: datetime,
+        test_run_id: str | None = None,
+        timeout_ms: int | None = None,
+    ) -> VerificationRuntimeSignalCaptureResult:
+        handle = self._require_handle(orchestration_id)
+        target_index, target = self._resolve_target_for_signal(handle, signal_id)
+        group = self._resolve_subscription_plan_group_for_target(handle, target_index)
+        diagnostics: list[VerificationEvidenceDiagnosticSchema] = []
+        observation_bundle = None
+        source_generation = None
+
+        if group is None:
+            diagnostics.append(
+                VerificationEvidenceDiagnosticSchema(
+                    code="verification_group_not_found",
+                    message="No IEC 61850 subscription group covers the triggered signal.",
+                    severity="error",
+                    details={"signal_id": int(signal_id)},
+                )
+            )
+        else:
+            try:
+                runtime_report, session_state, subscription_state = self._resolve_runtime_report_for_group(
+                    handle,
+                    group.group_id,
+                )
+                source_generation = session_state.connection_generation
+                event = handle.runtime_service.wait_for_report(
+                    session_id=session_state.session_id,
+                    candidate=runtime_report.candidate,
+                    client_id=handle.client_id,
+                    after_sequence_number=subscription_state.last_sequence_number,
+                    after_event_id=subscription_state.last_report_id,
+                    timeout_ms=timeout_ms or int(target.timeout_ms),
+                )
+                observation_result = map_report_event_to_signal_observations(
+                    candidate=runtime_report.candidate,
+                    matched_signals=runtime_report.matched_signals,
+                    event=event,
+                )
+                diagnostics.extend(_observation_diagnostics_to_evidence_diagnostics(observation_result.diagnostics))
+                captured_report = _CapturedRuntimeReport(
+                    candidate_id=runtime_report.candidate.id,
+                    endpoint_id=event.endpoint_id,
+                    ied_name=runtime_report.candidate.ied_name,
+                    access_point_name=runtime_report.candidate.access_point_name,
+                    report_control_name=runtime_report.candidate.report_control_name,
+                    data_set_ref=runtime_report.candidate.data_set_ref,
+                    event=event,
+                    diagnostics=tuple(observation_result.diagnostics),
+                    error_code=None,
+                    error_message=None,
+                )
+                observation = next(
+                    (
+                        item
+                        for item in observation_result.observations
+                        if str(item.selected_signal_id) == str(int(signal_id))
+                    ),
+                    None,
+                )
+                if observation is not None:
+                    observation_bundle = (
+                        captured_report,
+                        observation.model_reference,
+                        observation.value,
+                        observation.timestamp,
+                    )
+                subscription_state.last_report_at = _parse_timestamp(event.received_at)
+                subscription_state.last_sequence_number = event.sequence_number
+                subscription_state.last_report_id = event.id
+                subscription_state.stale_signal_count = 0 if observation is not None else 1
+                subscription_state.report_health = "healthy" if observation is not None else "degraded"
+                subscription_state.diagnostic_code = None if observation is not None else "SIGNAL_NOT_INCLUDED_IN_REPORT_EVENT"
+            except Iec61850ReportRuntimeError as exc:
+                diagnostics.append(
+                    VerificationEvidenceDiagnosticSchema(
+                        code=exc.code,
+                        message=exc.message,
+                        severity="error",
+                        details={"signal_id": int(signal_id), "group_id": group.group_id},
+                    )
+                )
+                self._mark_group_capture_failed(handle, group.group_id, exc.code, exc.message)
+
+        evidence, step = _build_step_and_evidence(
+            target_index=target_index,
+            target=target,
+            group=group,
+            observation_bundle=observation_bundle,
+            triggered_at=triggered_at,
+            runtime_result=_CapturedRuntimeResult(diagnostics=tuple(diagnostics)),
+            test_run_id=test_run_id or handle.test_run_id,
+            source_generation=source_generation,
+        )
+        if diagnostics:
+            evidence = evidence.model_copy(update={"diagnostics": [*evidence.diagnostics, *diagnostics]})
+            step = step.model_copy(update={"diagnostics": [*step.diagnostics, *diagnostics]})
+        return VerificationRuntimeSignalCaptureResult(
+            evidence=evidence,
+            step=step,
+            diagnostics=tuple(diagnostics),
+        )
+
     def reconnect(
         self,
         orchestration_id: str,
@@ -423,6 +563,8 @@ class VerificationRuntimeOrchestrator:
         subscription_state.report_health = "healthy"
         subscription_state.current_rptena_owner = client_id
         subscription_state.last_report_at = _parse_timestamp(event.received_at)
+        subscription_state.last_sequence_number = event.sequence_number
+        subscription_state.last_report_id = event.id
         subscription_state.stale_signal_count = 0
         session_state.diagnostic_code = None
         return subscription_state
@@ -452,6 +594,81 @@ class VerificationRuntimeOrchestrator:
                 return device_group
         raise RuntimeError(f'Runtime device group for endpoint "{endpoint_id}" not found.')
 
+    def _resolve_target_for_signal(
+        self,
+        handle: _VerificationRuntimeOrchestrationHandle,
+        signal_id: int,
+    ) -> tuple[int, VerificationTargetSchema]:
+        for index, target in enumerate(handle.verification_targets):
+            if int(target.signal_id) == int(signal_id):
+                return index, target
+        raise RuntimeError(f'Verification target for signal "{signal_id}" not found.')
+
+    def _resolve_subscription_plan_group_for_target(
+        self,
+        handle: _VerificationRuntimeOrchestrationHandle,
+        target_index: int,
+    ):
+        for group in handle.subscription_plan.groups:
+            if int(target_index) in {int(index) for index in group.target_indexes}:
+                return group
+        return None
+
+    def _resolve_runtime_report_for_group(
+        self,
+        handle: _VerificationRuntimeOrchestrationHandle,
+        group_id: str,
+    ):
+        runtime_plan = build_runtime_subscription_plan(handle.subscription_plan)
+        for device_group in group_report_subscription_plan_devices_by_endpoint(
+            plan=runtime_plan,
+            endpoint_for_device=handle.endpoint_for_device,
+        ):
+            session_state = next(
+                (item for item in handle.session_states.values() if item.endpoint_id == device_group.endpoint.id),
+                None,
+            )
+            if session_state is None:
+                continue
+            for device in device_group.devices:
+                for report in device.reports:
+                    if str(report.candidate.id) != str(group_id):
+                        continue
+                    subscription_id = _resolve_subscription_id_for_runtime(
+                        session_id=session_state.session_id,
+                        report=report,
+                    )
+                    subscription_state = handle.subscription_states.get(subscription_id)
+                    if subscription_state is None:
+                        raise Iec61850ReportRuntimeError(
+                            "SUBSCRIPTION_NOT_FOUND",
+                            f'IEC 61850 subscription "{subscription_id}" is not active.',
+                        )
+                    if subscription_state.subscription_state != "reporting":
+                        raise Iec61850ReportRuntimeError(
+                            "SUBSCRIPTION_NOT_REPORTING",
+                            f'IEC 61850 subscription "{subscription_id}" is not reporting.',
+                        )
+                    return report, session_state, subscription_state
+        raise Iec61850ReportRuntimeError(
+            "REPORT_GROUP_NOT_FOUND",
+            f'IEC 61850 report group "{group_id}" was not found in the active subscription plan.',
+        )
+
+    def _mark_group_capture_failed(
+        self,
+        handle: _VerificationRuntimeOrchestrationHandle,
+        group_id: str,
+        code: str,
+        message: str,
+    ) -> None:
+        for subscription_state in handle.subscription_states.values():
+            if subscription_state.group_id != group_id:
+                continue
+            subscription_state.report_health = "degraded"
+            subscription_state.last_error = message
+            subscription_state.diagnostic_code = code
+
 
 def _runtime_diagnostics_to_evidence_diagnostics(
     diagnostics: Sequence[Iec61850RuntimeDiagnostic],
@@ -465,6 +682,30 @@ def _runtime_diagnostics_to_evidence_diagnostics(
                 "endpoint_id": diagnostic.reference.ied_name if diagnostic.reference is not None else None,
                 "report_control_name": diagnostic.reference.report_control_name if diagnostic.reference is not None else None,
             },
+        )
+        for diagnostic in diagnostics
+    ]
+
+
+def _observation_diagnostics_to_evidence_diagnostics(
+    diagnostics: Sequence[Any],
+) -> list[VerificationEvidenceDiagnosticSchema]:
+    return [
+        VerificationEvidenceDiagnosticSchema(
+            code=str(getattr(diagnostic, "code", "report_observation_diagnostic")),
+            message=str(getattr(diagnostic, "message", "Report observation diagnostic")),
+            severity=str(getattr(diagnostic, "severity", "info") or "info"),
+            details={
+                key: value
+                for key, value in {
+                    "signal_id": getattr(diagnostic, "signal_id", None),
+                    "address": getattr(diagnostic, "address", None),
+                    "data_reference": getattr(diagnostic, "data_reference", None),
+                    "report_control_name": getattr(getattr(diagnostic, "reference", None), "report_control_name", None),
+                }.items()
+                if value is not None
+            }
+            or None,
         )
         for diagnostic in diagnostics
     ]

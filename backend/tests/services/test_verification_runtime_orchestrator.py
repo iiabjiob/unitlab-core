@@ -373,3 +373,37 @@ async def test_runtime_orchestrator_reconnect_failure_surfaces_recovery_state(mo
     assert session_snapshots[session_id].runtime_state == "failed"
     assert session_snapshots[session_id].connection_generation == 1
     assert session_snapshots[result.session_snapshots[1].session_id].runtime_state == "reporting"
+
+
+@pytest.mark.anyio
+async def test_runtime_orchestrator_captures_triggered_signal_report_after_initial_gi() -> None:
+    plan = _build_same_endpoint_multi_report_plan()
+    orchestrator = VerificationRuntimeOrchestrator(now=lambda: datetime(2026, 6, 23, 12, 0, tzinfo=UTC))
+
+    started = orchestrator.start(
+        workspace_id=7,
+        test_run_id="run-capture",
+        verification_targets=plan.targets,
+        subscription_plan=plan,
+        execution_context=VerificationExecutionContextSchema(
+            project_id=1,
+            signal_list_revision_id=2,
+            planner_version="test",
+            runtime_version="simulator",
+            policy_version="v1",
+        ),
+    )
+
+    capture = orchestrator.capture_triggered_signal(
+        started.orchestration_id,
+        signal_id=101,
+        triggered_at=datetime(2026, 6, 23, 12, 0, tzinfo=UTC),
+        test_run_id="job-1",
+        timeout_ms=1000,
+    )
+
+    assert capture.step.verdict_state == "pass"
+    assert capture.evidence.evidence_status == "observed"
+    assert capture.evidence.report_reason == "data-change"
+    assert capture.evidence.source_report_sequence_number == 2
+    assert capture.step.source_generation == 1

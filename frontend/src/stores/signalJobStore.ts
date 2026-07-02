@@ -279,6 +279,11 @@ export const useSignalJobStore = defineStore("signalJobStore", () => {
       toggleMode?: "single" | "double"
       resumeFromCursor?: boolean
       resumeJobId?: string
+      verificationEnabled?: boolean
+      verificationRuntimeVersion?: string
+      verificationOrchestrationId?: string | null
+      verificationSignalListRevisionId?: number | null
+      verificationTimeoutMs?: number
     },
   ): Promise<SignalAllocationJob> {
     const payload = {
@@ -287,6 +292,11 @@ export const useSignalJobStore = defineStore("signalJobStore", () => {
       toggle_mode: options?.toggleMode ?? "single",
       resume_from_cursor: Boolean(options?.resumeFromCursor),
       ...(options?.resumeJobId ? { resume_job_id: String(options.resumeJobId) } : {}),
+      verification_enabled: Boolean(options?.verificationEnabled),
+      verification_runtime_version: options?.verificationRuntimeVersion ?? "simulator",
+      verification_orchestration_id: options?.verificationOrchestrationId ?? null,
+      verification_signal_list_revision_id: options?.verificationSignalListRevisionId ?? null,
+      verification_timeout_ms: Math.max(100, Number(options?.verificationTimeoutMs ?? 5000)),
     }
     const { data: queuedJob } = await SignalSheetAPI.enqueueTestRunJob(workspaceId, payload)
     upsertJob(queuedJob)

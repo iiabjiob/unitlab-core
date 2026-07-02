@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
+import time
 from typing import Callable, Literal
 
 from app.schemas.verification_schema import VerificationExecutionContextSchema
@@ -158,6 +159,34 @@ class _ClientControlMmsSession:
         state["opened"] = True
         return report
 
+    def wait_for_report(
+        self,
+        reference: Iec61850ReportControlRef,
+        client_id: str,
+        *,
+        after_sequence_number: int | None = None,
+        after_event_id: str | None = None,
+        timeout_ms: int = 5000,
+    ) -> Iec61850ReportEvent:
+        candidate = self._candidate_for_reference(reference)
+        control_service = self._control_service_for_candidate(candidate)
+        deadline = time.monotonic() + (max(1, int(timeout_ms)) / 1000)
+        while True:
+            snapshot = control_service.snapshot()
+            report = snapshot.last_report
+            if report is not None and self._is_new_report(
+                report,
+                after_sequence_number=after_sequence_number,
+                after_event_id=after_event_id,
+            ):
+                return report
+            if time.monotonic() >= deadline:
+                raise Iec61850ReportRuntimeError(
+                    "MMS_REPORT_TIMEOUT",
+                    "IEC 61850 MMS client did not surface a new report event before timeout.",
+                )
+            time.sleep(0.05)
+
     def disconnect(self) -> None:
         if self._control_service is not None:
             with suppress(Exception):
@@ -234,6 +263,19 @@ class _ClientControlMmsSession:
             sequence_number=0,
             gi_in_progress=False,
         )
+
+    @staticmethod
+    def _is_new_report(
+        report: Iec61850ReportEvent,
+        *,
+        after_sequence_number: int | None,
+        after_event_id: str | None,
+    ) -> bool:
+        if after_event_id and report.id == after_event_id:
+            return False
+        if after_sequence_number is not None and report.sequence_number is not None:
+            return report.sequence_number > after_sequence_number
+        return True
 
 
 def resolve_verification_runtime(

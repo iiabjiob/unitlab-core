@@ -338,6 +338,15 @@ class Iec61850ReportSession(Protocol):
     def enable_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState: ...
     def disable_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState: ...
     def send_general_interrogation(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportEvent: ...
+    def wait_for_report(
+        self,
+        reference: Iec61850ReportControlRef,
+        client_id: str,
+        *,
+        after_sequence_number: int | None = None,
+        after_event_id: str | None = None,
+        timeout_ms: int = 5000,
+    ) -> Iec61850ReportEvent: ...
     def disconnect(self) -> None: ...
 
 
@@ -437,6 +446,24 @@ class Iec61850ReportRuntimeService:
         client_id: str,
     ) -> Iec61850ReportEvent:
         return self._require_session(session_id).send_general_interrogation(to_report_control_ref(candidate), client_id)
+
+    def wait_for_report(
+        self,
+        *,
+        session_id: str,
+        candidate: Iec61850ReportControlCandidate,
+        client_id: str,
+        after_sequence_number: int | None = None,
+        after_event_id: str | None = None,
+        timeout_ms: int = 5000,
+    ) -> Iec61850ReportEvent:
+        return self._require_session(session_id).wait_for_report(
+            to_report_control_ref(candidate),
+            client_id,
+            after_sequence_number=after_sequence_number,
+            after_event_id=after_event_id,
+            timeout_ms=timeout_ms,
+        )
 
     def _require_session(self, session_id: str) -> Iec61850ReportSession:
         session = self._sessions.get(session_id)
@@ -1106,6 +1133,52 @@ class _Iec61850SimulatorSession:
             entry_id=f"{self._endpoint.id}:{report_control_key(reference)}:{state.sequence_number}",
             buffer_overflow=False,
             reason=Iec61850ReportReason.GENERAL_INTERROGATION,
+            values=values,
+        )
+
+    def wait_for_report(
+        self,
+        reference: Iec61850ReportControlRef,
+        client_id: str,
+        *,
+        after_sequence_number: int | None = None,
+        after_event_id: str | None = None,
+        timeout_ms: int = 5000,
+    ) -> Iec61850ReportEvent:
+        runtime = self._require_runtime(reference)
+        self._ensure_connected(runtime)
+        state = runtime.state
+        if not state.enabled:
+            self._fail(runtime, "WAIT_REPORT_WHILE_DISABLED", "ReportControl must be enabled before waiting for reports.", client_id)
+        if state.owner is not None and state.owner != client_id:
+            self._fail(runtime, "OWNERSHIP_CONFLICT", f'ReportControl is owned by "{state.owner}".', client_id)
+        state.sequence_number = max(state.sequence_number, int(after_sequence_number or 0)) + 1
+        received_at = self._now().isoformat().replace("+00:00", "Z")
+        values = tuple(
+            Iec61850ReportEventValue(
+                data_set_index=index,
+                reference=signal.reference,
+                data_reference=signal.reference,
+                value=index,
+                reason_code=Iec61850ReportReason.DATA_CHANGE,
+                timestamp=received_at,
+            )
+            for index, signal in enumerate(runtime.candidate.signals)
+        )
+        self._transition(runtime, "report", Iec61850RuntimeStatus.REPORTING, client_id)
+        return Iec61850ReportEvent(
+            id=f"{self._endpoint.id}:{report_control_key(reference)}:{state.sequence_number}",
+            endpoint_id=self._endpoint.id,
+            received_at=received_at,
+            report_control=reference,
+            rpt_id=state.rpt_id,
+            data_set_ref=state.data_set_ref,
+            conf_rev=state.conf_rev,
+            sequence_number=state.sequence_number,
+            time_of_entry=received_at,
+            entry_id=f"{self._endpoint.id}:{report_control_key(reference)}:{state.sequence_number}",
+            buffer_overflow=False,
+            reason=Iec61850ReportReason.DATA_CHANGE,
             values=values,
         )
 

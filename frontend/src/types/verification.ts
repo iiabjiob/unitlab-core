@@ -66,6 +66,8 @@ export interface VerificationExecutionContext {
   scd_revision_id?: number | null
   discovery_snapshot_id?: number | null
   operator_id?: string | null
+  transport_override_host?: string | null
+  transport_override_port?: number | null
   created_at?: string | null
   triggered_at?: string | null
 }
@@ -278,4 +280,9 @@ export interface VerificationRunDetailResponse {
   test_run_id: string
   verification_run: VerificationRun
   verdict_explanation: VerificationVerdictExplanation
+}
+
+export interface VerificationRuntimeOrchestrationResponse {
+  orchestration_id: string
+  verification_run: VerificationRun
 }

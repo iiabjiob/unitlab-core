@@ -4,6 +4,7 @@ import type {
   VerificationAutoRunStartPayload,
   VerificationNetworkPreflightResponse,
   VerificationRunDetailResponse,
+  VerificationRuntimeOrchestrationResponse,
 } from "@/types/verification"
 
 export const VerificationAPI = {
@@ -17,5 +18,13 @@ export const VerificationAPI = {
 
   getRunDetail(workspaceId: number, testRunId: string) {
     return http.get<VerificationRunDetailResponse>(`${API_V1}/workspaces/${workspaceId}/verification/runs/${testRunId}`)
+  },
+
+  startOrchestrationFromSignals(workspaceId: number, payload: VerificationAutoRunStartPayload) {
+    return http.post<VerificationRuntimeOrchestrationResponse>(`${API_V1}/workspaces/${workspaceId}/verification/orchestrations/from-signals`, payload)
+  },
+
+  stopOrchestration(workspaceId: number, orchestrationId: string) {
+    return http.post<VerificationRuntimeOrchestrationResponse>(`${API_V1}/workspaces/${workspaceId}/verification/orchestrations/${encodeURIComponent(orchestrationId)}/stop`)
   },
 }

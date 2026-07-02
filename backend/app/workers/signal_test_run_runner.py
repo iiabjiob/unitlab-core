@@ -18,7 +18,11 @@ from app.infrastructure.protocol.modes import Cmd, State
 from app.infrastructure.redis.manager import RedisManager
 from app.infrastructure.redis.stream_bus import parse_signal_allocation_job_entry
 from app.schemas.ws.events import SignalTestRuntimePatchEvent, build_signal_job_event
+from app.schemas.verification_schema import VerificationAutoRunStartSchema, VerificationExecutionContextSchema
 from app.services.command_queue_service import enqueue_ao_command, enqueue_do_command, enqueue_request_state
+from app.services.verification_evidence import VerificationEvidenceRepository, build_signal_verification_evidence_set
+from app.services.verification_run_service import build_verification_runtime_start_context
+from app.services.verification_runtime_orchestrator import VerificationRuntimeOrchestrator
 from app.services.signal_job_service import (
     acquire_signal_test_run_execution_lease,
     get_signal_job,
@@ -174,6 +178,18 @@ async def _handle_test_run(
     toggle_mode_raw = payload.get("toggle_mode") if isinstance(payload, dict) else None
     resume_from_cursor_raw = payload.get("resume_from_cursor") if isinstance(payload, dict) else None
     resume_job_id_raw = payload.get("resume_job_id") if isinstance(payload, dict) else None
+    verification_enabled = bool(payload.get("verification_enabled")) if isinstance(payload, dict) else False
+    verification_runtime_version = str(payload.get("verification_runtime_version") or "simulator").strip().lower()
+    verification_orchestration_id = str(payload.get("verification_orchestration_id") or "").strip() or None
+    try:
+        verification_signal_list_revision_id = int(payload.get("verification_signal_list_revision_id") or 0)
+    except (TypeError, ValueError):
+        verification_signal_list_revision_id = 0
+    try:
+        verification_timeout_ms = int(payload.get("verification_timeout_ms") or 5000)
+    except (TypeError, ValueError):
+        verification_timeout_ms = 5000
+    verification_timeout_ms = max(100, min(60000, verification_timeout_ms))
 
     requested_ids: list[int] = []
     if isinstance(requested_ids_raw, list):
@@ -266,10 +282,48 @@ async def _handle_test_run(
         "offline_unit": 0,
     }
     evidence_count = 0
+    verification_failed = 0
+    verification_observed = 0
+    verification_evidence_rows = []
+    verification_diagnostics = []
+    verification_orchestrator: VerificationRuntimeOrchestrator | None = None
+    verification_local_orchestration_id: str | None = None
 
     job_id = str(payload.get("job_id") or "")
     pending_tested_at_by_signal: dict[int, str] = {}
     tested_at_patch_since_emit: dict[int, str] = {}
+
+    if verification_enabled and job_id and requested_ids:
+        execution_context = VerificationExecutionContextSchema(
+            project_id=workspace_id,
+            signal_list_revision_id=verification_signal_list_revision_id,
+            planner_version="unitlab-test-run.v1",
+            runtime_version=verification_runtime_version or "simulator",
+            policy_version="iec61850-test-run.v1",
+        )
+        runtime_context = await build_verification_runtime_start_context(
+            workspace_id=workspace_id,
+            payload=VerificationAutoRunStartSchema(
+                signal_ids=original_requested_ids,
+                execution_context=execution_context,
+                client_id="unitlab-test-run",
+                test_run_id=job_id,
+            ),
+            db=repo.db,
+        )
+        verification_orchestrator = VerificationRuntimeOrchestrator()
+        runtime_start = verification_orchestrator.start(
+            workspace_id=workspace_id,
+            test_run_id=job_id,
+            verification_targets=runtime_context.subscription_plan.targets,
+            subscription_plan=runtime_context.subscription_plan,
+            execution_context=runtime_context.execution_context,
+            client_id="unitlab-test-run",
+            endpoint_for_device=runtime_context.runtime_selection.endpoint_for_device,
+            adapter=runtime_context.runtime_selection.adapter,
+            initial_diagnostics=runtime_context.diagnostics,
+        )
+        verification_local_orchestration_id = runtime_start.orchestration_id
 
     async def attach_and_publish_tested_at_patch(result_payload: dict[str, Any]) -> None:
         if not tested_at_patch_since_emit:
@@ -332,6 +386,82 @@ async def _handle_test_run(
             tested_at=tested_at,
         )
         evidence_count += 1
+
+    async def record_verification_evidence(capture_result) -> None:
+        nonlocal verification_failed, verification_observed
+        if capture_result is None:
+            return
+        evidence = capture_result.evidence
+        verification_evidence_rows.append(evidence)
+        verification_diagnostics.extend(capture_result.diagnostics)
+        if evidence.evidence_status == "observed":
+            verification_observed += 1
+        else:
+            verification_failed += 1
+        repository = VerificationEvidenceRepository(repo.db)
+        await repository.record_signal_verification_evidence(
+            workspace_id=workspace_id,
+            test_run_id=job_id,
+            evidence_id=evidence.evidence_id,
+            signal_id=evidence.signal_id,
+            signal_path=evidence.signal_path,
+            expected_path=evidence.expected_path,
+            actual_report_path=evidence.actual_report_path,
+            source_ied=evidence.source_ied,
+            endpoint_id=evidence.endpoint_id,
+            rpt_id=evidence.rpt_id,
+            dataset=evidence.dataset,
+            observed_at=evidence.observed_at,
+            latency_ms=evidence.latency_ms,
+            quality=evidence.quality,
+            freshness=evidence.freshness,
+            evidence_status=evidence.evidence_status,
+            reason_code=evidence.reason_code,
+            source_generation=evidence.source_generation,
+            source_report_sequence_generation=evidence.source_report_sequence_generation,
+            source_report_sequence_number=evidence.source_report_sequence_number,
+            source_report_sub_sequence_number=evidence.source_report_sub_sequence_number,
+            report_reason=evidence.report_reason,
+            signal_value=evidence.signal_value,
+            timestamp_summary=evidence.timestamp_summary,
+            stale_reason=evidence.stale_reason,
+            evidence_kind=evidence.evidence_kind,
+            diagnostics=evidence.diagnostics,
+        )
+
+    def verification_result_payload() -> dict[str, Any]:
+        return {
+            "verification_enabled": verification_enabled,
+            "verification_runtime_version": verification_runtime_version,
+            "verification_requested_orchestration_id": verification_orchestration_id,
+            "verification_local_orchestration_id": verification_local_orchestration_id,
+            "verification_observed": verification_observed,
+            "verification_failed": verification_failed,
+        }
+
+    async def flush_verification_evidence_set() -> None:
+        if not verification_evidence_rows:
+            return
+        repository = VerificationEvidenceRepository(repo.db)
+        evidence_set = build_signal_verification_evidence_set(
+            test_run_id=job_id,
+            evidence=verification_evidence_rows,
+            diagnostics=verification_diagnostics,
+        )
+        await repository.upsert_signal_verification_evidence_set(
+            workspace_id=workspace_id,
+            test_run_id=job_id,
+            evidence=evidence_set.evidence,
+            diagnostics=evidence_set.diagnostics,
+        )
+
+    def close_verification_orchestration() -> None:
+        nonlocal verification_local_orchestration_id
+        if verification_orchestrator is None or verification_local_orchestration_id is None:
+            return
+        with suppress(Exception):
+            verification_orchestrator.stop(verification_local_orchestration_id)
+        verification_local_orchestration_id = None
 
     async def maybe_refresh_ttl(force: bool = False) -> None:
         nonlocal last_ttl_refresh_at
@@ -476,12 +606,16 @@ async def _handle_test_run(
                 "cursor_reason": cursor_reason,
                 "resume_job_id": resume_cursor_job_id or None,
                 "evidence_count": evidence_count,
+                **verification_result_payload(),
             }
+            await flush_verification_evidence_set()
+            close_verification_orchestration()
             await attach_and_publish_tested_at_patch(result_payload)
             return result_payload
 
         row, skip_reason = await resolve_current_signal_row(signal_id)
         success = False
+        command_payload: dict[str, Any] | None = None
         if skip_reason is not None:
             skipped += 1
             skip_reasons[skip_reason] += 1
@@ -501,7 +635,6 @@ async def _handle_test_run(
             unit_id = str(row.unit_id)
             channel_index = int(row.channel_index)
             channel_type = str(row.channel_type or "").strip().lower()
-            command_payload: dict[str, Any]
             if channel_type.startswith("ao"):
                 random_value = round(random.uniform(0.0, 24.0), 2)
                 ao_correlation_id = f"test-run:{signal_id}:ao:{random_value}"
@@ -615,6 +748,27 @@ async def _handle_test_run(
                 )
             success = True
 
+            verification_capture = None
+            if verification_orchestrator is not None and verification_local_orchestration_id is not None:
+                if command_payload is None:
+                    command_payload = {}
+                verification_capture = verification_orchestrator.capture_triggered_signal(
+                    verification_local_orchestration_id,
+                    signal_id=signal_id,
+                    triggered_at=datetime.now(timezone.utc),
+                    test_run_id=job_id,
+                    timeout_ms=verification_timeout_ms,
+                )
+                await record_verification_evidence(verification_capture)
+                command_payload["iec61850_verification"] = {
+                    "source": "worker_runtime_orchestration",
+                    "requested_online_orchestration_id": verification_orchestration_id,
+                    "local_orchestration_id": verification_local_orchestration_id,
+                    "evidence": verification_capture.evidence.model_dump(mode="json"),
+                    "step": verification_capture.step.model_dump(mode="json"),
+                }
+                success = verification_capture.step.verdict_state == "pass"
+
         if success:
             succeeded_signal_ids.append(signal_id)
             tested_at_dt = datetime.now(timezone.utc)
@@ -627,12 +781,22 @@ async def _handle_test_run(
                 signal_id=signal_id,
                 status="succeeded",
                 row=row,
-                result_state="commands_enqueued",
+                result_state="commands_enqueued_report_observed" if verification_orchestrator is not None else "commands_enqueued",
                 command_payload=command_payload,
                 tested_at=tested_at_dt,
             )
             if len(pending_tested_at_by_signal) >= tested_at_batch_size:
                 await flush_tested_at_batch()
+        elif row is not None and command_payload:
+            await record_step_evidence(
+                order_index=progress_done_global,
+                signal_id=signal_id,
+                status="failed",
+                row=row,
+                reason="iec61850_report_not_observed" if verification_orchestrator is not None else "command_failed",
+                result_state="iec61850_report_not_observed" if verification_orchestrator is not None else "command_failed",
+                command_payload=command_payload,
+            )
 
         should_emit = index >= total or index <= 1 or index % update_every == 0
         now = time.monotonic()
@@ -654,6 +818,7 @@ async def _handle_test_run(
                 "attempt_id": execution_attempt_id,
                 "attempt_no": execution_attempt_no,
                 "evidence_count": evidence_count,
+                **verification_result_payload(),
             }
             result_payload["progress_cursor"] = {
                 "phase": "running",
@@ -703,7 +868,10 @@ async def _handle_test_run(
                         "attempt_id": execution_attempt_id,
                         "attempt_no": execution_attempt_no,
                         "evidence_count": evidence_count,
+                        **verification_result_payload(),
                     }
+                    await flush_verification_evidence_set()
+                    close_verification_orchestration()
                     await attach_and_publish_tested_at_patch(result_payload)
                     return result_payload
                 step = min(0.2, signal_interval_seconds - slept)
@@ -711,6 +879,8 @@ async def _handle_test_run(
                 slept += step
 
     await flush_tested_at_batch()
+    await flush_verification_evidence_set()
+    close_verification_orchestration()
     result_payload: dict[str, Any] = {
         "processed": min(progress_total_global, resume_offset + total),
         "succeeded": resume_base_succeeded + len(succeeded_signal_ids),
@@ -727,6 +897,7 @@ async def _handle_test_run(
         "attempt_id": execution_attempt_id,
         "attempt_no": execution_attempt_no,
         "evidence_count": evidence_count,
+        **verification_result_payload(),
     }
     result_payload["progress_cursor"] = {
         "phase": "completed",

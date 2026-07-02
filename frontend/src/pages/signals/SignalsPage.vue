@@ -362,7 +362,7 @@
                         v-if="signal.stateLabel"
                         class="signals-page__online-prep-signal-value"
                       >
-                        GI: {{ signal.stateLabel }}
+                        {{ signal.stateLabel }}
                       </span>
                     </div>
                   </div>
@@ -373,6 +373,14 @@
         </div>
 
         <div class="signals-page__online-prep-footer">
+          <UiButton
+            v-if="online61850ActiveOrchestrationId"
+            variant="danger"
+            size="sm"
+            @click="stopOnline61850Preparation"
+          >
+            Stop Online
+          </UiButton>
           <UiButton variant="secondary" size="sm" @click="closeOnline61850PreparationSummary">
             Close
           </UiButton>
@@ -389,7 +397,7 @@ import { storeToRefs } from "pinia"
 import { defineDataGridComponent, parseDataGridSavedView, useDataGridRef, type DataGridAppCellRendererContext, type DataGridAppColumnInput, type DataGridAppToolbarModule, type DataGridProps, type DataGridSavedViewSnapshot, writeDataGridSavedViewToStorage } from "@affino/datagrid-vue-app"
 
 import { normalizeHttpError } from "@/api/http"
-import { Iec61850ClientAPI } from "@/api/iec61850Client.api"
+import { VerificationAPI } from "@/api/verification.api"
 import { SignalsAPI } from "@/api/signals.api"
 import type { AoChannel, DoChannel } from "@/types/channel"
 import AllocationEditorHeader from "@/pages/signals/components/AllocationEditorHeader.vue"
@@ -399,8 +407,6 @@ import {
   resolveOnline61850SignalReference,
   type Online61850PreparationTarget,
 } from "@/pages/signals/utils/online61850Targets"
-import { matchOnline61850TargetSignals } from "@/pages/signals/utils/online61850TargetMatching"
-import { normalizeIec61850Reference } from "@/pages/signals/utils/iec61850Reference"
 import AllocationChannelCell from "@/pages/signals/components/AllocationChannelCell.vue"
 import AllocationChannelPickerPanel from "@/pages/signals/components/AllocationChannelPickerPanel.vue"
 import AllocationControlCell from "@/pages/signals/components/AllocationControlCell.vue"
@@ -449,6 +455,7 @@ import { formatDate } from "@/utils/datetime"
 import { formatAoValue, parseAoInput } from "@/utils/channel"
 import { resolveRuntimeChannelTypeForSignal } from "@/utils/signalRuntimeMapping"
 import type { SignalAllocationJob, SignalAllocationRow } from "@/types/signal"
+import type { VerificationRun } from "@/types/verification"
 import type { SignalRowsPatchedEvent, SignalRowsPatchedRowPatch } from "@/types/ws/events"
 
 const workspaceStore = useWorkspaceStore()
@@ -512,6 +519,7 @@ const online61850PreparationLog = ref<Array<{
 }>>([])
 const online61850PreparationFilter = ref("")
 const online61850PreparationSummary = ref<Online61850PreparationSummary | null>(null)
+const online61850ActiveOrchestrationId = ref<string | null>(null)
 const { gridLines, theme } = useAffinoDataGridTheme()
 
 const SIGNAL_GRID_SKELETON_FIXED_HEIGHT = 88
@@ -527,7 +535,7 @@ let signalListDropCounter = 0
 type RowSelectionSnapshot = NonNullable<DataGridProps<GridRow>["rowSelectionState"]>
 type DataGridStateUpdate = NonNullable<DataGridProps<Record<string, unknown>>["state"]>
 type GridCellInteractiveContext = DataGridAppCellRendererContext<GridRow>["interactive"]
-type Online61850PreparationResult = Online61850PreparationTarget & {
+type Online61850PreparationResult = Omit<Online61850PreparationTarget, "signalRows"> & {
   endpointLabel: string
   status: "ready" | "failed"
   message: string | null
@@ -2505,11 +2513,27 @@ async function startTestRunJob(options?: { resumeFromCursor?: boolean; resumeJob
         toggleMode: testRunToggleMode.value,
         resumeFromCursor: Boolean(options?.resumeFromCursor),
         resumeJobId: options?.resumeJobId,
+        verificationEnabled: Boolean(online61850ActiveOrchestrationId.value),
+        verificationRuntimeVersion: online61850ActiveOrchestrationId.value ? "mms" : "simulator",
+        verificationOrchestrationId: online61850ActiveOrchestrationId.value,
+        verificationSignalListRevisionId: Number(allocationRevision.value ?? 0) || null,
+        verificationTimeoutMs: 5000,
       },
     )
 
     applyCompletedTestRunPatch(completedJob)
-    toastStore.success("Run test complete.")
+    const result = completedJob.result as Record<string, unknown> | undefined
+    if (result?.verification_enabled) {
+      const observed = Number(result.verification_observed ?? 0)
+      const failed = Number(result.verification_failed ?? 0)
+      if (failed > 0) {
+        toastStore.warning(`Run test complete: IEC 61850 observed ${observed}, failed ${failed}.`)
+      } else {
+        toastStore.success(`Run test complete: IEC 61850 observed ${observed}.`)
+      }
+    } else {
+      toastStore.success("Run test complete.")
+    }
   } catch (runError) {
     const message = runError instanceof Error ? runError.message : String(runError)
     if (message.toLowerCase().includes("cancelled")) {
@@ -2531,6 +2555,23 @@ async function runTestVisualOnly() {
 }
 
 function closeOnline61850PreparationSummary() {
+  online61850PreparationSummary.value = null
+  online61850PreparationFilter.value = ""
+}
+
+async function stopOnline61850Preparation() {
+  const workspaceId = workspaceStore.activeWorkspaceId
+  const orchestrationId = online61850ActiveOrchestrationId.value
+  online61850ActiveOrchestrationId.value = null
+  if (workspaceId && orchestrationId) {
+    try {
+      await VerificationAPI.stopOrchestration(workspaceId, orchestrationId)
+    } catch (error) {
+      const normalizedError = normalizeHttpError(error)
+      toastStore.warning(`Online 61850 cleanup failed: ${normalizedError.message}`)
+    }
+  }
+  toastStore.info("Online 61850 stopped.")
   online61850PreparationSummary.value = null
   online61850PreparationFilter.value = ""
   online61850PreparationProgress.value = {
@@ -2673,113 +2714,90 @@ function stepBadgeVariant(status: Online61850PreparationResult["steps"][number][
   return "neutral"
 }
 
-function trimToNull(value: string | null | undefined): string | null {
-  const text = String(value ?? "").trim()
-  return text ? text : null
-}
-
-type Online61850ReportSignalState = {
-  reference: string
-  value_data_reference?: string | null
-  quality_data_reference?: string | null
-  source_timestamp_data_reference?: string | null
-  value: string | number | boolean | null
-  reason: string
-  timestamp: string
-}
-
-function formatOnline61850StateValue(value: unknown): string | null {
-  if (value === null || value === undefined) {
-    return null
-  }
-  if (typeof value === "string") {
-    const text = value.trim()
-    return text || null
-  }
-  if (typeof value === "number" || typeof value === "boolean") {
-    return String(value)
-  }
-  if (Array.isArray(value)) {
-    const text = value.map(item => formatOnline61850StateValue(item) ?? "").filter(Boolean).join(", ")
-    return text || null
-  }
-  if (typeof value === "object") {
-    try {
-      return JSON.stringify(value)
-    } catch {
-      return String(value)
-    }
-  }
-  return String(value)
-}
-
-function buildOnline61850ReportSignalStateMap(
-  reportSignalStates: readonly Online61850ReportSignalState[],
-): Map<string, Online61850ReportSignalState> {
-  const statesByReference = new Map<string, Online61850ReportSignalState>()
-  reportSignalStates.forEach((state) => {
-    const references = [
-      state.reference,
-      state.value_data_reference,
-      state.quality_data_reference,
-      state.source_timestamp_data_reference,
-    ]
-      .map(reference => reference ? normalizeIec61850Reference(String(reference)) : "")
-      .filter(Boolean)
-
-    references.forEach((normalizedReference) => {
-      if (!statesByReference.has(normalizedReference)) {
-        statesByReference.set(normalizedReference, state)
-      }
-    })
-  })
-  return statesByReference
-}
-
-function readOnline61850ReportState(
-  reportSignalStatesByReference: Map<string, Online61850ReportSignalState>,
-  reference: string | null,
-): Online61850ReportSignalState | null {
-  if (!reference) {
-    return null
-  }
-  const normalizedReference = normalizeIec61850Reference(reference)
-  if (!normalizedReference) {
-    return null
-  }
-  return reportSignalStatesByReference.get(normalizedReference) ?? null
-}
-
 function buildSignalRowsForTarget(
   target: Online61850PreparationTarget,
-  matchedSignalIds: Set<number>,
-  matchedSignalReferencesById: Map<number, string> = new Map<number, string>(),
-  reportSignalStates: readonly Online61850ReportSignalState[] = [],
+  verificationRun: VerificationRun,
 ): Online61850PreparationResult["signalRows"] {
+  const runtimeTargetsBySignalId = new Map(
+    verificationRun.verification_targets.map(item => [Number(item.signal_id), item]),
+  )
   const signalRows: Online61850PreparationResult["signalRows"] = []
-  const reportSignalStatesByReference = buildOnline61850ReportSignalStateMap(reportSignalStates)
   const signalCount = Math.max(target.signalRows.length, target.signalLabels.length, target.sourceAddresses.length, target.signalIds.length)
   for (let index = 0; index < signalCount; index += 1) {
     const row = target.signalRows[index] ?? null
     const label = String(row?.signal_name ?? target.signalLabels[index] ?? `Signal ${index + 1}`).trim() || `Signal ${index + 1}`
     const signalId = Number(target.signalIds[index] ?? row?.signal_id ?? Number.NaN)
+    const runtimeTarget = Number.isFinite(signalId) ? runtimeTargetsBySignalId.get(signalId) ?? null : null
     const rowReference = row ? resolveOnline61850SignalReference(row) : null
-    const reference = Number.isFinite(signalId) ? matchedSignalReferencesById.get(signalId) ?? rowReference : rowReference
-    const reportState = readOnline61850ReportState(reportSignalStatesByReference, reference)
-    const stateValue = reportState ? formatOnline61850StateValue(reportState.value) : null
-    const matched = Number.isFinite(signalId) && matchedSignalIds.has(signalId)
+    const reference = String(runtimeTarget?.expected_feedback_path ?? runtimeTarget?.signal_path ?? rowReference ?? "").trim() || null
+    const matched = runtimeTarget !== null && runtimeTarget.coverage_state !== "uncovered"
     signalRows.push({
       label,
-      address: reference ? reference.trim() : trimToNull(target.sourceAddresses[index] ?? null),
+      address: reference,
       matched,
-      stateLabel: stateValue ?? (reportState ? reportState.reason : (matched ? "GI state unavailable" : null)),
+      stateLabel: runtimeTarget?.coverage_reason ?? runtimeTarget?.coverage_state ?? null,
     })
   }
   return signalRows
 }
+
+function buildOnline61850PreparationResultFromOrchestration(
+  target: Online61850PreparationTarget,
+  verificationRun: VerificationRun,
+): Online61850PreparationResult {
+  const targetSignalIds = new Set(target.signalIds.map(signalId => Number(signalId)).filter(signalId => Number.isFinite(signalId)))
+  const runtimeTargets = verificationRun.verification_targets.filter(item => targetSignalIds.has(Number(item.signal_id)))
+  const matchedSignalCount = runtimeTargets.filter(item => item.coverage_state !== "uncovered").length
+  const targetGroups = verificationRun.subscription_plan.groups.filter((group) => {
+    const targetIndexes = Array.isArray(group.target_indexes) ? group.target_indexes : []
+    return targetIndexes.some((targetIndex) => {
+      const runtimeTarget = verificationRun.subscription_plan.targets[Number(targetIndex)]
+      return runtimeTarget ? targetSignalIds.has(Number(runtimeTarget.signal_id)) : false
+    })
+  })
+  const endpointIds = new Set(targetGroups.map(group => String(group.endpoint_id ?? "")).filter(Boolean))
+  const sessions = verificationRun.session_snapshots.filter(snapshot => endpointIds.has(snapshot.endpoint_id))
+  const subscriptions = verificationRun.subscription_snapshots.filter(snapshot => endpointIds.has(snapshot.endpoint_id))
+  const failed = sessions.some(snapshot => snapshot.runtime_state === "failed")
+    || subscriptions.some(snapshot => snapshot.subscription_state === "failed")
+  const subscriptionsReady = targetGroups.length > 0
+    && subscriptions.length >= targetGroups.length
+    && subscriptions.every(snapshot => snapshot.subscription_state === "reporting")
+  const sessionsReady = sessions.length > 0 && sessions.every(snapshot => snapshot.runtime_state === "reporting")
+  const ready = !failed && sessionsReady && subscriptionsReady
+
+  return {
+    ...target,
+    endpointLabel: formatOnline61850EndpointLabel(target),
+    status: ready ? "ready" : "failed",
+    message: ready ? null : "Backend orchestration did not reach reporting state for this target.",
+    signalCount: target.signalIds.length,
+    matchedSignalCount,
+    mismatchedSignalCount: Math.max(0, target.signalIds.length - matchedSignalCount),
+    steps: buildOnline61850PreparationSteps(ready ? "gi" : "failed", ready ? undefined : "subscribed"),
+    signalRows: buildSignalRowsForTarget(target, verificationRun),
+    discovery: {
+      connected: sessions.some(snapshot => snapshot.runtime_state === "reporting"),
+      discovered: sessions.some(snapshot => snapshot.discovery_status === "available"),
+      logicalDevices: sessions.length,
+      logicalNodes: 0,
+      dataSets: new Set(targetGroups.map(group => String(group.data_set_reference ?? "")).filter(Boolean)).size,
+      reportControls: subscriptions.length,
+    },
+  }
+}
 async function prepareOnline61850() {
   if (online61850PreparationBusy.value) {
     return
+  }
+
+  const workspaceId = workspaceStore.activeWorkspaceId
+  if (!workspaceId) {
+    toastStore.warning("Select a workspace before starting Online 61850.")
+    return
+  }
+  if (online61850ActiveOrchestrationId.value) {
+    await stopOnline61850Preparation()
   }
 
   const allRows = signalAllocationProjectionRows()
@@ -2812,7 +2830,6 @@ async function prepareOnline61850() {
   const preparedTargets: Online61850PreparationResult[] = []
   const warnings = skippedRows.map(item => `${item.signalLabel}: ${item.reason}`)
   let online61850PreparationLogId = 0
-  let stopAfterCurrentTarget = false
   const pushOnline61850PreparationLog = (kind: "info" | "success" | "warning" | "error", message: string) => {
     online61850PreparationLog.value = [
       ...online61850PreparationLog.value,
@@ -2827,107 +2844,70 @@ async function prepareOnline61850() {
   pushOnline61850PreparationLog("info", `Preparing ${targets.length} target${targets.length === 1 ? "" : "s"} from the signal list.`)
 
   try {
-    for (let index = 0; index < targets.length; index += 1) {
-      const target = targets[index]
-      if (stopAfterCurrentTarget || online61850PreparationAbortController.value?.signal.aborted) {
-        break
-      }
-      let targetStage: "configured" | "opened" | "discovered" | "subscribed" | "gi" = "configured"
-      pushOnline61850PreparationLog("info", `Connecting ${formatOnline61850EndpointLabel(target)}.`)
-      try {
-        await Iec61850ClientAPI.configureTarget({
-          mode: "external-mms",
-          host: target.host,
-          port: target.port,
-          ied_name: target.iedName ?? "",
-          access_point_name: target.accessPointName ?? "AP1",
-          scl_path: null,
-        }, { signal: online61850PreparationAbortController.value.signal })
-        targetStage = "opened"
-        await Iec61850ClientAPI.connectIed({ signal: online61850PreparationAbortController.value.signal })
-        pushOnline61850PreparationLog("info", `Discovering and reading model for ${formatOnline61850EndpointLabel(target)}.`)
-        const discoveryState = await Iec61850ClientAPI.discoverIed({ signal: online61850PreparationAbortController.value.signal })
-        targetStage = "discovered"
-        const signalMatchResult = matchOnline61850TargetSignals(target.signalRows, discoveryState.last_discovery, target)
-        const reportSignalStates: Online61850ReportSignalState[] = []
-        pushOnline61850PreparationLog("info", `Enabling report subscription for ${formatOnline61850EndpointLabel(target)}.`)
-        await Iec61850ClientAPI.enableReporting({ signal: online61850PreparationAbortController.value.signal })
-        targetStage = "subscribed"
-        pushOnline61850PreparationLog("info", `Running GI for ${formatOnline61850EndpointLabel(target)}.`)
-        targetStage = "gi"
-        const giState = await Iec61850ClientAPI.sendGeneralInterrogation({ signal: online61850PreparationAbortController.value.signal })
-        reportSignalStates.push(...(giState.ui_state?.report?.signal_states ?? []))
-        reportSignalStates.push(...((giState.ui_state?.report?.values ?? []).map(value => ({
-          reference: value.reference,
-          value_data_reference: value.data_reference,
-          value: value.value,
-          reason: value.reason,
-          timestamp: value.timestamp,
-        }))))
-        const discovery = discoveryState.ui_state?.discovery
-        const signalRows = buildSignalRowsForTarget(
-          target,
-          signalMatchResult.matchedSignalIds,
-          signalMatchResult.matchedSignalReferencesById,
-          reportSignalStates,
-        )
-        preparedTargets.push({
-          ...target,
-          endpointLabel: formatOnline61850EndpointLabel(target),
-          status: "ready",
-          message: null,
-          signalCount: target.signalIds.length,
-          matchedSignalCount: signalMatchResult.matchedSignalCount,
-          mismatchedSignalCount: signalMatchResult.unmatchedSignalCount,
-          steps: buildOnline61850PreparationSteps("gi"),
-          signalRows,
-          discovery: {
-            connected: Boolean(giState.ui_state?.session.connected ?? discoveryState.ui_state?.session.connected),
-            discovered: Boolean(discovery?.discovered),
-            logicalDevices: Number(discovery?.logical_devices ?? 0),
-            logicalNodes: Number(discovery?.logical_nodes ?? 0),
-            dataSets: Number(discovery?.data_sets ?? 0),
-            reportControls: Number(discovery?.report_controls ?? 0),
-          },
-        })
-        pushOnline61850PreparationLog("success", `Ready: ${formatOnline61850EndpointLabel(target)}.`)
-      } catch (error) {
-        if (online61850PreparationAbortController.value?.signal.aborted) {
-          pushOnline61850PreparationLog("warning", "Preparation cancelled.")
-          break
-        }
-        const normalizedError = normalizeHttpError(error)
-        const errorMessage = normalizedError.code ? `${normalizedError.code}: ${normalizedError.message}` : normalizedError.message
-        const signalRows = buildSignalRowsForTarget(target, new Set<number>(), new Map<number, string>())
-        preparedTargets.push({
-          ...target,
-          endpointLabel: formatOnline61850EndpointLabel(target),
-          status: "failed",
-          message: errorMessage,
-          signalCount: target.signalIds.length,
-          matchedSignalCount: 0,
-          mismatchedSignalCount: signalRows.length,
-          steps: buildOnline61850PreparationSteps("failed", targetStage),
-          signalRows,
-          discovery: {
-            connected: false,
-            discovered: false,
-            logicalDevices: 0,
-            logicalNodes: 0,
-            dataSets: 0,
-            reportControls: 0,
-          },
-        })
-        pushOnline61850PreparationLog("error", `Failed: ${formatOnline61850EndpointLabel(target)}. ${errorMessage}`)
-        if (normalizedError.code === "LIBIEC61850_NOT_LINKED"
-          || normalizedError.code === "EXTERNAL_MMS_CLIENT_START_FAILED"
-          || normalizedError.code === "EXTERNAL_MMS_CLIENT_EXITED") {
-          pushOnline61850PreparationLog("warning", "MMS backend client is unavailable; stopping preparation early.")
-          stopAfterCurrentTarget = true
-        }
-      }
-      online61850PreparationProgress.value.done = index + 1
+    pushOnline61850PreparationLog("info", "Starting backend-owned MMS orchestration.")
+    const signalIds = allRows
+      .map(row => Number(row.signal_id))
+      .filter(signalId => Number.isFinite(signalId) && signalId > 0)
+    const started = await VerificationAPI.startOrchestrationFromSignals(workspaceId, {
+      signal_ids: signalIds,
+      client_id: "unitlab-online-61850",
+      test_run_id: `online-61850-${Date.now()}`,
+      execution_context: {
+        project_id: workspaceId,
+        signal_list_revision_id: Number(allocationRevision.value ?? 0) || 0,
+        planner_version: "unitlab-online-61850.v1",
+        runtime_version: "mms",
+        policy_version: "iec61850-online.v1",
+      },
+    })
+    if (online61850PreparationAbortController.value?.signal.aborted) {
+      online61850PreparationCancelRequested.value = true
+      await VerificationAPI.stopOrchestration(workspaceId, started.data.orchestration_id)
+      pushOnline61850PreparationLog("warning", "Preparation cancelled.")
+      return
     }
+    online61850ActiveOrchestrationId.value = started.data.orchestration_id
+    const verificationRun = started.data.verification_run
+    preparedTargets.push(...targets.map(target => buildOnline61850PreparationResultFromOrchestration(target, verificationRun)))
+    online61850PreparationProgress.value.done = targets.length
+    const reportingCount = verificationRun.subscription_snapshots.filter((snapshot) => snapshot.subscription_state === "reporting").length
+    pushOnline61850PreparationLog("success", `Backend orchestration is reporting on ${reportingCount} subscription${reportingCount === 1 ? "" : "s"}.`)
+  } catch (error) {
+    if (online61850PreparationAbortController.value?.signal.aborted) {
+      pushOnline61850PreparationLog("warning", "Preparation cancelled.")
+      return
+    }
+    const normalizedError = normalizeHttpError(error)
+    const errorMessage = normalizedError.code ? `${normalizedError.code}: ${normalizedError.message}` : normalizedError.message
+    targets.forEach((target) => {
+      const signalRows: Online61850PreparationResult["signalRows"] = target.signalRows.map((row, index) => ({
+        label: String(row.signal_name ?? target.signalLabels[index] ?? `Signal ${index + 1}`),
+        address: resolveOnline61850SignalReference(row),
+        matched: false,
+        stateLabel: null,
+      }))
+      preparedTargets.push({
+        ...target,
+        endpointLabel: formatOnline61850EndpointLabel(target),
+        status: "failed",
+        message: errorMessage,
+        signalCount: target.signalIds.length,
+        matchedSignalCount: 0,
+        mismatchedSignalCount: signalRows.length,
+        steps: buildOnline61850PreparationSteps("failed", "configured"),
+        signalRows,
+        discovery: {
+          connected: false,
+          discovered: false,
+          logicalDevices: 0,
+          logicalNodes: 0,
+          dataSets: 0,
+          reportControls: 0,
+        },
+      })
+    })
+    online61850PreparationProgress.value.done = targets.length
+    pushOnline61850PreparationLog("error", errorMessage)
   } finally {
     online61850PreparationBusy.value = false
     online61850PreparationAbortController.value = null
@@ -3682,6 +3662,9 @@ onBeforeUnmount(() => {
   if (signalsGridStatePersistTimer !== null) {
     clearTimeout(signalsGridStatePersistTimer)
     signalsGridStatePersistTimer = null
+  }
+  if (online61850ActiveOrchestrationId.value) {
+    void stopOnline61850Preparation()
   }
 })
 </script>

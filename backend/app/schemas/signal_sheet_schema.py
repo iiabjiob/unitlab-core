@@ -157,6 +157,11 @@ class SignalTestRunJobSchema(BaseModel):
     toggle_mode: str = Field(default="single", pattern="^(single|double|ao_random)$")
     resume_from_cursor: bool = False
     resume_job_id: str | None = None
+    verification_enabled: bool = False
+    verification_runtime_version: str = "simulator"
+    verification_orchestration_id: str | None = None
+    verification_signal_list_revision_id: int | None = None
+    verification_timeout_ms: int = Field(default=5000, ge=100, le=60000)
 
 
 class SignalAutoAllocateResultSchema(BaseModel):

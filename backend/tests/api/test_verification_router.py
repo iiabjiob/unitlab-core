@@ -6,11 +6,14 @@ import pytest
 
 from app.api.v1.verification import router as verification_router
 from app.schemas.verification_schema import (
+    VerificationAutoRunStartSchema,
     VerificationExecutionContextSchema,
     VerificationRuntimeOrchestrationReconnectSchema,
 )
 from app.services.verification_planner import VerificationTargetSource, build_verification_subscription_plan
+from app.services.verification_run_service import VerificationRuntimeStartContext
 from app.services.verification_runtime_orchestrator import VerificationRuntimeOrchestrator
+from app.services.verification_runtime_selection import resolve_verification_runtime
 
 
 def _build_single_ied_plan():
@@ -82,3 +85,47 @@ async def test_reconnect_route_returns_updated_runtime_snapshot(monkeypatch: pyt
     assert response.verification_run.runtime_state == "reporting"
     assert response.verification_run.recovery_state is None
     assert response.verification_run.session_snapshots[0].connection_generation == 2
+
+
+@pytest.mark.anyio
+async def test_start_orchestration_from_signals_uses_backend_runtime_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    plan = _build_single_ied_plan()
+    orchestrator = VerificationRuntimeOrchestrator(now=lambda: datetime(2026, 6, 23, 12, 0, tzinfo=UTC))
+    execution_context = VerificationExecutionContextSchema(
+        project_id=1,
+        signal_list_revision_id=2,
+        planner_version="test",
+        runtime_version="simulator",
+        policy_version="v1",
+    )
+    runtime_selection = resolve_verification_runtime(
+        execution_context=execution_context,
+        now=lambda: datetime(2026, 6, 23, 12, 0, tzinfo=UTC),
+    )
+
+    async def _build_context(**kwargs):  # noqa: ANN001
+        return VerificationRuntimeStartContext(
+            selected_signal_ids=[101],
+            subscription_plan=plan,
+            execution_context=execution_context,
+            runtime_selection=runtime_selection,
+            diagnostics=(),
+        )
+
+    monkeypatch.setattr(verification_router, "_orchestrator", orchestrator)
+    monkeypatch.setattr(verification_router, "build_verification_runtime_start_context", _build_context)
+
+    response = await verification_router.start_verification_runtime_orchestration_from_signals(
+        workspace_id=7,
+        payload=VerificationAutoRunStartSchema(
+            signal_ids=[101],
+            test_run_id="online-route",
+            client_id="unitlab-online-61850",
+            execution_context=execution_context,
+        ),
+        db=object(),
+    )
+
+    assert response.orchestration_id.startswith("7:online-route:")
+    assert response.verification_run.runtime_state == "reporting"
+    assert response.verification_run.subscription_snapshots[0].subscription_state == "reporting"

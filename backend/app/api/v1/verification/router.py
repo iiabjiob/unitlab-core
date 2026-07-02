@@ -17,6 +17,7 @@ from app.schemas.verification_schema import (
 from app.services.verification_evidence import VerificationEvidenceRepository
 from app.services.verification_network_preflight import build_verification_network_preflight_response
 from app.services.verification_run_service import (
+    build_verification_runtime_start_context,
     execute_single_signal_verification_run,
     load_verification_run_detail,
 )
@@ -131,6 +132,40 @@ async def start_verification_runtime_orchestration(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return VerificationRuntimeOrchestrationResponseSchema(
+        orchestration_id=result.orchestration_id,
+        verification_run=result.verification_run,
+    )
+
+
+@router.post("/orchestrations/from-signals", response_model=VerificationRuntimeOrchestrationResponseSchema)
+async def start_verification_runtime_orchestration_from_signals(
+    workspace_id: int,
+    payload: VerificationAutoRunStartSchema,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        context = await build_verification_runtime_start_context(
+            workspace_id=workspace_id,
+            payload=payload,
+            db=db,
+        )
+        result = _orchestrator.start(
+            workspace_id=workspace_id,
+            test_run_id=str(payload.test_run_id or f"online-61850-{workspace_id}"),
+            verification_targets=context.subscription_plan.targets,
+            subscription_plan=context.subscription_plan,
+            execution_context=context.execution_context,
+            client_id=payload.client_id or "unitlab-online-61850",
+            endpoint_for_device=context.runtime_selection.endpoint_for_device,
+            adapter=context.runtime_selection.adapter,
+            initial_diagnostics=context.diagnostics,
+        )
+    except ValueError as exc:
+        status_code = 404 if str(exc) == "Workspace not found" else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return VerificationRuntimeOrchestrationResponseSchema(

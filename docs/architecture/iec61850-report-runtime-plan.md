@@ -46,11 +46,16 @@ GOOSE and Sampled Values are explicitly out of scope for this plan and stay in a
 
 The verification runtime orchestration endpoint is the backend-owned path for keeping MMS sessions and report subscriptions alive across a test preparation window. When `execution_context.runtime_version` selects MMS, orchestration resolves the MMS endpoint catalog from the submitted subscription plan target metadata and uses the MMS runtime adapter instead of silently falling back to the simulator adapter.
 
+Signal-list Online 61850 now enters this path through `POST /api/v1/workspaces/{workspace_id}/verification/orchestrations/from-signals`: the frontend submits selected signal ids and the backend rebuilds target sources, subscription plan, endpoint catalog, runtime adapter choice, and diagnostics from the active signal-list/allocation context before starting the orchestration.
+
+Signal test-run jobs can request IEC 61850 verification in their job payload. Because test-run execution happens in the worker process, the worker creates its own backend runtime orchestration from the same signal-list context, keeps those subscriptions open for the job duration, waits for a new report after each command, and records the report evidence against the test-run job id. The API Online orchestration id is carried as trace context only; it is not treated as a cross-process session handle.
+
 Runtime ownership rules:
 
 - one backend runtime session is opened per resolved IED/access point endpoint;
 - multiple ReportControls on the same endpoint share that session;
 - the MMS adapter keeps one control service for the session and switches the selected ReportControl explicitly before read/enable/GI/cleanup operations;
+- test-run report capture must compare against the last subscription report sequence/event id so an Online GI report cannot satisfy a later triggered step;
 - endpoint-resolution diagnostics are included in orchestration snapshots;
 - stop/reconnect remains explicit and scoped to the affected backend session.
 

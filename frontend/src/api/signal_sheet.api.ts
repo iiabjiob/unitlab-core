@@ -192,6 +192,11 @@ export const SignalSheetAPI = {
     toggle_mode?: "single" | "double"
     resume_from_cursor?: boolean
     resume_job_id?: string
+    verification_enabled?: boolean
+    verification_runtime_version?: string
+    verification_orchestration_id?: string | null
+    verification_signal_list_revision_id?: number | null
+    verification_timeout_ms?: number
   }) {
     return http.post<SignalAllocationJob>(`${API_V1}/workspaces/${workspaceId}/signal-allocations/test-run/jobs`, payload)
   },

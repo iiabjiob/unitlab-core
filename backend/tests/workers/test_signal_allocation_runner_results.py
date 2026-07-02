@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 from app.schemas.signal_sheet_schema import SignalAllocationRowSchema
+from app.schemas.verification_schema import SignalVerificationEvidenceSchema, VerificationStepSchema
 from app.schemas.ws.events import SignalRowsPatchedEvent, SignalTestRuntimePatchEvent, WSChannel
 from app.workers import signal_test_run_runner
 from app.workers.signal_allocation_runner import _serialize_allocation_job_row_patches
@@ -263,6 +265,135 @@ def test_signal_test_run_resolves_current_binding_per_signal(monkeypatch) -> Non
     assert repo.evidence[0]["unit_id"] == "unit-1"
     assert repo.evidence[0]["result_state"] == "commands_enqueued"
     assert repo.evidence[0]["command_payload"]["commands"][0]["kind"] == "do_set"
+
+
+def test_signal_test_run_requires_iec61850_report_when_verification_enabled(monkeypatch) -> None:
+    repo = FakeLiveRowsRepo()
+    commands: list[tuple[str, dict]] = []
+    persisted_verification: list[dict] = []
+
+    async def publish_noop(event) -> None:
+        return None
+
+    async def enqueue_do_noop(**kwargs) -> None:
+        commands.append(("do", dict(kwargs)))
+
+    async def enqueue_state_noop(**kwargs) -> None:
+        commands.append(("state", dict(kwargs)))
+
+    async def build_context_noop(**kwargs):
+        return SimpleNamespace(
+            subscription_plan=SimpleNamespace(targets=[]),
+            execution_context=kwargs["payload"].execution_context,
+            runtime_selection=SimpleNamespace(adapter=object(), endpoint_for_device=lambda device: device),
+            diagnostics=(),
+        )
+
+    class FakeVerificationEvidenceRepository:
+        def __init__(self, db) -> None:
+            self.db = db
+
+        async def record_signal_verification_evidence(self, **kwargs):
+            persisted_verification.append({"kind": "row", **kwargs})
+
+        async def upsert_signal_verification_evidence_set(self, **kwargs):
+            persisted_verification.append({"kind": "set", **kwargs})
+
+    class FakeVerificationRuntimeOrchestrator:
+        def start(self, **kwargs):
+            return SimpleNamespace(orchestration_id="local-orch-1")
+
+        def capture_triggered_signal(self, orchestration_id: str, **kwargs):
+            evidence = SignalVerificationEvidenceSchema(
+                evidence_id="ev-1",
+                signal_id=int(kwargs["signal_id"]),
+                signal_path="breaker_close",
+                expected_path="LD0/XCBR1.Pos.stVal[ST]",
+                actual_report_path="LD0/XCBR1.Pos.stVal[ST]",
+                source_ied="IED-A",
+                endpoint_id="sim:IED-A/P1",
+                rpt_id="IED-A/LLN0.brA",
+                dataset="IED-A/LLN0.dsA",
+                observed_at=datetime(2026, 1, 1, 12, 30, tzinfo=timezone.utc),
+                latency_ms=1,
+                quality="good",
+                freshness="live",
+                evidence_status="observed",
+                reason_code="report_received",
+                source_generation=1,
+                source_report_sequence_generation=2,
+                source_report_sequence_number=2,
+                report_reason="data-change",
+                signal_value=1,
+                timestamp_summary={"observed_at": "2026-01-01T12:30:00+00:00"},
+                evidence_kind="report_observation",
+            )
+            step = VerificationStepSchema(
+                step_id="step-1",
+                signal_id=int(kwargs["signal_id"]),
+                target_index=0,
+                session_id="job-1:sim:IED-A/P1",
+                subscription_id="job-1:group-1",
+                group_id="group-1",
+                step_state="completed",
+                expected_path=evidence.expected_path,
+                expected_window_ms=1000,
+                freshness="live",
+                evidence_status="observed",
+                verdict_state="pass",
+                evidence_ids=[evidence.evidence_id],
+                actual_report_path=evidence.actual_report_path,
+                source_session_id="job-1:sim:IED-A/P1",
+                source_subscription_id="job-1:group-1",
+                source_generation=1,
+                source_report_rpt_id=evidence.rpt_id,
+                source_report_dat_set=evidence.dataset,
+                triggered_at=kwargs["triggered_at"],
+                observed_at=evidence.observed_at,
+                latency_ms=1,
+                reason="report_received",
+            )
+            return SimpleNamespace(evidence=evidence, step=step, diagnostics=())
+
+        def stop(self, orchestration_id: str):
+            return SimpleNamespace()
+
+    monkeypatch.setattr(signal_test_run_runner.RedisManager, "get_instance", lambda: FakeRedis())
+    monkeypatch.setattr(signal_test_run_runner.WsEventPublisher, "publish", publish_noop)
+    monkeypatch.setattr(signal_test_run_runner, "enqueue_do_command", enqueue_do_noop)
+    monkeypatch.setattr(signal_test_run_runner, "enqueue_request_state", enqueue_state_noop)
+    monkeypatch.setattr(signal_test_run_runner, "build_verification_runtime_start_context", build_context_noop)
+    monkeypatch.setattr(signal_test_run_runner, "VerificationEvidenceRepository", FakeVerificationEvidenceRepository)
+    monkeypatch.setattr(signal_test_run_runner, "VerificationRuntimeOrchestrator", FakeVerificationRuntimeOrchestrator)
+
+    job_state = {
+        "job_id": "job-1",
+        "workspace_id": 7,
+        "operation": "test_run",
+        "status": "queued",
+        "created_at": "2026-01-01T12:30:00+00:00",
+    }
+    payload = {
+        "job_id": "job-1",
+        "signal_ids": [1],
+        "signal_interval_ms": 100,
+        "toggle_mode": "single",
+        "verification_enabled": True,
+        "verification_runtime_version": "mms",
+        "verification_orchestration_id": "api-orch-1",
+        "verification_signal_list_revision_id": 2,
+    }
+
+    result = run_async(signal_test_run_runner._handle_test_run(repo, 7, payload, job_state))  # type: ignore[arg-type]
+
+    assert result["succeeded"] == 1
+    assert result["verification_observed"] == 1
+    assert result["verification_failed"] == 0
+    assert repo.evidence[0]["status"] == "succeeded"
+    assert repo.evidence[0]["result_state"] == "commands_enqueued_report_observed"
+    assert repo.evidence[0]["command_payload"]["iec61850_verification"]["requested_online_orchestration_id"] == "api-orch-1"
+    assert persisted_verification[0]["kind"] == "row"
+    assert persisted_verification[-1]["kind"] == "set"
 
 
 def test_signal_test_run_skips_non_executable_current_bindings(monkeypatch) -> None:
