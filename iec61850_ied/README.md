@@ -1,17 +1,19 @@
 # UnitLab IEC 61850 IED Simulator
 
-Status: internal test-tool scaffold. It validates the UnitLab fixture/model-plan/loader boundary, can start one libIEC61850 MMS server when built with libIEC61850, and can probe DataSet/BRCB metadata plus a GI report through a linked client.
+Status: internal test-tool scaffold. The primary runtime path is the UnitLab-owned native wire server/client flow built from the fixture/model-plan boundary. libIEC61850-linked server and probe modes remain optional compatibility checks and capture baselines.
 
-This directory is the boundary for the future libIEC61850-based IED simulator. It is intentionally separate from UnitLab backend/core runtime so GPL/native code cannot leak into production logic by accident.
+This directory owns the native wire simulator/runtime boundary and the optional libIEC61850 compatibility path. It is intentionally separate from UnitLab backend/core runtime so GPL/native code cannot leak into production logic by accident.
 
 ## Architecture Map
 
 Use this as the navigation guide for both humans and Codex:
 
-- `src/app/main.c` is the CLI entrypoint. It parses the mode flags and routes into dry-run, smoke, native-wire, metadata-probe, and GI-probe flows.
+- `src/app/main.c` is the CLI entrypoint. It parses the mode flags and routes into dry-run, smoke, native-wire, native-wire-client, persistent-client, metadata-probe, and GI-probe flows.
 - `src/model/model_loader.c` and `src/model/model_plan.c` turn the JSON fixture into the model plan that drives the simulator.
 - `src/server/unitlab_mms_server_runtime.c` owns runtime state, request correlation, read-response assembly, and report-control behavior.
 - `src/server/native_wire_server.c` owns the native socket listener, association handshake, request dispatch, and live-wire report emission.
+- `src/server/native_wire_client.c` owns the persistent native MMS client session and stdin command loop.
+- `src/app/client_probe.c` owns the optional linked MMS discovery, metadata, and GI probes.
 - `src/wire/` holds the transport/framing helpers for TPKT, COTP, ACSE, presentation, and MMS.
 - `libIEC61850` is a reference backend for parity and interoperability checks only. It is not the product-owned runtime model.
 - Deeper boundary notes live in [UnitLab IEC 61850 MMS Core Boundary](/workspace/docs/architecture/iec61850-unitlab-mms-core-boundary.md) and [UnitLab MMS Layered Architecture](/workspace/docs/architecture/iec61850-unitlab-mms-layered-architecture.md).
@@ -26,7 +28,7 @@ Current C-owned helpers include:
 ## Purpose
 
 - Consume the JSON fixture exported by backend IEC 61850 runtime.
-- Expose one simulated IED over MMS for internal UnitLab tests when linked with libIEC61850.
+- Expose the UnitLab-owned native wire simulator for internal tests, and keep libIEC61850-linked modes as optional parity checks.
 - Let UnitLab backend connect to the simulator through the same `Iec61850ClientAdapter` contract used for real IEDs.
 - Keep Signal List matching, FAT evidence, diagnostics, and report planning owned by UnitLab.
 
@@ -108,6 +110,23 @@ After the client reports `native-wire-client: ready`, stdin accepts:
 
 Commands emit confirmed responses as `wire-frame=<hex>` plus best-effort `mms-summary` decode lines, including GetNameList identifiers, GVA components, GNVLA members, Read/Write access-result value hints, and structured RCB field summaries when a full BRCB/URCB value is read, and decoded InformationReport fields for GI/data reports, including DataRef matching against the reported discovered DataSet members and compact `model-summary` snapshots for the in-memory discovered device. Write commands also emit an immediate post-write frame when the server sends one, for example a GI information report after `GI=true`; after `RptEna=true`, the client also drains asynchronous data frames from the MMS data socket while waiting for stdin commands and emits `native-wire-client: async-report` plus `subscription-summary` for received reports. For IEDScout-style top-level LD browse use `get-name-list 9 0 - -`; for a native discover sequence that pages logical nodes, domain DataSets, BRCBs, reads discovered BRCB values, and follows DataSet member `moreFollows` within the client discovery capacity use `discover IED1LD0`; for domain DataSet browse use `get-name-list 2 1 <domain> -`; for attributes use `get-var-attrs IED1LD0 'LLN0$BR$brcbEvents$RptEna'` and `get-nvl-attrs LD0 'LLN0$dsEvents'`; use `connect-ied` to select the current in-memory discovered device without issuing a new MMS request; for RCB enable/GI from the discovered in-memory BRCB use `rptena` then `gi`; use `close-ied` to clear the in-memory discovered device without closing the TCP association; use `disconnect` to close the current data/control TCP sockets and stop the native client process; manual writes remain available with `write-bool IED1LD0 'LLN0$BR$brcbEvents$RptEna' true` then `write-bool IED1LD0 'LLN0$BR$brcbEvents$GI' true`. RCB typed write examples: `write-uint IED1LD0 'LLN0$BR$brcbEvents$ResvTms' 5 30`, `write-hex IED1LD0 'LLN0$BR$brcbEvents$OptFlds' 4 061100`, `write-hex IED1LD0 'LLN0$BR$brcbEvents$TrgOps' 4 020c`, `write-string IED1LD0 'LLN0$BR$brcbEvents$DatSet' 10 IED1LD0/LLN0$dsEvents`, `write-string IED1LD0 'LLN0$BR$brcbEvents$RptID' 10 events`.
 
+`--mms-client-start` is the persistent native client mode for attaching to an already running endpoint. It does not require `--fixture`, `--scl`, or `--ied`; only `--bind` and `--port` are required, and optional startup reads can be seeded with `--native-client-read-domain`, `--native-client-read-item`, and `--native-client-read-invoke-id`.
+
+```bash
+unitlab-iec61850-ied-sim --mms-client-start --bind 127.0.0.1 --port 12447
+```
+
+If you want the client to issue a startup `ReadRequest`, add the read pair:
+
+```bash
+unitlab-iec61850-ied-sim \
+  --mms-client-start \
+  --bind 127.0.0.1 \
+  --port 12447 \
+  --native-client-read-domain XCBR1 \
+  --native-client-read-item 'ST$Pos$stVal'
+```
+
 ## Apples-to-Apples Capture
 
 Use the same fixture for both backends:
@@ -125,7 +144,7 @@ Run the native server on port `12447`:
 ./scripts/run-native-wire-dev.sh
 ```
 
-Run the libIEC61850-backed server on port `12448`:
+Run the optional libIEC61850-backed reference server on port `12448`:
 
 ```bash
 ./scripts/run-lib-wire-dev.sh
@@ -160,7 +179,7 @@ iec61850_ied/build-libiec61850/unitlab-iec61850-ied-sim \
 The debug client page can now target this external MMS endpoint before capture:
 
 1. Set host to `host.docker.internal`, port to `12447`, IED to `KINTE13LVC01`, and SCD path to `/workspace/.refs/sld-rev2.scd`.
-2. Click `Use external MMS`. The backend parses the SCD and selects the first ReportControl for the IED, currently `KINTE13LVC01CTRL/LLN0.brcbA` from DataSet `RCB1`. External probe mode prefers the current native build at `/workspace/iec61850_ied/build/unitlab-iec61850-ied-sim` when it exists; the libIEC61850 reference binary remains a fallback.
+2. Click `Use external MMS`. The backend parses the SCD and selects the first ReportControl for the IED, currently `KINTE13LVC01CTRL/LLN0.brcbA` from DataSet `RCB1`. External probe mode prefers the current native build at `/workspace/iec61850_ied/build/unitlab-iec61850-ied-sim` when it exists; the libIEC61850 reference binary is only a fallback for parity checks.
 3. Run `Discover`, `RptEna`, `GI`, and `Disconnect`. In external mode `Discover` and `RptEna` launch the libIEC61850-backed metadata probe against the configured endpoint, while `GI` launches the GI probe with the compiler report key, for example `KINTE13LVC01/P1/CTRL/LLN0/brcbA/buffered` for the selected `brcbA` control, and waits for the buffered enable report before requesting the GI report. `Start wire` is for the UnitLab native wire server path and should stay disabled for external MMS targets.
 4. Save the Wireshark capture as the golden artifact for the SCD-backed client flow.
 
@@ -281,7 +300,7 @@ Runtime evidence is captured separately by the C-owned runtime kernel through ty
 
 ## Smoke Start
 
-When linked with libIEC61850, `--smoke-start` builds the dynamic model, starts the MMS server, stops it immediately, and exits:
+When linked with libIEC61850, `--smoke-start` remains a compatibility smoke check for the reference MMS server path. It builds the dynamic model, starts the server, stops it immediately, and exits:
 
 ```bash
 /tmp/unitlab-iec61850-ied-build/unitlab-iec61850-ied-sim \
@@ -321,7 +340,7 @@ reportControl=4
 
 ## Non-Dry-Run Status
 
-The non-dry-run path starts the linked MMS server and keeps the process alive until SIGTERM or SIGINT:
+The primary local runtime path is `--native-wire-start`. This fixture-backed section describes the linked MMS server compatibility path only; it starts the linked MMS server and keeps the process alive until SIGTERM or SIGINT:
 
 ```bash
 /tmp/unitlab-iec61850-ied-build/unitlab-iec61850-ied-sim \
@@ -344,7 +363,7 @@ Expected current result with libIEC61850:
 <process keeps running until terminated>
 ```
 
-The linked path creates the dynamic `IedModel`, logical devices, logical nodes, data objects, FCDA data attributes, DataSets, DataSet entries, ReportControls, and `IedServer`.
+The linked path creates the dynamic `IedModel`, logical devices, logical nodes, data objects, FCDA data attributes, DataSets, DataSet entries, ReportControls, and `IedServer`. The native wire server path above is the main day-to-day flow.
 
 ## Metadata Probe
 
@@ -412,7 +431,7 @@ That test starts the simulator on `127.0.0.1`, connects with libIEC61850's `IedC
 
 This remains an internal simulator validation path. It does not make UnitLab production runtime depend on libIEC61850.
 
-The native MMS stack now also supports `GetNameList` browse for logical devices and domain-scoped DataSet catalogs, plus minimal fixture-shaped BRCB `RptEna`/`GI`/`PurgeBuf` handling with GI InformationReport payloads sourced from the active model-plan DataSet. This is still a simulator runtime path, not full IEC 61850 report buffering or multi-client ownership.
+The UnitLab-owned native MMS stack is the primary runtime path here and supports `GetNameList` browse for logical devices and domain-scoped DataSet catalogs, plus minimal fixture-shaped BRCB `RptEna`/`GI`/`PurgeBuf` handling with GI InformationReport payloads sourced from the active model-plan DataSet. This is still a simulator runtime path, not full IEC 61850 report buffering or multi-client ownership.
 
 ## Next Slice
 

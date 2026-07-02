@@ -1314,7 +1314,11 @@ class Iec61850ClientControlService:
         if self._live_wire_process is not None:
             self._stop_live_wire_transport()
         if self._session_open:
-            self._runtime.close_session(self._session_id)
+            try:
+                self._runtime.close_session(self._session_id)
+            except Iec61850ReportRuntimeError as exc:
+                if exc.code != "SESSION_NOT_FOUND":
+                    raise
         self._session_open = False
         self._last_read = None
         self._last_discovery = None

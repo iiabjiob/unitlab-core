@@ -28,6 +28,7 @@ Implemented and validated against the local native/libIEC61850-oriented test pat
 - Report decoder extracts `RptID`, `DatSet`, `OptFlds`, inclusion bitstring, `dataRef`, values, and reason fields.
 - Report decoder compares incoming `dataRef` values against discovered dataset members.
 - Real TCP smoke has passed against the local server path: `discover -> rptena -> gi -> disconnect`, with `dataset-match=true`.
+- Native wire client stdin mode now accepts `discover`, `rptena`, `gi`, and `disconnect` against an external MMS endpoint, and real-device smoke passed against a live simulator endpoint with the same `discover -> rptena -> gi` sequence.
 
 ## Known Gaps
 
@@ -479,4 +480,3 @@ Current recommended order:
 8. Golden capture validation.
 9. Debug UI state contract.
 10. Multi-IED and reconnect readiness.
-

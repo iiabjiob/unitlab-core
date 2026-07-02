@@ -848,6 +848,47 @@ def test_client_control_configures_external_target_with_multiple_report_controls
     assert selection.transcript[-1].kind == "report-control-select"
 
 
+def test_client_control_configure_target_recovers_from_stale_session_flag(tmp_path) -> None:
+    scl_path = tmp_path / "target.scd"
+    scl_path.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<SCL xmlns="http://www.iec.ch/61850/2003/SCL">
+  <IED name="KINTE13LVC01">
+    <AccessPoint name="AP1">
+      <Server>
+        <LDevice inst="CTRL">
+          <LN0 lnClass="LLN0" inst="" lnType="T_CTRL">
+            <DataSet name="RCB1">
+              <FCDA ldInst="CTRL" lnClass="XCBR" lnInst="1" doName="Pos" daName="stVal" fc="ST" />
+            </DataSet>
+            <ReportControl name="brcbA" datSet="RCB1" buffered="true" indexed="true" rptID="KINTE13LVC01CTRL/LLN0.brcbA" confRev="10000" />
+          </LN0>
+        </LDevice>
+      </Server>
+    </AccessPoint>
+  </IED>
+</SCL>
+""",
+        encoding="utf-8",
+    )
+    service = Iec61850ClientControlService()
+    service._session_open = True
+
+    snapshot = service.configure_target(
+        client_control_module.Iec61850ClientTargetRequest(
+            mode="external-mms",
+            host="host.docker.internal",
+            port=12447,
+            ied_name="KINTE13LVC01",
+            scl_path=str(scl_path),
+        )
+    )
+
+    assert snapshot.session_open is False
+    assert snapshot.endpoint.id == "mms:KINTE13LVC01@host.docker.internal:12447"
+    assert snapshot.transcript[-1].kind == "target-configured"
+
+
 def test_external_mms_target_can_connect_and_discover_without_scd(monkeypatch: pytest.MonkeyPatch) -> None:
     service = Iec61850ClientControlService(
         live_wire_binary_path="/bin/true",
