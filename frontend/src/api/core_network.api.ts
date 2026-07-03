@@ -44,3 +44,15 @@ export async function applyCoreNetworkSettings(payload: {
 }) {
   return httpData.put<CoreNetworkCommandAccepted>(`${API_V1}/core-network/settings`, payload)
 }
+
+export async function enqueueCoreNetworkAddressProbe(payload: {
+  interface: string
+  addresses: string[]
+  timeout_sec?: number | null
+}) {
+  return httpData.post<CoreNetworkCommandAccepted>(`${API_V1}/core-network/probe-addresses`, payload)
+}
+
+export async function enqueueCoreNetworkRestoreSettings() {
+  return httpData.post<CoreNetworkCommandAccepted>(`${API_V1}/core-network/restore-settings`)
+}

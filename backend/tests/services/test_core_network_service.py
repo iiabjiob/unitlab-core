@@ -69,3 +69,40 @@ async def test_enqueue_core_network_command_serializes_apply_settings_payload(mo
             "approximate": True,
         }
     ]
+
+
+@pytest.mark.anyio
+async def test_enqueue_core_network_command_serializes_probe_payload(monkeypatch) -> None:
+    fake = _FakeRedis()
+    monkeypatch.setattr(core_network_service.RedisManager, "get_instance", staticmethod(lambda: fake))
+    monkeypatch.setattr(core_network_service, "settings", SimpleNamespace(core_net_command_stream="core_net:commands", core_net_command_stream_maxlen=1234))
+
+    accepted = await enqueue_core_network_command(
+        "probe_addresses",
+        request_id="req-probe",
+        payload={
+            "interface": "eth0",
+            "addresses": ["192.168.10.10", "192.168.10.21"],
+            "timeout_sec": 1,
+        },
+    )
+
+    assert accepted.request_id == "req-probe"
+    assert accepted.action == "probe_addresses"
+    assert fake.calls == [
+        {
+            "stream": "core_net:commands",
+            "fields": {"json": json.dumps(
+                {
+                    "request_id": "req-probe",
+                    "action": "probe_addresses",
+                    "interface": "eth0",
+                    "addresses": ["192.168.10.10", "192.168.10.21"],
+                    "timeout_sec": 1,
+                },
+                ensure_ascii=True,
+            )},
+            "maxlen": 1234,
+            "approximate": True,
+        }
+    ]

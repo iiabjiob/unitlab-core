@@ -30,6 +30,12 @@ class CoreNetworkCommandScanPayload(BaseModel):
     timeout_sec: int | None = Field(default=None, ge=5, le=120)
 
 
+class CoreNetworkProbeAddressesPayload(BaseModel):
+    interface: str
+    addresses: list[str] = Field(default_factory=list, min_length=1, max_length=512)
+    timeout_sec: int | None = Field(default=None, ge=1, le=10)
+
+
 class CoreNetworkApplySettingsPayload(BaseModel):
     interface: str | None = None
     profile: str | None = None

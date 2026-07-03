@@ -27,7 +27,7 @@ Use Signals to import your project signal list, map each signal to a real channe
 
 ### Import wizard: full step-by-step
 
-The wizard has 3 steps: **Upload file → Columns → Type mapping**.
+The wizard steps are **Columns → Terminal → Type mapping → IEC 61850 → Configure Network** after the file preview is parsed.
 
 ### Step 1 — Upload file
 
@@ -55,20 +55,43 @@ Required outcome for this step:
 ### Step 3 — Type mapping
 
 1. In **Type column**, choose the vendor column that contains type codes.
-2. (Recommended) Confirm/select the **terminal / terminal block** source column used for cabinet wiring reference (if your import flow exposes this mapping in this step).
-3. For each detected vendor value, choose an internal type:
+2. For each detected vendor value, choose an internal type:
 	- Digital input (DI)
 	- Digital output (DO)
 	- Analog input (AI)
 	- Analog output (AO)
 	- or **Skip**
-4. (Optional) Fill **Save as preset**.
-5. Click **Import**.
+3. Click **Next**.
 
 Important behavior:
 - Rows mapped to **Skip** are not imported.
 - If nothing is mapped, import is blocked.
 - Presets should include your terminal-column selection so the same project format can be imported faster next time.
+
+### Step 4 — IEC 61850
+
+1. Select the spreadsheet column that contains device IP addresses.
+2. Select the spreadsheet column that contains IEC 61850/MMS object addresses.
+3. Leave both empty only when the import should not carry MMS verification metadata.
+4. (Optional) Fill **Save as preset**.
+5. Click **Next**.
+
+### Step 5 — Configure Network
+
+The Raspberry Pi uses its wired RJ45 interface for project IEC 61850/MMS devices. This step is never applied automatically.
+
+1. Review the detected project subnet from imported device IP addresses.
+2. If multiple `/24` subnets are detected, select the subnet connected to the Pi RJ45 port.
+3. Review the detected Ethernet interface, current IP, link status, subnet mask, and suggested static IP.
+4. Click **Apply** only when the Pi is physically connected to the project network.
+5. Review the connectivity summary, then click **Import**.
+
+Important behavior:
+- Wi-Fi is not modified by this step.
+- The suggested Pi IP is chosen inside the selected subnet and excludes imported device IPs.
+- The app probes the suggested address before apply and tries the next low engineering-tool address when occupied.
+- No gateway is configured from this wizard step.
+- The host agent records the previous RJ45 config and exposes **Restore previous config** when available.
 
 ### Allocate channels after import
 

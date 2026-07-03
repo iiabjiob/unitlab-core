@@ -70,6 +70,22 @@ class HostNetworkSettings:
 
 
 @dataclass
+class AddressProbeResult:
+    address: str
+    reachable: bool | None
+    method: str
+    error: str | None = None
+
+
+@dataclass
+class AddressProbeSnapshot:
+    request_id: str | None
+    interface: str
+    checked_at: str
+    results: list[AddressProbeResult]
+
+
+@dataclass
 class CoreNetworkSnapshot:
     mode: NetMode
     ap: AccessPointInfo
@@ -80,6 +96,8 @@ class CoreNetworkSnapshot:
     suffix: str | None
     interfaces: list[NetworkInterfaceInfo] = field(default_factory=list)
     request_in_flight: dict[str, Any] | None = None
+    previous_host_network: HostNetworkSettings | None = None
+    last_address_probe: AddressProbeSnapshot | None = None
     last_event: str | None = None
     last_error: str | None = None
     available_networks: list[WifiNetwork] = field(default_factory=list)

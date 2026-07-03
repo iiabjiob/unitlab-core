@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 from unitlab_rpi_net_agent.agent import CoreNetworkAgent
 from unitlab_rpi_net_agent.config import AgentConfig
+from unitlab_rpi_net_agent.models import AddressProbeResult, CommandEnvelope, HostNetworkSettings
 from unitlab_rpi_net_agent.nmcli_adapter import DeviceStatus
 
 
@@ -104,3 +106,90 @@ def test_core_network_agent_builds_interface_snapshots_from_device_statuses(tmp_
     assert snapshots[0].default_route_metric == 100
     assert snapshots[1].device_type == "wifi"
     assert snapshots[1].carrier is False
+
+
+def test_core_network_agent_records_previous_network_settings_for_restore(tmp_path: Path) -> None:
+    agent = CoreNetworkAgent(_make_config(tmp_path))
+    current = agent._snapshot.host_network
+    next_settings = HostNetworkSettings(
+        interface="eth0",
+        profile="unitlab-lan",
+        ipv4_mode="manual",
+        address_cidr="192.168.20.10/24",
+        gateway=None,
+        dns_servers=[],
+        proxy_url=None,
+        proxy_no_proxy=[],
+    )
+
+    class FakeNmcli:
+        async def ensure_ethernet_profile(self, **_kwargs) -> None:
+            return None
+
+        async def activate_connection(self, _profile: str) -> None:
+            return None
+
+        async def device_status(self, interface: str) -> DeviceStatus:
+            return DeviceStatus(
+                interface_name=interface,
+                device_type="ethernet",
+                state_code="100",
+                state_text="connected",
+                connection="unitlab-lan",
+                ip4="192.168.20.10",
+                ip4_prefix=24,
+                ip4_cidr="192.168.20.10/24",
+            )
+
+        async def device_statuses(self) -> list[DeviceStatus]:
+            return []
+
+    class FakeRedis:
+        async def set_state(self, _snapshot) -> None:
+            return None
+
+        async def publish_event(self, _event_type, _payload) -> None:
+            return None
+
+    agent.nmcli = FakeNmcli()  # type: ignore[assignment]
+    agent.redis = FakeRedis()  # type: ignore[assignment]
+
+    asyncio.run(agent._apply_network_settings(
+        cmd=CommandEnvelope(entry_id="1", request_id="req", action="apply_network_settings", payload={}),
+        settings=next_settings,
+    ))
+
+    assert agent._snapshot.previous_host_network == current
+    assert agent._snapshot.host_network.address_cidr == "192.168.20.10/24"
+
+
+def test_core_network_agent_probes_addresses_through_adapter(tmp_path: Path) -> None:
+    agent = CoreNetworkAgent(_make_config(tmp_path))
+
+    class FakeNmcli:
+        async def probe_ipv4_address(self, *, iface: str, address: str, timeout_sec: int) -> AddressProbeResult:
+            return AddressProbeResult(address=address, reachable=address.endswith(".10"), method=f"fake:{iface}:{timeout_sec}")
+
+    class FakeRedis:
+        async def set_state(self, _snapshot) -> None:
+            return None
+
+        async def publish_event(self, _event_type, _payload) -> None:
+            return None
+
+    agent.nmcli = FakeNmcli()  # type: ignore[assignment]
+    agent.redis = FakeRedis()  # type: ignore[assignment]
+
+    asyncio.run(agent._handle_probe_addresses(
+        CommandEnvelope(
+            entry_id="1",
+            request_id="probe-1",
+            action="probe_addresses",
+            payload={"interface": "eth0", "addresses": ["192.168.10.10", "192.168.10.11"], "timeout_sec": 1},
+        )
+    ))
+
+    probe = agent._snapshot.last_address_probe
+    assert probe is not None
+    assert probe.request_id == "probe-1"
+    assert [result.reachable for result in probe.results] == [True, False]

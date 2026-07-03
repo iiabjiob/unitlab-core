@@ -294,6 +294,107 @@
               />
             </div>
           </div>
+
+          <div v-else-if="step === 'network'" class="signal-import-modal__section-stack">
+            <div>
+              <p class="signal-import-modal__section-title">Configure Network</p>
+              <p class="signal-import-modal__muted signal-import-modal__muted--xs">
+                Apply a static RJ45 address only when the Pi is connected to the project IEC 61850 network.
+              </p>
+            </div>
+
+            <UiAlert
+              v-if="!networkDeviceIps.length"
+              type="info"
+              message="No device IP addresses were detected from the selected import metadata. Network configuration is optional for this import."
+            />
+
+            <div v-if="networkDeviceIps.length" class="signal-import-modal__network-panel">
+              <div class="signal-import-modal__network-grid">
+                <div class="signal-import-modal__network-fact">
+                  <span class="signal-import-modal__network-label">Detected subnet</span>
+                  <span class="signal-import-modal__network-value">{{ selectedNetworkCidr || "Select subnet" }}</span>
+                </div>
+                <div class="signal-import-modal__network-fact">
+                  <span class="signal-import-modal__network-label">Ethernet interface</span>
+                  <span class="signal-import-modal__network-value">{{ detectedEthernetInterface?.interface_name || "Not detected" }}</span>
+                </div>
+                <div class="signal-import-modal__network-fact">
+                  <span class="signal-import-modal__network-label">Current IP</span>
+                  <span class="signal-import-modal__network-value">{{ detectedEthernetInterface?.local_ip || "No IPv4" }}</span>
+                </div>
+                <div class="signal-import-modal__network-fact">
+                  <span class="signal-import-modal__network-label">Link status</span>
+                  <span class="signal-import-modal__network-value">{{ ethernetLinkStatus }}</span>
+                </div>
+                <div class="signal-import-modal__network-fact">
+                  <span class="signal-import-modal__network-label">Suggested IP</span>
+                  <span class="signal-import-modal__network-value">{{ suggestedPiIp || "No free candidate" }}</span>
+                </div>
+                <div class="signal-import-modal__network-fact">
+                  <span class="signal-import-modal__network-label">Subnet mask</span>
+                  <span class="signal-import-modal__network-value">{{ selectedSubnetMask || "255.255.255.0" }}</span>
+                </div>
+              </div>
+
+              <div v-if="networkSubnetOptions.length > 1" class="signal-import-modal__field">
+                <p class="signal-import-modal__label">Project subnet</p>
+                <UiAffinoListbox
+                  v-model="selectedNetworkCidr"
+                  :options="networkSubnetOptions"
+                  placeholder="Select project subnet"
+                  aria-label="Project subnet"
+                  :disabled="loading || parsing || networkBusy"
+                />
+                <p class="signal-import-modal__warning-text">
+                  Multiple /24 networks were found in the imported device IPs. Select the subnet connected to the Pi RJ45 port.
+                </p>
+              </div>
+
+              <UiAlert
+                v-if="networkWarning"
+                type="warning"
+                :message="networkWarning"
+              />
+
+              <div class="signal-import-modal__network-actions">
+                <UiButton
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  :disabled="!canApplyNetwork || networkBusy || loading || parsing"
+                  @click="applySuggestedNetwork"
+                >
+                  {{ networkBusy ? "Applying..." : "Apply" }}
+                </UiButton>
+                <UiButton
+                  v-if="coreNetworkStore.snapshot?.previous_host_network"
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  :disabled="networkBusy || loading || parsing"
+                  @click="restorePreviousNetwork"
+                >
+                  Restore previous config
+                </UiButton>
+              </div>
+
+              <p v-if="networkProgress" class="signal-import-modal__muted signal-import-modal__muted--xs">
+                {{ networkProgress }}
+              </p>
+              <UiAlert v-if="networkError" type="error" :message="networkError" />
+
+              <div v-if="networkSummary" class="signal-import-modal__network-summary">
+                <p class="signal-import-modal__mapping-title">Connectivity summary</p>
+                <p class="signal-import-modal__muted signal-import-modal__muted--xs">
+                  Reachable: {{ networkSummary.reachable.length }} · Not reachable: {{ networkSummary.notReachable.length }} · Unknown: {{ networkSummary.unknown.length }}
+                </p>
+                <p class="signal-import-modal__muted signal-import-modal__muted--xs">
+                  Current config: {{ networkSummary.currentConfig }}
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -301,7 +402,7 @@
 
     <template #footer>
       <div class="signal-import-modal__footer">
-        <UiButton type="button" variant="secondary" @click="emitClose" :disabled="loading || parsing">
+        <UiButton type="button" variant="secondary" @click="emitClose" :disabled="loading || parsing || networkBusy">
           Cancel
         </UiButton>
         <UiButton
@@ -309,7 +410,7 @@
           type="button"
           variant="ghost"
           @click="goToPreviousStep"
-          :disabled="loading || parsing"
+          :disabled="loading || parsing || networkBusy"
         >
           Back
         </UiButton>
@@ -317,7 +418,7 @@
           v-if="!isFinalStep"
           type="button"
           variant="primary"
-          :disabled="!canAdvance || loading"
+          :disabled="!canAdvance || loading || networkBusy"
           @click="goToNextStep"
         >
           Next
@@ -327,7 +428,7 @@
           type="submit"
           form="signal-import-form"
           variant="primary"
-          :disabled="!canSubmitFinal || loading"
+          :disabled="!canSubmitFinal || loading || networkBusy"
         >
           <template v-if="loading">
             📥 Importing…
@@ -359,22 +460,37 @@ import UiAlert from "@/components/ui/UiAlert.vue"
 import UiAffinoListbox from "@/components/ui/UiAffinoListbox.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import UiModal from "@/components/ui/UiModal.vue"
+import { useCoreNetworkStore } from "@/stores/coreNetworkStore"
 import { useSignalSheetStore } from "@/stores/signalSheetStore"
 import { useToastStore } from "@/stores/toastStore"
+import type { CoreNetAddressProbeSnapshot } from "@/types/coreNetwork"
 import type {
   InternalSignalType,
   SignalImportMeta,
   SignalImportVerificationMeta,
   SignalSheetPreset,
 } from "@/types/signal"
+import {
+  collectUniqueDeviceIps,
+  inferProjectSubnets,
+  isIpInSubnet,
+  selectRj45Interface,
+  subnetMaskForCidr,
+  suggestStaticPiAddress,
+} from "@/pages/signals/utils/importNetworkConfiguration"
 
 const props = defineProps<{ open: boolean; seedFile?: File | null }>()
 
 const emit = defineEmits<{ (e: "close"): void; (e: "imported", sheetId: number): void }>()
 
+const coreNetworkStore = useCoreNetworkStore()
 const signalSheetStore = useSignalSheetStore()
 const toastStore = useToastStore()
 const ALLOWED_EXTENSIONS = ["xls", "xlsx", "xlsm"]
+const NETWORK_POLL_DELAY_MS = 1000
+const NETWORK_APPLY_TIMEOUT_MS = 15000
+const NETWORK_PROBE_TIMEOUT_MS = 12000
+const NETWORK_PROBE_BATCH_SIZE = 256
 
 const BASE_STEP_ITEMS = [
   { id: "columns", label: "Columns" },
@@ -382,7 +498,11 @@ const BASE_STEP_ITEMS = [
   { id: "types", label: "Type mapping" },
 ] as const
 const VERIFICATION_STEP_ITEM = { id: "verification", label: "IEC61850" } as const
-type WizardStep = (typeof BASE_STEP_ITEMS)[number]["id"] | typeof VERIFICATION_STEP_ITEM.id
+const NETWORK_STEP_ITEM = { id: "network", label: "Configure Network" } as const
+type WizardStep =
+  | (typeof BASE_STEP_ITEMS)[number]["id"]
+  | typeof VERIFICATION_STEP_ITEM.id
+  | typeof NETWORK_STEP_ITEM.id
 
 const step = ref<WizardStep>("columns")
 const file = ref<File | null>(null)
@@ -414,8 +534,19 @@ const applyingPreset = ref(false)
 const suppressTypeMappingReset = ref(false)
 const deletePresetOpen = ref(false)
 const lastSeedFileKey = ref("")
+const selectedNetworkCidr = ref<string | null>(null)
+const networkBusy = ref(false)
+const networkProgress = ref<string | null>(null)
+const networkError = ref<string | null>(null)
+const occupiedCandidateIps = ref<string[]>([])
+const networkSummary = ref<{
+  reachable: string[]
+  notReachable: string[]
+  unknown: string[]
+  currentConfig: string
+} | null>(null)
 
-const stepItems = computed(() => [...BASE_STEP_ITEMS, VERIFICATION_STEP_ITEM])
+const stepItems = computed(() => [...BASE_STEP_ITEMS, VERIFICATION_STEP_ITEM, NETWORK_STEP_ITEM])
 const stepOrder = computed<WizardStep[]>(() => stepItems.value.map(item => item.id))
 const internalTypeOptions: Array<{ value: InternalSignalType; label: string }> = [
   { value: "di", label: "Digital input (DI)" },
@@ -457,21 +588,6 @@ const terminalStepValid = computed(
 const typeStepValid = computed(
   () => terminalStepValid.value && typeColumnIndex.value !== null && typeValueOptions.value.length > 0 && hasTypeMappings.value,
 )
-const canAdvance = computed(() => {
-  if (step.value === "columns") return columnsStepValid.value
-  if (step.value === "terminal") return terminalStepValid.value
-  if (step.value === "types") return typeStepValid.value
-  return false
-})
-const canSubmitFinal = computed(() => {
-  if (!isFinalStep.value) {
-    return false
-  }
-  if (step.value === "verification") {
-    return typeStepValid.value && (verificationSelectionState.value === "empty" || verificationSelectionState.value === "ready")
-  }
-  return typeStepValid.value
-})
 const presets = computed(() => signalSheetStore.presets)
 const presetListboxOptions = computed(() => [
   { value: null, label: "Manual wizard" },
@@ -488,6 +604,54 @@ const selectedPreset = computed<SignalSheetPreset | null>(() =>
 )
 const verificationColumnListboxOptions = computed(() =>
   availableColumns.value.map(column => ({ value: column.header, label: column.header })),
+)
+const transportHostColumnIndex = computed(() => {
+  if (!transportHostColumnName.value) return null
+  return availableColumns.value.find(column => column.header === transportHostColumnName.value)?.index ?? null
+})
+const networkDeviceIps = computed(() => {
+  const rows = selectedSheetName.value ? sheetRows.value[selectedSheetName.value] ?? [] : []
+  return collectUniqueDeviceIps(rows, transportHostColumnIndex.value)
+})
+const networkSubnets = computed(() => inferProjectSubnets(networkDeviceIps.value))
+const networkSubnetOptions = computed(() =>
+  networkSubnets.value.map(subnet => ({
+    value: subnet.cidr,
+    label: `${subnet.cidr} · ${subnet.deviceCount} device${subnet.deviceCount === 1 ? "" : "s"}`,
+  })),
+)
+const detectedEthernetInterface = computed(() =>
+  selectRj45Interface(coreNetworkStore.interfaces, coreNetworkStore.hostNetwork?.interface),
+)
+const selectedSubnetMask = computed(() => subnetMaskForCidr(selectedNetworkCidr.value))
+const suggestedPiIp = computed(() =>
+  suggestStaticPiAddress(selectedNetworkCidr.value, networkDeviceIps.value, occupiedCandidateIps.value),
+)
+const ethernetLinkStatus = computed(() => {
+  const iface = detectedEthernetInterface.value
+  if (!iface) return "Not detected"
+  if (iface.carrier === true) return iface.oper_state || iface.state || "link detected"
+  if (iface.carrier === false) return iface.oper_state || iface.state || "no carrier"
+  return iface.oper_state || iface.state || "unknown"
+})
+const networkWarning = computed(() => {
+  if (!networkDeviceIps.value.length) return null
+  if (!detectedEthernetInterface.value) return "No wired RJ45 interface was detected. Wi-Fi will not be modified."
+  if (detectedEthernetInterface.value.carrier === false) return "RJ45 link is down. Connect the project network before applying."
+  if (
+    detectedEthernetInterface.value.local_ip
+    && selectedNetworkCidr.value
+    && !isIpInSubnet(detectedEthernetInterface.value.local_ip, selectedNetworkCidr.value)
+  ) {
+    return "Current RJ45 IP is not in the imported project subnet."
+  }
+  return null
+})
+const canApplyNetwork = computed(() =>
+  !!selectedNetworkCidr.value
+  && !!detectedEthernetInterface.value
+  && !!suggestedPiIp.value
+  && networkDeviceIps.value.length > 0,
 )
 const verificationSelectionState = computed(() => {
   const host = transportHostColumnName.value
@@ -521,6 +685,24 @@ const deletePresetMessage = computed(() => {
   if (!preset) return ""
   return `Preset "${preset.name}" will be deleted.`
 })
+const canAdvance = computed(() => {
+  if (step.value === "columns") return columnsStepValid.value
+  if (step.value === "terminal") return terminalStepValid.value
+  if (step.value === "types") return typeStepValid.value
+  if (step.value === "verification") {
+    return typeStepValid.value && (verificationSelectionState.value === "empty" || verificationSelectionState.value === "ready")
+  }
+  return false
+})
+const canSubmitFinal = computed(() => {
+  if (!isFinalStep.value) {
+    return false
+  }
+  if (step.value === "network") {
+    return typeStepValid.value && (verificationSelectionState.value === "empty" || verificationSelectionState.value === "ready")
+  }
+  return typeStepValid.value
+})
 
 function stepIndicatorClass(target: WizardStep) {
   const targetIndex = stepOrder.value.indexOf(target)
@@ -536,6 +718,9 @@ function goToNextStep() {
   const currentIndex = activeStepIndex.value
   if (currentIndex === -1 || currentIndex >= stepOrder.value.length - 1) return
   step.value = stepOrder.value[currentIndex + 1]
+  if (step.value === "network") {
+    void coreNetworkStore.refreshInterfaces().catch(() => undefined)
+  }
 }
 
 function goToPreviousStep() {
@@ -560,6 +745,7 @@ async function onFileChange(e: Event) {
 
 function resetWorkflowState(options: { preserveError?: boolean } = {}) {
   clearWorkbookState()
+  resetNetworkState()
   file.value = null
   fileName.value = ""
   terminalColumnIndex.value = null
@@ -585,6 +771,15 @@ function clearWorkbookState() {
   selectedColumnsBySheet.value = {}
   terminalColumnIndex.value = null
   step.value = "columns"
+}
+
+function resetNetworkState() {
+  selectedNetworkCidr.value = null
+  networkBusy.value = false
+  networkProgress.value = null
+  networkError.value = null
+  occupiedCandidateIps.value = []
+  networkSummary.value = null
 }
 
 async function handleSubmit() {
@@ -1168,6 +1363,152 @@ function buildVerificationMetadata(): SignalImportVerificationMeta | null {
   }
 }
 
+async function applySuggestedNetwork() {
+  const iface = detectedEthernetInterface.value
+  if (!iface || !selectedNetworkCidr.value) return
+  networkBusy.value = true
+  networkError.value = null
+  networkSummary.value = null
+  try {
+    let candidate = suggestedPiIp.value
+    while (candidate) {
+      networkProgress.value = `Checking ${candidate} for address conflict.`
+      const conflictProbe = await requestAddressProbe(iface.interface_name, [candidate])
+      const result = conflictProbe?.results.find(item => item.address === candidate)
+      if (result?.reachable === true) {
+        occupiedCandidateIps.value = [...occupiedCandidateIps.value, candidate]
+        candidate = suggestStaticPiAddress(selectedNetworkCidr.value, networkDeviceIps.value, occupiedCandidateIps.value)
+        continue
+      }
+      break
+    }
+
+    if (!candidate) {
+      throw new Error("No available static IP candidate was found in the selected subnet.")
+    }
+
+    const prefix = selectedNetworkCidr.value.split("/", 2)[1] || "24"
+    networkProgress.value = `Applying ${candidate}/${prefix} to ${iface.interface_name}.`
+    await coreNetworkStore.applySettings({
+      interface: iface.interface_name,
+      profile: coreNetworkStore.hostNetwork?.profile || "unitlab-lan",
+      ipv4_mode: "manual",
+      address_cidr: `${candidate}/${prefix}`,
+      gateway: null,
+      dns_servers: [],
+      proxy_url: coreNetworkStore.hostNetwork?.proxy_url ?? null,
+      proxy_no_proxy: coreNetworkStore.hostNetwork?.proxy_no_proxy ?? [],
+    })
+    await waitForAppliedAddress(iface.interface_name, candidate)
+
+    networkProgress.value = "Testing reachability of imported device IPs."
+    const reachability = await requestAddressProbes(iface.interface_name, networkDeviceIps.value)
+    networkSummary.value = buildNetworkSummary(reachability)
+    networkProgress.value = "Network configuration applied and verified."
+    toastStore.success("Network configuration applied")
+  } catch (err) {
+    networkError.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    networkBusy.value = false
+  }
+}
+
+async function restorePreviousNetwork() {
+  networkBusy.value = true
+  networkError.value = null
+  try {
+    networkProgress.value = "Restoring previous RJ45 configuration."
+    await coreNetworkStore.restoreSettings()
+    await delay(NETWORK_POLL_DELAY_MS)
+    await coreNetworkStore.refreshState({ force: true })
+    networkProgress.value = "Previous network configuration restore requested."
+    toastStore.success("Previous network configuration restore requested")
+  } catch (err) {
+    networkError.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    networkBusy.value = false
+  }
+}
+
+async function requestAddressProbe(interfaceName: string, addresses: string[]): Promise<CoreNetAddressProbeSnapshot | null> {
+  const uniqueAddresses = Array.from(new Set(addresses)).filter(Boolean)
+  if (!uniqueAddresses.length) return null
+  const accepted = await coreNetworkStore.probeAddresses({
+    interface: interfaceName,
+    addresses: uniqueAddresses,
+    timeout_sec: 1,
+  })
+  const deadline = Date.now() + NETWORK_PROBE_TIMEOUT_MS
+  while (Date.now() < deadline) {
+    await delay(NETWORK_POLL_DELAY_MS)
+    await coreNetworkStore.refreshState({ force: true })
+    const probe = coreNetworkStore.snapshot?.last_address_probe
+    if (probe?.request_id === accepted.request_id) {
+      return probe
+    }
+  }
+  return coreNetworkStore.snapshot?.last_address_probe ?? null
+}
+
+async function requestAddressProbes(interfaceName: string, addresses: string[]): Promise<CoreNetAddressProbeSnapshot | null> {
+  const uniqueAddresses = Array.from(new Set(addresses)).filter(Boolean)
+  if (!uniqueAddresses.length) return null
+  const probes: CoreNetAddressProbeSnapshot[] = []
+  for (let index = 0; index < uniqueAddresses.length; index += NETWORK_PROBE_BATCH_SIZE) {
+    const batch = uniqueAddresses.slice(index, index + NETWORK_PROBE_BATCH_SIZE)
+    const probe = await requestAddressProbe(interfaceName, batch)
+    if (probe) probes.push(probe)
+  }
+  if (!probes.length) return null
+  const lastProbe = probes[probes.length - 1]
+  return {
+    request_id: lastProbe?.request_id ?? null,
+    interface: interfaceName,
+    checked_at: lastProbe?.checked_at ?? new Date().toISOString(),
+    results: probes.flatMap(probe => probe.results),
+  }
+}
+
+async function waitForAppliedAddress(interfaceName: string, expectedIp: string) {
+  const deadline = Date.now() + NETWORK_APPLY_TIMEOUT_MS
+  while (Date.now() < deadline) {
+    await delay(NETWORK_POLL_DELAY_MS)
+    await coreNetworkStore.refreshState({ force: true })
+    const iface = coreNetworkStore.interfaces.find(item => item.interface_name === interfaceName)
+    if (iface?.local_ip === expectedIp) {
+      return
+    }
+  }
+  throw new Error(`Timed out waiting for ${interfaceName} to report ${expectedIp}.`)
+}
+
+function buildNetworkSummary(probe: CoreNetAddressProbeSnapshot | null) {
+  const reachable: string[] = []
+  const notReachable: string[] = []
+  const unknown: string[] = []
+  const results = probe?.results ?? []
+  const resultByAddress = new Map(results.map(result => [result.address, result]))
+  for (const ip of networkDeviceIps.value) {
+    const result = resultByAddress.get(ip)
+    if (!result || result.reachable === null) {
+      unknown.push(ip)
+    } else if (result.reachable) {
+      reachable.push(ip)
+    } else {
+      notReachable.push(ip)
+    }
+  }
+  const iface = detectedEthernetInterface.value
+  const currentConfig = iface
+    ? `${iface.interface_name} ${iface.local_ip || "no-ip"}${iface.netmask ? `/${iface.netmask}` : ""}`
+    : "RJ45 interface not detected"
+  return { reachable, notReachable, unknown, currentConfig }
+}
+
+function delay(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
 watch(
   () => selectedSheetName.value,
   sheet => {
@@ -1237,9 +1578,40 @@ watch(
 )
 
 watch(
+  networkSubnets,
+  subnets => {
+    if (!subnets.length) {
+      selectedNetworkCidr.value = null
+      occupiedCandidateIps.value = []
+      networkSummary.value = null
+      return
+    }
+    if (!selectedNetworkCidr.value || !subnets.some(subnet => subnet.cidr === selectedNetworkCidr.value)) {
+      selectedNetworkCidr.value = subnets[0]?.cidr ?? null
+      occupiedCandidateIps.value = []
+      networkSummary.value = null
+    }
+  },
+  { immediate: true },
+)
+
+watch(
+  () => selectedNetworkCidr.value,
+  () => {
+    occupiedCandidateIps.value = []
+    networkSummary.value = null
+    networkError.value = null
+  },
+)
+
+watch(
   () => props.open,
   (open) => {
-    if (!open) return
+    if (!open) {
+      coreNetworkStore.stopMonitoring()
+      return
+    }
+    coreNetworkStore.startMonitoring()
     void signalSheetStore.refreshPresets()
   },
   { immediate: true },
@@ -1307,7 +1679,10 @@ watch(
 .signal-import-modal__dropzone-content,
 .signal-import-modal__preset-block,
 .signal-import-modal__section-stack,
-.signal-import-modal__mapping-list {
+.signal-import-modal__mapping-list,
+.signal-import-modal__network-panel,
+.signal-import-modal__network-actions,
+.signal-import-modal__network-summary {
   display: flex;
 }
 
@@ -1700,6 +2075,56 @@ watch(
   padding: 0.5rem 0.75rem;
 }
 
+.signal-import-modal__network-panel {
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.signal-import-modal__network-grid {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: 1fr;
+}
+
+.signal-import-modal__network-fact {
+  background: var(--color-white);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+  padding: 0.625rem 0.75rem;
+}
+
+.signal-import-modal__network-label {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.signal-import-modal__network-value {
+  color: var(--color-neutral-800);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.signal-import-modal__network-actions {
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.signal-import-modal__network-summary {
+  background: var(--color-neutral-50);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-lg);
+  flex-direction: column;
+  gap: 0.375rem;
+  padding: 0.75rem;
+}
+
 .signal-import-modal__input {
   background: var(--color-white);
   border: 1px solid var(--color-neutral-300);
@@ -1759,6 +2184,7 @@ watch(
 :global(.dark .signal-import-modal__section-title),
 :global(.dark .signal-import-modal__mapping-title),
 :global(.dark .signal-import-modal__option-label),
+:global(.dark .signal-import-modal__network-value),
 :global(.dark .signal-import-modal__input) {
   color: var(--color-neutral-100);
 }
@@ -1773,9 +2199,19 @@ watch(
 :global(.dark .signal-import-modal__ready-card),
 :global(.dark .signal-import-modal__option),
 :global(.dark .signal-import-modal__mapping-row),
+:global(.dark .signal-import-modal__network-fact),
 :global(.dark .signal-import-modal__input) {
   background: var(--color-neutral-900);
   border-color: var(--color-neutral-700);
+}
+
+:global(.dark .signal-import-modal__network-summary) {
+  background: color-mix(in srgb, var(--color-neutral-900) 55%, transparent);
+  border-color: var(--color-neutral-700);
+}
+
+:global(.dark .signal-import-modal__network-label) {
+  color: var(--color-neutral-400);
 }
 
 :global(.dark .signal-import-modal__dropzone--idle:hover) {
@@ -1830,6 +2266,10 @@ watch(
   }
 
   .signal-import-modal__option-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .signal-import-modal__network-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

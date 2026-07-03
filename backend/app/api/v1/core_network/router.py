@@ -10,6 +10,7 @@ from app.services.core_network_service import (
     CoreNetworkCommandAccepted,
     CoreNetworkCommandScanPayload,
     CoreNetworkConnectPayload,
+    CoreNetworkProbeAddressesPayload,
     enqueue_core_network_command,
     get_core_network_state,
 )
@@ -85,4 +86,19 @@ async def apply_core_network_settings(payload: CoreNetworkApplySettingsPayload) 
         "apply_network_settings",
         payload=payload.model_dump(exclude_none=True),
     )
+    return _accepted_to_response(accepted)
+
+
+@router.post("/probe-addresses", response_model=CoreNetworkCommandAcceptedResponse)
+async def probe_core_network_addresses(payload: CoreNetworkProbeAddressesPayload) -> CoreNetworkCommandAcceptedResponse:
+    accepted = await enqueue_core_network_command(
+        "probe_addresses",
+        payload=payload.model_dump(exclude_none=True),
+    )
+    return _accepted_to_response(accepted)
+
+
+@router.post("/restore-settings", response_model=CoreNetworkCommandAcceptedResponse)
+async def restore_core_network_settings() -> CoreNetworkCommandAcceptedResponse:
+    accepted = await enqueue_core_network_command("restore_network_settings")
     return _accepted_to_response(accepted)

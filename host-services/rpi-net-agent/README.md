@@ -80,6 +80,22 @@ Supported actions:
 - `disconnect_sta`
 - `restart_ap`
 - `apply_network_settings`
+- `probe_addresses`
+- `restore_network_settings`
+
+`probe_addresses` checks explicit IPv4 addresses through the selected RJ45 interface using `ping` or `arping` when available:
+
+```json
+{
+  "request_id": "uuid",
+  "action": "probe_addresses",
+  "interface": "eth0",
+  "addresses": ["192.168.10.10", "192.168.10.21"],
+  "timeout_sec": 1
+}
+```
+
+`restore_network_settings` reapplies the previous host RJ45 settings recorded before the last network apply.
 
 ### Event stream
 
@@ -97,6 +113,8 @@ Events emitted:
 - `command_failed`
 - `command_rejected`
 - `command_invalid`
+- `address_probe_started`
+- `address_probe_result`
 
 ### State snapshot key
 
@@ -155,6 +173,8 @@ Snapshot example:
       "state": "disconnected"
     }
   ],
+  "previous_host_network": null,
+  "last_address_probe": null,
   "request_in_flight": null,
   "last_event": "ap_active",
   "last_error": null,
@@ -189,6 +209,8 @@ Snapshot example:
 
 - The agent currently assumes single-radio mode transitions (AP or STA active).
 - Host Ethernet settings are persisted through the host agent and applied via `nmcli` on the host OS.
+- The previous host Ethernet settings are retained in the live snapshot after apply so the UI can request a restore.
+- Address probes are best-effort and report `reachable: null` when neither `ping` nor `arping` is available.
 - Interface snapshots expose link and route hints (`carrier`, `oper_state`, `is_default_route`, `default_route_metric`) when Linux host data is available.
 - Interface recommendation and link warnings depend on Linux host data from `nmcli`, `/proc/net/route`, and `/sys/class/net`.
 - `scan` parsing uses `nmcli -t` output and may need escaping hardening for exotic SSIDs containing separators.

@@ -2,8 +2,10 @@ import { computed, ref } from "vue"
 import { defineStore } from "pinia"
 import {
   applyCoreNetworkSettings,
+  enqueueCoreNetworkAddressProbe,
   enqueueCoreNetworkConnect,
   enqueueCoreNetworkDisconnect,
+  enqueueCoreNetworkRestoreSettings,
   enqueueCoreNetworkRestartAp,
   enqueueCoreNetworkScan,
   enqueueCoreNetworkStatus,
@@ -129,6 +131,14 @@ export const useCoreNetworkStore = defineStore("coreNetworkStore", () => {
     return _runCommand(() => applyCoreNetworkSettings(payload), "Queued core-network apply_network_settings")
   }
 
+  async function probeAddresses(payload: { interface: string; addresses: string[]; timeout_sec?: number | null }) {
+    return _runCommand(() => enqueueCoreNetworkAddressProbe(payload), "Queued core-network probe_addresses")
+  }
+
+  async function restoreSettings() {
+    return _runCommand(() => enqueueCoreNetworkRestoreSettings(), "Queued core-network restore_network_settings")
+  }
+
   function startMonitoring() {
     if (typeof window === "undefined") return
     monitorSubscribers += 1
@@ -199,5 +209,7 @@ export const useCoreNetworkStore = defineStore("coreNetworkStore", () => {
     disconnectSta,
     restartAp,
     applySettings,
+    probeAddresses,
+    restoreSettings,
   }
 })

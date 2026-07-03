@@ -53,6 +53,20 @@ export interface CoreNetHostNetworkSettings {
   last_error?: string | null
 }
 
+export interface CoreNetAddressProbeResult {
+  address: string
+  reachable: boolean | null
+  method: string
+  error?: string | null
+}
+
+export interface CoreNetAddressProbeSnapshot {
+  request_id?: string | null
+  interface: string
+  checked_at: string
+  results: CoreNetAddressProbeResult[]
+}
+
 export interface CoreNetRequestInFlight {
   request_id: string
   entry_id?: string
@@ -68,6 +82,8 @@ export interface CoreNetworkSnapshot {
   mac: string | null
   suffix: string | null
   interfaces?: CoreNetNetworkInterfaceInfo[]
+  previous_host_network?: CoreNetHostNetworkSettings | null
+  last_address_probe?: CoreNetAddressProbeSnapshot | null
   request_in_flight?: CoreNetRequestInFlight | null
   last_event?: string | null
   last_error?: string | null

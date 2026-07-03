@@ -4,11 +4,12 @@ import asyncio
 import hashlib
 import logging
 import re
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
 from .config import AgentConfig
-from .models import WifiNetwork
+from .models import AddressProbeResult, WifiNetwork
 
 
 logger = logging.getLogger("unitlab.net_agent.nmcli")
@@ -61,6 +62,26 @@ class NmcliAdapter:
         if check and proc.returncode != 0:
             raise NmcliError(f"nmcli failed ({proc.returncode}): {' '.join(cmd)} :: {err or out}")
         return out
+
+    async def _run_external(self, *args: str, timeout: int, check: bool = False) -> tuple[int, str, str]:
+        if self.config.dry_run:
+            logger.info("[dry-run] %s", " ".join(args))
+            return 1, "", "dry-run"
+        proc = await asyncio.create_subprocess_exec(
+            *args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        except asyncio.TimeoutError:
+            proc.kill()
+            return 124, "", "timeout"
+        out = stdout.decode("utf-8", errors="ignore").strip()
+        err = stderr.decode("utf-8", errors="ignore").strip()
+        if check and proc.returncode != 0:
+            raise NmcliError(f"command failed ({proc.returncode}): {' '.join(args)} :: {err or out}")
+        return proc.returncode, out, err
 
     @staticmethod
     def _read_text(path: Path) -> str | None:
@@ -298,6 +319,53 @@ class NmcliAdapter:
             )
         networks.sort(key=lambda n: (-(n.signal or -1), n.ssid.lower()))
         return networks
+
+    async def probe_ipv4_address(self, *, iface: str, address: str, timeout_sec: int = 1) -> AddressProbeResult:
+        timeout = max(1, timeout_sec)
+        if shutil.which("ping"):
+            code, _out, err = await self._run_external(
+                "ping",
+                "-c",
+                "1",
+                "-W",
+                str(timeout),
+                "-I",
+                iface,
+                address,
+                timeout=timeout + 1,
+            )
+            return AddressProbeResult(
+                address=address,
+                reachable=code == 0,
+                method="ping",
+                error=None if code in {0, 1} else (err or f"exit {code}"),
+            )
+
+        if shutil.which("arping"):
+            code, _out, err = await self._run_external(
+                "arping",
+                "-c",
+                "1",
+                "-w",
+                str(timeout),
+                "-I",
+                iface,
+                address,
+                timeout=timeout + 1,
+            )
+            return AddressProbeResult(
+                address=address,
+                reachable=code == 0,
+                method="arping",
+                error=None if code in {0, 1} else (err or f"exit {code}"),
+            )
+
+        return AddressProbeResult(
+            address=address,
+            reachable=None,
+            method="unavailable",
+            error="Neither ping nor arping is available on the host",
+        )
 
     def _sta_profile_name(self, ssid: str) -> str:
         suffix = hashlib.sha1(ssid.encode("utf-8")).hexdigest()[:8]

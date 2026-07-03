@@ -13,6 +13,7 @@ from typing import Any
 from .config import AgentConfig
 from .models import (
     AccessPointInfo,
+    AddressProbeSnapshot,
     CommandEnvelope,
     CoreNetworkSnapshot,
     HostNetworkSettings,
@@ -347,6 +348,10 @@ class CoreNetworkAgent:
                 await self._enter_ap_mode(reason="restart_ap", request_id=cmd.request_id)
             elif action == "apply_network_settings":
                 await self._handle_apply_network_settings(cmd)
+            elif action == "restore_network_settings":
+                await self._handle_restore_network_settings(cmd)
+            elif action == "probe_addresses":
+                await self._handle_probe_addresses(cmd)
             else:
                 await self._publish_event_best_effort(
                     "command_rejected",
@@ -440,6 +445,67 @@ class CoreNetworkAgent:
 
     async def _handle_apply_network_settings(self, cmd: CommandEnvelope) -> None:
         settings = self._normalize_host_network_settings(cmd.payload)
+        await self._apply_network_settings(cmd=cmd, settings=settings)
+
+    async def _handle_restore_network_settings(self, cmd: CommandEnvelope) -> None:
+        previous = self._snapshot.previous_host_network
+        if previous is None:
+            raise ValueError("No previous network configuration is available to restore")
+        await self._apply_network_settings(cmd=cmd, settings=previous)
+
+    async def _handle_probe_addresses(self, cmd: CommandEnvelope) -> None:
+        iface = self._sanitize_text(cmd.payload.get("interface")) or self._snapshot.host_network.interface
+        raw_addresses = cmd.payload.get("addresses")
+        if not isinstance(raw_addresses, list) or not raw_addresses:
+            raise ValueError("addresses is required")
+        timeout_sec = int(cmd.payload.get("timeout_sec") or 1)
+        addresses: list[str] = []
+        seen: set[str] = set()
+        for raw in raw_addresses:
+            text = self._sanitize_text(raw)
+            if not text:
+                continue
+            try:
+                parsed = ipaddress.ip_address(text)
+            except ValueError as exc:
+                raise ValueError(f"Invalid IPv4 address: {text}") from exc
+            if parsed.version != 4:
+                raise ValueError(f"Only IPv4 address probes are supported: {text}")
+            normalized = str(parsed)
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            addresses.append(normalized)
+        if not addresses:
+            raise ValueError("No valid IPv4 addresses provided")
+
+        await self._publish_event_best_effort(
+            "address_probe_started",
+            {"request_id": cmd.request_id, "interface": iface, "count": len(addresses)},
+        )
+        results = [
+            await self.nmcli.probe_ipv4_address(iface=iface, address=address, timeout_sec=timeout_sec)
+            for address in addresses
+        ]
+        self._snapshot.last_address_probe = AddressProbeSnapshot(
+            request_id=cmd.request_id,
+            interface=iface,
+            checked_at=self._current_timestamp(),
+            results=results,
+        )
+        await self._publish_snapshot(last_event="address_probe_result", request_id=cmd.request_id)
+        await self._publish_event_best_effort(
+            "address_probe_result",
+            {
+                "request_id": cmd.request_id,
+                "interface": iface,
+                "results": [asdict(result) for result in results],
+            },
+        )
+
+    async def _apply_network_settings(self, *, cmd: CommandEnvelope, settings: HostNetworkSettings) -> None:
+        previous_settings = self._snapshot.host_network
+        self._snapshot.previous_host_network = previous_settings
         self._snapshot.host_network = replace(settings, last_error=None)
         self._snapshot.host_network.last_applied_at = None
         await self._publish_snapshot(last_event="network_settings_applying", request_id=cmd.request_id)
@@ -450,6 +516,7 @@ class CoreNetworkAgent:
                 "interface": settings.interface,
                 "profile": settings.profile,
                 "ipv4_mode": settings.ipv4_mode,
+                "previous": asdict(previous_settings),
             },
         )
         try:
