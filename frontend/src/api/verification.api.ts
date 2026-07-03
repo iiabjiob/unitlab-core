@@ -1,4 +1,4 @@
-import { http } from "./http"
+import { http, type HttpRequestOptions } from "./http"
 import { API_V1 } from "./utils"
 import type {
   VerificationAutoRunStartPayload,
@@ -20,8 +20,19 @@ export const VerificationAPI = {
     return http.get<VerificationRunDetailResponse>(`${API_V1}/workspaces/${workspaceId}/verification/runs/${testRunId}`)
   },
 
-  startOrchestrationFromSignals(workspaceId: number, payload: VerificationAutoRunStartPayload) {
-    return http.post<VerificationRuntimeOrchestrationResponse>(`${API_V1}/workspaces/${workspaceId}/verification/orchestrations/from-signals`, payload)
+  startOrchestrationFromSignals(workspaceId: number, payload: VerificationAutoRunStartPayload, options?: HttpRequestOptions) {
+    return http.post<VerificationRuntimeOrchestrationResponse>(
+      `${API_V1}/workspaces/${workspaceId}/verification/orchestrations/from-signals`,
+      payload,
+      options,
+    )
+  },
+
+  getOrchestration(workspaceId: number, orchestrationId: string, options?: HttpRequestOptions) {
+    return http.get<VerificationRuntimeOrchestrationResponse>(
+      `${API_V1}/workspaces/${workspaceId}/verification/orchestrations/${encodeURIComponent(orchestrationId)}`,
+      options,
+    )
   },
 
   stopOrchestration(workspaceId: number, orchestrationId: string) {

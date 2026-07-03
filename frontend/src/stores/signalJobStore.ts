@@ -39,6 +39,32 @@ function toMillis(value: string | null | undefined): number {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
+function numericProgress(job: SignalAllocationJob): { total: number; done: number } {
+  return {
+    total: Math.max(0, Number(job.progress_total ?? 0)),
+    done: Math.max(0, Number(job.progress_done ?? 0)),
+  }
+}
+
+function mergeJobUpdate(existing: SignalAllocationJob | undefined, next: SignalAllocationJob): SignalAllocationJob {
+  if (!existing || isTerminalStatus(next.status)) {
+    return next
+  }
+
+  const existingProgress = numericProgress(existing)
+  const nextProgress = numericProgress(next)
+  const regressedProgress = nextProgress.done < existingProgress.done
+  return {
+    ...existing,
+    ...next,
+    progress_total: Math.max(existingProgress.total, nextProgress.total),
+    progress_done: Math.max(existingProgress.done, nextProgress.done),
+    message: regressedProgress && existing.status === next.status
+      ? existing.message
+      : next.message,
+  }
+}
+
 export const useSignalJobStore = defineStore("signalJobStore", () => {
   const workspaceStore = useWorkspaceStore()
   const jobsById = ref<Record<string, SignalAllocationJob>>({})
@@ -118,6 +144,18 @@ export const useSignalJobStore = defineStore("signalJobStore", () => {
       return true
     }
 
+    const existingProgress = numericProgress(existing)
+    const nextProgress = numericProgress(next)
+    if (
+      nextProgress.total !== existingProgress.total
+      || nextProgress.done !== existingProgress.done
+      || String(next.message ?? "") !== String(existing.message ?? "")
+      || String(next.error ?? "") !== String(existing.error ?? "")
+      || Object.keys(next.result ?? {}).length > 0
+    ) {
+      return true
+    }
+
     return nextUpdatedAt >= existingUpdatedAt
   }
 
@@ -152,9 +190,10 @@ export const useSignalJobStore = defineStore("signalJobStore", () => {
         : (existing?.result ?? {})
     )
 
+    const nextJob = mergeJobUpdate(existing, job)
+
     jobsById.value[job.job_id] = {
-      ...existing,
-      ...job,
+      ...nextJob,
       result: markRaw(mergedResult),
     }
 
@@ -169,18 +208,19 @@ export const useSignalJobStore = defineStore("signalJobStore", () => {
       return
     }
 
+    const storedJob = jobsById.value[job.job_id] ?? job
     clearTimeout(waiter.timer)
     clearInterval(waiter.pollTimer)
     waiters.delete(job.job_id)
     if (job.status === "succeeded") {
-      waiter.resolve(job)
+      waiter.resolve(storedJob)
       return
     }
     if (job.status === "cancelled") {
       waiter.reject(new Error("Signal allocation job cancelled"))
       return
     }
-    waiter.reject(new Error(job.error || job.message || "Signal allocation job failed"))
+    waiter.reject(new Error(storedJob.error || storedJob.message || "Signal allocation job failed"))
   }
 
   async function reconcileJobOnce(workspaceId: number, jobId: string): Promise<SignalAllocationJob | null> {

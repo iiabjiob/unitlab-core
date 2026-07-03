@@ -152,7 +152,7 @@ async def start_verification_runtime_orchestration_from_signals(
             payload=payload,
             db=db,
         )
-        result = _orchestrator.start(
+        result = _orchestrator.start_deferred(
             workspace_id=workspace_id,
             test_run_id=str(payload.test_run_id or f"online-61850-{workspace_id}"),
             verification_targets=context.subscription_plan.targets,

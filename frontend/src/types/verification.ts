@@ -189,6 +189,16 @@ export interface VerificationSubscriptionSnapshot {
   subscription_state: "pending" | "reserving" | "enabled" | "reporting" | "reconnecting" | "degraded" | "closed" | "failed"
   report_health: "unknown" | "healthy" | "degraded"
   last_report_at?: string | null
+  gi_requested?: boolean
+  last_report_value_count?: number
+  last_report_values?: Array<{
+    index?: number | null
+    reference?: string | null
+    data_reference?: string | null
+    value?: unknown
+    reason?: string | null
+    timestamp?: string | null
+  }>
   current_rptena_owner?: string | null
   stale_signal_count?: number | null
   last_error?: string | null

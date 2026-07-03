@@ -245,6 +245,9 @@ class VerificationSubscriptionSnapshotSchema(BaseModel):
     subscription_state: Literal["pending", "reserving", "enabled", "reporting", "reconnecting", "degraded", "closed", "failed"]
     report_health: Literal["unknown", "healthy", "degraded"]
     last_report_at: datetime | None = None
+    gi_requested: bool = False
+    last_report_value_count: int = 0
+    last_report_values: list[dict[str, Any]] = Field(default_factory=list)
     current_rptena_owner: str | None = None
     stale_signal_count: int | None = None
     last_error: str | None = None

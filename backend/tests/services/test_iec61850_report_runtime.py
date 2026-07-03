@@ -13,6 +13,7 @@ from app.services.iec61850 import (
     Iec61850OptionalFields,
     Iec61850ReportControlCandidate,
     Iec61850ReportControlRef,
+    Iec61850ReportControlReadResult,
     Iec61850ReportControlState,
     Iec61850ReportEvent,
     Iec61850ReportEventValue,
@@ -238,6 +239,91 @@ def test_backend_runtime_service_owns_simulator_session_flow() -> None:
         "release",
         "disconnect",
     ]
+
+
+def test_backend_runtime_service_accepts_read_result_from_session() -> None:
+    candidate = _candidate()
+    endpoint = _endpoint()
+    adapter = _ReadResultAdapter(candidate)
+    service = Iec61850ReportRuntimeService(adapter)
+
+    service.open_session(session_id="session-read-result", endpoint=endpoint, candidates=[candidate])
+    read_result = service.read_report_control(session_id="session-read-result", endpoint=endpoint, candidate=candidate)
+
+    assert read_result.state.runtime_status == Iec61850RuntimeStatus.READ
+    assert read_result.diagnostics == ()
+    assert read_result.candidate_id == candidate.id
+
+
+class _ReadResultAdapter:
+    def __init__(self, candidate: Iec61850ReportControlCandidate) -> None:
+        self._candidate = candidate
+
+    def connect(
+        self,
+        *,
+        session_id: str,
+        endpoint: Iec61850DeviceEndpoint,
+        candidates: list[Iec61850ReportControlCandidate],
+    ) -> "_ReadResultSession":
+        assert candidates == [self._candidate]
+        return _ReadResultSession(candidate=self._candidate)
+
+
+class _ReadResultSession:
+    def __init__(self, *, candidate: Iec61850ReportControlCandidate) -> None:
+        self._candidate = candidate
+
+    def read_report_control(self, reference: Iec61850ReportControlRef) -> Iec61850ReportControlReadResult:
+        state = Iec61850ReportControlState(
+            reference=reference,
+            runtime_status=Iec61850RuntimeStatus.READ,
+            rpt_id=self._candidate.rpt_id,
+            data_set_ref=self._candidate.data_set_ref,
+            conf_rev=self._candidate.conf_rev,
+            indexed=self._candidate.indexed,
+            buffer_time_ms=self._candidate.buffer_time_ms,
+            integrity_period_ms=self._candidate.integrity_period_ms,
+            trigger_options=self._candidate.trigger_options,
+            optional_fields=self._candidate.optional_fields,
+            signal_count=self._candidate.signal_count,
+        )
+        return Iec61850ReportControlReadResult(
+            endpoint=_endpoint(),
+            candidate_id=self._candidate.id,
+            state=state,
+            diagnostics=(),
+        )
+
+    def reserve_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:
+        return Iec61850ReportControlState(
+            reference=reference,
+            runtime_status=Iec61850RuntimeStatus.RESERVED,
+            rpt_id=self._candidate.rpt_id,
+            data_set_ref=self._candidate.data_set_ref,
+            conf_rev=self._candidate.conf_rev,
+            indexed=self._candidate.indexed,
+            buffer_time_ms=self._candidate.buffer_time_ms,
+            integrity_period_ms=self._candidate.integrity_period_ms,
+            trigger_options=self._candidate.trigger_options,
+            optional_fields=self._candidate.optional_fields,
+            signal_count=self._candidate.signal_count,
+        )
+
+    def release_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:
+        return self.reserve_report_control(reference, client_id)
+
+    def enable_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:
+        return self.reserve_report_control(reference, client_id)
+
+    def disable_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:
+        return self.reserve_report_control(reference, client_id)
+
+    def send_general_interrogation(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportEvent:
+        raise AssertionError("not used")
+
+    def disconnect(self) -> None:
+        return None
 
 
 def test_backend_runtime_subscription_plan_runner_reuses_one_session_for_multiple_reports_on_same_endpoint() -> None:

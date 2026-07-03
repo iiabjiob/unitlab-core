@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from contextlib import suppress
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from enum import Enum
+from threading import RLock
 from typing import Callable, Protocol, Sequence
 
 
@@ -135,6 +137,7 @@ class Iec61850RuntimeDiagnostic:
     code: str
     message: str
     reference: Iec61850ReportControlRef
+    details: dict | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -199,6 +202,7 @@ class Iec61850ReportSubscriptionPlanDevice:
     ied_name: str
     access_point_name: str
     reports: tuple[Iec61850ReportSubscriptionPlanReport, ...]
+    endpoint_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -364,6 +368,7 @@ class Iec61850ReportRuntimeService:
     def __init__(self, adapter: Iec61850ReportRuntimeAdapter) -> None:
         self._adapter = adapter
         self._sessions: dict[str, Iec61850ReportSession] = {}
+        self._sessions_lock = RLock()
 
     def open_session(
         self,
@@ -372,20 +377,28 @@ class Iec61850ReportRuntimeService:
         endpoint: Iec61850DeviceEndpoint,
         candidates: Sequence[Iec61850ReportControlCandidate],
     ) -> None:
-        if session_id in self._sessions:
-            raise Iec61850ReportRuntimeError("SESSION_EXISTS", f'IEC 61850 report session "{session_id}" already exists.')
-        self._sessions[session_id] = self._adapter.connect(
+        with self._sessions_lock:
+            if session_id in self._sessions:
+                raise Iec61850ReportRuntimeError("SESSION_EXISTS", f'IEC 61850 report session "{session_id}" already exists.')
+        session = self._adapter.connect(
             session_id=session_id,
             endpoint=endpoint,
             candidates=candidates,
         )
+        with self._sessions_lock:
+            if session_id in self._sessions:
+                with suppress(Exception):
+                    session.disconnect()
+                raise Iec61850ReportRuntimeError("SESSION_EXISTS", f'IEC 61850 report session "{session_id}" already exists.')
+            self._sessions[session_id] = session
 
     def close_session(self, session_id: str) -> None:
         session = self._require_session(session_id)
         try:
             session.disconnect()
         finally:
-            self._sessions.pop(session_id, None)
+            with self._sessions_lock:
+                self._sessions.pop(session_id, None)
 
     def read_report_control(
         self,
@@ -394,7 +407,10 @@ class Iec61850ReportRuntimeService:
         endpoint: Iec61850DeviceEndpoint,
         candidate: Iec61850ReportControlCandidate,
     ) -> Iec61850ReportControlReadResult:
-        state = self._require_session(session_id).read_report_control(to_report_control_ref(candidate))
+        read_result = self._require_session(session_id).read_report_control(to_report_control_ref(candidate))
+        if isinstance(read_result, Iec61850ReportControlReadResult):
+            return read_result
+        state = read_result
         return Iec61850ReportControlReadResult(
             endpoint=endpoint,
             candidate_id=candidate.id,
@@ -466,7 +482,8 @@ class Iec61850ReportRuntimeService:
         )
 
     def _require_session(self, session_id: str) -> Iec61850ReportSession:
-        session = self._sessions.get(session_id)
+        with self._sessions_lock:
+            session = self._sessions.get(session_id)
         if session is None:
             raise Iec61850ReportRuntimeError("SESSION_NOT_FOUND", f'IEC 61850 report session "{session_id}" is not open.')
         return session
@@ -510,10 +527,11 @@ def map_report_event_to_signal_observations(
     matched_signals: Sequence[Iec61850ReportSubscriptionPlanSignal],
     event: Iec61850ReportEvent,
 ) -> Iec61850ReportObservationResult:
-    values_by_reference = {
-        _normalize_observation_reference(value.reference, candidate): value
-        for value in event.values
-    }
+    values_by_reference: dict[str, Iec61850ReportEventValue] = {}
+    for value in event.values:
+        values_by_reference.setdefault(_normalize_observation_reference(value.reference, candidate), value)
+        if value.data_reference:
+            values_by_reference.setdefault(_normalize_observation_reference(value.data_reference, candidate), value)
     selected_references: set[str] = set()
     observations: list[Iec61850SignalObservation] = []
     diagnostics: list[Iec61850ReportObservationDiagnostic] = []

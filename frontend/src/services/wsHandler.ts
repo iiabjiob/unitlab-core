@@ -18,8 +18,13 @@ import type { CoreDiagnosticsSnapshot } from '@/types/coreDiagnostics'
 import router from '@/router'
 
 const logger = getLogger('ws')
-const TEST_RUN_JOB_EVENT_THROTTLE_MS = 150
-const lastTestRunJobEventMetaByJobId = new Map<string, { at: number; status: string; updatedAt: string }>()
+const lastTestRunJobEventMetaByJobId = new Map<string, {
+  status: string
+  updatedAt: string
+  progressTotal: number
+  progressDone: number
+  message: string
+}>()
 const pendingTestRunJobEventsById = new Map<string, SignalAllocationJobEvent | SignalTestRunJobEvent>()
 let testRunJobFlushFrame: number | null = null
 const pendingTestedAtPatchByJobId = new Map<string, Record<string, string>>()
@@ -72,19 +77,25 @@ function shouldProcessTestRunJobEvent(jobEvent: SignalAllocationJobEvent | Signa
     return true
   }
 
-  const now = Date.now()
   const jobId = String(jobEvent.job_id)
   const updatedAt = String(jobEvent.updated_at ?? "")
+  const progressTotal = Number(jobEvent.progress_total ?? 0)
+  const progressDone = Number(jobEvent.progress_done ?? 0)
+  const message = String(jobEvent.message ?? "")
   const prev = lastTestRunJobEventMetaByJobId.get(jobId)
 
   if (prev) {
-    const unchangedState = prev.status === status && prev.updatedAt === updatedAt
-    if (unchangedState || now - prev.at < TEST_RUN_JOB_EVENT_THROTTLE_MS) {
+    const unchangedState = prev.status === status
+      && prev.updatedAt === updatedAt
+      && prev.progressTotal === progressTotal
+      && prev.progressDone === progressDone
+      && prev.message === message
+    if (unchangedState) {
       return false
     }
   }
 
-  lastTestRunJobEventMetaByJobId.set(jobId, { at: now, status, updatedAt })
+  lastTestRunJobEventMetaByJobId.set(jobId, { status, updatedAt, progressTotal, progressDone, message })
   return true
 }
 

@@ -32,29 +32,32 @@ def build_verification_signal_endpoint_catalog(
     sources: list[VerificationTargetSource],
     subscription_plan: VerificationSubscriptionPlanSchema,
 ) -> Iec61850MmsEndpointCatalog | None:
-    entries_by_key: dict[tuple[str, str], Iec61850MmsEndpointCatalogEntry] = {}
+    entries_by_key: dict[tuple[str, str, str], Iec61850MmsEndpointCatalogEntry] = {}
     for group in subscription_plan.groups:
-        if not group.ied_name or not group.access_point_name or group.access_point_name.lower() == "unknown":
+        if not group.access_point_name or group.access_point_name.lower() == "unknown":
             continue
         group_sources = [
             sources[target_index]
             for target_index in group.target_indexes
             if 0 <= target_index < len(sources)
         ]
-        host_candidates = _extract_target_host_candidates(group_sources)
-        if not host_candidates:
+        endpoint = _extract_target_endpoint_candidate(group_sources)
+        if endpoint is None:
             continue
-        key = (group.ied_name.strip().lower(), group.access_point_name.strip().lower())
-        if key in entries_by_key and entries_by_key[key].host == host_candidates[0]:
+        host, port = endpoint
+        ied_name = group.ied_name.strip() if group.ied_name else ""
+        endpoint_id = group.endpoint_id.strip() if group.endpoint_id else None
+        key = (ied_name.lower(), group.access_point_name.strip().lower(), endpoint_id or "")
+        if key in entries_by_key and entries_by_key[key].host == host and entries_by_key[key].port == port:
             continue
-        if key in entries_by_key and entries_by_key[key].host != host_candidates[0]:
+        if key in entries_by_key and (entries_by_key[key].host != host or entries_by_key[key].port != port):
             continue
         entries_by_key[key] = Iec61850MmsEndpointCatalogEntry(
-            ied_name=group.ied_name,
+            ied_name=ied_name,
             access_point_name=group.access_point_name,
-            host=host_candidates[0],
-            port=102,
-            endpoint_id=None,
+            host=host,
+            port=port,
+            endpoint_id=endpoint_id,
         )
     if not entries_by_key:
         return None
@@ -64,9 +67,9 @@ def build_verification_signal_endpoint_catalog(
 def build_verification_plan_endpoint_catalog(
     subscription_plan: VerificationSubscriptionPlanSchema,
 ) -> Iec61850MmsEndpointCatalog | None:
-    entries_by_key: dict[tuple[str, str], Iec61850MmsEndpointCatalogEntry] = {}
+    entries_by_key: dict[tuple[str, str, str], Iec61850MmsEndpointCatalogEntry] = {}
     for group in subscription_plan.groups:
-        if not group.ied_name or not group.access_point_name or group.access_point_name.lower() == "unknown":
+        if not group.access_point_name or group.access_point_name.lower() == "unknown":
             continue
         target_metadata = [
             subscription_plan.targets[target_index].protocol_metadata
@@ -77,20 +80,31 @@ def build_verification_plan_endpoint_catalog(
         if endpoint is None:
             continue
         host, port = endpoint
-        key = (group.ied_name.strip().lower(), group.access_point_name.strip().lower())
+        ied_name = group.ied_name.strip() if group.ied_name else ""
+        endpoint_id = group.endpoint_id.strip() if group.endpoint_id else None
+        key = (ied_name.lower(), group.access_point_name.strip().lower(), endpoint_id or "")
         existing = entries_by_key.get(key)
         if existing is not None and (existing.host != host or existing.port != port):
             continue
         entries_by_key[key] = Iec61850MmsEndpointCatalogEntry(
-            ied_name=group.ied_name,
+            ied_name=ied_name,
             access_point_name=group.access_point_name,
             host=host,
             port=port,
-            endpoint_id=group.endpoint_id,
+            endpoint_id=endpoint_id,
         )
     if not entries_by_key:
         return None
     return build_mms_endpoint_catalog(list(entries_by_key.values()))
+
+
+def _extract_target_endpoint_candidate(sources: list[VerificationTargetSource]) -> tuple[str, int] | None:
+    metadata_items = [
+        getattr(source, "signal_metadata", None)
+        for source in sources
+        if isinstance(getattr(source, "signal_metadata", None), dict)
+    ]
+    return _extract_endpoint_candidate(metadata_items)
 
 
 def _extract_target_host_candidates(sources: list[VerificationTargetSource]) -> list[str]:

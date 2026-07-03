@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
@@ -107,6 +108,7 @@ def build_verification_subscription_plan(
         )
         coverage_state, coverage_reason = _resolve_coverage_state(
             source=source,
+            protocol_metadata=protocol_metadata,
             expected_feedback_path_source=feedback_source,
         )
         endpoint_id, ied_name, access_point_name = _resolve_endpoint_identity(source, protocol_metadata)
@@ -122,12 +124,29 @@ def build_verification_subscription_plan(
             protocol_metadata=protocol_metadata,
             expected_feedback_path=expected_feedback_path,
         )
+        fallback_discovery_group_reference = (
+            _fallback_discovery_group_reference(expected_feedback_path)
+            if group_reference_source != "protocol_metadata"
+            and not report_control_reference
+            and not data_set_reference
+            else ""
+        )
         source_classification, source_reason, group_reason = _resolve_source_classification(
             source=source,
             protocol_metadata=protocol_metadata,
             coverage_reason=coverage_reason,
             has_explicit_group_references=group_reference_source == "protocol_metadata",
         )
+        if (
+            source_classification == "fallback"
+            and fallback_discovery_group_reference
+            and not _is_report_observable_fallback_scope(fallback_discovery_group_reference)
+        ):
+            coverage_state = "uncovered"
+            coverage_reason = "signal-list IEC 61850 address is not a report-observable Online 61850 scope"
+            source_classification = "not found"
+            source_reason = coverage_reason
+            group_reason = "not report-observable"
 
         target = VerificationTargetSchema(
             signal_id=source.signal_id,
@@ -171,6 +190,7 @@ def build_verification_subscription_plan(
                 report_kind or "",
                 rpt_id or "",
                 data_set_reference or "",
+                fallback_discovery_group_reference,
             )
             group_buckets[group_key].append(target_index)
             group_contexts.setdefault(
@@ -189,9 +209,6 @@ def build_verification_subscription_plan(
                     "reason": group_reason,
                 },
             )
-            if source_classification == "fallback":
-                fallback_group_count += 1
-
         if coverage_state == "exact":
             exact_count += 1
         elif coverage_state == "partial":
@@ -211,6 +228,7 @@ def build_verification_subscription_plan(
                 str(item[4]),
                 str(item[5]),
                 str(item[6]),
+                str(item[7]),
             ),
         ),
         start=1,
@@ -233,6 +251,7 @@ def build_verification_subscription_plan(
                 source_reason=context["source_reason"],
             )
         )
+    fallback_group_count = sum(1 for group in groups if group.source_classification == "fallback")
 
     planning_quality = "exact"
     if uncovered_count > 0:
@@ -396,13 +415,39 @@ def _extract_protocol_metadata(signal_metadata: dict[str, Any]) -> tuple[str | N
     if not isinstance(signal_metadata, dict) or not signal_metadata:
         return None, {}
 
+    verification_metadata = signal_metadata.get("verification") if isinstance(signal_metadata.get("verification"), dict) else {}
+    row_metadata = signal_metadata.get("row") if isinstance(signal_metadata.get("row"), dict) else {}
+
     if isinstance(signal_metadata.get("protocol_metadata"), dict):
         protocol_metadata = dict(signal_metadata["protocol_metadata"])
+        _merge_signal_list_verification_metadata(
+            protocol_metadata=protocol_metadata,
+            verification_metadata=verification_metadata,
+            row_metadata=row_metadata,
+            signal_metadata=signal_metadata,
+        )
         protocol = _resolve_protocol_name(signal_metadata, protocol_metadata)
         return protocol, protocol_metadata
 
     if isinstance(signal_metadata.get("iec61850"), dict):
         protocol_metadata = dict(signal_metadata["iec61850"])
+        _merge_signal_list_verification_metadata(
+            protocol_metadata=protocol_metadata,
+            verification_metadata=verification_metadata,
+            row_metadata=row_metadata,
+            signal_metadata=signal_metadata,
+        )
+        protocol = _resolve_protocol_name(signal_metadata, protocol_metadata, default="iec61850")
+        return protocol, protocol_metadata
+
+    protocol_metadata: dict[str, Any] = {}
+    _merge_signal_list_verification_metadata(
+        protocol_metadata=protocol_metadata,
+        verification_metadata=verification_metadata,
+        row_metadata=row_metadata,
+        signal_metadata=signal_metadata,
+    )
+    if protocol_metadata:
         protocol = _resolve_protocol_name(signal_metadata, protocol_metadata, default="iec61850")
         return protocol, protocol_metadata
 
@@ -411,6 +456,49 @@ def _extract_protocol_metadata(signal_metadata: dict[str, Any]) -> tuple[str | N
         return protocol, {}
 
     return None, {}
+
+
+def _merge_signal_list_verification_metadata(
+    *,
+    protocol_metadata: dict[str, Any],
+    verification_metadata: Any,
+    row_metadata: Any,
+    signal_metadata: dict[str, Any],
+) -> None:
+    verification = verification_metadata if isinstance(verification_metadata, dict) else {}
+    row = row_metadata if isinstance(row_metadata, dict) else {}
+
+    transport_host = _first_non_empty_string(
+        protocol_metadata.get("transport_host"),
+        protocol_metadata.get("mms_host"),
+        protocol_metadata.get("endpoint_host"),
+        verification.get("transport_host"),
+        verification.get("transport_reference"),
+        row.get("transport_host"),
+        row.get("transport_reference"),
+        signal_metadata.get("transport_host"),
+    )
+    if transport_host is not None:
+        protocol_metadata.setdefault("transport_host", transport_host)
+
+    address = _first_non_empty_string(
+        protocol_metadata.get("iec61850_address"),
+        protocol_metadata.get("expected_feedback_path"),
+        protocol_metadata.get("feedback_path"),
+        protocol_metadata.get("data_reference"),
+        verification.get("iec61850_address"),
+        verification.get("iec61850"),
+        row.get("iec61850_address"),
+        row.get("iec61850"),
+        signal_metadata.get("iec61850_address"),
+    )
+    if address is not None:
+        protocol_metadata.setdefault("iec61850_address", address)
+        protocol_metadata.setdefault("expected_feedback_path", address)
+        protocol_metadata.setdefault("data_reference", address)
+
+    if transport_host is not None:
+        protocol_metadata.setdefault("access_point_name", "AP1")
 
 
 def _resolve_protocol_name(
@@ -475,7 +563,11 @@ def _resolve_endpoint_identity(
     source: VerificationTargetSource,
     protocol_metadata: dict[str, Any],
 ) -> tuple[str | None, str | None, str | None]:
-    endpoint_id = source.unit_id.strip() if source.unit_id else None
+    transport_host = _first_non_empty_string(
+        protocol_metadata.get("transport_host"),
+        protocol_metadata.get("mms_host"),
+        protocol_metadata.get("endpoint_host"),
+    )
     ied_name = _first_non_empty_string(
         protocol_metadata.get("ied_name"),
         protocol_metadata.get("iedName"),
@@ -485,13 +577,27 @@ def _resolve_endpoint_identity(
         protocol_metadata.get("access_point_name"),
         protocol_metadata.get("accessPointName"),
     )
+    endpoint_id = _normalize_transport_endpoint_id(transport_host) if transport_host is not None else None
+    if endpoint_id is None:
+        endpoint_id = source.unit_id.strip() if source.unit_id else None
     if endpoint_id and "/" in endpoint_id:
         endpoint_ied_name, endpoint_access_point_name = endpoint_id.split("/", 1)
         ied_name = ied_name or endpoint_ied_name.strip() or None
         access_point_name = access_point_name or endpoint_access_point_name.strip() or None
-    if endpoint_id and not ied_name:
+    if endpoint_id and not ied_name and not _looks_like_transport_endpoint(endpoint_id):
         ied_name = endpoint_id
     return endpoint_id, ied_name, access_point_name or "unknown"
+
+
+def _looks_like_transport_endpoint(value: str) -> bool:
+    text = value.strip()
+    return ":" in text or bool(re.search(r"\b\d{1,3}(?:\.\d{1,3}){3}\b", text))
+
+
+def _normalize_transport_endpoint_id(transport_host: str) -> str:
+    text = transport_host.strip()
+    first_token = text.split(None, 1)[0].strip()
+    return first_token or text
 
 
 def _resolve_runtime_endpoint_id(endpoint_id: str | None, unit_id: str | None) -> str | None:
@@ -499,6 +605,42 @@ def _resolve_runtime_endpoint_id(endpoint_id: str | None, unit_id: str | None) -
     if base_endpoint_id is None:
         return None
     return f"sim:{base_endpoint_id}/unknown"
+
+
+def _fallback_discovery_group_reference(expected_feedback_path: str) -> str:
+    text = str(expected_feedback_path or "").strip()
+    if not text:
+        return ""
+    reference = text.split("!", 1)[-1] if "!" in text else text
+    functional_constraint = _fallback_functional_constraint(reference)
+    reference = reference.split("[", 1)[0]
+    domain, separator, item = reference.partition("/")
+    if not separator:
+        domain, _separator, item = reference.partition(".")
+    domain = domain.strip()
+    if not domain:
+        return ""
+    return f"{domain}/{functional_constraint}" if functional_constraint else domain
+
+
+def _fallback_functional_constraint(reference: str) -> str:
+    bracket_match = re.search(r"\[([A-Za-z0-9]+)\]\s*$", reference)
+    if bracket_match is not None:
+        return bracket_match.group(1).upper()
+    item = reference.split("!", 1)[-1]
+    if "/" in item:
+        item = item.split("/", 1)[1]
+    parts = [part.strip() for part in item.split("$") if part.strip()]
+    if len(parts) >= 2 and re.fullmatch(r"[A-Za-z]{2}", parts[1]):
+        return parts[1].upper()
+    return ""
+
+
+def _is_report_observable_fallback_scope(scope: str) -> bool:
+    domain, _separator, functional_constraint = scope.partition("/")
+    if domain.strip().upper().endswith("SYSTEM"):
+        return False
+    return functional_constraint.strip().upper() in {"ST", "MX"}
 
 
 def _resolve_group_references(
@@ -538,12 +680,10 @@ def _resolve_group_references(
 
     if report_control_reference is None and rpt_id is not None:
         report_control_reference = rpt_id
-    if report_control_reference is None and expected_feedback_path:
-        report_control_reference = expected_feedback_path
     if rpt_id is None and report_control_reference is not None:
         rpt_id = report_control_reference
     if report_control_name is None:
-        report_control_name = _derive_report_control_name(report_control_reference, rpt_id, source.signal_path)
+        report_control_name = _derive_report_control_name(report_control_reference, rpt_id, source.signal_path) if explicit_reference else None
     if report_kind is None:
         report_kind = _first_non_empty_string(protocol_metadata.get("report_kind_hint"), "unknown")
     reference_source = "protocol_metadata" if explicit_reference else ("fallback_expected_feedback_path" if expected_feedback_path else "fallback_signal_path")
@@ -581,7 +721,12 @@ def _resolve_source_classification(
         )
         return "from SCD", reason, "SCD hint match"
 
-    if source.unit_id:
+    has_signal_list_endpoint = _first_non_empty_string(
+        protocol_metadata.get("transport_host"),
+        protocol_metadata.get("mms_host"),
+        protocol_metadata.get("endpoint_host"),
+    ) is not None
+    if source.unit_id or has_signal_list_endpoint:
         reason = _first_non_empty_string(
             source.source_reason,
             coverage_reason,
@@ -759,9 +904,15 @@ def _resolve_expected_feedback_path(
 def _resolve_coverage_state(
     *,
     source: VerificationTargetSource,
+    protocol_metadata: dict[str, Any],
     expected_feedback_path_source: str,
 ) -> tuple[str, str | None]:
-    if not source.unit_id:
+    has_signal_list_endpoint = _first_non_empty_string(
+        protocol_metadata.get("transport_host"),
+        protocol_metadata.get("mms_host"),
+        protocol_metadata.get("endpoint_host"),
+    ) is not None
+    if not source.unit_id and not has_signal_list_endpoint:
         return "uncovered", "no_endpoint"
 
     health = source.allocation_health
@@ -780,4 +931,6 @@ def _resolve_coverage_state(
         return "partial", "allocation_offline_device"
     if expected_feedback_path_source != "protocol_metadata":
         return "partial", "fallback_expected_feedback_path"
+    if not source.unit_id and has_signal_list_endpoint:
+        return "partial", "signal_list_endpoint"
     return "exact", None

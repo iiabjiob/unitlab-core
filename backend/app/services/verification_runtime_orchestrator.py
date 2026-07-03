@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+import socket
+from threading import RLock, Thread
 from typing import Any, Callable, Sequence
 from uuid import uuid4
 
@@ -36,6 +39,11 @@ from app.services.verification_execution import (
     _unique_non_empty_strings,
     build_runtime_subscription_plan,
 )
+
+
+_MMS_ORCHESTRATION_PREFLIGHT_TIMEOUT_SECONDS = 1.0
+_MMS_ORCHESTRATION_PREFLIGHT_MAX_WORKERS = 16
+_MMS_ORCHESTRATION_ENDPOINT_MAX_WORKERS = 16
 
 
 @dataclass
@@ -72,6 +80,9 @@ class VerificationRuntimeSubscriptionState:
     subscription_state: str = "pending"
     report_health: str = "unknown"
     last_report_at: datetime | None = None
+    gi_requested: bool = False
+    last_report_value_count: int = 0
+    last_report_values: list[dict[str, Any]] = field(default_factory=list)
     last_sequence_number: int | None = None
     last_report_id: str | None = None
     current_rptena_owner: str | None = None
@@ -92,6 +103,9 @@ class VerificationRuntimeSubscriptionState:
             subscription_state=self.subscription_state,
             report_health=self.report_health,
             last_report_at=self.last_report_at,
+            gi_requested=self.gi_requested,
+            last_report_value_count=self.last_report_value_count,
+            last_report_values=list(self.last_report_values),
             current_rptena_owner=self.current_rptena_owner,
             stale_signal_count=self.stale_signal_count,
             last_error=self.last_error,
@@ -153,6 +167,7 @@ class _VerificationRuntimeOrchestrationHandle:
     diagnostics: list[VerificationEvidenceDiagnosticSchema]
     reconnecting_session_ids: set[str] = field(default_factory=set)
     endpoint_for_device: Callable[[Any], Iec61850DeviceEndpoint] = build_simulator_endpoint_for_plan_device
+    lock: RLock = field(default_factory=RLock)
 
 
 class VerificationRuntimeOrchestrator:
@@ -160,8 +175,10 @@ class VerificationRuntimeOrchestrator:
         self,
         *,
         now: Callable[[], datetime] | None = None,
+        mms_reachability_probe: Callable[[Iec61850DeviceEndpoint], tuple[bool, str | None]] | None = None,
     ) -> None:
         self._now = now or (lambda: datetime.now(UTC))
+        self._mms_reachability_probe = mms_reachability_probe or _probe_mms_endpoint_reachability
         self._handles: dict[str, _VerificationRuntimeOrchestrationHandle] = {}
 
     def start(
@@ -191,25 +208,46 @@ class VerificationRuntimeOrchestrator:
         subscription_order: list[str] = []
         diagnostics: list[VerificationEvidenceDiagnosticSchema] = list(initial_diagnostics)
 
+        device_groups = group_report_subscription_plan_devices_by_endpoint(
+            plan=runtime_plan,
+            endpoint_for_device=endpoint_for_device,
+        )
+        unreachable_endpoints = self._preflight_mms_endpoints(device_groups)
+
         try:
-            for group_index, device_group in enumerate(
-                group_report_subscription_plan_devices_by_endpoint(
-                    plan=runtime_plan,
-                    endpoint_for_device=endpoint_for_device,
-                )
-            ):
+            for group_index, device_group in enumerate(device_groups):
                 endpoint = device_group.endpoint
                 session_id = f"{orchestration_id}:{group_index}:{endpoint.ied_name}/{endpoint.access_point_name}"
                 group_reports = tuple(report for device in device_group.devices for report in device.reports)
-                runtime_service.open_session(
-                    session_id=session_id,
-                    endpoint=endpoint,
-                    candidates=[report.candidate for report in group_reports],
-                )
                 session_order.append(session_id)
                 session_states[session_id] = VerificationRuntimeSessionState(
                     session_id=session_id,
                     endpoint_id=endpoint.id,
+                )
+                unreachable_error = unreachable_endpoints.get(endpoint.id)
+                if unreachable_error is not None:
+                    session_states[session_id].runtime_state = "failed"
+                    session_states[session_id].discovery_status = "unavailable"
+                    session_states[session_id].last_error = unreachable_error.message
+                    session_states[session_id].diagnostic_code = unreachable_error.code
+                    for report in group_reports:
+                        subscription_state = self._activate_report_subscription(
+                            runtime_service=runtime_service,
+                            session_state=session_states[session_id],
+                            endpoint=endpoint,
+                            report=report,
+                            client_id=client_id,
+                            diagnostics=diagnostics,
+                            session_id=session_id,
+                        )
+                        subscription_states[subscription_state.subscription_id] = subscription_state
+                        subscription_order.append(subscription_state.subscription_id)
+                    continue
+
+                runtime_service.open_session(
+                    session_id=session_id,
+                    endpoint=endpoint,
+                    candidates=[report.candidate for report in group_reports],
                 )
                 self._transition(session_states[session_id], "discovering", "discovering")
 
@@ -250,48 +288,361 @@ class VerificationRuntimeOrchestrator:
         self._handles[orchestration_id] = handle
         return self.snapshot(orchestration_id)
 
+    def start_deferred(
+        self,
+        *,
+        workspace_id: int,
+        test_run_id: str,
+        verification_targets: Sequence[VerificationTargetSchema],
+        subscription_plan: VerificationSubscriptionPlanSchema,
+        execution_context: VerificationExecutionContextSchema,
+        client_id: str = "unitlab-backend-simulator",
+        endpoint_for_device: Callable[[Any], Iec61850DeviceEndpoint] = build_simulator_endpoint_for_plan_device,
+        adapter: Iec61850ReportRuntimeAdapter | None = None,
+        initial_diagnostics: Sequence[VerificationEvidenceDiagnosticSchema] = (),
+    ) -> VerificationRuntimeOrchestrationResult:
+        orchestration_id = f"{workspace_id}:{test_run_id}:{uuid4().hex[:8]}"
+        if orchestration_id in self._handles:
+            raise RuntimeError(f'Verification orchestration "{orchestration_id}" already exists.')
+
+        runtime_plan = build_runtime_subscription_plan(subscription_plan)
+        runtime_adapter = adapter or create_iec61850_simulator_adapter(now=self._now)
+        runtime_service = Iec61850ReportRuntimeService(runtime_adapter)
+        session_states: dict[str, VerificationRuntimeSessionState] = {}
+        subscription_states: dict[str, VerificationRuntimeSubscriptionState] = {}
+        session_order: list[str] = []
+        subscription_order: list[str] = []
+        diagnostics: list[VerificationEvidenceDiagnosticSchema] = list(initial_diagnostics)
+
+        device_groups = group_report_subscription_plan_devices_by_endpoint(
+            plan=runtime_plan,
+            endpoint_for_device=endpoint_for_device,
+        )
+        for group_index, device_group in enumerate(device_groups):
+            endpoint = device_group.endpoint
+            session_id = f"{orchestration_id}:{group_index}:{endpoint.ied_name}/{endpoint.access_point_name}"
+            session_order.append(session_id)
+            session_states[session_id] = VerificationRuntimeSessionState(
+                session_id=session_id,
+                endpoint_id=endpoint.id,
+                runtime_state="connecting",
+                discovery_status="discovering",
+            )
+            for report in tuple(report for device in device_group.devices for report in device.reports):
+                subscription_state = self._pending_report_subscription(
+                    session_id=session_id,
+                    endpoint=endpoint,
+                    report=report,
+                )
+                subscription_states[subscription_state.subscription_id] = subscription_state
+                subscription_order.append(subscription_state.subscription_id)
+
+        handle = _VerificationRuntimeOrchestrationHandle(
+            workspace_id=workspace_id,
+            test_run_id=test_run_id,
+            runtime_service=runtime_service,
+            session_states=session_states,
+            subscription_states=subscription_states,
+            session_order=session_order,
+            subscription_order=subscription_order,
+            verification_targets=list(verification_targets),
+            subscription_plan=subscription_plan,
+            execution_context=execution_context,
+            client_id=client_id,
+            started_at=self._now(),
+            diagnostics=diagnostics,
+            endpoint_for_device=endpoint_for_device,
+        )
+        self._handles[orchestration_id] = handle
+        Thread(
+            target=self._run_deferred_startup,
+            args=(orchestration_id,),
+            name=f"iec61850-online-{orchestration_id}",
+            daemon=True,
+        ).start()
+        return self.snapshot(orchestration_id)
+
+    def _run_deferred_startup(self, orchestration_id: str) -> None:
+        handle = self._handles.get(orchestration_id)
+        if handle is None:
+            return
+        runtime_plan = build_runtime_subscription_plan(handle.subscription_plan)
+        device_groups = group_report_subscription_plan_devices_by_endpoint(
+            plan=runtime_plan,
+            endpoint_for_device=handle.endpoint_for_device,
+        )
+        unreachable_endpoints = self._preflight_mms_endpoints(device_groups)
+
+        worker_count = min(len(device_groups), _MMS_ORCHESTRATION_ENDPOINT_MAX_WORKERS)
+        if worker_count <= 0:
+            return
+        with ThreadPoolExecutor(max_workers=worker_count, thread_name_prefix="iec61850-online-endpoint") as executor:
+            futures = [
+                executor.submit(
+                    self._run_deferred_endpoint_group,
+                    handle,
+                    group_index,
+                    device_group,
+                    unreachable_endpoints.get(device_group.endpoint.id),
+                )
+                for group_index, device_group in enumerate(device_groups)
+            ]
+            for future in as_completed(futures):
+                future.result()
+
+    def _run_deferred_endpoint_group(
+        self,
+        handle: _VerificationRuntimeOrchestrationHandle,
+        group_index: int,
+        device_group: Any,
+        unreachable_error: Iec61850ReportRuntimeError | None,
+    ) -> None:
+        try:
+            self._run_deferred_endpoint_group_inner(handle, group_index, device_group, unreachable_error)
+        except Exception as exc:  # noqa: BLE001
+            self._fail_deferred_endpoint_group(handle, group_index, device_group, exc)
+
+    def _run_deferred_endpoint_group_inner(
+        self,
+        handle: _VerificationRuntimeOrchestrationHandle,
+        group_index: int,
+        device_group: Any,
+        unreachable_error: Iec61850ReportRuntimeError | None,
+    ) -> None:
+        endpoint = device_group.endpoint
+        if group_index >= len(handle.session_order):
+            return
+        session_id = handle.session_order[group_index]
+        session_state = handle.session_states[session_id]
+        group_reports = tuple(report for device in device_group.devices for report in device.reports)
+        if unreachable_error is not None:
+            with handle.lock:
+                self._mark_session_failed(session_state, unreachable_error, discovery_available=False)
+            for report in group_reports:
+                self._store_subscription_state(
+                    handle,
+                    self._activate_report_subscription(
+                        runtime_service=handle.runtime_service,
+                        session_state=session_state,
+                        endpoint=endpoint,
+                        report=report,
+                        client_id=handle.client_id,
+                        diagnostics=handle.diagnostics,
+                        session_id=session_id,
+                    ),
+                )
+            return
+
+        try:
+            handle.runtime_service.open_session(
+                session_id=session_id,
+                endpoint=endpoint,
+                candidates=[report.candidate for report in group_reports],
+            )
+        except Iec61850ReportRuntimeError as exc:
+            with handle.lock:
+                self._mark_session_failed(session_state, exc, discovery_available=False)
+            for report in group_reports:
+                self._store_subscription_state(
+                    handle,
+                    self._activate_report_subscription(
+                        runtime_service=handle.runtime_service,
+                        session_state=session_state,
+                        endpoint=endpoint,
+                        report=report,
+                        client_id=handle.client_id,
+                        diagnostics=handle.diagnostics,
+                        session_id=session_id,
+                    ),
+                )
+            return
+
+        with handle.lock:
+            self._transition(session_state, "discovering", "discovering")
+        for report in group_reports:
+            if session_state.runtime_state == "closed":
+                break
+            self._store_subscription_state(
+                handle,
+                self._activate_report_subscription(
+                    runtime_service=handle.runtime_service,
+                    session_state=session_state,
+                    endpoint=endpoint,
+                    report=report,
+                    client_id=handle.client_id,
+                    diagnostics=handle.diagnostics,
+                    session_id=session_id,
+                ),
+            )
+
+    def _fail_deferred_endpoint_group(
+        self,
+        handle: _VerificationRuntimeOrchestrationHandle,
+        group_index: int,
+        device_group: Any,
+        exc: Exception,
+    ) -> None:
+        if group_index >= len(handle.session_order):
+            return
+        endpoint = device_group.endpoint
+        session_id = handle.session_order[group_index]
+        session_state = handle.session_states[session_id]
+        error = (
+            exc
+            if isinstance(exc, Iec61850ReportRuntimeError)
+            else Iec61850ReportRuntimeError(
+                "MMS_ORCHESTRATION_ENDPOINT_FAILED",
+                f"IEC 61850 endpoint orchestration failed: {exc}",
+            )
+        )
+        group_reports = tuple(report for device in device_group.devices for report in device.reports)
+        with handle.lock:
+            self._mark_session_failed(session_state, error, discovery_available=session_state.discovery_status == "available")
+        for report in group_reports:
+            subscription_id = _resolve_subscription_id_for_runtime(session_id=session_id, report=report)
+            with handle.lock:
+                current = handle.subscription_states.get(subscription_id)
+                should_replace = current is None or current.subscription_state == "pending"
+            if not should_replace:
+                continue
+            self._store_subscription_state(
+                handle,
+                self._activate_report_subscription(
+                    runtime_service=handle.runtime_service,
+                    session_state=session_state,
+                    endpoint=endpoint,
+                    report=report,
+                    client_id=handle.client_id,
+                    diagnostics=handle.diagnostics,
+                    session_id=session_id,
+                ),
+            )
+
+    def _pending_report_subscription(
+        self,
+        *,
+        session_id: str,
+        endpoint: Iec61850DeviceEndpoint,
+        report,
+    ) -> VerificationRuntimeSubscriptionState:
+        return VerificationRuntimeSubscriptionState(
+            subscription_id=_resolve_subscription_id_for_runtime(session_id=session_id, report=report),
+            session_id=session_id,
+            endpoint_id=endpoint.id,
+            group_id=report.candidate.id,
+            report_control_reference=_candidate_report_reference(report.candidate),
+            report_control_name=report.candidate.report_control_name or report.candidate.logical_node_name or report.candidate.id,
+            data_set_reference=report.candidate.data_set_ref or _candidate_signal_scope(report.candidate),
+            subscription_state="pending",
+            report_health="unknown",
+        )
+
+    def _store_subscription_state(
+        self,
+        handle: _VerificationRuntimeOrchestrationHandle,
+        subscription_state: VerificationRuntimeSubscriptionState,
+    ) -> None:
+        with handle.lock:
+            handle.subscription_states[subscription_state.subscription_id] = subscription_state
+            if subscription_state.subscription_id not in handle.subscription_order:
+                handle.subscription_order.append(subscription_state.subscription_id)
+
+    def _mark_session_failed(
+        self,
+        session_state: VerificationRuntimeSessionState,
+        error: Iec61850ReportRuntimeError,
+        *,
+        discovery_available: bool,
+    ) -> None:
+        session_state.runtime_state = "failed"
+        session_state.discovery_status = "available" if discovery_available else "unavailable"
+        session_state.last_error = error.message
+        session_state.diagnostic_code = error.code
+
+    def _preflight_mms_endpoints(
+        self,
+        device_groups: Sequence[Any],
+    ) -> dict[str, Iec61850ReportRuntimeError]:
+        endpoints = [
+            group.endpoint
+            for group in device_groups
+            if group.endpoint.mode.name == "MMS" and group.endpoint.host is not None and str(group.endpoint.host).strip()
+        ]
+        if not endpoints:
+            return {}
+
+        failures: dict[str, Iec61850ReportRuntimeError] = {}
+        worker_count = min(len(endpoints), _MMS_ORCHESTRATION_PREFLIGHT_MAX_WORKERS)
+        with ThreadPoolExecutor(max_workers=worker_count, thread_name_prefix="iec61850-mms-preflight") as executor:
+            futures = {executor.submit(self._mms_reachability_probe, endpoint): endpoint for endpoint in endpoints}
+            for future in as_completed(futures):
+                endpoint = futures[future]
+                try:
+                    reachable, detail = future.result()
+                except Exception as exc:  # noqa: BLE001
+                    reachable = False
+                    detail = str(exc)
+                if reachable:
+                    continue
+                host = str(endpoint.host or "").strip()
+                port = int(endpoint.port)
+                suffix = f": {detail}" if detail else ""
+                failures[endpoint.id] = Iec61850ReportRuntimeError(
+                    "EXTERNAL_MMS_ENDPOINT_UNREACHABLE",
+                    f"IEC 61850 endpoint {host}:{port} is unreachable{suffix}",
+                )
+        return failures
+
     def snapshot(self, orchestration_id: str) -> VerificationRuntimeOrchestrationResult:
         handle = self._require_handle(orchestration_id)
-        session_snapshots = tuple(handle.session_states[session_id].to_snapshot() for session_id in handle.session_order)
-        subscription_snapshots = tuple(
-            handle.subscription_states[subscription_id].to_snapshot() for subscription_id in handle.subscription_order
-        )
+        with handle.lock:
+            session_snapshots = tuple(handle.session_states[session_id].to_snapshot() for session_id in handle.session_order)
+            subscription_snapshots = tuple(
+                handle.subscription_states[subscription_id].to_snapshot() for subscription_id in handle.subscription_order
+            )
+            diagnostics = list(handle.diagnostics)
+            verification_targets = list(handle.verification_targets)
+            subscription_plan = handle.subscription_plan
+            execution_context = handle.execution_context
+            test_run_id = handle.test_run_id
+            started_at = handle.started_at
+            client_id = handle.client_id
         evidence_set = build_signal_verification_evidence_set(
-            test_run_id=handle.test_run_id,
+            test_run_id=test_run_id,
             evidence=(),
-            diagnostics=handle.diagnostics,
+            diagnostics=diagnostics,
         )
         workflow_state = "running"
         verdict_state = "pending"
         runtime_state = _resolve_runtime_state(session_snapshots, subscription_snapshots) or "connecting"
         verification_run = VerificationRunSchema(
-            test_run_id=handle.test_run_id,
-            verification_targets=list(handle.verification_targets),
-            subscription_plan=handle.subscription_plan,
+            test_run_id=test_run_id,
+            verification_targets=verification_targets,
+            subscription_plan=subscription_plan,
             session_snapshots=list(session_snapshots),
             subscription_snapshots=list(subscription_snapshots),
             evidence_set=evidence_set,
-            execution_context=handle.execution_context,
+            execution_context=execution_context,
             recovery_state=_build_recovery_state_for_orchestration(
-                test_run_id=handle.test_run_id,
-                verification_targets=handle.verification_targets,
-                subscription_plan=handle.subscription_plan,
-                execution_context=handle.execution_context,
+                test_run_id=test_run_id,
+                verification_targets=verification_targets,
+                subscription_plan=subscription_plan,
+                execution_context=execution_context,
                 session_snapshots=session_snapshots,
                 subscription_snapshots=subscription_snapshots,
             ),
             workflow_state=workflow_state,
             verdict_state=verdict_state,
-            triggered_at=handle.started_at,
+            triggered_at=started_at,
             completed_at=None,
             runtime_state=runtime_state,
             runtime_summary=_build_runtime_summary_for_orchestration(
                 session_snapshots=session_snapshots,
                 subscription_snapshots=subscription_snapshots,
-                client_id=handle.client_id,
-                diagnostics=handle.diagnostics,
+                client_id=client_id,
+                diagnostics=diagnostics,
             ),
-            diagnostics=list(handle.diagnostics),
+            diagnostics=diagnostics,
             verification_steps=[],
         )
         return VerificationRuntimeOrchestrationResult(
@@ -299,7 +650,7 @@ class VerificationRuntimeOrchestrator:
             verification_run=verification_run,
             session_snapshots=session_snapshots,
             subscription_snapshots=subscription_snapshots,
-            diagnostics=tuple(handle.diagnostics),
+            diagnostics=tuple(diagnostics),
             active_session_ids=tuple(handle.session_order),
         )
 
@@ -392,6 +743,9 @@ class VerificationRuntimeOrchestrator:
                         observation.timestamp,
                     )
                 subscription_state.last_report_at = _parse_timestamp(event.received_at)
+                subscription_state.gi_requested = True
+                subscription_state.last_report_value_count = len(event.values)
+                subscription_state.last_report_values = _report_event_values_payload(event)
                 subscription_state.last_sequence_number = event.sequence_number
                 subscription_state.last_report_id = event.id
                 subscription_state.stale_signal_count = 0 if observation is not None else 1
@@ -526,43 +880,129 @@ class VerificationRuntimeOrchestrator:
         diagnostics: list[VerificationEvidenceDiagnosticSchema],
         session_id: str,
     ) -> VerificationRuntimeSubscriptionState:
-        state = runtime_service.read_report_control(
-            session_id=session_id,
-            endpoint=endpoint,
-            candidate=report.candidate,
-        )
-        session_diagnostics = _runtime_diagnostics_to_evidence_diagnostics(state.diagnostics)
-        diagnostics.extend(session_diagnostics)
         subscription_state = VerificationRuntimeSubscriptionState(
             subscription_id=_resolve_subscription_id_for_runtime(session_id=session_id, report=report),
             session_id=session_id,
             endpoint_id=endpoint.id,
             group_id=report.candidate.id,
-            report_control_reference=report.candidate.rpt_id or report.candidate.report_control_name,
-            report_control_name=report.candidate.report_control_name,
-            data_set_reference=report.candidate.data_set_ref,
-            diagnostics=list(session_diagnostics),
+            report_control_reference=_candidate_report_reference(report.candidate),
+            report_control_name=report.candidate.report_control_name or report.candidate.logical_node_name or report.candidate.id,
+            data_set_reference=report.candidate.data_set_ref or _candidate_signal_scope(report.candidate),
         )
-        if any(diagnostic.severity == "error" for diagnostic in session_diagnostics):
+        if session_state.runtime_state == "failed":
+            diagnostic = _session_failure_to_evidence_diagnostic(
+                session_state=session_state,
+                endpoint=endpoint,
+                report=report,
+            )
+            diagnostics.append(diagnostic)
+            subscription_state.diagnostics.append(diagnostic)
             subscription_state.subscription_state = "failed"
             subscription_state.report_health = "degraded"
+            subscription_state.last_error = session_state.last_error
+            subscription_state.diagnostic_code = session_state.diagnostic_code
+            return subscription_state
+        discovery_available = False
+        try:
+            state = runtime_service.read_report_control(
+                session_id=session_id,
+                endpoint=endpoint,
+                candidate=report.candidate,
+            )
+            subscription_state.report_control_reference = state.state.rpt_id or state.state.reference.report_control_name
+            subscription_state.report_control_name = state.state.reference.report_control_name
+            subscription_state.data_set_reference = state.state.data_set_ref
+            discovery_available = True
+            session_diagnostics = _runtime_diagnostics_to_evidence_diagnostics(state.diagnostics)
+            diagnostics.extend(session_diagnostics)
+            subscription_state.diagnostics.extend(session_diagnostics)
+        except Iec61850ReportRuntimeError as exc:
+            diagnostic = _runtime_error_to_evidence_diagnostic(
+                error=exc,
+                endpoint=endpoint,
+                report=report,
+                session_id=session_id,
+            )
+            diagnostics.append(diagnostic)
+            subscription_state.diagnostics.append(diagnostic)
+            subscription_state.subscription_state = "failed"
+            subscription_state.report_health = "degraded"
+            subscription_state.last_error = exc.message
+            subscription_state.diagnostic_code = exc.code
+            session_state.runtime_state = "failed"
+            session_state.discovery_status = "available" if discovery_available else "unavailable"
+            session_state.last_error = exc.message
+            session_state.diagnostic_code = exc.code
+            return subscription_state
+        if any(diagnostic.severity == "error" for diagnostic in session_diagnostics):
+            subscription_state.subscription_state = "degraded"
+            subscription_state.report_health = "degraded"
             subscription_state.last_error = "ReportControl precheck failed"
-            subscription_state.diagnostic_code = state.diagnostics[0].code if state.diagnostics else "REPORT_CONTROL_PRECHECK_FAILED"
+            error_diagnostic = next((diagnostic for diagnostic in state.diagnostics if diagnostic.severity == "error"), None)
+            subscription_state.diagnostic_code = error_diagnostic.code if error_diagnostic is not None else "REPORT_CONTROL_PRECHECK_FAILED"
             session_state.discovery_status = "available"
             session_state.diagnostic_code = None
             return subscription_state
 
         session_state.discovery_status = "available"
-        runtime_service.reserve_report_control(session_id=session_id, candidate=report.candidate, client_id=client_id)
-        subscription_state.subscription_state = "reserving"
-        runtime_service.enable_report_control(session_id=session_id, candidate=report.candidate, client_id=client_id)
-        subscription_state.subscription_state = "enabled"
-        event = runtime_service.send_general_interrogation(session_id=session_id, candidate=report.candidate, client_id=client_id)
+        try:
+            runtime_service.reserve_report_control(session_id=session_id, candidate=report.candidate, client_id=client_id)
+            subscription_state.subscription_state = "reserving"
+            runtime_service.enable_report_control(session_id=session_id, candidate=report.candidate, client_id=client_id)
+            subscription_state.subscription_state = "enabled"
+            if _should_defer_startup_general_interrogation(endpoint):
+                session_state.runtime_state = "reporting"
+                subscription_state.subscription_state = "reporting"
+                subscription_state.report_health = "healthy"
+                subscription_state.current_rptena_owner = client_id
+                subscription_state.stale_signal_count = 0
+                session_state.diagnostic_code = None
+                return subscription_state
+            event = runtime_service.send_general_interrogation(session_id=session_id, candidate=report.candidate, client_id=client_id)
+        except Iec61850ReportRuntimeError as exc:
+            if exc.code == "MMS_REPORT_NOT_OBSERVED" and endpoint.mode.name == "MMS":
+                diagnostic = _runtime_error_to_evidence_diagnostic(
+                    error=exc,
+                    endpoint=endpoint,
+                    report=report,
+                    session_id=session_id,
+                    severity="warning",
+                )
+                diagnostics.append(diagnostic)
+                subscription_state.diagnostics.append(diagnostic)
+                session_state.runtime_state = "reporting"
+                session_state.last_error = None
+                session_state.diagnostic_code = None
+                subscription_state.subscription_state = "reporting"
+                subscription_state.report_health = "healthy"
+                subscription_state.current_rptena_owner = client_id
+                subscription_state.gi_requested = True
+                subscription_state.stale_signal_count = 0
+                return subscription_state
+            diagnostic = _runtime_error_to_evidence_diagnostic(
+                error=exc,
+                endpoint=endpoint,
+                report=report,
+                session_id=session_id,
+            )
+            diagnostics.append(diagnostic)
+            subscription_state.diagnostics.append(diagnostic)
+            subscription_state.subscription_state = "failed"
+            subscription_state.report_health = "degraded"
+            subscription_state.last_error = exc.message
+            subscription_state.diagnostic_code = exc.code
+            session_state.runtime_state = "degraded"
+            session_state.last_error = exc.message
+            session_state.diagnostic_code = exc.code
+            return subscription_state
         session_state.runtime_state = "reporting"
         subscription_state.subscription_state = "reporting"
         subscription_state.report_health = "healthy"
         subscription_state.current_rptena_owner = client_id
         subscription_state.last_report_at = _parse_timestamp(event.received_at)
+        subscription_state.gi_requested = True
+        subscription_state.last_report_value_count = len(event.values)
+        subscription_state.last_report_values = _report_event_values_payload(event)
         subscription_state.last_sequence_number = event.sequence_number
         subscription_state.last_report_id = event.id
         subscription_state.stale_signal_count = 0
@@ -679,12 +1119,102 @@ def _runtime_diagnostics_to_evidence_diagnostics(
             message=diagnostic.message,
             severity=diagnostic.severity,
             details={
+                **(getattr(diagnostic, "details", None) or {}),
                 "endpoint_id": diagnostic.reference.ied_name if diagnostic.reference is not None else None,
                 "report_control_name": diagnostic.reference.report_control_name if diagnostic.reference is not None else None,
             },
         )
         for diagnostic in diagnostics
     ]
+
+
+def _report_event_values_payload(event) -> list[dict[str, Any]]:
+    values = getattr(event, "values", ()) or ()
+    result: list[dict[str, Any]] = []
+    for value in values:
+        result.append(
+            {
+                "index": getattr(value, "data_set_index", None),
+                "reference": getattr(value, "reference", None),
+                "data_reference": getattr(value, "data_reference", None),
+                "value": getattr(value, "value", None),
+                "reason": getattr(getattr(value, "reason_code", None), "value", getattr(value, "reason_code", None)),
+                "timestamp": getattr(value, "timestamp", None),
+            }
+        )
+    return result
+
+
+def _probe_mms_endpoint_reachability(endpoint: Iec61850DeviceEndpoint) -> tuple[bool, str | None]:
+    host = str(endpoint.host or "").strip()
+    if endpoint.mode.name != "MMS" or not host:
+        return True, None
+    try:
+        with socket.create_connection(
+            (host, int(endpoint.port)),
+            timeout=_MMS_ORCHESTRATION_PREFLIGHT_TIMEOUT_SECONDS,
+        ):
+            return True, None
+    except OSError as exc:
+        return False, str(exc)
+
+
+def _runtime_error_to_evidence_diagnostic(
+    *,
+    error: Iec61850ReportRuntimeError,
+    endpoint: Iec61850DeviceEndpoint,
+    report,
+    session_id: str,
+    severity: str = "error",
+) -> VerificationEvidenceDiagnosticSchema:
+    return VerificationEvidenceDiagnosticSchema(
+        code=error.code,
+        message=error.message,
+        severity=severity,
+        details={
+            key: value
+            for key, value in {
+                "session_id": session_id,
+                "endpoint_id": endpoint.id,
+                "endpoint_host": endpoint.host,
+                "endpoint_port": endpoint.port,
+                "ied_name": endpoint.ied_name,
+                "access_point_name": endpoint.access_point_name,
+                "group_id": getattr(report.candidate, "id", None),
+                "report_control_name": getattr(report.candidate, "report_control_name", None),
+                "data_set_reference": getattr(report.candidate, "data_set_ref", None),
+            }.items()
+            if value is not None
+        },
+    )
+
+
+def _session_failure_to_evidence_diagnostic(
+    *,
+    session_state: VerificationRuntimeSessionState,
+    endpoint: Iec61850DeviceEndpoint,
+    report,
+) -> VerificationEvidenceDiagnosticSchema:
+    return VerificationEvidenceDiagnosticSchema(
+        code=session_state.diagnostic_code or "SESSION_FAILED",
+        message=session_state.last_error or "IEC 61850 session is failed.",
+        severity="error",
+        details={
+            key: value
+            for key, value in {
+                "session_id": session_state.session_id,
+                "endpoint_id": endpoint.id,
+                "endpoint_host": endpoint.host,
+                "endpoint_port": endpoint.port,
+                "ied_name": endpoint.ied_name,
+                "access_point_name": endpoint.access_point_name,
+                "group_id": getattr(report.candidate, "id", None),
+                "report_control_name": getattr(report.candidate, "report_control_name", None),
+                "data_set_reference": getattr(report.candidate, "data_set_ref", None),
+            }.items()
+            if value is not None
+        },
+    )
 
 
 def _observation_diagnostics_to_evidence_diagnostics(
@@ -722,6 +1252,44 @@ def _resolve_subscription_id_for_runtime(*, session_id: str, report) -> str:
     if data_set_ref:
         return f"{session_id}:{data_set_ref}"
     return f"{session_id}:subscription"
+
+
+def _candidate_report_reference(candidate: Any) -> str:
+    for value in (
+        getattr(candidate, "rpt_id", None),
+        getattr(candidate, "report_control_name", None),
+        _candidate_signal_scope(candidate),
+        getattr(candidate, "id", None),
+    ):
+        text = str(value or "").strip()
+        if text:
+            return text
+    return "discovery-only-report"
+
+
+def _candidate_signal_scope(candidate: Any) -> str | None:
+    logical_device = str(getattr(candidate, "logical_device_inst", "") or "").strip()
+    logical_node = str(getattr(candidate, "logical_node_name", "") or "").strip()
+    if logical_device and logical_node:
+        return f"{logical_device}/{logical_node}"
+    signals = getattr(candidate, "signals", ())
+    for signal in signals or ():
+        reference = str(getattr(signal, "reference", "") or "").strip()
+        if not reference:
+            continue
+        without_fc = reference.split("[", 1)[0]
+        if "/" in without_fc:
+            domain, rest = without_fc.split("/", 1)
+            node = rest.split(".", 1)[0].split("/", 1)[0]
+            if domain and node:
+                return f"{domain}/{node}"
+        if "." in without_fc:
+            return without_fc.split(".", 1)[0]
+    return None
+
+
+def _should_defer_startup_general_interrogation(endpoint: Iec61850DeviceEndpoint) -> bool:
+    return False
 
 
 def _runtime_summary_key(session_state: VerificationSessionSnapshotSchema) -> str:
@@ -787,6 +1355,12 @@ def _build_recovery_state_for_orchestration(
     ):
         desired_state = "reconnecting"
         recovery_reason = "user_reconnect"
+    elif any(snapshot.runtime_state in {"connecting", "discovering"} for snapshot in session_snapshots):
+        desired_state = "discovering"
+        recovery_reason = None
+    elif any(snapshot.subscription_state in {"pending", "reserving", "enabled"} for snapshot in subscription_snapshots):
+        desired_state = "subscribing"
+        recovery_reason = None
     elif any(snapshot.runtime_state == "degraded" for snapshot in session_snapshots) or any(
         snapshot.subscription_state == "degraded" for snapshot in subscription_snapshots
     ):
@@ -831,7 +1405,7 @@ def _build_recovery_state_for_orchestration(
     return VerificationRecoveryStateSchema(
         session_id=representative_session.session_id if representative_session is not None else f"{test_run_id}:recovery",
         endpoint_id=representative_session.endpoint_id if representative_session is not None else execution_context.selected_group_id or test_run_id,
-        runtime_state=_resolve_runtime_state(session_snapshots, subscription_snapshots) or "reporting",
+        runtime_state=_recovery_runtime_state(session_snapshots, subscription_snapshots),
         desired_state=desired_state,
         active_generation=max((snapshot.connection_generation for snapshot in session_snapshots), default=1),
         recovery_reason=recovery_reason,
@@ -861,3 +1435,13 @@ def _build_recovery_state_for_orchestration(
         ),
         diagnostics=recovery_diagnostics,
     )
+
+
+def _recovery_runtime_state(
+    session_snapshots: Sequence[VerificationSessionSnapshotSchema],
+    subscription_snapshots: Sequence[VerificationSubscriptionSnapshotSchema],
+) -> str:
+    runtime_state = _resolve_runtime_state(session_snapshots, subscription_snapshots) or "reporting"
+    if runtime_state == "connecting":
+        return "discovering"
+    return runtime_state

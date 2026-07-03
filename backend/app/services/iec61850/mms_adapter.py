@@ -27,13 +27,8 @@ class Iec61850MmsEndpointCatalogEntry:
 class Iec61850MmsEndpointCatalog:
     def __init__(self, entries: Sequence[Iec61850MmsEndpointCatalogEntry]) -> None:
         self._entries: dict[tuple[str, str], Iec61850MmsEndpointCatalogEntry] = {}
+        self._entries_by_endpoint_id: dict[str, Iec61850MmsEndpointCatalogEntry] = {}
         for entry in entries:
-            key = _endpoint_key(entry.ied_name, entry.access_point_name)
-            if key in self._entries:
-                raise Iec61850ReportRuntimeError(
-                    "DUPLICATE_MMS_ENDPOINT",
-                    f'MMS endpoint for "{entry.ied_name}/{entry.access_point_name}" is configured more than once.',
-                )
             if not entry.host.strip():
                 raise Iec61850ReportRuntimeError(
                     "INVALID_MMS_ENDPOINT",
@@ -44,9 +39,31 @@ class Iec61850MmsEndpointCatalog:
                     "INVALID_MMS_ENDPOINT",
                     f'MMS endpoint for "{entry.ied_name}/{entry.access_point_name}" has invalid port {entry.port}.',
                 )
+            endpoint_id = entry.endpoint_id.strip() if entry.endpoint_id is not None else ""
+            if endpoint_id:
+                if endpoint_id in self._entries_by_endpoint_id:
+                    raise Iec61850ReportRuntimeError(
+                        "DUPLICATE_MMS_ENDPOINT",
+                        f'MMS endpoint "{endpoint_id}" is configured more than once.',
+                    )
+                self._entries_by_endpoint_id[endpoint_id] = entry
+            key = _endpoint_key(entry.ied_name, entry.access_point_name)
+            if key in self._entries:
+                if endpoint_id and not entry.ied_name.strip():
+                    continue
+                raise Iec61850ReportRuntimeError(
+                    "DUPLICATE_MMS_ENDPOINT",
+                    f'MMS endpoint for "{entry.ied_name}/{entry.access_point_name}" is configured more than once.',
+                )
             self._entries[key] = entry
 
     def endpoint_for_plan_device(self, device: Iec61850ReportSubscriptionPlanDevice) -> Iec61850DeviceEndpoint:
+        device_endpoint_id = getattr(device, "endpoint_id", None)
+        endpoint_id = device_endpoint_id.strip() if device_endpoint_id is not None else ""
+        if endpoint_id:
+            entry = self._entries_by_endpoint_id.get(endpoint_id)
+            if entry is not None:
+                return _endpoint_from_catalog_entry(entry, requested_host=None, requested_port=None)
         endpoint, _ = self.resolve_transport_endpoint(
             ied_name=device.ied_name,
             access_point_name=device.access_point_name,
@@ -95,15 +112,7 @@ class Iec61850MmsEndpointCatalog:
             notes.append("requested port overrides catalog port")
         if not requested_host:
             notes.append("transport host resolved from endpoint catalog")
-        endpoint_id = entry.endpoint_id or f"mms:{entry.ied_name}/{entry.access_point_name}@{resolved_host}:{resolved_port}"
-        endpoint = Iec61850DeviceEndpoint(
-            id=endpoint_id,
-            mode=Iec61850RuntimeMode.MMS,
-            ied_name=entry.ied_name,
-            access_point_name=entry.access_point_name,
-            host=resolved_host,
-            port=resolved_port,
-        )
+        endpoint = _endpoint_from_catalog_entry(entry, requested_host=resolved_host, requested_port=resolved_port)
         return endpoint, tuple(notes)
 
 
@@ -111,6 +120,29 @@ def build_mms_endpoint_catalog(
     entries: Sequence[Iec61850MmsEndpointCatalogEntry],
 ) -> Iec61850MmsEndpointCatalog:
     return Iec61850MmsEndpointCatalog(entries)
+
+
+def _endpoint_from_catalog_entry(
+    entry: Iec61850MmsEndpointCatalogEntry,
+    *,
+    requested_host: str | None,
+    requested_port: int | None,
+) -> Iec61850DeviceEndpoint:
+    resolved_host = requested_host or entry.host
+    resolved_port = requested_port if requested_port is not None and requested_port > 0 else entry.port
+    endpoint_id = (
+        entry.endpoint_id
+        if entry.endpoint_id and not entry.ied_name.strip()
+        else f"mms:{entry.ied_name}/{entry.access_point_name}@{resolved_host}:{resolved_port}"
+    )
+    return Iec61850DeviceEndpoint(
+        id=endpoint_id,
+        mode=Iec61850RuntimeMode.MMS,
+        ied_name=entry.ied_name,
+        access_point_name=entry.access_point_name,
+        host=resolved_host,
+        port=resolved_port,
+    )
 
 
 def build_mms_endpoint_catalog_from_scd_source(

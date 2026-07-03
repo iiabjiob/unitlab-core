@@ -192,24 +192,45 @@
         <p class="signals-page__busy-title">Preparing 61850</p>
         <div class="signals-page__busy-progress-row">
           <p class="signals-page__busy-copy">
-            {{ online61850PreparationProgress.done }} / {{ online61850PreparationProgress.total }} targets
+            {{ online61850PreparationStage }}
           </p>
           <p class="signals-page__busy-progress-percent">
             {{ online61850PreparationProgressPercent.toFixed(1) }}%
           </p>
         </div>
+        <p class="signals-page__busy-copy signals-page__busy-copy--meta">
+          {{ online61850PreparationProgressMeta }}
+        </p>
         <div
           class="signals-page__busy-bar"
           role="progressbar"
-          :aria-valuenow="online61850PreparationProgress.done"
+          :aria-valuenow="Math.round(online61850PreparationProgressPercent)"
           :aria-valuemin="0"
-          :aria-valuemax="online61850PreparationProgress.total"
-          :aria-valuetext="`${online61850PreparationProgress.done} of ${online61850PreparationProgress.total} targets`"
+          :aria-valuemax="100"
+          :aria-valuetext="online61850PreparationProgressMeta"
         >
           <div
             class="signals-page__busy-bar-fill"
             :style="{ width: `${online61850PreparationProgressPercent}%` }"
           />
+        </div>
+        <div
+          v-if="online61850PreparationLiveTargets.length"
+          class="signals-page__busy-target-list"
+          aria-label="Online 61850 target progress"
+        >
+          <div
+            v-for="target in online61850PreparationLiveTargets"
+            :key="target.key"
+            class="signals-page__busy-target-row"
+          >
+            <span
+              class="signals-page__busy-target-state"
+              :class="`signals-page__busy-target-state--${target.status}`"
+            />
+            <span class="signals-page__busy-target-label">{{ target.label }}</span>
+            <span class="signals-page__busy-target-detail">{{ target.detail }}</span>
+          </div>
         </div>
         <div class="signals-page__busy-actions">
           <UiButton
@@ -336,8 +357,45 @@
                 >
                   {{ item.message }}
                 </p>
+                <div
+                  v-if="item.subscribedReports.length"
+                  class="signals-page__online-prep-report-list"
+                >
+                  <p class="signals-page__online-prep-report-title">Subscribed reports</p>
+                  <div
+                    v-for="report in item.subscribedReports"
+                    :key="report.key"
+                    class="signals-page__online-prep-report-row"
+                  >
+                    <span class="signals-page__online-prep-report-name">{{ report.label }}</span>
+                    <span class="signals-page__online-prep-report-meta">
+                      {{ report.dataSetReference ?? "No DatSet" }} · {{ report.subscriptionState }} · {{ report.reportHealth }}
+                    </span>
+                    <span class="signals-page__online-prep-report-meta">
+                      GI {{ report.giRequested ? "sent" : "not sent" }} · {{ report.valueCount }} value{{ report.valueCount === 1 ? "" : "s" }}
+                    </span>
+                    <span
+                      v-if="report.lastReportAt"
+                      class="signals-page__online-prep-report-meta"
+                    >
+                      Last report {{ report.lastReportAt }}
+                    </span>
+                  </div>
+                </div>
+                <ul
+                  v-if="item.diagnostics.length"
+                  class="signals-page__online-prep-diagnostics"
+                >
+                  <li
+                    v-for="diagnostic in item.diagnostics"
+                    :key="diagnostic"
+                    class="signals-page__online-prep-diagnostic"
+                  >
+                    {{ diagnostic }}
+                  </li>
+                </ul>
                 <p
-                  v-else
+                  v-else-if="!item.message"
                   class="signals-page__online-prep-item-copy"
                 >
                   Ready for online test.
@@ -363,6 +421,12 @@
                         class="signals-page__online-prep-signal-value"
                       >
                         {{ signal.stateLabel }}
+                      </span>
+                      <span
+                        v-if="signal.valueLabel"
+                        class="signals-page__online-prep-signal-value"
+                      >
+                        {{ signal.valueLabel }}
                       </span>
                     </div>
                   </div>
@@ -455,7 +519,7 @@ import { formatDate } from "@/utils/datetime"
 import { formatAoValue, parseAoInput } from "@/utils/channel"
 import { resolveRuntimeChannelTypeForSignal } from "@/utils/signalRuntimeMapping"
 import type { SignalAllocationJob, SignalAllocationRow } from "@/types/signal"
-import type { VerificationRun } from "@/types/verification"
+import type { VerificationEvidenceDiagnostic, VerificationRun } from "@/types/verification"
 import type { SignalRowsPatchedEvent, SignalRowsPatchedRowPatch } from "@/types/ws/events"
 
 const workspaceStore = useWorkspaceStore()
@@ -512,10 +576,18 @@ const online61850PreparationProgress = ref({
   total: 0,
   done: 0,
 })
+const online61850PreparationStage = ref("Idle")
+const online61850PreparationStageProgress = ref(0)
 const online61850PreparationLog = ref<Array<{
   id: number
   kind: "info" | "success" | "warning" | "error"
   message: string
+}>>([])
+const online61850PreparationLiveTargets = ref<Array<{
+  key: string
+  label: string
+  status: "queued" | "connecting" | "discovering" | "subscribing" | "ready" | "failed"
+  detail: string
 }>>([])
 const online61850PreparationFilter = ref("")
 const online61850PreparationSummary = ref<Online61850PreparationSummary | null>(null)
@@ -526,11 +598,23 @@ const SIGNAL_GRID_SKELETON_FIXED_HEIGHT = 88
 const SIGNAL_GRID_SKELETON_ROW_HEIGHT = 36
 const SIGNAL_GRID_SKELETON_FALLBACK_ROWS = 12
 const BULK_ALLOCATION_COMPLETION_CHUNK_SIZE = 250
+const ONLINE_61850_ORCHESTRATION_TIMEOUT_MS = 180_000
+const ONLINE_61850_ORCHESTRATION_START_TIMEOUT_MS = 15_000
+const ONLINE_61850_ORCHESTRATION_POLL_MS = 700
+const ONLINE_61850_PROGRESS_STAGES = [
+  { atMs: 0, progress: 8, message: "Preparing signal-list targets." },
+  { atMs: 900, progress: 18, message: "Opening MMS sessions." },
+  { atMs: 2200, progress: 38, message: "Discovering IEC 61850 models." },
+  { atMs: 4800, progress: 58, message: "Matching report datasets to signal-list addresses." },
+  { atMs: 7800, progress: 76, message: "Enabling report subscriptions." },
+  { atMs: 11_500, progress: 88, message: "Finalizing report subscriptions." },
+] as const
 const signalGridSkeletonRef = ref<HTMLElement | null>(null)
 const signalGridSkeletonHeight = ref(0)
 const signalListDropActive = ref(false)
 const SIGNAL_LIST_ALLOWED_EXTENSIONS = new Set(["xls", "xlsx", "xlsm"])
 let signalListDropCounter = 0
+let online61850PreparationTicker: ReturnType<typeof setInterval> | null = null
 
 type RowSelectionSnapshot = NonNullable<DataGridProps<GridRow>["rowSelectionState"]>
 type DataGridStateUpdate = NonNullable<DataGridProps<Record<string, unknown>>["state"]>
@@ -539,6 +623,17 @@ type Online61850PreparationResult = Omit<Online61850PreparationTarget, "signalRo
   endpointLabel: string
   status: "ready" | "failed"
   message: string | null
+  diagnostics: string[]
+  subscribedReports: Array<{
+    key: string
+    label: string
+    dataSetReference: string | null
+    subscriptionState: string
+    reportHealth: string
+    lastReportAt: string | null
+    giRequested: boolean
+    valueCount: number
+  }>
   signalCount: number
   matchedSignalCount: number
   mismatchedSignalCount: number
@@ -551,6 +646,7 @@ type Online61850PreparationResult = Omit<Online61850PreparationTarget, "signalRo
     address: string | null
     matched: boolean
     stateLabel: string | null
+    valueLabel: string | null
   }>
   discovery: {
     connected: boolean
@@ -565,6 +661,12 @@ type Online61850PreparationSummary = {
   scannedSignalCount: number
   preparedTargets: Online61850PreparationResult[]
   warnings: string[]
+}
+type Online61850SubscriptionCounters = {
+  reporting: number
+  degraded: number
+  failed: number
+  pending: number
 }
 
 const DataGrid = defineDataGridComponent<GridRow>()
@@ -910,7 +1012,25 @@ const online61850PreparationProgressPercent = computed(() => {
   if (total <= 0) {
     return 0
   }
-  return Math.max(0, Math.min(100, (online61850PreparationProgress.value.done / total) * 100))
+  const completedPercent = (online61850PreparationProgress.value.done / total) * 100
+  const stagePercent = online61850PreparationBusy.value && online61850PreparationProgress.value.done < total
+    ? online61850PreparationStageProgress.value
+    : 0
+  return Math.max(0, Math.min(100, Math.max(completedPercent, stagePercent)))
+})
+const online61850PreparationProgressMeta = computed(() => {
+  const total = Math.max(0, online61850PreparationProgress.value.total)
+  const done = Math.max(0, online61850PreparationProgress.value.done)
+  if (total <= 0) {
+    return "Preparing targets."
+  }
+  if (online61850PreparationBusy.value && done <= 0) {
+    return `${total} targets queued · ${online61850PreparationProgressPercent.value.toFixed(1)}% workflow complete`
+  }
+  if (online61850PreparationBusy.value && done < total) {
+    return `${done} / ${total} targets completed · ${online61850PreparationProgressPercent.value.toFixed(1)}% workflow complete`
+  }
+  return `${done} / ${total} targets completed`
 })
 const online61850PreparationFilterText = computed(() => String(online61850PreparationFilter.value ?? "").trim().toLowerCase())
 const online61850PreparationFilteredTargets = computed(() => {
@@ -2578,7 +2698,10 @@ async function stopOnline61850Preparation() {
     total: 0,
     done: 0,
   }
+  online61850PreparationStage.value = "Idle"
+  online61850PreparationStageProgress.value = 0
   online61850PreparationLog.value = []
+  online61850PreparationLiveTargets.value = []
   online61850PreparationCancelRequested.value = false
   online61850PreparationAbortController.value = null
 }
@@ -2588,12 +2711,113 @@ function cancelOnline61850Preparation() {
   online61850PreparationAbortController.value?.abort()
 }
 
+function stopOnline61850PreparationTicker() {
+  if (online61850PreparationTicker !== null) {
+    clearInterval(online61850PreparationTicker)
+    online61850PreparationTicker = null
+  }
+}
+
+function startOnline61850PreparationTicker(
+  pushLog: (kind: "info" | "success" | "warning" | "error", message: string) => void,
+) {
+  stopOnline61850PreparationTicker()
+  const startedAt = Date.now()
+  let previousStageIndex = -1
+  const tick = () => {
+    const elapsedMs = Date.now() - startedAt
+    let stageIndex = 0
+    for (let index = 0; index < ONLINE_61850_PROGRESS_STAGES.length; index += 1) {
+      if (elapsedMs >= ONLINE_61850_PROGRESS_STAGES[index].atMs) {
+        stageIndex = index
+      }
+    }
+    const stage = ONLINE_61850_PROGRESS_STAGES[stageIndex]
+    online61850PreparationStage.value = stage.message
+    online61850PreparationStageProgress.value = stage.progress
+    if (stageIndex !== previousStageIndex) {
+      previousStageIndex = stageIndex
+      pushLog("info", stage.message)
+    }
+  }
+  tick()
+  online61850PreparationTicker = setInterval(tick, 900)
+}
+
 function formatOnline61850EndpointLabel(target: Online61850PreparationTarget): string {
   const identity = [target.iedName, target.accessPointName]
     .map(value => String(value ?? "").trim())
     .filter(Boolean)
     .join("/")
   return identity ? `${identity} @ ${target.host}:${target.port}` : `${target.host}:${target.port}`
+}
+
+function buildQueuedOnline61850LiveTargets(targets: readonly Online61850PreparationTarget[]) {
+  return targets.map(target => ({
+    key: target.key,
+    label: formatOnline61850EndpointLabel(target),
+    status: "queued" as const,
+    detail: `${target.signalIds.length} signal${target.signalIds.length === 1 ? "" : "s"} queued`,
+  }))
+}
+
+function online61850TargetRuntimeSlices(target: Online61850PreparationTarget, verificationRun: VerificationRun) {
+  const targetSignalIds = new Set(target.signalIds.map(signalId => Number(signalId)).filter(signalId => Number.isFinite(signalId)))
+  const targetGroups = verificationRun.subscription_plan.groups.filter((group) => {
+    const targetIndexes = Array.isArray(group.target_indexes) ? group.target_indexes : []
+    return targetIndexes.some((targetIndex) => {
+      const runtimeTarget = verificationRun.subscription_plan.targets[Number(targetIndex)]
+      return runtimeTarget ? targetSignalIds.has(Number(runtimeTarget.signal_id)) : false
+    })
+  })
+  const endpointIds = new Set(targetGroups.map(group => String(group.endpoint_id ?? "")).filter(Boolean))
+  const sessions = verificationRun.session_snapshots.filter(snapshot => (
+    endpointIds.has(snapshot.endpoint_id) || endpointMatchesOnline61850Target(snapshot.endpoint_id, target)
+  ))
+  const groupIds = new Set(targetGroups.map(group => String(group.group_id ?? "")).filter(Boolean))
+  const subscriptions = verificationRun.subscription_snapshots.filter(snapshot => (
+    groupIds.has(String(snapshot.group_id ?? ""))
+  ))
+  return { targetGroups, sessions, subscriptions }
+}
+
+function updateOnline61850LiveTargetsFromRun(
+  targets: readonly Online61850PreparationTarget[],
+  verificationRun: VerificationRun,
+) {
+  online61850PreparationLiveTargets.value = targets.map((target) => {
+    const { sessions, subscriptions } = online61850TargetRuntimeSlices(target, verificationRun)
+    const { reporting, failed, degraded, pending } = countOnline61850Subscriptions(subscriptions)
+    const discovered = sessions.some(snapshot => snapshot.discovery_status === "available")
+    const sessionFailed = sessions.some(snapshot => snapshot.runtime_state === "failed")
+    const sessionConnecting = sessions.some(snapshot => ["connecting", "discovering"].includes(snapshot.runtime_state))
+    let status: (typeof online61850PreparationLiveTargets.value)[number]["status"] = "queued"
+    let detail = `${target.signalIds.length} signal${target.signalIds.length === 1 ? "" : "s"} queued`
+    if (reporting > 0 && pending === 0) {
+      status = failed > 0 ? "failed" : "ready"
+      detail = `${reporting} report${reporting === 1 ? "" : "s"} active${degraded > 0 ? ` · ${degraded} unmatched` : ""}${failed > 0 ? ` · ${failed} failed` : ""}`
+    } else if (pending > 0) {
+      status = "subscribing"
+      detail = `${reporting} active · ${pending} pending${degraded > 0 ? ` · ${degraded} unmatched` : ""}${failed > 0 ? ` · ${failed} failed` : ""}`
+    } else if (sessionFailed || failed > 0) {
+      status = "failed"
+      detail = sessions.find(snapshot => snapshot.last_error)?.last_error
+        ?? subscriptions.find(snapshot => snapshot.last_error)?.last_error
+        ?? "Failed"
+    } else if (discovered) {
+      status = "discovering"
+      detail = "Model discovered, matching reports"
+    } else if (sessionConnecting || sessions.length > 0) {
+      status = "connecting"
+      detail = "Opening MMS session"
+    }
+    return {
+      key: target.key,
+      label: formatOnline61850EndpointLabel(target),
+      status,
+      detail,
+    }
+  })
 }
 
 function formatOnline61850DisclosureTitle(target: Online61850PreparationResult): string {
@@ -2704,6 +2928,32 @@ function buildOnline61850PreparationSteps(
   return steps
 }
 
+function countOnline61850Subscriptions(
+  subscriptions: VerificationRun["subscription_snapshots"],
+): Online61850SubscriptionCounters {
+  return subscriptions.reduce<Online61850SubscriptionCounters>((counts, snapshot) => {
+    if (snapshot.subscription_state === "reporting") {
+      counts.reporting += 1
+    } else if (snapshot.subscription_state === "degraded") {
+      counts.degraded += 1
+    } else if (snapshot.subscription_state === "failed") {
+      counts.failed += 1
+    } else if (["pending", "reserving", "enabled", "reconnecting"].includes(snapshot.subscription_state)) {
+      counts.pending += 1
+    }
+    return counts
+  }, {
+    reporting: 0,
+    degraded: 0,
+    failed: 0,
+    pending: 0,
+  })
+}
+
+function isOnline61850EndpointUnreachableSubscription(subscription: VerificationRun["subscription_snapshots"][number]): boolean {
+  return String(subscription.diagnostic_code ?? "").toUpperCase() === "EXTERNAL_MMS_ENDPOINT_UNREACHABLE"
+}
+
 function stepBadgeVariant(status: Online61850PreparationResult["steps"][number]["status"]): "success" | "danger" | "neutral" {
   if (status === "done") {
     return "success"
@@ -2714,13 +2964,148 @@ function stepBadgeVariant(status: Online61850PreparationResult["steps"][number][
   return "neutral"
 }
 
+function buildOnline61850SubscribedReports(
+  subscriptions: VerificationRun["subscription_snapshots"],
+): Online61850PreparationResult["subscribedReports"] {
+  return subscriptions.filter(snapshot => snapshot.subscription_state === "reporting").map((snapshot, index) => {
+    const reference = normalizeOnline61850DisplayText(snapshot.report_control_reference)
+    const name = normalizeOnline61850DisplayText(snapshot.report_control_name)
+    const dataSetReference = normalizeOnline61850DisplayText(snapshot.data_set_reference) || null
+    const fallbackLabel = dataSetReference ?? name
+    return {
+      key: String(snapshot.subscription_id ?? `${snapshot.endpoint_id}:${index}`),
+      label: reference || fallbackLabel || `Report ${index + 1}`,
+      dataSetReference,
+      subscriptionState: snapshot.subscription_state,
+      reportHealth: snapshot.report_health,
+      lastReportAt: snapshot.last_report_at ?? null,
+      giRequested: Boolean(snapshot.gi_requested),
+      valueCount: Number(snapshot.last_report_value_count ?? snapshot.last_report_values?.length ?? 0),
+    }
+  })
+}
+
+function normalizeOnline61850DisplayText(value: unknown): string {
+  const text = String(value ?? "").trim()
+  return text && text !== "<empty>" ? text : ""
+}
+
+function canonicalOnline61850SignalReference(reference: string | null | undefined): string {
+  let value = String(reference ?? "").trim()
+  if (!value) {
+    return ""
+  }
+  if (value.includes("!")) {
+    value = value.split("!", 2)[1] ?? value
+  }
+  if (value.endsWith("]") && value.includes("[")) {
+    value = value.slice(0, value.lastIndexOf("["))
+  }
+  if (value.includes("$")) {
+    const [domain, item = ""] = value.includes("/") ? value.split("/", 2) : ["", value]
+    const parts = item.split("$").filter(Boolean)
+    if (parts.length >= 3) {
+      value = `${domain ? `${domain}/` : ""}${parts[0]}.${parts.slice(2).join(".")}`
+    } else {
+      value = value.replace(/\$/g, ".")
+    }
+  }
+  return value.replace(/\//g, ".").replace(/^\.+|\.+$/g, "").toLowerCase()
+}
+
+function compactOnline61850Reference(reference: string): string {
+  return reference.toLowerCase().replace(/[^a-z0-9]/g, "")
+}
+
+function online61850ReferencesMatch(signalReference: string, reportReference: string | null | undefined): boolean {
+  const signal = canonicalOnline61850SignalReference(signalReference)
+  const report = canonicalOnline61850SignalReference(reportReference)
+  if (!signal || !report) {
+    return false
+  }
+  if (signal === report || signal.startsWith(`${report}.`)) {
+    return true
+  }
+  const signalCompact = compactOnline61850Reference(signal)
+  const reportCompact = compactOnline61850Reference(report)
+  return Boolean(reportCompact && (signalCompact === reportCompact || signalCompact.endsWith(reportCompact)))
+}
+
+function online61850ReportValuePriority(signalReference: string, reportReference: string | null | undefined): number {
+  const signal = canonicalOnline61850SignalReference(signalReference)
+  const report = canonicalOnline61850SignalReference(reportReference)
+  if (!signal || !report) {
+    return 0
+  }
+  if (signal === report) {
+    return 100
+  }
+  if (report.endsWith(".stval") || report.endsWith(".ctlval")) {
+    return 90
+  }
+  if (report.endsWith(".q") || report.endsWith(".t")) {
+    return 10
+  }
+  return 50
+}
+
+function online61850IsAuxiliaryReportLeaf(reference: string | null | undefined): boolean {
+  const canonical = canonicalOnline61850SignalReference(reference)
+  return canonical.endsWith(".q") || canonical.endsWith(".t")
+}
+
+function formatOnline61850Value(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "<empty>"
+  }
+  if (typeof value === "boolean") {
+    return value ? "true" : "false"
+  }
+  if (typeof value === "number" || typeof value === "string") {
+    return String(value)
+  }
+  return JSON.stringify(value)
+}
+
+function findOnline61850ReportValueForSignal(
+  reference: string | null,
+  subscriptions: VerificationRun["subscription_snapshots"],
+) {
+  if (!reference) {
+    return null
+  }
+  let bestValue: NonNullable<VerificationRun["subscription_snapshots"][number]["last_report_values"]>[number] | null = null
+  let bestPriority = 0
+  for (const subscription of subscriptions) {
+    for (const value of subscription.last_report_values ?? []) {
+      const dataReferencePriority = online61850ReferencesMatch(reference, value.data_reference)
+        ? online61850ReportValuePriority(reference, value.data_reference)
+        : 0
+      const referencePriority = online61850ReferencesMatch(reference, value.reference)
+        ? online61850ReportValuePriority(reference, value.reference)
+        : 0
+      const rawPriority = Math.max(dataReferencePriority, referencePriority)
+      const priority = online61850IsAuxiliaryReportLeaf(value.data_reference) && !online61850IsAuxiliaryReportLeaf(reference)
+        ? Math.min(rawPriority, 10)
+        : rawPriority
+      if (priority > bestPriority) {
+        bestValue = value
+        bestPriority = priority
+      }
+    }
+  }
+  return bestPriority > 10 ? bestValue : null
+}
+
 function buildSignalRowsForTarget(
   target: Online61850PreparationTarget,
   verificationRun: VerificationRun,
+  subscriptions: VerificationRun["subscription_snapshots"],
 ): Online61850PreparationResult["signalRows"] {
   const runtimeTargetsBySignalId = new Map(
     verificationRun.verification_targets.map(item => [Number(item.signal_id), item]),
   )
+  const hasReportingSubscription = subscriptions.some(snapshot => snapshot.subscription_state === "reporting")
   const signalRows: Online61850PreparationResult["signalRows"] = []
   const signalCount = Math.max(target.signalRows.length, target.signalLabels.length, target.sourceAddresses.length, target.signalIds.length)
   for (let index = 0; index < signalCount; index += 1) {
@@ -2731,14 +3116,93 @@ function buildSignalRowsForTarget(
     const rowReference = row ? resolveOnline61850SignalReference(row) : null
     const reference = String(runtimeTarget?.expected_feedback_path ?? runtimeTarget?.signal_path ?? rowReference ?? "").trim() || null
     const matched = runtimeTarget !== null && runtimeTarget.coverage_state !== "uncovered"
+    const reportValue = matched ? findOnline61850ReportValueForSignal(reference, subscriptions) : null
+    const stateLabel = matched && hasReportingSubscription
+      ? "report subscribed"
+      : runtimeTarget?.coverage_reason ?? runtimeTarget?.coverage_state ?? null
+    const valueLabel = reportValue
+      ? `value ${formatOnline61850Value(reportValue.value)}${reportValue.reason ? ` · ${reportValue.reason}` : ""}`
+      : null
     signalRows.push({
       label,
       address: reference,
       matched,
-      stateLabel: runtimeTarget?.coverage_reason ?? runtimeTarget?.coverage_state ?? null,
+      stateLabel,
+      valueLabel,
     })
   }
   return signalRows
+}
+
+function endpointMatchesOnline61850Target(endpointId: string | null | undefined, target: Online61850PreparationTarget): boolean {
+  const value = String(endpointId ?? "").toLowerCase()
+  if (!value) {
+    return false
+  }
+  if (value.includes(`${target.host.toLowerCase()}:${target.port}`)) {
+    return true
+  }
+  const ied = String(target.iedName ?? "").trim().toLowerCase()
+  const accessPoint = String(target.accessPointName ?? "").trim().toLowerCase()
+  return Boolean(ied && value.includes(ied) && (!accessPoint || value.includes(accessPoint)))
+}
+
+function numberFromDiagnosticDetails(diagnostics: readonly VerificationEvidenceDiagnostic[], key: string): number {
+  for (const diagnostic of diagnostics) {
+    const value = diagnostic.details?.[key]
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return Math.max(0, Math.trunc(value))
+    }
+  }
+  return 0
+}
+
+function formatOnline61850Diagnostic(diagnostic: VerificationEvidenceDiagnostic): string {
+  const code = String(diagnostic.code ?? "").trim()
+  const message = String(diagnostic.message ?? "").trim()
+  if (code && message) {
+    return `${code}: ${message}`
+  }
+  return message || code || "IEC 61850 runtime diagnostic"
+}
+
+function uniqueOnline61850Diagnostics(values: readonly string[]): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+  values.forEach((value) => {
+    const text = String(value ?? "").trim()
+    if (!text || seen.has(text)) {
+      return
+    }
+    seen.add(text)
+    result.push(text)
+  })
+  return result
+}
+
+function resolveOnline61850FailureStage(
+  sessions: VerificationRun["session_snapshots"],
+  subscriptions: VerificationRun["subscription_snapshots"],
+): "configured" | "opened" | "discovered" | "subscribed" | "gi" {
+  if (!sessions.length) {
+    return "configured"
+  }
+  const failedSession = sessions.find(snapshot => snapshot.runtime_state === "failed") ?? null
+  if (failedSession && failedSession.discovery_status !== "available") {
+    const code = String(failedSession.diagnostic_code ?? "").toUpperCase()
+    return code.includes("UNREACHABLE") || code.includes("START") || code.includes("EXITED")
+      ? "configured"
+      : "opened"
+  }
+  const failedSubscription = subscriptions.find(snapshot => snapshot.subscription_state === "failed") ?? null
+  if (!failedSubscription) {
+    return "subscribed"
+  }
+  const code = String(failedSubscription.diagnostic_code ?? "").toUpperCase()
+  if (code.includes("REPORT_NOT_OBSERVED") || code.includes("GI") || code.includes("TIMEOUT")) {
+    return "subscribed"
+  }
+  return "discovered"
 }
 
 function buildOnline61850PreparationResultFromOrchestration(
@@ -2756,36 +3220,144 @@ function buildOnline61850PreparationResultFromOrchestration(
     })
   })
   const endpointIds = new Set(targetGroups.map(group => String(group.endpoint_id ?? "")).filter(Boolean))
-  const sessions = verificationRun.session_snapshots.filter(snapshot => endpointIds.has(snapshot.endpoint_id))
-  const subscriptions = verificationRun.subscription_snapshots.filter(snapshot => endpointIds.has(snapshot.endpoint_id))
+  const groupIds = new Set(targetGroups.map(group => String(group.group_id ?? "")).filter(Boolean))
+  const sessions = verificationRun.session_snapshots.filter(snapshot => (
+    endpointIds.has(snapshot.endpoint_id) || endpointMatchesOnline61850Target(snapshot.endpoint_id, target)
+  ))
+  const subscriptions = verificationRun.subscription_snapshots.filter(snapshot => (
+    groupIds.has(String(snapshot.group_id ?? ""))
+  ))
+  const targetDiagnostics = uniqueOnline61850Diagnostics([
+    ...sessions.flatMap(snapshot => [
+      snapshot.last_error ? `${snapshot.diagnostic_code ?? "SESSION_FAILED"}: ${snapshot.last_error}` : "",
+    ]),
+    ...subscriptions.flatMap(snapshot => [
+      snapshot.last_error ? `${snapshot.diagnostic_code ?? "SUBSCRIPTION_FAILED"}: ${snapshot.last_error}` : "",
+      ...snapshot.diagnostics.map(formatOnline61850Diagnostic),
+    ]),
+    ...verificationRun.diagnostics
+      .filter((diagnostic) => {
+        const endpointId = typeof diagnostic.details?.endpoint_id === "string" ? diagnostic.details.endpoint_id : null
+        const host = typeof diagnostic.details?.endpoint_host === "string" ? diagnostic.details.endpoint_host : null
+        const port = Number(diagnostic.details?.endpoint_port)
+        return endpointMatchesOnline61850Target(endpointId, target)
+          || (host === target.host && port === target.port)
+      })
+      .map(formatOnline61850Diagnostic),
+  ])
+  const discoveryDiagnostics = [
+    ...subscriptions.flatMap(snapshot => snapshot.diagnostics),
+    ...verificationRun.diagnostics,
+  ].filter(diagnostic => diagnostic.code === "MMS_DISCOVERY_SUMMARY")
+  const failedAt = resolveOnline61850FailureStage(sessions, subscriptions)
   const failed = sessions.some(snapshot => snapshot.runtime_state === "failed")
     || subscriptions.some(snapshot => snapshot.subscription_state === "failed")
+  const pending = subscriptions.some(snapshot => ["pending", "reserving", "enabled", "reconnecting"].includes(snapshot.subscription_state))
+  const reporting = subscriptions.filter(snapshot => snapshot.subscription_state === "reporting").length
   const subscriptionsReady = targetGroups.length > 0
     && subscriptions.length >= targetGroups.length
-    && subscriptions.every(snapshot => snapshot.subscription_state === "reporting")
-  const sessionsReady = sessions.length > 0 && sessions.every(snapshot => snapshot.runtime_state === "reporting")
+    && reporting > 0
+    && !pending
+    && subscriptions.every(snapshot => ["reporting", "degraded"].includes(snapshot.subscription_state))
+  const sessionsReady = sessions.length > 0 && sessions.every(snapshot => ["reporting", "degraded"].includes(snapshot.runtime_state))
   const ready = !failed && sessionsReady && subscriptionsReady
 
   return {
     ...target,
     endpointLabel: formatOnline61850EndpointLabel(target),
     status: ready ? "ready" : "failed",
-    message: ready ? null : "Backend orchestration did not reach reporting state for this target.",
+    message: ready ? null : targetDiagnostics[0] ?? "Backend orchestration did not reach reporting state for this target.",
+    diagnostics: ready ? [] : targetDiagnostics.slice(1),
+    subscribedReports: buildOnline61850SubscribedReports(subscriptions),
     signalCount: target.signalIds.length,
     matchedSignalCount,
     mismatchedSignalCount: Math.max(0, target.signalIds.length - matchedSignalCount),
-    steps: buildOnline61850PreparationSteps(ready ? "gi" : "failed", ready ? undefined : "subscribed"),
-    signalRows: buildSignalRowsForTarget(target, verificationRun),
+    steps: buildOnline61850PreparationSteps(ready ? "gi" : "failed", ready ? undefined : failedAt),
+    signalRows: buildSignalRowsForTarget(target, verificationRun, subscriptions),
     discovery: {
       connected: sessions.some(snapshot => snapshot.runtime_state === "reporting"),
       discovered: sessions.some(snapshot => snapshot.discovery_status === "available"),
-      logicalDevices: sessions.length,
-      logicalNodes: 0,
-      dataSets: new Set(targetGroups.map(group => String(group.data_set_reference ?? "")).filter(Boolean)).size,
-      reportControls: subscriptions.length,
+      logicalDevices: numberFromDiagnosticDetails(discoveryDiagnostics, "logical_devices") || sessions.length,
+      logicalNodes: numberFromDiagnosticDetails(discoveryDiagnostics, "logical_nodes"),
+      dataSets: numberFromDiagnosticDetails(discoveryDiagnostics, "data_sets")
+        || new Set(targetGroups.map(group => String(group.data_set_reference ?? "")).filter(Boolean)).size,
+      reportControls: numberFromDiagnosticDetails(discoveryDiagnostics, "report_controls") || subscriptions.length,
     },
   }
 }
+
+function isOnline61850OrchestrationSettled(verificationRun: VerificationRun): boolean {
+  const sessions = verificationRun.session_snapshots
+  const subscriptions = verificationRun.subscription_snapshots
+  if (!sessions.length) {
+    return false
+  }
+  const activeSession = sessions.some(snapshot => ["connecting", "discovering", "reconnecting"].includes(snapshot.runtime_state))
+  const activeSubscription = subscriptions.some(snapshot => ["pending", "reserving", "enabled", "reconnecting"].includes(snapshot.subscription_state))
+  return !activeSession && !activeSubscription
+}
+
+async function waitForOnline61850OrchestrationSnapshot(
+  workspaceId: number,
+  orchestrationId: string,
+  targets: readonly Online61850PreparationTarget[],
+  pushLog: (kind: "info" | "success" | "warning" | "error", message: string) => void,
+): Promise<VerificationRun> {
+  const startedAt = Date.now()
+  let previousReportingCount = -1
+  let previousFailedCount = -1
+  while (true) {
+    if (online61850PreparationAbortController.value?.signal.aborted) {
+      online61850PreparationCancelRequested.value = true
+      throw new DOMException("Online 61850 preparation cancelled.", "AbortError")
+    }
+    const snapshot = await VerificationAPI.getOrchestration(workspaceId, orchestrationId, {
+      signal: online61850PreparationAbortController.value?.signal,
+      timeout: 10_000,
+    })
+    const verificationRun = snapshot.data.verification_run
+    updateOnline61850LiveTargetsFromRun(targets, verificationRun)
+    const scopedSubscriptions = targets.flatMap((target) => online61850TargetRuntimeSlices(target, verificationRun).subscriptions)
+    const uniqueSubscriptions = new Map(scopedSubscriptions.map(subscription => [subscription.subscription_id, subscription]))
+    const visibleReportSubscriptions = [...uniqueSubscriptions.values()].filter(subscription => !isOnline61850EndpointUnreachableSubscription(subscription))
+    const {
+      reporting: reportingCount,
+      failed: failedCount,
+      degraded: degradedCount,
+      pending: pendingCount,
+    } = countOnline61850Subscriptions(visibleReportSubscriptions)
+    const unreachableEndpointCount = new Set(
+      [...uniqueSubscriptions.values()]
+        .filter(isOnline61850EndpointUnreachableSubscription)
+        .map(subscription => String(subscription.endpoint_id ?? "")),
+    ).size
+    online61850PreparationProgress.value.done = Math.min(
+      online61850PreparationProgress.value.total,
+      verificationRun.session_snapshots.filter(item => ["reporting", "degraded", "failed", "closed"].includes(item.runtime_state)).length,
+    )
+    const notReadyCount = failedCount + degradedCount + unreachableEndpointCount
+    if (reportingCount !== previousReportingCount || notReadyCount !== previousFailedCount) {
+      previousReportingCount = reportingCount
+      previousFailedCount = notReadyCount
+      const details = [
+        `${reportingCount} active`,
+        `${pendingCount} pending`,
+        degradedCount > 0 ? `${degradedCount} unmatched` : "",
+        failedCount > 0 ? `${failedCount} errors` : "",
+        unreachableEndpointCount > 0 ? `${unreachableEndpointCount} unreachable endpoint${unreachableEndpointCount === 1 ? "" : "s"}` : "",
+      ].filter(Boolean).join(" · ")
+      pushLog(failedCount > 0 ? "warning" : "info", `Report subscriptions: ${details}.`)
+    }
+    if (isOnline61850OrchestrationSettled(verificationRun)) {
+      return verificationRun
+    }
+    if (Date.now() - startedAt > ONLINE_61850_ORCHESTRATION_TIMEOUT_MS) {
+      throw new Error("Online 61850 orchestration did not finish before timeout.")
+    }
+    await new Promise(resolve => setTimeout(resolve, ONLINE_61850_ORCHESTRATION_POLL_MS))
+  }
+}
+
 async function prepareOnline61850() {
   if (online61850PreparationBusy.value) {
     return
@@ -2820,12 +3392,15 @@ async function prepareOnline61850() {
   online61850PreparationBusy.value = true
   online61850PreparationSummary.value = null
   online61850PreparationLog.value = []
+  online61850PreparationLiveTargets.value = buildQueuedOnline61850LiveTargets(targets)
   online61850PreparationCancelRequested.value = false
   online61850PreparationAbortController.value = new AbortController()
   online61850PreparationProgress.value = {
     total: targets.length,
     done: 0,
   }
+  online61850PreparationStage.value = "Preparing signal-list targets."
+  online61850PreparationStageProgress.value = 0
 
   const preparedTargets: Online61850PreparationResult[] = []
   const warnings = skippedRows.map(item => `${item.signalLabel}: ${item.reason}`)
@@ -2842,9 +3417,10 @@ async function prepareOnline61850() {
   }
 
   pushOnline61850PreparationLog("info", `Preparing ${targets.length} target${targets.length === 1 ? "" : "s"} from the signal list.`)
+  startOnline61850PreparationTicker(pushOnline61850PreparationLog)
 
   try {
-    pushOnline61850PreparationLog("info", "Starting backend-owned MMS orchestration.")
+    pushOnline61850PreparationLog("info", "Creating backend-owned MMS orchestration.")
     const signalIds = allRows
       .map(row => Number(row.signal_id))
       .filter(signalId => Number.isFinite(signalId) && signalId > 0)
@@ -2859,6 +3435,9 @@ async function prepareOnline61850() {
         runtime_version: "mms",
         policy_version: "iec61850-online.v1",
       },
+    }, {
+      signal: online61850PreparationAbortController.value?.signal,
+      timeout: ONLINE_61850_ORCHESTRATION_START_TIMEOUT_MS,
     })
     if (online61850PreparationAbortController.value?.signal.aborted) {
       online61850PreparationCancelRequested.value = true
@@ -2867,9 +3446,18 @@ async function prepareOnline61850() {
       return
     }
     online61850ActiveOrchestrationId.value = started.data.orchestration_id
-    const verificationRun = started.data.verification_run
+    updateOnline61850LiveTargetsFromRun(targets, started.data.verification_run)
+    pushOnline61850PreparationLog("info", "Backend orchestration started; polling live status.")
+    const verificationRun = await waitForOnline61850OrchestrationSnapshot(
+      workspaceId,
+      started.data.orchestration_id,
+      targets,
+      pushOnline61850PreparationLog,
+    )
     preparedTargets.push(...targets.map(target => buildOnline61850PreparationResultFromOrchestration(target, verificationRun)))
     online61850PreparationProgress.value.done = targets.length
+    online61850PreparationStage.value = "Online 61850 orchestration completed."
+    online61850PreparationStageProgress.value = 100
     const reportingCount = verificationRun.subscription_snapshots.filter((snapshot) => snapshot.subscription_state === "reporting").length
     pushOnline61850PreparationLog("success", `Backend orchestration is reporting on ${reportingCount} subscription${reportingCount === 1 ? "" : "s"}.`)
   } catch (error) {
@@ -2885,12 +3473,15 @@ async function prepareOnline61850() {
         address: resolveOnline61850SignalReference(row),
         matched: false,
         stateLabel: null,
+        valueLabel: null,
       }))
       preparedTargets.push({
         ...target,
         endpointLabel: formatOnline61850EndpointLabel(target),
         status: "failed",
         message: errorMessage,
+        diagnostics: [],
+        subscribedReports: [],
         signalCount: target.signalIds.length,
         matchedSignalCount: 0,
         mismatchedSignalCount: signalRows.length,
@@ -2907,8 +3498,11 @@ async function prepareOnline61850() {
       })
     })
     online61850PreparationProgress.value.done = targets.length
+    online61850PreparationStage.value = "Online 61850 orchestration failed."
+    online61850PreparationStageProgress.value = 100
     pushOnline61850PreparationLog("error", errorMessage)
   } finally {
+    stopOnline61850PreparationTicker()
     online61850PreparationBusy.value = false
     online61850PreparationAbortController.value = null
   }
@@ -3659,6 +4253,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  stopOnline61850PreparationTicker()
   if (signalsGridStatePersistTimer !== null) {
     clearTimeout(signalsGridStatePersistTimer)
     signalsGridStatePersistTimer = null
@@ -3767,8 +4362,8 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 0.625rem;
-  height: min(22rem, calc(100vh - 2rem));
-  min-height: 18rem;
+  height: min(32rem, calc(100vh - 2rem));
+  min-height: 22rem;
   min-width: min(32rem, calc(100vw - 2rem));
   max-width: min(36rem, calc(100vw - 2rem));
   overflow: hidden;
@@ -3790,6 +4385,11 @@ onBeforeUnmount(() => {
   font-variant-numeric: tabular-nums;
   line-height: 1.25;
   min-height: 1.25em;
+}
+
+.signals-page__busy-copy--meta {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
 }
 
 .signals-page__busy-progress-row {
@@ -3830,6 +4430,77 @@ onBeforeUnmount(() => {
   min-height: 2.25rem;
   position: relative;
   z-index: 1;
+}
+
+.signals-page__busy-target-list {
+  border: 1px solid var(--color-neutral-200);
+  border-radius: 0.5rem;
+  display: grid;
+  flex: 0 1 auto;
+  gap: 0;
+  max-height: 10rem;
+  min-height: 3rem;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+.signals-page__busy-target-row {
+  align-items: center;
+  border-bottom: 1px solid var(--color-neutral-100);
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: auto minmax(8rem, 1fr) minmax(7rem, 0.9fr);
+  min-height: 2rem;
+  padding: 0.4rem 0.55rem;
+}
+
+.signals-page__busy-target-row:last-child {
+  border-bottom: 0;
+}
+
+.signals-page__busy-target-state {
+  border-radius: 999px;
+  display: inline-flex;
+  height: 0.5rem;
+  width: 0.5rem;
+}
+
+.signals-page__busy-target-state--queued {
+  background: var(--color-neutral-400);
+}
+
+.signals-page__busy-target-state--connecting,
+.signals-page__busy-target-state--discovering,
+.signals-page__busy-target-state--subscribing {
+  background: var(--color-blue-500);
+}
+
+.signals-page__busy-target-state--ready {
+  background: var(--color-emerald-500);
+}
+
+.signals-page__busy-target-state--failed {
+  background: var(--color-rose-500);
+}
+
+.signals-page__busy-target-label,
+.signals-page__busy-target-detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signals-page__busy-target-label {
+  color: var(--color-neutral-800);
+  font-size: var(--text-xs);
+  font-weight: 700;
+}
+
+.signals-page__busy-target-detail {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  text-align: right;
 }
 
 .signals-page__busy-log {
@@ -4153,6 +4824,58 @@ onBeforeUnmount(() => {
   line-height: 1.35;
 }
 
+.signals-page__online-prep-diagnostics {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+  padding-left: 1rem;
+}
+
+.signals-page__online-prep-diagnostic {
+  color: var(--color-rose-700);
+  font-size: var(--text-xs);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.signals-page__online-prep-report-list {
+  border: 1px solid var(--color-neutral-200);
+  border-radius: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.5rem;
+}
+
+.signals-page__online-prep-report-title {
+  color: var(--color-neutral-700);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  margin: 0;
+}
+
+.signals-page__online-prep-report-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.signals-page__online-prep-report-name {
+  color: var(--color-neutral-800);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.signals-page__online-prep-report-meta {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
 .signals-page__online-prep-signal-list {
   display: flex;
   flex-direction: column;
@@ -4266,6 +4989,23 @@ onBeforeUnmount(() => {
   background: var(--color-neutral-800);
 }
 
+:global(.dark .signals-page__busy-target-list) {
+  border-color: var(--color-neutral-800);
+  scrollbar-color: var(--color-neutral-700) transparent;
+}
+
+:global(.dark .signals-page__busy-target-row) {
+  border-bottom-color: var(--color-neutral-800);
+}
+
+:global(.dark .signals-page__busy-target-label) {
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .signals-page__busy-target-detail) {
+  color: var(--color-neutral-400);
+}
+
 :global(.dark .signals-page__busy-log) {
   scrollbar-color: var(--color-neutral-700) transparent;
 }
@@ -4366,6 +5106,23 @@ onBeforeUnmount(() => {
 
 :global(.dark .signals-page__online-prep-item-error) {
   color: var(--color-rose-300);
+}
+
+:global(.dark .signals-page__online-prep-diagnostic) {
+  color: var(--color-rose-300);
+}
+
+:global(.dark .signals-page__online-prep-report-list) {
+  border-color: var(--color-neutral-700);
+}
+
+:global(.dark .signals-page__online-prep-report-title),
+:global(.dark .signals-page__online-prep-report-name) {
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .signals-page__online-prep-report-meta) {
+  color: var(--color-neutral-400);
 }
 
 :global(.dark .signals-page__online-prep-signal-row--matched) {

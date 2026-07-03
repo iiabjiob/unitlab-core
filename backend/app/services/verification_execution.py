@@ -88,6 +88,7 @@ def build_runtime_subscription_plan(
                         matched_signals=matched_signals,
                     ),
                 ),
+                endpoint_id=group.endpoint_id,
             )
         )
 
@@ -335,16 +336,19 @@ def _build_runtime_candidate(
     report_kind = Iec61850ReportKind.BUFFERED
     if str(group.report_kind or "").strip().lower() == "unbuffered":
         report_kind = Iec61850ReportKind.UNBUFFERED
+    report_control_name = group.report_control_name or (group.group_id if group.source_classification == "fallback" else "")
+    discovery_only = group.source_classification == "fallback" and not group.report_control_reference and not group.data_set_reference
+    candidate_ied_name = group.ied_name or ("" if discovery_only else group.endpoint_id or "IED")
     return Iec61850ReportControlCandidate(
         id=group.group_id or f"group:{group.endpoint_id or 'unknown'}",
-        ied_name=group.ied_name or group.endpoint_id or "IED",
+        ied_name=candidate_ied_name,
         access_point_name=group.access_point_name or "AP1",
-        logical_device_inst="LD0",
-        logical_node_name="LLN0",
-        report_control_name=group.report_control_name or group.group_id or "report",
+        logical_device_inst="" if discovery_only else "LD0",
+        logical_node_name="" if discovery_only else "LLN0",
+        report_control_name=report_control_name if discovery_only else report_control_name or group.group_id or "report",
         report_kind=report_kind,
         rpt_id=group.rpt_id,
-        data_set_ref=group.data_set_reference or first_target.expected_feedback_path or first_target.signal_path,
+        data_set_ref=None if discovery_only else group.data_set_reference or first_target.expected_feedback_path or first_target.signal_path,
         conf_rev=None,
         indexed=None,
         buffer_time_ms=None,

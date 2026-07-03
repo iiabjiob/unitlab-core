@@ -7,7 +7,7 @@ import pytest
 
 from app.schemas.verification_schema import VerificationExecutionContextSchema
 from app.services.iec61850.report_runtime import Iec61850DeviceEndpoint, Iec61850RuntimeMode
-from app.services.verification_execution import execute_simulated_verification_run
+from app.services.verification_execution import build_runtime_subscription_plan, execute_simulated_verification_run
 from app.services.verification_planner import VerificationTargetSource, build_verification_subscription_plan
 
 
@@ -63,6 +63,180 @@ def _build_plan():
             )
         ]
     )
+
+
+def test_runtime_subscription_plan_keeps_transport_endpoint_out_of_ied_name() -> None:
+    plan = build_verification_subscription_plan(
+        [
+            VerificationTargetSource(
+                signal_id=101,
+                signal_reference="Trip",
+                signal_path="trip",
+                signal_metadata={
+                    "row": {
+                        "transport_host": "172.16.40.128:12447",
+                        "iec61850_address": "KINTE15BCU01CTRL1/CBCSWI1/Pos/stVal[ST]",
+                    },
+                    "verification": {
+                        "enabled": True,
+                        "transport_host": "172.16.40.128:12447",
+                        "iec61850_address": "KINTE15BCU01CTRL1/CBCSWI1/Pos/stVal[ST]",
+                    },
+                },
+                allocation_id=None,
+                allocation_status="unassigned",
+                allocation_health={},
+                channel_id=None,
+                channel_label=None,
+                unit_id=None,
+                unit_online=None,
+                source_row_id="signal-101",
+            )
+        ]
+    )
+
+    runtime_plan = build_runtime_subscription_plan(plan)
+
+    assert runtime_plan.devices[0].ied_name == ""
+    assert runtime_plan.devices[0].endpoint_id == "172.16.40.128:12447"
+    assert runtime_plan.devices[0].reports[0].candidate.ied_name == ""
+
+
+def test_fallback_runtime_plan_groups_signal_list_addresses_by_logical_device_and_fc() -> None:
+    plan = build_verification_subscription_plan(
+        [
+            VerificationTargetSource(
+                signal_id=101,
+                signal_reference="CTRL1 Pos",
+                signal_path="ctrl1_pos",
+                signal_metadata={
+                    "row": {
+                        "transport_host": "172.16.40.128:12447",
+                        "iec61850_address": "KINTE15BCU01CTRL1/CBCSWI1/Pos/stVal[ST]",
+                    }
+                },
+                allocation_id=None,
+                allocation_status="unassigned",
+                allocation_health={},
+                channel_id=None,
+                channel_label=None,
+                unit_id=None,
+                unit_online=None,
+                source_row_id="signal-101",
+            ),
+            VerificationTargetSource(
+                signal_id=102,
+                signal_reference="CTRL1 Ind",
+                signal_path="ctrl1_ind",
+                signal_metadata={
+                    "row": {
+                        "transport_host": "172.16.40.128:12447",
+                        "iec61850_address": "KINTE15BCU01CTRL1/SlotHGGIO12/Ind15/stVal[ST]",
+                    }
+                },
+                allocation_id=None,
+                allocation_status="unassigned",
+                allocation_health={},
+                channel_id=None,
+                channel_label=None,
+                unit_id=None,
+                unit_online=None,
+                source_row_id="signal-102",
+            ),
+            VerificationTargetSource(
+                signal_id=103,
+                signal_reference="CTRL2 Ind",
+                signal_path="ctrl2_ind",
+                signal_metadata={
+                    "row": {
+                        "transport_host": "172.16.40.128:12447",
+                        "iec61850_address": "KINTE15BCU01CTRL2/SlotIGGIO2/Ind1/stVal[ST]",
+                    }
+                },
+                allocation_id=None,
+                allocation_status="unassigned",
+                allocation_health={},
+                channel_id=None,
+                channel_label=None,
+                unit_id=None,
+                unit_online=None,
+                source_row_id="signal-103",
+            ),
+            VerificationTargetSource(
+                signal_id=104,
+                signal_reference="CTRL1 Measurement",
+                signal_path="ctrl1_measurement",
+                signal_metadata={
+                    "row": {
+                        "transport_host": "172.16.40.128:12447",
+                        "iec61850_address": "KINTE15BCU01CTRL1/RSYN1/Hz/mag.f[MX]",
+                    }
+                },
+                allocation_id=None,
+                allocation_status="unassigned",
+                allocation_health={},
+                channel_id=None,
+                channel_label=None,
+                unit_id=None,
+                unit_online=None,
+                source_row_id="signal-104",
+            ),
+            VerificationTargetSource(
+                signal_id=105,
+                signal_reference="CTRL1 Control",
+                signal_path="ctrl1_control",
+                signal_metadata={
+                    "row": {
+                        "transport_host": "172.16.40.128:12447",
+                        "iec61850_address": "KINTE15BCU01CTRL1/CBCSWI1/Pos/Oper.ctlVal[CO]",
+                    }
+                },
+                allocation_id=None,
+                allocation_status="unassigned",
+                allocation_health={},
+                channel_id=None,
+                channel_label=None,
+                unit_id=None,
+                unit_online=None,
+                source_row_id="signal-105",
+            ),
+            VerificationTargetSource(
+                signal_id=106,
+                signal_reference="System Health",
+                signal_path="system_health",
+                signal_metadata={
+                    "row": {
+                        "transport_host": "172.16.40.128:12447",
+                        "iec61850_address": "KINTE15BCU01SYSTEM/LLN0/Health/stVal[ST]",
+                    }
+                },
+                allocation_id=None,
+                allocation_status="unassigned",
+                allocation_health={},
+                channel_id=None,
+                channel_label=None,
+                unit_id=None,
+                unit_online=None,
+                source_row_id="signal-106",
+            ),
+        ]
+    )
+
+    runtime_plan = build_runtime_subscription_plan(plan)
+
+    assert plan.coverage.groups_count == 3
+    assert plan.coverage.uncovered_targets == 2
+    assert runtime_plan.required_report_count == 3
+    candidate_signals_by_scope = {
+        report.candidate.signals[0].reference.rsplit("/", 3)[0] + "/" + report.candidate.signals[0].reference.rsplit("[", 1)[-1].rstrip("]")
+        for device in runtime_plan.devices
+        for report in device.reports
+    }
+    assert candidate_signals_by_scope == {
+        "KINTE15BCU01CTRL1/ST",
+        "KINTE15BCU01CTRL1/MX",
+        "KINTE15BCU01CTRL2/ST",
+    }
 
 
 def _build_multi_ied_plan():
@@ -221,7 +395,7 @@ def _build_fallback_plan():
                 signal_metadata={
                     "protocol": "iec61850",
                     "protocol_metadata": {
-                        "expected_feedback_path": "kint_5",
+                        "expected_feedback_path": "IED-ACTRL1/XCBR1.Pos.stVal[ST]",
                     },
                 },
                 source_row_index=4,
