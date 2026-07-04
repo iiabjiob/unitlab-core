@@ -382,7 +382,7 @@ class Iec61850ClientControlService:
                 self._stop_external_mms_client_process()
             if self._live_wire_process is not None:
                 self._stop_live_wire_transport()
-            if self._session_open:
+            if self._session_open and self._endpoint.mode != Iec61850RuntimeMode.MMS:
                 self._runtime.close_session(self._session_id)
             self._session_open = False
             self._last_read = None

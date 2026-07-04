@@ -327,7 +327,7 @@ def test_build_discovery_summary_counts_model_elements() -> None:
 
 
 def test_mms_engine_configures_external_mms_target_and_closes_session() -> None:
-    calls: dict[str, Any] = {}
+    calls: dict[str, Any] = {"order": []}
 
     class _Snapshot:
         last_discovery = {
@@ -345,13 +345,20 @@ def test_mms_engine_configures_external_mms_target_and_closes_session() -> None:
 
         def configure_target(self, request: Any) -> None:
             calls["target"] = request
+            calls["order"].append("configure")
+
+        def connect_ied(self) -> None:
+            calls["connect"] = True
+            calls["order"].append("connect")
 
         def discover_ied(self) -> _Snapshot:
             calls["discover"] = True
+            calls["order"].append("discover")
             return _Snapshot()
 
         def close_ied(self) -> None:
             calls["closed"] = True
+            calls["order"].append("close")
 
     request = _request(ip="172.16.40.128", port=12447, endpoint="172.16.40.128:12447")
     result = MmsExternalIedDiscoveryEngine(control_service_factory=_ControlService).discover(request)
@@ -359,7 +366,9 @@ def test_mms_engine_configures_external_mms_target_and_closes_session() -> None:
     assert calls["target"].mode == "external-mms"
     assert calls["target"].host == "172.16.40.128"
     assert calls["target"].port == 12447
+    assert calls["connect"] is True
     assert calls["discover"] is True
     assert calls["closed"] is True
+    assert calls["order"] == ["configure", "connect", "discover", "close"]
     assert result.metadata.model_fingerprint == compute_model_fingerprint(result.model)
     assert result.metadata.planning_fingerprint == "plan-a"

@@ -7,6 +7,7 @@ from app.infrastructure.db.database import get_db
 from app.schemas.verification_schema import (
     VerificationAutoRunStartSchema,
     VerificationExternalIedTargetsRequestSchema,
+    VerificationExternalIedDiscoveryTreeResponseSchema,
     VerificationMmsReachabilityRequestSchema,
     VerificationMmsReachabilityResponseSchema,
     VerificationNetworkPreflightResponseSchema,
@@ -17,7 +18,12 @@ from app.schemas.verification_schema import (
     VerificationRuntimeOrchestrationStartSchema,
     VerificationRunStepDetailsSchema,
 )
-from app.services.external_ied_availability import configure_external_ied_targets
+from app.services.external_ied_availability import (
+    configure_external_ied_targets,
+    load_external_ied_discovery_tree,
+    publish_external_ied_status_snapshot,
+)
+from app.services.external_ied_discovery_scheduler import schedule_external_ied_discovery_for_user_request
 from app.services.verification_evidence import VerificationEvidenceRepository
 from app.services.verification_network_preflight import build_verification_network_preflight_response
 from app.services.verification_mms_reachability import check_mms_tcp_reachability
@@ -82,6 +88,37 @@ async def set_external_ied_targets(
         workspace_id,
         [target.model_dump(mode="json") for target in payload.targets],
     )
+
+
+@router.post("/external-ieds/{endpoint}/discovery/refresh")
+async def refresh_external_ied_discovery(
+    workspace_id: int,
+    endpoint: str,
+):
+    try:
+        request = await schedule_external_ied_discovery_for_user_request(
+            workspace_id=workspace_id,
+            endpoint=endpoint,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    if request is None:
+        raise HTTPException(status_code=404, detail="External IED endpoint is not reachable or not configured")
+    await publish_external_ied_status_snapshot(workspace_id)
+    return {"queued": True, "request_id": request.request_id, "endpoint": request.endpoint}
+
+
+@router.get("/external-ieds/{endpoint}/discovery/tree", response_model=VerificationExternalIedDiscoveryTreeResponseSchema)
+async def get_external_ied_discovery_tree(
+    workspace_id: int,
+    endpoint: str,
+):
+    tree = await load_external_ied_discovery_tree(workspace_id=workspace_id, endpoint=endpoint)
+    if tree is None:
+        raise HTTPException(status_code=404, detail="External IED discovery model is not available")
+    return tree
 
 
 @router.post("/runs", response_model=VerificationRunDetailResponseSchema)

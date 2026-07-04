@@ -141,6 +141,7 @@ export interface DeviceHeartbeatEvent {
 export type ExternalIedStatus = "not_applicable" | "unknown" | "expected" | "reachable" | "offline"
 export type ExternalIedCheckKind = "none" | "tcp_connect"
 export type ExternalIedFailureCode = "unreachable" | "mms_unavailable" | "network_unreachable" | "probe_failed"
+export type ExternalIedDiscoveryState = "NeverDiscovered" | "Queued" | "Running" | "Succeeded" | "Failed" | "RetryWaiting" | "Cancelled" | "Stale"
 
 export interface ExternalIedStatusRecord {
   ip: string
@@ -151,6 +152,17 @@ export interface ExternalIedStatusRecord {
   last_error?: string | null
   check_kind: ExternalIedCheckKind
   failure_code?: ExternalIedFailureCode | null
+  discovery_state?: ExternalIedDiscoveryState
+  discovery_retry_at_ms?: number | null
+  discovery_last_error?: string | null
+  discovery_updated_at_ms?: number | null
+  discovery_ready_for_verification?: boolean
+  discovery_device_identity?: string | null
+  discovery_vendor?: string | null
+  discovery_model?: string | null
+  discovery_datasets?: number | null
+  discovery_rcbs?: number | null
+  discovery_model_signals?: number | null
 }
 
 export interface ExternalIedStatusSnapshotEvent {
@@ -175,6 +187,17 @@ export interface ExternalIedStatusChangedEvent {
   check_kind: ExternalIedCheckKind
   failure_code?: ExternalIedFailureCode | null
   error?: string | null
+  discovery_state?: ExternalIedDiscoveryState
+  discovery_retry_at_ms?: number | null
+  discovery_last_error?: string | null
+  discovery_updated_at_ms?: number | null
+  discovery_ready_for_verification?: boolean
+  discovery_device_identity?: string | null
+  discovery_vendor?: string | null
+  discovery_model?: string | null
+  discovery_datasets?: number | null
+  discovery_rcbs?: number | null
+  discovery_model_signals?: number | null
 }
 
 export interface SystemHealthChangedEvent {

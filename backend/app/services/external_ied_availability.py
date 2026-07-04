@@ -19,7 +19,10 @@ from app.schemas.ws.events import (
     ExternalIedStatusSnapshotEvent,
 )
 from app.services.external_ied_discovery_scheduler import (
+    _cache_key,
     _discovery_state_key,
+    _discovery_model_key,
+    discovery_cache_metadata_from_payload,
     discovery_ui_fields_from_payload,
     schedule_external_ied_discovery_from_watcher_payload,
 )
@@ -736,21 +739,136 @@ async def list_external_ied_status_snapshots() -> list[ExternalIedStatusSnapshot
             workspace_id = int(raw_workspace_id)
         except (TypeError, ValueError):
             continue
-        statuses = await redis.hgetall(_status_key(workspace_id))
-        discovery_states = await redis.hgetall(_discovery_state_key(workspace_id))
-        devices = [
-            _record_from_payload(endpoint.rsplit(":", 1)[0], payload, discovery_payload=discovery_states.get(endpoint))
-            for endpoint, payload in statuses.items()
-        ]
-        events.append(
-            ExternalIedStatusSnapshotEvent(
-                workspace_id=workspace_id,
-                devices=sorted(devices, key=lambda item: tuple(int(part) for part in item.ip.split("."))),
-                removed_signal_ids=[],
-                emitted_at=_utc_now_iso(),
-            )
-        )
+        events.append(await build_external_ied_status_snapshot(workspace_id))
     return events
+
+
+async def build_external_ied_status_snapshot(workspace_id: int) -> ExternalIedStatusSnapshotEvent:
+    redis = RedisManager.get_instance()
+    statuses = await redis.hgetall(_status_key(workspace_id))
+    discovery_states = await redis.hgetall(_discovery_state_key(workspace_id))
+    discovery_cache = await redis.hgetall(_cache_key(workspace_id))
+    discovery_models = await redis.hgetall(_discovery_model_key(workspace_id))
+    devices = []
+    for endpoint, payload in statuses.items():
+        record = _record_from_payload(endpoint.rsplit(":", 1)[0], payload, discovery_payload=discovery_states.get(endpoint))
+        _attach_discovery_cache_fields(
+            record,
+            cache_payload=discovery_cache.get(endpoint),
+            model_payload=discovery_models.get(endpoint),
+        )
+        devices.append(record)
+    return ExternalIedStatusSnapshotEvent(
+        workspace_id=workspace_id,
+        devices=sorted(devices, key=lambda item: tuple(int(part) for part in item.ip.split("."))),
+        removed_signal_ids=[],
+        emitted_at=_utc_now_iso(),
+    )
+
+
+async def publish_external_ied_status_snapshot(workspace_id: int) -> ExternalIedStatusSnapshotEvent:
+    event = await build_external_ied_status_snapshot(workspace_id)
+    await WsEventPublisher.publish(event)
+    return event
+
+
+def _attach_discovery_cache_fields(
+    record: ExternalIedStatusRecord,
+    *,
+    cache_payload: str | dict[str, Any] | None,
+    model_payload: str | dict[str, Any] | None,
+) -> None:
+    metadata = discovery_cache_metadata_from_payload(cache_payload)
+    if metadata is not None:
+        record.discovery_device_identity = metadata.device_identity
+        record.discovery_vendor = metadata.vendor
+        record.discovery_model = metadata.model
+
+    model = _parse_json_object(model_payload)
+    if model is None:
+        return
+    datasets = model.get("datasets") if isinstance(model.get("datasets"), list) else []
+    rcbs = model.get("rcbs") if isinstance(model.get("rcbs"), list) else []
+    fcdas = model.get("fcdas") if isinstance(model.get("fcdas"), list) else []
+    record.discovery_datasets = len(datasets)
+    record.discovery_rcbs = len(rcbs)
+    record.discovery_model_signals = len(fcdas)
+
+
+async def load_external_ied_discovery_tree(workspace_id: int, endpoint: str) -> dict[str, Any] | None:
+    redis = RedisManager.get_instance()
+    model_payload = await redis.hget(_discovery_model_key(workspace_id), endpoint)
+    model = _parse_json_object(model_payload)
+    if model is None:
+        return None
+
+    cache_payload = await redis.hget(_cache_key(workspace_id), endpoint)
+    metadata = discovery_cache_metadata_from_payload(cache_payload)
+    return {
+        "endpoint": endpoint,
+        "model_fingerprint": metadata.model_fingerprint if metadata is not None else None,
+        **_discovery_tree_from_model(model),
+    }
+
+
+def _parse_json_object(payload: str | dict[str, Any] | None) -> dict[str, Any] | None:
+    if isinstance(payload, dict):
+        return payload
+    if not isinstance(payload, str) or not payload:
+        return None
+    try:
+        parsed = json.loads(payload)
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _discovery_tree_from_model(model: dict[str, Any]) -> dict[str, Any]:
+    datasets = model.get("datasets") if isinstance(model.get("datasets"), list) else []
+    rcbs = model.get("rcbs") if isinstance(model.get("rcbs"), list) else []
+    fcdas = model.get("fcdas") if isinstance(model.get("fcdas"), list) else []
+    fc_by_reference = {
+        str(item.get("reference")): str(item.get("fc"))
+        for item in fcdas
+        if isinstance(item, dict) and item.get("reference") is not None and item.get("fc") is not None
+    }
+    dataset_by_reference: dict[str, dict[str, Any]] = {}
+    for dataset in datasets:
+        if not isinstance(dataset, dict):
+            continue
+        reference = str(dataset.get("reference") or "").strip()
+        if not reference:
+            continue
+        raw_members = dataset.get("members") if isinstance(dataset.get("members"), list) else []
+        signals = []
+        for raw_member in raw_members:
+            signal_reference = str(raw_member).strip()
+            if not signal_reference:
+                continue
+            signals.append({
+                "reference": signal_reference,
+                "fc": fc_by_reference.get(signal_reference),
+            })
+        dataset_by_reference[reference] = {
+            "reference": reference,
+            "signals": signals,
+        }
+    reports = []
+    for rcb in rcbs:
+        if not isinstance(rcb, dict):
+            continue
+        reference = str(rcb.get("reference") or "").strip()
+        if not reference:
+            continue
+        dataset_reference = str(rcb.get("dataset_reference") or "").strip()
+        reports.append({
+            "reference": reference,
+            "name": str(rcb.get("name") or reference.rsplit(".", 1)[-1] or reference),
+            "kind": str(rcb.get("kind") or "unknown"),
+            "dataset_reference": dataset_reference or None,
+            "dataset": dataset_by_reference.get(dataset_reference) if dataset_reference else None,
+        })
+    return {"reports": reports}
 
 
 async def _probe_state(

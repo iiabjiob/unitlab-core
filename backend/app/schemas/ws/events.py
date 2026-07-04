@@ -101,6 +101,12 @@ class ExternalIedStatusRecord(BaseModel):
     discovery_last_error: str | None = None
     discovery_updated_at_ms: int | None = None
     discovery_ready_for_verification: bool = False
+    discovery_device_identity: str | None = None
+    discovery_vendor: str | None = None
+    discovery_model: str | None = None
+    discovery_datasets: int | None = None
+    discovery_rcbs: int | None = None
+    discovery_model_signals: int | None = None
 
 
 class ExternalIedStatusSnapshotEvent(BaseModel):
@@ -130,6 +136,12 @@ class ExternalIedStatusChangedEvent(BaseModel):
     discovery_last_error: str | None = None
     discovery_updated_at_ms: int | None = None
     discovery_ready_for_verification: bool = False
+    discovery_device_identity: str | None = None
+    discovery_vendor: str | None = None
+    discovery_model: str | None = None
+    discovery_datasets: int | None = None
+    discovery_rcbs: int | None = None
+    discovery_model_signals: int | None = None
 
 class SequenceEventBase(BaseModel):
     topic: Literal["sequence"] = "sequence"

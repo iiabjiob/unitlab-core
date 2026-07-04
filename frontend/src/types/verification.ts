@@ -150,6 +150,30 @@ export interface VerificationExternalIedTargetsRequest {
   targets: VerificationExternalIedTarget[]
 }
 
+export interface VerificationExternalIedDiscoveryTreeSignal {
+  reference: string
+  fc?: string | null
+}
+
+export interface VerificationExternalIedDiscoveryTreeDataset {
+  reference: string
+  signals: VerificationExternalIedDiscoveryTreeSignal[]
+}
+
+export interface VerificationExternalIedDiscoveryTreeReport {
+  reference: string
+  name: string
+  kind: string
+  dataset_reference?: string | null
+  dataset?: VerificationExternalIedDiscoveryTreeDataset | null
+}
+
+export interface VerificationExternalIedDiscoveryTreeResponse {
+  endpoint: string
+  model_fingerprint?: string | null
+  reports: VerificationExternalIedDiscoveryTreeReport[]
+}
+
 export interface VerificationAutoRunStartPayload {
   signal_ids: number[]
   execution_context: VerificationExecutionContext

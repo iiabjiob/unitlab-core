@@ -1,0 +1,878 @@
+<template>
+  <SlideOver
+    :open="open"
+    placement="right"
+    title="IEC 61850 IED"
+    :width-px="540"
+    @close="emit('close')"
+  >
+    <div class="external-ied-details">
+      <div class="external-ied-details__header">
+        <p class="external-ied-details__endpoint">{{ endpointLabel }}</p>
+        <span class="external-ied-details__status" :class="statusClass">
+          <span class="external-ied-details__status-dot" aria-hidden="true"></span>
+          {{ statusLabel }}
+        </span>
+      </div>
+
+      <dl class="external-ied-details__facts">
+        <div class="external-ied-details__fact">
+          <dt>Status</dt>
+          <dd>{{ statusLabel }}</dd>
+        </div>
+        <div class="external-ied-details__fact">
+          <dt>Identity</dt>
+          <dd>{{ identityLabel }}</dd>
+        </div>
+        <div class="external-ied-details__fact">
+          <dt>Discovery</dt>
+          <dd>{{ discoveryLabel }}</dd>
+        </div>
+        <div class="external-ied-details__fact">
+          <dt>Planning</dt>
+          <dd>{{ planningLabel }}</dd>
+        </div>
+        <div class="external-ied-details__fact">
+          <dt>Verification</dt>
+          <dd>{{ verificationLabel }}</dd>
+        </div>
+        <div class="external-ied-details__fact">
+          <dt>Datasets</dt>
+          <dd>{{ record?.discoveryDatasets ?? "—" }}</dd>
+        </div>
+        <div class="external-ied-details__fact">
+          <dt>RCBs</dt>
+          <dd>{{ record?.discoveryRcbs ?? "—" }}</dd>
+        </div>
+        <div class="external-ied-details__fact">
+          <dt>Signals</dt>
+          <dd>{{ record?.discoveryModelSignals ?? record?.signalIds.length ?? 0 }}</dd>
+        </div>
+      </dl>
+
+      <p v-if="lastError" class="external-ied-details__error">{{ lastError }}</p>
+
+      <section class="external-ied-details__model" aria-label="IED discovery model">
+        <div class="external-ied-details__model-header">
+          <span>Reports</span>
+          <span class="external-ied-details__model-count">{{ treeCountLabel }}</span>
+        </div>
+        <div class="external-ied-details__tree-toolbar">
+          <input
+            v-model="treeSearch"
+            type="search"
+            class="external-ied-details__tree-search"
+            placeholder="Quick filter"
+            autocomplete="off"
+            spellcheck="false"
+          >
+          <button
+            v-if="normalizedTreeSearch"
+            type="button"
+            class="external-ied-details__tree-clear"
+            @click="treeSearch = ''"
+          >
+            Clear
+          </button>
+        </div>
+        <div
+          ref="treeViewportRef"
+          class="external-ied-details__tree"
+          role="tree"
+          tabindex="0"
+          aria-label="IED reports, datasets and signals"
+          @scroll.passive="onTreeScroll"
+          @keydown="onTreeRootKeydown"
+        >
+          <div v-if="treeLoading" class="external-ied-details__tree-empty">
+            Loading discovery model...
+          </div>
+          <div v-else-if="treeError" class="external-ied-details__tree-empty">
+            {{ treeError }}
+          </div>
+          <div v-else-if="treeVisibleCount === 0" class="external-ied-details__tree-empty">
+            {{ normalizedTreeSearch ? "No matching model nodes." : "Run discovery to inspect model." }}
+          </div>
+          <div
+            v-else
+            class="external-ied-details__tree-spacer"
+            :style="{ height: `${tree.totalHeight.value}px` }"
+          >
+            <button
+              v-for="{ row, meta } in renderedTreeRows"
+              :key="row.value"
+              :ref="bindTreeItem(row.value)"
+              type="button"
+              class="external-ied-details__tree-row external-ied-details__tree-row--virtual"
+              :class="{
+                'is-active': meta.active,
+                'is-selected': tree.isSelected(row.value),
+                'is-match': meta.matched,
+              }"
+              role="treeitem"
+              :aria-level="meta.depth + 1"
+              :aria-expanded="row.isLeaf ? undefined : tree.isExpanded(row.value)"
+              :aria-selected="tree.isSelected(row.value)"
+              :tabindex="meta.active ? 0 : -1"
+              :style="{
+                height: `${meta.height}px`,
+                transform: `translateY(${meta.top}px)`,
+                paddingLeft: `${Math.max(8, (meta.depth + 1) * 14)}px`,
+              }"
+              @click="onTreeRowClick(row.value)"
+            >
+              <span class="external-ied-details__tree-toggle" aria-hidden="true">
+                {{ row.isLeaf ? "•" : (tree.isExpanded(row.value) ? "▾" : "▸") }}
+              </span>
+              <span class="external-ied-details__tree-kind">{{ row.kind }}</span>
+              <span class="external-ied-details__tree-label">{{ row.label }}</span>
+              <span v-if="row.valueLabel" class="external-ied-details__tree-value">{{ row.valueLabel }}</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <div class="external-ied-details__actions">
+        <UiButton
+          variant="secondary"
+          size="sm"
+          :disabled="!record || refreshing || record.status !== 'reachable'"
+          @click="emit('refreshDiscovery')"
+        >
+          {{ refreshing ? "Refreshing..." : "Refresh Discovery" }}
+        </UiButton>
+      </div>
+    </div>
+  </SlideOver>
+</template>
+
+<script setup lang="ts">
+import { computed, nextTick, onUnmounted, ref, watch, type ComponentPublicInstance } from "vue"
+import { useVirtualTreeviewController, type TreeviewNode, type VirtualTreeviewRow } from "@affino/treeview-vue"
+
+import SlideOver from "@/components/ui/SlideOver.vue"
+import UiButton from "@/components/ui/UiButton.vue"
+import type { ExternalIedDiscoveryTree, ExternalIedRecord } from "@/stores/externalIedStore"
+
+type NodeValue = string
+type TreeKind = "Report" | "Dataset" | "Signal"
+
+interface ModelTreeRow {
+  value: NodeValue
+  parent: NodeValue | null
+  kind: TreeKind
+  label: string
+  valueLabel: string | null
+  isLeaf: boolean
+  text: string
+}
+
+type RenderedModelTreeRow = {
+  row: ModelTreeRow
+  meta: VirtualTreeviewRow<NodeValue>
+}
+
+const TREE_ROW_HEIGHT = 28
+const TREE_OVERSCAN_ROWS = 10
+
+const props = defineProps<{
+  open: boolean
+  record: ExternalIedRecord | null
+  discoveryTree: ExternalIedDiscoveryTree | null
+  treeLoading?: boolean
+  treeError?: string | null
+  refreshing?: boolean
+}>()
+
+const emit = defineEmits<{
+  (event: "close"): void
+  (event: "refreshDiscovery"): void
+}>()
+
+const treeSearch = ref("")
+const treeItemElements = new Map<NodeValue, HTMLElement>()
+const treeViewportRef = ref<HTMLElement | null>(null)
+let treeViewportResizeObserver: ResizeObserver | null = null
+const tree = useVirtualTreeviewController<NodeValue>({
+  nodes: [],
+  loop: true,
+  rowHeight: TREE_ROW_HEIGHT,
+  overscan: TREE_OVERSCAN_ROWS,
+  viewportHeight: 0,
+})
+
+const endpointLabel = computed(() => {
+  if (!props.record) return "No endpoint selected"
+  return `${props.record.ip}:${props.record.port}`
+})
+
+const statusLabel = computed(() => {
+  const record = props.record
+  if (!record) return "Not selected"
+  if (record.discoveryState === "Failed" || record.discoveryState === "Cancelled") return "Failed"
+  if (record.status === "offline") return "Offline"
+  if (record.discoveryState === "Queued" || record.discoveryState === "Running" || record.discoveryState === "RetryWaiting" || record.discoveryState === "Stale") {
+    return "Discovering"
+  }
+  if (record.status === "reachable" && (record.discoveryReadyForVerification || record.discoveryState === "Succeeded")) return "Ready"
+  if (record.status === "reachable") return "MMS reachable"
+  if (record.status === "expected" || record.status === "unknown") return "Checking"
+  return "Not used"
+})
+
+const statusClass = computed(() => {
+  const label = statusLabel.value
+  if (label === "Ready" || label === "MMS reachable") return "external-ied-details__status--ready"
+  if (label === "Discovering" || label === "Checking") return "external-ied-details__status--discovering"
+  if (label === "Failed") return "external-ied-details__status--failed"
+  return "external-ied-details__status--offline"
+})
+
+const identityLabel = computed(() => {
+  const record = props.record
+  if (!record) return "—"
+  const vendorModel = [record.discoveryVendor, record.discoveryModel].filter(Boolean).join(" ")
+  return vendorModel || record.discoveryDeviceIdentity || "—"
+})
+
+const discoveryLabel = computed(() => {
+  const record = props.record
+  if (!record) return "—"
+  if (record.discoveryReadyForVerification || record.discoveryState === "Succeeded") return "✔"
+  if (record.discoveryState === "Queued") return "Queued"
+  if (record.discoveryState === "Running") return "Running"
+  if (record.discoveryState === "RetryWaiting") return "Retry waiting"
+  if (record.discoveryState === "Failed") return "Failed"
+  if (record.discoveryState === "Cancelled") return "Cancelled"
+  if (record.discoveryState === "Stale") return "Stale"
+  return "Not started"
+})
+
+const planningLabel = computed(() => {
+  const record = props.record
+  if (!record) return "—"
+  return record.discoveryReadyForVerification ? "✔" : "Pending"
+})
+
+const verificationLabel = computed(() => "Not Started")
+
+const lastError = computed(() => props.record?.discoveryLastError ?? props.record?.lastError ?? null)
+
+const normalizedTreeSearch = computed(() => treeSearch.value.trim())
+const modelTreeRows = computed<ModelTreeRow[]>(() => buildModelTreeRows(props.discoveryTree))
+const modelTreeNodes = computed<TreeviewNode<NodeValue>[]>(() => modelTreeRows.value.map(row => ({
+  value: row.value,
+  parent: row.parent,
+  text: row.text,
+})))
+const rowByValue = computed(() => {
+  const map = new Map<NodeValue, ModelTreeRow>()
+  modelTreeRows.value.forEach(row => map.set(row.value, row))
+  return map
+})
+const parentByValue = computed(() => {
+  const map = new Map<NodeValue, NodeValue | null>()
+  modelTreeRows.value.forEach(row => map.set(row.value, row.parent))
+  return map
+})
+const childrenByParent = computed(() => {
+  const map = new Map<NodeValue | null, NodeValue[]>()
+  modelTreeRows.value.forEach((row) => {
+    const children = map.get(row.parent) ?? []
+    children.push(row.value)
+    map.set(row.parent, children)
+  })
+  return map
+})
+const renderedTreeRows = computed<RenderedModelTreeRow[]>(() => {
+  const rendered: RenderedModelTreeRow[] = []
+  for (const meta of tree.visibleRows.value) {
+    const row = rowByValue.value.get(meta.value)
+    if (row) {
+      rendered.push({ row, meta })
+    }
+  }
+  return rendered
+})
+const treeVisibleCount = computed(() => {
+  void tree.state.value
+  return tree.getVisibleCount()
+})
+const treeMatchCount = computed(() => {
+  void tree.state.value
+  return tree.getSearchMatchCount()
+})
+const treeCountLabel = computed(() => {
+  const total = modelTreeRows.value.length
+  if (!total) return "0 nodes"
+  if (normalizedTreeSearch.value) return `${treeMatchCount.value}/${total} matches`
+  return `${props.discoveryTree?.reports.length ?? 0} report${(props.discoveryTree?.reports.length ?? 0) === 1 ? "" : "s"}`
+})
+
+watch(
+  treeViewportRef,
+  (element) => {
+    treeViewportResizeObserver?.disconnect()
+    treeViewportResizeObserver = null
+
+    if (!element) {
+      tree.setViewportHeight(0)
+      return
+    }
+
+    const updateViewportHeight = () => {
+      tree.setViewportHeight(element.clientHeight)
+      tree.refreshWindow()
+    }
+
+    updateViewportHeight()
+    if (typeof window !== "undefined") {
+      window.requestAnimationFrame(updateViewportHeight)
+    }
+
+    if (typeof ResizeObserver !== "undefined") {
+      treeViewportResizeObserver = new ResizeObserver(updateViewportHeight)
+      treeViewportResizeObserver.observe(element)
+    }
+  },
+  { flush: "post" },
+)
+
+onUnmounted(() => {
+  treeViewportResizeObserver?.disconnect()
+  treeViewportResizeObserver = null
+})
+
+watch(modelTreeNodes, (nodes) => {
+  tree.registerNodes(nodes)
+  syncTreeExpansion()
+}, { immediate: true })
+
+watch(treeSearch, (query) => {
+  tree.setSearchQuery(query)
+  syncTreeExpansion()
+  setTreeScrollTop(0)
+})
+
+watch(() => props.open, (open) => {
+  if (!open) {
+    treeSearch.value = ""
+    return
+  }
+  syncTreeExpansion()
+  const first = renderedTreeRows.value[0]?.row
+  if (first) tree.focus(first.value)
+})
+
+function buildModelTreeRows(model: ExternalIedDiscoveryTree | null): ModelTreeRow[] {
+  if (!model?.reports.length) return []
+  const rows: ModelTreeRow[] = []
+  model.reports.forEach((report, reportIndex) => {
+    const reportValue = `report:${reportIndex}:${report.reference}`
+    rows.push({
+      value: reportValue,
+      parent: null,
+      kind: "Report",
+      label: report.name || report.reference,
+      valueLabel: report.kind,
+      isLeaf: false,
+      text: [report.name, report.reference, report.kind, report.dataset_reference].filter(Boolean).join(" "),
+    })
+    const dataset = report.dataset
+    const datasetValue = `dataset:${reportIndex}:${dataset?.reference ?? report.dataset_reference ?? "missing"}`
+    rows.push({
+      value: datasetValue,
+      parent: reportValue,
+      kind: "Dataset",
+      label: dataset?.reference ?? report.dataset_reference ?? "Dataset not resolved",
+      valueLabel: dataset ? `${dataset.signals.length} signals` : null,
+      isLeaf: !dataset?.signals.length,
+      text: [dataset?.reference, report.dataset_reference].filter(Boolean).join(" "),
+    })
+    dataset?.signals.forEach((signal, signalIndex) => {
+      rows.push({
+        value: `signal:${reportIndex}:${signalIndex}:${signal.reference}`,
+        parent: datasetValue,
+        kind: "Signal",
+        label: signal.reference,
+        valueLabel: signal.fc ?? null,
+        isLeaf: true,
+        text: [signal.reference, signal.fc].filter(Boolean).join(" "),
+      })
+    })
+  })
+  return rows
+}
+
+function syncTreeExpansion() {
+  modelTreeRows.value.forEach((row) => {
+    if (!row.isLeaf) tree.collapse(row.value)
+  })
+  if (normalizedTreeSearch.value) {
+    modelTreeRows.value.forEach((row) => {
+      if (!row.isLeaf) tree.expand(row.value)
+    })
+  }
+}
+
+function bindTreeItem(value: NodeValue) {
+  return (element: Element | ComponentPublicInstance | null) => {
+    const resolved = element instanceof Element
+      ? element
+      : (element?.$el instanceof Element ? element.$el : null)
+    if (resolved instanceof HTMLElement) {
+      treeItemElements.set(value, resolved)
+      return
+    }
+    treeItemElements.delete(value)
+  }
+}
+
+function onTreeRowClick(value: NodeValue) {
+  tree.focus(value)
+  tree.clearSelection()
+  tree.select(value)
+  const row = rowByValue.value.get(value)
+  if (row && !row.isLeaf) {
+    tree.toggle(value)
+    tree.refreshWindow()
+  }
+}
+
+function onTreeRootKeydown(event: KeyboardEvent) {
+  const active = tree.state.value.active
+  const row = active ? rowByValue.value.get(active) : null
+  switch (event.key) {
+    case "ArrowDown":
+      event.preventDefault()
+      if (active) tree.focusNext()
+      else tree.focusFirst()
+      focusActiveTreeRow()
+      return
+    case "ArrowUp":
+      event.preventDefault()
+      if (active) tree.focusPrevious()
+      else tree.focusLast()
+      focusActiveTreeRow()
+      return
+    case "ArrowRight":
+      if (!active || !row || row.isLeaf) return
+      event.preventDefault()
+      if (!tree.isExpanded(active)) {
+        tree.expand(active)
+        tree.refreshWindow()
+        return
+      }
+      tree.focus(childrenByParent.value.get(active)?.[0] ?? active)
+      focusActiveTreeRow()
+      return
+    case "ArrowLeft":
+      if (!active) return
+      event.preventDefault()
+      if (row && !row.isLeaf && tree.isExpanded(active)) {
+        tree.collapse(active)
+        tree.refreshWindow()
+        return
+      }
+      tree.focus(parentByValue.value.get(active) ?? active)
+      focusActiveTreeRow()
+      return
+    case "Enter":
+    case " ":
+      if (!active) return
+      event.preventDefault()
+      onTreeRowClick(active)
+      return
+    default:
+      return
+  }
+}
+
+function focusActiveTreeRow() {
+  void nextTick(() => {
+    const active = tree.state.value.active
+    if (!active) return
+    if (treeItemElements.get(active)) {
+      treeItemElements.get(active)?.focus({ preventScroll: true })
+      return
+    }
+    tree.scrollToValue(active)
+    tree.refreshWindow()
+    syncTreeViewportScrollTop()
+    void nextTick(() => treeItemElements.get(active)?.focus({ preventScroll: true }))
+  })
+}
+
+function syncTreeViewportScrollTop() {
+  const viewport = treeViewportRef.value
+  if (!viewport) return
+  if (Math.abs(viewport.scrollTop - tree.scrollTop.value) > 0.5) {
+    viewport.scrollTop = tree.scrollTop.value
+  }
+}
+
+function setTreeScrollTop(scrollTop: number) {
+  tree.setScrollTop(scrollTop)
+  tree.refreshWindow()
+  syncTreeViewportScrollTop()
+}
+
+function onTreeScroll(event: Event) {
+  const target = event.currentTarget
+  if (target instanceof HTMLElement) {
+    tree.setScrollTop(target.scrollTop)
+    tree.refreshWindow()
+  }
+}
+</script>
+
+<style scoped>
+.external-ied-details {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  height: 100%;
+  min-height: 0;
+  padding: 1rem;
+}
+
+.external-ied-details__header {
+  border-bottom: 1px solid var(--color-neutral-200);
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-bottom: 0.875rem;
+}
+
+.external-ied-details__endpoint {
+  color: var(--color-neutral-900);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace);
+  font-size: var(--text-base);
+  font-weight: 700;
+}
+
+.external-ied-details__status {
+  align-items: center;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  gap: 0.375rem;
+  width: fit-content;
+}
+
+.external-ied-details__status-dot {
+  border-radius: 999px;
+  height: 0.5rem;
+  width: 0.5rem;
+}
+
+.external-ied-details__status--ready .external-ied-details__status-dot {
+  background: var(--color-emerald-500);
+}
+
+.external-ied-details__status--discovering .external-ied-details__status-dot {
+  background: var(--color-amber-400);
+}
+
+.external-ied-details__status--offline .external-ied-details__status-dot {
+  background: var(--color-neutral-400);
+}
+
+.external-ied-details__status--failed .external-ied-details__status-dot {
+  background: var(--color-rose-500);
+}
+
+.external-ied-details__facts {
+  background: var(--color-white);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: 0.5rem;
+  display: grid;
+  flex: 0 0 auto;
+  margin: 0;
+  overflow: hidden;
+}
+
+.external-ied-details__fact {
+  align-items: baseline;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: minmax(6rem, 0.75fr) minmax(0, 1fr);
+  padding: 0.625rem 0.75rem;
+}
+
+.external-ied-details__fact + .external-ied-details__fact {
+  border-top: 1px solid var(--color-neutral-100);
+}
+
+.external-ied-details__fact dt {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+}
+
+.external-ied-details__fact dd {
+  color: var(--color-neutral-900);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.external-ied-details__error {
+  background: color-mix(in srgb, var(--color-rose-50) 80%, var(--color-white));
+  border: 1px solid var(--color-rose-200);
+  border-radius: 0.5rem;
+  color: var(--color-rose-700);
+  flex: 0 0 auto;
+  font-size: var(--text-xs);
+  padding: 0.625rem;
+}
+
+.external-ied-details__model {
+  background: var(--color-white);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: 0.5rem;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.external-ied-details__model-header {
+  align-items: center;
+  border-bottom: 1px solid var(--color-neutral-100);
+  color: var(--color-neutral-900);
+  display: flex;
+  flex: 0 0 auto;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  justify-content: space-between;
+  padding: 0.625rem 0.75rem;
+}
+
+.external-ied-details__model-count {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.external-ied-details__tree-toolbar {
+  align-items: center;
+  border-bottom: 1px solid var(--color-neutral-100);
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+}
+
+.external-ied-details__tree-search {
+  background: var(--color-neutral-50);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: 0.375rem;
+  color: var(--color-neutral-900);
+  flex: 1 1 auto;
+  font-size: var(--text-xs);
+  min-width: 0;
+  padding: 0.375rem 0.5rem;
+}
+
+.external-ied-details__tree-search:focus {
+  border-color: var(--color-blue-500);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-blue-100) 75%, transparent);
+  outline: none;
+}
+
+.external-ied-details__tree-clear {
+  color: var(--color-neutral-500);
+  flex: 0 0 auto;
+  font-size: var(--text-xs);
+  font-weight: 700;
+}
+
+.external-ied-details__tree-clear:hover {
+  color: var(--color-neutral-900);
+}
+
+.external-ied-details__tree {
+  flex: 1 1 auto;
+  min-height: 8rem;
+  overflow: auto;
+  padding: 0.375rem;
+}
+
+.external-ied-details__tree:focus {
+  outline: none;
+}
+
+.external-ied-details__tree-spacer {
+  position: relative;
+}
+
+.external-ied-details__tree-empty {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  padding: 0.625rem;
+}
+
+.external-ied-details__tree-row {
+  align-items: center;
+  border-radius: 0.375rem;
+  color: var(--color-neutral-700);
+  display: flex;
+  gap: 0.375rem;
+  min-height: 1.75rem;
+  padding-bottom: 0.25rem;
+  padding-right: 0.5rem;
+  padding-top: 0.25rem;
+  text-align: left;
+  width: 100%;
+}
+
+.external-ied-details__tree-row--virtual {
+  left: 0;
+  position: absolute;
+  top: 0;
+  will-change: transform;
+}
+
+.external-ied-details__tree-row:hover,
+.external-ied-details__tree-row.is-active {
+  background: var(--color-neutral-50);
+  color: var(--color-neutral-900);
+}
+
+.external-ied-details__tree-row.is-selected {
+  background: color-mix(in srgb, var(--color-blue-50) 85%, var(--color-white));
+}
+
+.external-ied-details__tree-row.is-match .external-ied-details__tree-label {
+  color: var(--color-blue-700);
+  font-weight: 700;
+}
+
+.external-ied-details__tree-toggle {
+  color: var(--color-neutral-400);
+  flex: 0 0 0.75rem;
+  font-size: var(--text-xs);
+  text-align: center;
+}
+
+.external-ied-details__tree-kind {
+  color: var(--color-neutral-500);
+  flex: 0 0 auto;
+  font-size: 0.625rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.external-ied-details__tree-label {
+  flex: 1 1 auto;
+  font-size: var(--text-xs);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.external-ied-details__tree-value {
+  color: var(--color-neutral-500);
+  flex: 0 0 auto;
+  font-size: 0.6875rem;
+}
+
+.external-ied-details__actions {
+  align-items: center;
+  border-top: 1px solid var(--color-neutral-200);
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  padding-top: 0.875rem;
+}
+
+:global(.dark .external-ied-details__header),
+:global(.dark .external-ied-details__actions) {
+  border-color: var(--color-neutral-800);
+}
+
+:global(.dark .external-ied-details__facts) {
+  background: var(--color-neutral-950);
+  border-color: var(--color-neutral-800);
+}
+
+:global(.dark .external-ied-details__fact + .external-ied-details__fact) {
+  border-color: var(--color-neutral-900);
+}
+
+:global(.dark .external-ied-details__endpoint),
+:global(.dark .external-ied-details__fact dd) {
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .external-ied-details__fact dt) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .external-ied-details__error) {
+  background: color-mix(in srgb, var(--color-rose-950) 55%, var(--color-neutral-950));
+  border-color: var(--color-rose-800);
+  color: var(--color-rose-200);
+}
+
+:global(.dark .external-ied-details__model) {
+  background: var(--color-neutral-950);
+  border-color: var(--color-neutral-800);
+}
+
+:global(.dark .external-ied-details__model-header),
+:global(.dark .external-ied-details__tree-toolbar) {
+  border-color: var(--color-neutral-900);
+}
+
+:global(.dark .external-ied-details__model-header),
+:global(.dark .external-ied-details__tree-row:hover),
+:global(.dark .external-ied-details__tree-row.is-active) {
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .external-ied-details__model-count),
+:global(.dark .external-ied-details__tree-empty),
+:global(.dark .external-ied-details__tree-clear),
+:global(.dark .external-ied-details__tree-kind),
+:global(.dark .external-ied-details__tree-value),
+:global(.dark .external-ied-details__tree-toggle) {
+  color: var(--color-neutral-500);
+}
+
+:global(.dark .external-ied-details__tree-search) {
+  background: var(--color-neutral-900);
+  border-color: var(--color-neutral-800);
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .external-ied-details__tree-search:focus) {
+  border-color: var(--color-blue-500);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-blue-900) 45%, transparent);
+}
+
+:global(.dark .external-ied-details__tree-row) {
+  color: var(--color-neutral-300);
+}
+
+:global(.dark .external-ied-details__tree-row:hover),
+:global(.dark .external-ied-details__tree-row.is-active) {
+  background: var(--color-neutral-900);
+}
+
+:global(.dark .external-ied-details__tree-row.is-selected) {
+  background: color-mix(in srgb, var(--color-blue-950) 65%, var(--color-neutral-950));
+}
+
+:global(.dark .external-ied-details__tree-row.is-match .external-ied-details__tree-label) {
+  color: var(--color-blue-300);
+}
+</style>

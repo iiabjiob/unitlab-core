@@ -6,6 +6,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from app.core.logger import get_logger
 from app.services.external_ied_discovery_scheduler import (
     DiscoveryCacheMetadata,
     ExternalIedDiscoveryRequest,
@@ -14,6 +15,8 @@ from app.services.iec61850.client_control import (
     Iec61850ClientControlService,
     Iec61850ClientTargetRequest,
 )
+
+logger = get_logger("external_ied_discovery")
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +65,7 @@ class MmsExternalIedDiscoveryEngine:
         started_ms = int(time.time() * 1000)
         service = self._control_service_factory(client_id="unitlab-discovery-worker")
         try:
+            logger.info("External IED MMS discovery configuring target | workspace=%s endpoint=%s", request.workspace_id, request.endpoint)
             service.configure_target(
                 Iec61850ClientTargetRequest(
                     mode="external-mms",
@@ -69,6 +73,9 @@ class MmsExternalIedDiscoveryEngine:
                     port=request.port,
                 )
             )
+            logger.info("External IED MMS discovery connecting | workspace=%s endpoint=%s", request.workspace_id, request.endpoint)
+            service.connect_ied()
+            logger.info("External IED MMS discovery reading model | workspace=%s endpoint=%s", request.workspace_id, request.endpoint)
             snapshot = service.discover_ied()
             discovery = snapshot.last_discovery if isinstance(snapshot.last_discovery, dict) else {}
             model = build_discovery_model(discovery)

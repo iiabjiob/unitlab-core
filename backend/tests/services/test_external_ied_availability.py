@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from dataclasses import dataclass
 
 import pytest
@@ -165,6 +166,62 @@ async def test_configure_external_ied_targets_clears_backend_context(monkeypatch
     assert event.devices == []
     assert event.removed_signal_ids == [1]
     assert await redis.smembers(availability.TARGET_WORKSPACES_KEY) == set()
+
+
+@pytest.mark.anyio
+async def test_load_external_ied_discovery_tree_reads_cached_model(monkeypatch) -> None:
+    redis = _FakeRedis()
+    monkeypatch.setattr(availability.RedisManager, "get_instance", lambda: redis)
+    await redis.hset(
+        availability._discovery_model_key(7),
+        "10.10.10.20:102",
+        json.dumps({
+            "datasets": [{"reference": "IEDLD0/LLN0.ds", "members": ["IEDLD0/GGIO1.ST.stVal"]}],
+            "rcbs": [{"reference": "IEDLD0/LLN0.BR.brcb01", "name": "brcb01", "kind": "buffered", "dataset_reference": "IEDLD0/LLN0.ds"}],
+            "fcdas": [{"reference": "IEDLD0/GGIO1.ST.stVal", "fc": "ST"}],
+        }),
+    )
+    await redis.hset(
+        availability._cache_key(7),
+        "10.10.10.20:102",
+        json.dumps({"model_fingerprint": "model-1"}),
+    )
+
+    tree = await availability.load_external_ied_discovery_tree(7, "10.10.10.20:102")
+
+    assert tree is not None
+    assert tree["endpoint"] == "10.10.10.20:102"
+    assert tree["model_fingerprint"] == "model-1"
+    assert tree["reports"][0]["name"] == "brcb01"
+    assert tree["reports"][0]["dataset"]["reference"] == "IEDLD0/LLN0.ds"
+    assert tree["reports"][0]["dataset"]["signals"][0]["reference"] == "IEDLD0/GGIO1.ST.stVal"
+    assert tree["reports"][0]["dataset"]["signals"][0]["fc"] == "ST"
+
+
+@pytest.mark.anyio
+async def test_status_snapshot_does_not_include_discovery_model_tree(monkeypatch) -> None:
+    redis = _FakeRedis()
+    monkeypatch.setattr(availability.RedisManager, "get_instance", lambda: redis)
+    await redis.hset(
+        availability._status_key(7),
+        "10.10.10.20:102",
+        json.dumps({
+            "ip": "10.10.10.20",
+            "port": 102,
+            "status": "reachable",
+            "signal_ids": [1],
+            "check_kind": "tcp_connect",
+        }),
+    )
+    await redis.hset(
+        availability._discovery_model_key(7),
+        "10.10.10.20:102",
+        json.dumps({"datasets": [], "rcbs": [], "fcdas": []}),
+    )
+
+    event = await availability.build_external_ied_status_snapshot(7)
+
+    assert not hasattr(event.devices[0], "discovery_tree")
 
 
 @pytest.mark.anyio

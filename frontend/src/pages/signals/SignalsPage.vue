@@ -2,6 +2,7 @@
   <div class="signals-page">
     <AllocationEditorHeader
       :summary-text="summaryText"
+      :signal-summary="signalHeaderSummary"
       :workspace-missing="workspaceMissing"
       :loading="loading"
       :allocated-cable-rows-count="allocatedCableRows.length"
@@ -19,6 +20,7 @@
       :is-test-run-busy="isTestRunBusy"
       :test-run-toggle-mode="testRunToggleMode"
       :test-run-interval-ms="testRunIntervalMs"
+      :iec61850-summary="externalIedSummary"
       @import="openImportModal"
       @export-cable="openExportModal"
       @export-report="exportSignalReport"
@@ -156,6 +158,17 @@
       :error="allocationChannelPickerError"
       @close="closeAllocationChannelPicker"
       @select="handleAllocationChannelPicked"
+    />
+
+    <ExternalIedDetailsDrawer
+      :open="externalIedDetailsOpen"
+      :record="selectedExternalIedRecord"
+      :discovery-tree="selectedExternalIedDiscoveryTree"
+      :tree-loading="externalIedDetailsTreeLoading"
+      :tree-error="externalIedDetailsTreeError"
+      :refreshing="externalIedDetailsRefreshing"
+      @close="closeExternalIedDetails"
+      @refresh-discovery="refreshSelectedExternalIedDiscovery"
     />
 
     <SignalImportModal
@@ -476,6 +489,7 @@ import {
 } from "@/pages/signals/utils/online61850Targets"
 import AllocationChannelCell from "@/pages/signals/components/AllocationChannelCell.vue"
 import ExternalIedIpCell from "@/pages/signals/components/ExternalIedIpCell.vue"
+import ExternalIedDetailsDrawer from "@/pages/signals/components/ExternalIedDetailsDrawer.vue"
 import AllocationChannelPickerPanel from "@/pages/signals/components/AllocationChannelPickerPanel.vue"
 import AllocationControlCell from "@/pages/signals/components/AllocationControlCell.vue"
 import SignalExportModal, { type ExportColumnOption } from "@/pages/signals/components/SignalExportModal.vue"
@@ -543,7 +557,11 @@ const { channels } = storeToRefs(channelStore)
 const { activeJobs } = storeToRefs(signalJobStore)
 const { activeWorkspaceRevision, activeWorkspacePatchedSignalIds } = storeToRefs(testedAtRealtimeStore)
 const { activeWorkspacePatchEvent, activeWorkspacePatchRevision } = storeToRefs(signalRowsPatchStore)
-const { statusRevision: externalIedStatusRevision, lastChangedSignalIds: externalIedChangedSignalIds } = storeToRefs(externalIedStore)
+const {
+  statusRevision: externalIedStatusRevision,
+  lastChangedSignalIds: externalIedChangedSignalIds,
+  summary: externalIedSummary,
+} = storeToRefs(externalIedStore)
 
 const error = ref<string | null>(null)
 const importModalOpen = ref(false)
@@ -557,6 +575,11 @@ const allocationChannelPickerInstanceKey = ref(0)
 const allocationChannelPickerLoading = ref(false)
 const allocationChannelPickerSaving = ref(false)
 const allocationChannelPickerError = ref<string | null>(null)
+const selectedExternalIedEndpoint = ref<{ ip: string; port: number } | null>(null)
+const externalIedDetailsRefreshing = ref(false)
+const externalIedDetailsTreeLoading = ref(false)
+const externalIedDetailsTreeError = ref<string | null>(null)
+let externalIedDetailsTreeRequestId = 0
 const rowSelectionState = ref<RowSelectionSnapshot | null>(null)
 const rowSelectionProjectionRevision = ref(0)
 const pendingSignalsGridSavedView = ref<string | DataGridSavedViewSnapshot<GridRow> | null>(null)
@@ -967,12 +990,17 @@ function hasRuntimeOrStaticTestedAt(row: SignalAllocationRow): boolean {
   ).trim())
 }
 
-const summaryText = computed(() => {
+function formatSummaryPercent(value: number): string {
+  const rounded = Math.round(value * 10) / 10
+  return `(${Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1)}%)`
+}
+
+const signalHeaderSummary = computed(() => {
   if (workspaceMissing.value) {
-    return "Workspace is not selected"
+    return null
   }
   if (loading.value) {
-    return "Loading static signals view"
+    return null
   }
   void signalRuntimeStateVersion.value
   const rows = signalAllocationProjectionRows()
@@ -983,11 +1011,29 @@ const summaryText = computed(() => {
   const allocatedPercent = total > 0 ? ((allocated / total) * 100) : 0
   const testedPercent = total > 0 ? ((tested / total) * 100) : 0
   const remainingPercent = total > 0 ? ((remaining / total) * 100) : 0
-  const formatPercent = (value: number) => {
-    const rounded = Math.round(value * 10) / 10
-    return Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1)
+  return {
+    total,
+    allocated,
+    allocatedPercent: formatSummaryPercent(allocatedPercent),
+    tested,
+    testedPercent: formatSummaryPercent(testedPercent),
+    remaining,
+    remainingPercent: formatSummaryPercent(remainingPercent),
   }
-  return `${total} signals · ${allocated} allocated (${formatPercent(allocatedPercent)}%) · ${tested} tested (${formatPercent(testedPercent)}%) · ${remaining} remaining (${formatPercent(remainingPercent)}%)`
+})
+
+const summaryText = computed(() => {
+  if (workspaceMissing.value) {
+    return "Workspace is not selected"
+  }
+  if (loading.value) {
+    return "Loading static signals view"
+  }
+  const summary = signalHeaderSummary.value
+  if (!summary) {
+    return ""
+  }
+  return `${summary.total} signals · ${summary.allocated} allocated ${summary.allocatedPercent} · ${summary.tested} tested ${summary.testedPercent} · ${summary.remaining} remaining ${summary.remainingPercent}`
 })
 
 const clientRowModelOptions: NonNullable<DataGridProps<GridRow>["clientRowModelOptions"]> = {
@@ -4054,6 +4100,98 @@ function resolveExternalIedStatusForGridRow(row: GridRow | null | undefined): Ex
   return normalizeExternalIedStatus(row?.external_ied_status)
 }
 
+const externalIedDetailsOpen = computed(() => selectedExternalIedEndpoint.value !== null)
+const selectedExternalIedRecord = computed(() => {
+  void externalIedStatusRevision.value
+  const endpoint = selectedExternalIedEndpoint.value
+  return endpoint ? externalIedStore.getRecord(endpoint.ip, endpoint.port) : null
+})
+const selectedExternalIedDiscoveryTree = computed(() => {
+  const endpoint = selectedExternalIedEndpoint.value
+  return endpoint ? externalIedStore.getDiscoveryTree(endpoint.ip, endpoint.port) : null
+})
+
+watch(
+  () => selectedExternalIedEndpoint.value ? `${selectedExternalIedEndpoint.value.ip}:${selectedExternalIedEndpoint.value.port}` : null,
+  () => { void loadSelectedExternalIedDiscoveryTree(false) },
+  { flush: "post" },
+)
+
+watch(
+  () => {
+    const record = selectedExternalIedRecord.value
+    return record ? `${record.discoveryState}:${record.discoveryUpdatedAtMs ?? ""}` : null
+  },
+  () => {
+    const record = selectedExternalIedRecord.value
+    if (record?.discoveryState === "Succeeded" && externalIedDetailsOpen.value) {
+      void loadSelectedExternalIedDiscoveryTree(true)
+    }
+  },
+  { flush: "post" },
+)
+
+async function loadSelectedExternalIedDiscoveryTree(force: boolean) {
+  const endpoint = selectedExternalIedEndpoint.value
+  externalIedDetailsTreeError.value = null
+  if (!endpoint) {
+    externalIedDetailsTreeLoading.value = false
+    return
+  }
+  if (!force && externalIedStore.getDiscoveryTree(endpoint.ip, endpoint.port)) {
+    externalIedDetailsTreeLoading.value = false
+    return
+  }
+  const requestId = externalIedDetailsTreeRequestId + 1
+  externalIedDetailsTreeRequestId = requestId
+  externalIedDetailsTreeLoading.value = true
+  try {
+    await externalIedStore.loadDiscoveryTree(endpoint.ip, endpoint.port, force)
+  } catch (err) {
+    if (requestId === externalIedDetailsTreeRequestId) {
+      externalIedDetailsTreeError.value = normalizeHttpError(err, "Discovery model is not available").message
+    }
+  } finally {
+    if (requestId === externalIedDetailsTreeRequestId) {
+      externalIedDetailsTreeLoading.value = false
+    }
+  }
+}
+
+function openExternalIedDetailsForRow(row: GridRow | null | undefined) {
+  const endpoint = rowExternalIedEndpoint(row)
+  if (!endpoint) {
+    return
+  }
+  const [ip, portText] = endpoint.split(":")
+  const port = Number(portText)
+  selectedExternalIedEndpoint.value = {
+    ip,
+    port: Number.isInteger(port) ? port : 102,
+  }
+}
+
+function closeExternalIedDetails() {
+  selectedExternalIedEndpoint.value = null
+}
+
+async function refreshSelectedExternalIedDiscovery() {
+  const endpoint = selectedExternalIedEndpoint.value
+  if (!endpoint || externalIedDetailsRefreshing.value) {
+    return
+  }
+  externalIedDetailsRefreshing.value = true
+  try {
+    await externalIedStore.refreshDiscovery(endpoint.ip, endpoint.port)
+    externalIedDetailsTreeError.value = null
+    toastStore.success("Discovery refresh queued")
+  } catch (err) {
+    toastStore.error(normalizeHttpError(err, "Failed to queue discovery refresh").message)
+  } finally {
+    externalIedDetailsRefreshing.value = false
+  }
+}
+
 function shouldRenderExternalIedSourceCell(context: DataGridAppCellRendererContext<GridRow>): boolean {
   const status = resolveExternalIedStatusForGridRow(context.row)
   if (status === "not_applicable") {
@@ -4067,9 +4205,13 @@ function shouldRenderExternalIedSourceCell(context: DataGridAppCellRendererConte
 function renderExternalIedIpCell(context: DataGridAppCellRendererContext<GridRow>) {
   const displayValue = context.displayValue || "-"
   const status = resolveExternalIedStatusForGridRow(context.row)
+  const endpoint = rowExternalIedEndpoint(context.row)
   return h(ExternalIedIpCell, {
     label: displayValue,
     status,
+    detailsEnabled: status !== "not_applicable" && Boolean(endpoint),
+    detailsLabel: `Open IEC 61850 details for ${displayValue}`,
+    onOpenDetails: () => openExternalIedDetailsForRow(context.row),
   })
 }
 

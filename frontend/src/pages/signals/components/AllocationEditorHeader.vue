@@ -3,9 +3,49 @@
     <div class="allocation-editor-header__stack">
       <div class="allocation-editor-header__copy">
         <p class="allocation-editor-header__eyebrow">Live Signal Sheet</p>
-        <p class="allocation-editor-header__summary">
+        <p v-if="!signalSummary" class="allocation-editor-header__summary">
           {{ summaryText }}
         </p>
+        <div v-else class="allocation-editor-header__live-row">
+          <div class="allocation-editor-header__metric-panel" aria-label="Signal list summary">
+            <span class="allocation-editor-header__metric-label">Signals</span>
+            <span class="allocation-editor-header__metric-item">
+              Total {{ signalSummary.total }}
+            </span>
+            <span class="allocation-editor-header__metric-item">
+              Allocated {{ signalSummary.allocated }} <span class="allocation-editor-header__metric-percent">{{ signalSummary.allocatedPercent }}</span>
+            </span>
+            <span class="allocation-editor-header__metric-item">
+              Tested {{ signalSummary.tested }} <span class="allocation-editor-header__metric-percent">{{ signalSummary.testedPercent }}</span>
+            </span>
+            <span class="allocation-editor-header__metric-item">
+              Remaining {{ signalSummary.remaining }} <span class="allocation-editor-header__metric-percent">{{ signalSummary.remainingPercent }}</span>
+            </span>
+          </div>
+          <div
+            v-if="iec61850Summary?.active"
+            class="allocation-editor-header__metric-panel"
+            aria-label="IEC 61850 live status"
+          >
+            <span class="allocation-editor-header__metric-label">IEC 61850</span>
+            <span class="allocation-editor-header__metric-item allocation-editor-header__metric-item--ready">
+              <span class="allocation-editor-header__metric-dot" aria-hidden="true"></span>
+              Ready {{ iec61850Summary.ready }}
+            </span>
+            <span class="allocation-editor-header__metric-item allocation-editor-header__metric-item--discovering">
+              <span class="allocation-editor-header__metric-dot" aria-hidden="true"></span>
+              Discovering {{ iec61850Summary.discovering }}
+            </span>
+            <span class="allocation-editor-header__metric-item allocation-editor-header__metric-item--offline">
+              <span class="allocation-editor-header__metric-dot" aria-hidden="true"></span>
+              Offline {{ iec61850Summary.offline }}
+            </span>
+            <span class="allocation-editor-header__metric-item allocation-editor-header__metric-item--failed">
+              <span class="allocation-editor-header__metric-mark" aria-hidden="true">×</span>
+              Failed {{ iec61850Summary.failed }}
+            </span>
+          </div>
+        </div>
       </div>
 
       <div class="allocation-editor-header__actions-row">
@@ -145,6 +185,15 @@ import UiButton from "@/components/ui/UiButton.vue"
 
 const props = defineProps<{
   summaryText: string
+  signalSummary?: {
+    total: number
+    allocated: number
+    allocatedPercent: string
+    tested: number
+    testedPercent: string
+    remaining: number
+    remainingPercent: string
+  } | null
   workspaceMissing: boolean
   loading: boolean
   allocatedCableRowsCount: number
@@ -162,6 +211,13 @@ const props = defineProps<{
   isTestRunBusy: boolean
   testRunToggleMode: "single" | "double"
   testRunIntervalMs: number
+  iec61850Summary?: {
+    active: boolean
+    ready: number
+    discovering: number
+    offline: number
+    failed: number
+  } | null
 }>()
 
 const emit = defineEmits<{
@@ -207,6 +263,73 @@ const emit = defineEmits<{
   color: var(--color-neutral-700);
   font-size: var(--text-sm);
   margin-top: 0.25rem;
+}
+
+.allocation-editor-header__live-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.allocation-editor-header__metric-panel {
+  align-items: center;
+  background: var(--color-neutral-50);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: 0.5rem;
+  color: var(--color-neutral-700);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.625rem;
+  padding: 0.375rem 0.5rem;
+  width: fit-content;
+}
+
+.allocation-editor-header__metric-label {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.allocation-editor-header__metric-item {
+  align-items: center;
+  display: inline-flex;
+  font-size: var(--text-xs);
+  gap: 0.25rem;
+  white-space: nowrap;
+}
+
+.allocation-editor-header__metric-percent {
+  color: var(--color-neutral-500);
+}
+
+.allocation-editor-header__metric-dot {
+  border-radius: 999px;
+  display: inline-block;
+  height: 0.45rem;
+  width: 0.45rem;
+}
+
+.allocation-editor-header__metric-item--ready .allocation-editor-header__metric-dot {
+  background: var(--color-emerald-500);
+}
+
+.allocation-editor-header__metric-item--discovering .allocation-editor-header__metric-dot {
+  background: var(--color-amber-400);
+}
+
+.allocation-editor-header__metric-item--offline .allocation-editor-header__metric-dot {
+  background: var(--color-neutral-400);
+}
+
+.allocation-editor-header__metric-mark {
+  color: var(--color-rose-500);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  line-height: 1;
 }
 
 .allocation-editor-header__actions-row {
@@ -283,6 +406,17 @@ const emit = defineEmits<{
 
 :global(.dark .allocation-editor-header__summary) {
   color: var(--color-neutral-200);
+}
+
+:global(.dark .allocation-editor-header__metric-panel) {
+  background: var(--color-neutral-950);
+  border-color: var(--color-neutral-800);
+  color: var(--color-neutral-300);
+}
+
+:global(.dark .allocation-editor-header__metric-label),
+:global(.dark .allocation-editor-header__metric-percent) {
+  color: var(--color-neutral-500);
 }
 
 :global(.dark .allocation-editor-header__run-button--trigger) {

@@ -9,6 +9,16 @@
       ></span>
       <span class="external-ied-ip-cell__label" :class="labelClass">{{ label }}</span>
     </span>
+    <span
+      v-if="detailsEnabled"
+      class="external-ied-ip-cell__details-affordance"
+      role="button"
+      tabindex="0"
+      :aria-label="detailsLabel"
+      @click.stop="emit('openDetails')"
+      @keydown.enter.stop.prevent="emit('openDetails')"
+      @keydown.space.stop.prevent="emit('openDetails')"
+    >›</span>
   </div>
 </template>
 
@@ -19,7 +29,11 @@ import type { ExternalIedStatus } from "@/stores/externalIedStore"
 const props = defineProps<{
   label: string
   status: ExternalIedStatus
+  detailsEnabled?: boolean
+  detailsLabel?: string
 }>()
+
+const emit = defineEmits<{ (event: "openDetails"): void }>()
 
 const title = computed(() => {
   if (props.status === "reachable") return `${props.label} · MMS reachable`
@@ -46,6 +60,8 @@ const labelClass = computed(() => {
 .external-ied-ip-cell {
   align-items: center;
   display: flex;
+  gap: 0.25rem;
+  justify-content: space-between;
   min-width: 0;
   width: 100%;
 }
@@ -55,6 +71,34 @@ const labelClass = computed(() => {
   display: flex;
   gap: 0.375rem;
   min-width: 0;
+}
+
+.external-ied-ip-cell__details-affordance {
+  align-items: center;
+  border-radius: 999px;
+  color: var(--color-neutral-500);
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 1.25rem;
+  font-size: var(--text-sm);
+  height: 1.25rem;
+  justify-content: center;
+  opacity: 0;
+  transform: translateX(0.125rem);
+  transition: opacity 120ms ease, transform 120ms ease, background 120ms ease, color 120ms ease;
+}
+
+.external-ied-ip-cell:hover .external-ied-ip-cell__details-affordance,
+.external-ied-ip-cell__details-affordance:focus-visible {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.external-ied-ip-cell__details-affordance:hover,
+.external-ied-ip-cell__details-affordance:focus-visible {
+  background: var(--color-neutral-100);
+  color: var(--color-neutral-900);
+  outline: none;
 }
 
 .external-ied-ip-cell__indicator {
@@ -105,5 +149,11 @@ const labelClass = computed(() => {
 :global(.dark .external-ied-ip-cell__label--offline),
 :global(.dark .external-ied-ip-cell__label--unknown) {
   color: var(--color-neutral-300);
+}
+
+:global(.dark .external-ied-ip-cell__details-affordance:hover),
+:global(.dark .external-ied-ip-cell__details-affordance:focus-visible) {
+  background: var(--color-neutral-800);
+  color: var(--color-neutral-100);
 }
 </style>

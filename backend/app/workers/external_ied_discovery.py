@@ -9,6 +9,7 @@ from typing import Any
 from app.core.config import get_settings
 from app.core.logger import get_logger
 from app.infrastructure.redis.manager import RedisManager
+from app.services.external_ied_availability import publish_external_ied_status_snapshot
 from app.services.external_ied_discovery_scheduler import (
     ExternalIedDiscoveryRequest,
     emit_external_ied_discovery_completed,
@@ -93,6 +94,8 @@ async def execute_discovery_request(
             error=str(exc),
             duration_ms=max(0, int((time.monotonic() - started) * 1000)),
         )
+        with suppress(Exception):
+            await publish_external_ied_status_snapshot(request.workspace_id)
         raise
     await record_external_ied_discovery_result(
         workspace_id=request.workspace_id,
@@ -106,6 +109,8 @@ async def execute_discovery_request(
         request=request,
         metadata=result.metadata,
     )
+    with suppress(Exception):
+        await publish_external_ied_status_snapshot(request.workspace_id)
     return result
 
 

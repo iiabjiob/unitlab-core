@@ -1177,6 +1177,7 @@ def test_external_mms_target_can_connect_and_discover_without_scd(monkeypatch: p
     discover_snapshot = service.discover_ied()
     rptena_snapshot = service.enable_reporting()
     gi_snapshot = service.send_general_interrogation()
+    closed_snapshot = service.close_ied()
 
     assert connect_snapshot.session_open is True
     assert connect_snapshot.ui_state["session"]["phase"] == "associated"
@@ -1197,6 +1198,8 @@ def test_external_mms_target_can_connect_and_discover_without_scd(monkeypatch: p
     assert gi_snapshot.ui_state["session"]["phase"] == "reporting"
     assert gi_snapshot.ui_state["report"]["received"] is True
     assert gi_snapshot.ui_state["report"]["value_count"] == 3
+    assert closed_snapshot.session_open is False
+    assert closed_snapshot.ui_state["session"]["phase"] == "idle"
 
     assert "--ied" not in process_commands[0]
     assert process_commands[0][-5:] == (

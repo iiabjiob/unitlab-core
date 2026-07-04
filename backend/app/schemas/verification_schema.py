@@ -259,6 +259,30 @@ class VerificationExternalIedTargetsRequestSchema(BaseModel):
     targets: list[VerificationExternalIedTargetSchema] = Field(default_factory=list, max_length=512)
 
 
+class VerificationExternalIedDiscoveryTreeSignalSchema(BaseModel):
+    reference: str
+    fc: str | None = None
+
+
+class VerificationExternalIedDiscoveryTreeDatasetSchema(BaseModel):
+    reference: str
+    signals: list[VerificationExternalIedDiscoveryTreeSignalSchema] = Field(default_factory=list)
+
+
+class VerificationExternalIedDiscoveryTreeReportSchema(BaseModel):
+    reference: str
+    name: str
+    kind: str = "unknown"
+    dataset_reference: str | None = None
+    dataset: VerificationExternalIedDiscoveryTreeDatasetSchema | None = None
+
+
+class VerificationExternalIedDiscoveryTreeResponseSchema(BaseModel):
+    endpoint: str
+    model_fingerprint: str | None = None
+    reports: list[VerificationExternalIedDiscoveryTreeReportSchema] = Field(default_factory=list)
+
+
 class VerificationSessionSnapshotSchema(BaseModel):
     session_id: str
     endpoint_id: str
