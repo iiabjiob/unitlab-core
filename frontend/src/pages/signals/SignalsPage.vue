@@ -704,7 +704,7 @@ const DataGrid = defineDataGridComponent<GridRow>()
 const SIGNAL_GRID_ROW_SELECTION = { enabled: true, columnWidth: 44 } satisfies NonNullable<DataGridProps<GridRow>["rowSelection"]>
 
 const SIGNALS_GRID_LEGACY_STORAGE_KEY_PREFIX = "unitlab.signals-grid"
-const REMOVED_SIGNAL_GRID_COLUMN_KEYS = new Set(["allocation_status", "allocation_health"])
+const REMOVED_SIGNAL_GRID_COLUMN_KEYS = new Set(["allocation_status", "allocation_health", "iec61850_address"])
 const SIGNAL_GRID_PATCH_COLUMNS = ["internal_signal_type", "channel_select", "tested_at"] as const
 const signalAllocationProjectionCache = createSignalAllocationProjectionCache()
 const signalAllocationProjectionVersion = ref(0)
@@ -1609,6 +1609,14 @@ function isRemovedSignalsGridColumnKey(key: unknown): boolean {
   return REMOVED_SIGNAL_GRID_COLUMN_KEYS.has(String(key ?? "").trim())
 }
 
+function getResolvedSignalsGridColumnKeys(): Set<string> {
+  return new Set(
+    resolvedColumns.value
+      .map(column => String(column.key ?? "").trim())
+      .filter(Boolean),
+  )
+}
+
 function filterRemovedSignalsGridColumnKeys(keys: readonly string[] | undefined): string[] {
   if (!Array.isArray(keys)) return []
   return keys.filter(key => !isRemovedSignalsGridColumnKey(key))
@@ -1649,12 +1657,71 @@ function filterRemovedSignalsGridColumnsFromSavedView(
   }
 }
 
+function filterSignalsGridColumnKeysForCurrentView(
+  keys: readonly string[] | undefined,
+  currentColumnKeys: ReadonlySet<string>,
+): string[] {
+  if (!Array.isArray(keys)) return []
+  if (currentColumnKeys.size === 0) {
+    return filterRemovedSignalsGridColumnKeys(keys)
+  }
+  return keys.filter((key) => {
+    const normalizedKey = String(key ?? "").trim()
+    return normalizedKey
+      && !isRemovedSignalsGridColumnKey(normalizedKey)
+      && currentColumnKeys.has(normalizedKey)
+  })
+}
+
+function filterSignalsGridColumnRecordForCurrentView<T>(
+  record: Readonly<Record<string, T>>,
+  currentColumnKeys: ReadonlySet<string>,
+): Record<string, T> {
+  if (currentColumnKeys.size === 0) {
+    return filterRemovedSignalsGridColumnRecord(record)
+  }
+  return Object.fromEntries(
+    Object.entries(record).filter(([key]) => {
+      const normalizedKey = String(key ?? "").trim()
+      return normalizedKey
+        && !isRemovedSignalsGridColumnKey(normalizedKey)
+        && currentColumnKeys.has(normalizedKey)
+    }),
+  ) as Record<string, T>
+}
+
+function filterSignalsGridColumnsForCurrentView(
+  savedView: DataGridSavedViewSnapshot<GridRow>,
+): DataGridSavedViewSnapshot<GridRow> {
+  const currentColumnKeys = getResolvedSignalsGridColumnKeys()
+  const columns = savedView.state.columns
+  const zoneOrder = columns.zoneOrder
+    ? Object.fromEntries(
+      Object.entries(columns.zoneOrder).map(([zone, keys]) => [
+        zone,
+        filterSignalsGridColumnKeysForCurrentView(keys, currentColumnKeys),
+      ]),
+    ) as typeof columns.zoneOrder
+    : columns.zoneOrder
+
+  return {
+    ...savedView,
+    state: {
+      ...savedView.state,
+      columns: {
+        ...columns,
+        order: filterSignalsGridColumnKeysForCurrentView(columns.order, currentColumnKeys),
+        zoneOrder,
+        visibility: filterSignalsGridColumnRecordForCurrentView(columns.visibility, currentColumnKeys),
+        widths: filterSignalsGridColumnRecordForCurrentView(columns.widths, currentColumnKeys),
+        pins: filterSignalsGridColumnRecordForCurrentView(columns.pins, currentColumnKeys),
+      },
+    },
+  }
+}
+
 function areSavedViewColumnsReady(savedView: DataGridSavedViewSnapshot<GridRow>): boolean {
-  const currentColumnKeys = new Set(
-    resolvedColumns.value
-      .map(column => String(column.key ?? "").trim())
-      .filter(Boolean),
-  )
+  const currentColumnKeys = getResolvedSignalsGridColumnKeys()
 
   if (currentColumnKeys.size === 0) {
     return false
@@ -1696,16 +1763,12 @@ function tryApplyPendingSignalsGridSavedView() {
     return
   }
 
-  const compatibleSavedView = filterRemovedSignalsGridColumnsFromSavedView(migratedSavedView)
+  const compatibleSavedView = filterSignalsGridColumnsForCurrentView(migratedSavedView)
 
   rowSelectionState.value = compatibleSavedView.state.rowSelection ?? null
 
   if (!areSavedViewColumnsReady(compatibleSavedView)) {
     pendingSignalsGridSavedView.value = compatibleSavedView
-    if (!loading.value && resolvedColumns.value.length > 0) {
-      pendingSignalsGridSavedView.value = null
-      markSignalsGridStateRestored()
-    }
     return
   }
 
@@ -4271,15 +4334,6 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
   return [
     ...sourceColumns,
     {
-      key: "iec61850_address",
-      label: "IEC 61850",
-      minWidth: 144,
-      initialState: { width: 208 },
-      presentation: { align: "left", headerAlign: "left" },
-      capabilities: { editable: false },
-      cellRenderer: renderExternalIedAddressCell,
-    },
-    {
       key: "internal_signal_type",
       label: "Internal Signal Type",
       minWidth: 96,
@@ -4539,7 +4593,6 @@ watch(
     if (addressColumn) {
       columns.push(addressColumn)
     }
-    columns.push("iec61850_address")
     signalGridPatchIngress.applyRuntimeSignals(signalIds, {
       reason: "external-ied-status-patch",
       columns,
