@@ -74,6 +74,53 @@ class _Published:
         self.events.append(event)
 
 
+def _state(
+    endpoint: str = "10.10.10.20:102",
+    *,
+    status: str = "expected",
+    next_probe_at_ms: int = 0,
+    last_probe_at_ms: int | None = None,
+    consecutive_successes: int = 0,
+    consecutive_failures: int = 0,
+    priority_reason: str | None = None,
+) -> availability.EndpointProbeState:
+    host, raw_port = endpoint.rsplit(":", 1)
+    config = availability.ExternalIedWatcherConfig()
+    return availability.EndpointProbeState(
+        endpoint_id=f"7:{endpoint}",
+        workspace_id=7,
+        host=host,
+        port=int(raw_port),
+        signal_ids=(1,),
+        status=status,
+        last_probe_at_ms=last_probe_at_ms,
+        next_probe_at_ms=next_probe_at_ms,
+        last_success_at_ms=None,
+        last_failure_at_ms=None,
+        consecutive_successes=consecutive_successes,
+        consecutive_failures=consecutive_failures,
+        active_probe=False,
+        priority_reason=priority_reason or availability._priority_reason_for_record(
+            status,
+            consecutive_successes,
+            consecutive_failures,
+            config,
+        ),
+    )
+
+
+def _probe_result(*, reachable: bool) -> VerificationMmsReachabilityResultSchema:
+    return VerificationMmsReachabilityResultSchema(
+        host="10.10.10.20",
+        port=102,
+        reachable=reachable,
+        checked_at="2026-01-01T00:00:00Z",
+        error=None if reachable else "TCP connect timeout",
+        check_kind="tcp_connect",
+        failure_code=None if reachable else "unreachable",
+    )
+
+
 @pytest.mark.anyio
 async def test_configure_external_ied_targets_writes_expected_snapshot(monkeypatch) -> None:
     redis = _FakeRedis()
@@ -221,3 +268,203 @@ async def test_checker_does_not_emit_duplicate_events_for_same_status(monkeypatc
     await availability._check_one(7, "10.10.10.20:102", target, previous)
 
     assert published.events == []
+
+
+def test_scheduler_checks_expected_endpoints_first_pass_quickly() -> None:
+    scheduler = availability.ExternalIedPriorityScheduler()
+    scheduler.set_targets([_state("10.10.10.20:102", status="expected")], now_ms=100)
+
+    due = scheduler.pop_due(now_ms=100, max_count=1)
+
+    assert [state.endpoint_id for state in due] == ["7:10.10.10.20:102"]
+
+
+def test_reachable_candidate_is_probed_more_frequently_than_stable() -> None:
+    config = availability.ExternalIedWatcherConfig(
+        reachable_candidate_interval_ms=2_000,
+        reachable_stable_interval_ms=30_000,
+        interval_jitter_ratio=0,
+    )
+    candidate = _state("10.10.10.20:102", status="expected")
+    first = availability.resolve_probe_transition(candidate, _probe_result(reachable=True), now_ms=1_000, config=config)
+    first_reason = first.state.priority_reason
+    first_next_check = first.next_check_at_ms
+    second = availability.resolve_probe_transition(first.state, _probe_result(reachable=True), now_ms=2_000, config=config)
+
+    assert first_reason == availability.PRIORITY_REASON_REACHABLE_CANDIDATE
+    assert first_next_check == 3_000
+    assert second.state.priority_reason == availability.PRIORITY_REASON_REACHABLE_STABLE
+    assert second.next_check_at_ms == 32_000
+
+
+def test_stable_reachable_is_not_marked_offline_after_one_failed_probe() -> None:
+    config = availability.ExternalIedWatcherConfig(offline_failure_threshold=2, suspect_offline_interval_ms=1_500, interval_jitter_ratio=0)
+    stable = _state(
+        "10.10.10.20:102",
+        status="reachable",
+        consecutive_successes=2,
+        priority_reason=availability.PRIORITY_REASON_REACHABLE_STABLE,
+    )
+
+    transition = availability.resolve_probe_transition(stable, _probe_result(reachable=False), now_ms=10_000, config=config)
+
+    assert transition.old_status == "reachable"
+    assert transition.new_status == "reachable"
+    assert transition.status_changed is False
+    assert transition.state.priority_reason == availability.PRIORITY_REASON_SUSPECT_OFFLINE
+    assert transition.next_check_at_ms == 11_500
+
+
+def test_suspect_offline_becomes_offline_after_second_failure() -> None:
+    config = availability.ExternalIedWatcherConfig(offline_failure_threshold=2)
+    suspect = _state(
+        "10.10.10.20:102",
+        status="reachable",
+        consecutive_failures=1,
+        priority_reason=availability.PRIORITY_REASON_SUSPECT_OFFLINE,
+    )
+
+    transition = availability.resolve_probe_transition(suspect, _probe_result(reachable=False), now_ms=10_000, config=config)
+
+    assert transition.old_status == "reachable"
+    assert transition.new_status == "offline"
+    assert transition.status_changed is True
+    assert transition.state.priority_reason == availability.PRIORITY_REASON_OFFLINE
+
+
+def test_offline_endpoint_is_retried_periodically_not_too_aggressively() -> None:
+    config = availability.ExternalIedWatcherConfig(offline_interval_ms=7_500, interval_jitter_ratio=0)
+    offline = _state("10.10.10.20:102", status="offline", consecutive_failures=3)
+
+    transition = availability.resolve_probe_transition(offline, _probe_result(reachable=False), now_ms=10_000, config=config)
+
+    assert transition.new_status == "offline"
+    assert transition.next_check_at_ms == 17_500
+
+
+def test_verification_needed_endpoint_is_probed_immediately() -> None:
+    scheduler = availability.ExternalIedPriorityScheduler(availability.ExternalIedWatcherConfig(cold_start_duration_ms=0))
+    endpoint_id = "7:10.10.10.20:102"
+    scheduler.set_targets([_state("10.10.10.20:102", status="reachable", next_probe_at_ms=60_000)], now_ms=1_000)
+
+    scheduler.markVerificationNeeded([endpoint_id], now_ms=1_000)
+
+    due = scheduler.pop_due(now_ms=1_000, max_count=1)
+    assert [state.endpoint_id for state in due] == [endpoint_id]
+    assert due[0].priority_reason == availability.PRIORITY_REASON_VERIFICATION_NEEDED
+
+
+def test_scheduler_respects_max_concurrency_and_active_probe_guard() -> None:
+    scheduler = availability.ExternalIedPriorityScheduler()
+    scheduler.set_targets([
+        _state("10.10.10.20:102", status="expected"),
+        _state("10.10.10.21:102", status="expected"),
+        _state("10.10.10.22:102", status="expected"),
+    ], now_ms=0)
+
+    first = scheduler.pop_due(now_ms=0, max_count=2)
+    second = scheduler.pop_due(now_ms=0, max_count=2)
+
+    assert len(first) == 2
+    assert len(second) == 1
+    assert not set(state.endpoint_id for state in first).intersection(state.endpoint_id for state in second)
+
+
+def test_scheduler_ignores_stale_queue_entries_after_priority_update() -> None:
+    scheduler = availability.ExternalIedPriorityScheduler(availability.ExternalIedWatcherConfig(cold_start_duration_ms=0))
+    endpoint_id = "7:10.10.10.20:102"
+    scheduler.set_targets([_state("10.10.10.20:102", status="reachable", next_probe_at_ms=60_000)], now_ms=0)
+    scheduler.boostEndpoint(endpoint_id, now_ms=1_000)
+
+    due = scheduler.pop_due(now_ms=1_000, max_count=2)
+    assert [state.endpoint_id for state in due] == [endpoint_id]
+    assert scheduler.pop_due(now_ms=60_000, max_count=2) == []
+
+
+def test_due_low_priority_endpoint_is_not_starved_by_future_high_priority() -> None:
+    scheduler = availability.ExternalIedPriorityScheduler(availability.ExternalIedWatcherConfig(cold_start_duration_ms=0))
+    scheduler.set_targets([
+        _state("10.10.10.20:102", status="reachable", next_probe_at_ms=10_000, priority_reason=availability.PRIORITY_REASON_REACHABLE_STABLE),
+        _state("10.10.10.21:102", status="expected", next_probe_at_ms=60_000),
+    ], now_ms=0)
+
+    due = scheduler.pop_due(now_ms=10_000, max_count=1)
+
+    assert [state.endpoint_id for state in due] == ["7:10.10.10.20:102"]
+
+
+def test_ageing_improves_effective_priority_for_long_overdue_endpoint() -> None:
+    config = availability.ExternalIedWatcherConfig(
+        ageing_step_ms=1_000,
+        max_ageing_priority_boost=3,
+        cold_start_duration_ms=0,
+    )
+    scheduler = availability.ExternalIedPriorityScheduler(config)
+    scheduler.set_targets([
+        _state("10.10.10.20:102", status="reachable", next_probe_at_ms=0, priority_reason=availability.PRIORITY_REASON_REACHABLE_STABLE),
+        _state("10.10.10.21:102", status="offline", next_probe_at_ms=3_000, priority_reason=availability.PRIORITY_REASON_OFFLINE),
+    ], now_ms=0)
+
+    due = scheduler.pop_due(now_ms=3_000, max_count=1)
+
+    assert [state.endpoint_id for state in due] == ["7:10.10.10.20:102"]
+
+
+def test_verification_needed_auto_expires_after_success() -> None:
+    config = availability.ExternalIedWatcherConfig(
+        verification_needed_interval_ms=1_000,
+        reachable_candidate_interval_ms=2_000,
+        interval_jitter_ratio=0,
+        cold_start_duration_ms=0,
+    )
+    scheduler = availability.ExternalIedPriorityScheduler(config)
+    endpoint_id = "7:10.10.10.20:102"
+    state = _state("10.10.10.20:102", status="expected", next_probe_at_ms=60_000)
+    scheduler.set_targets([state], now_ms=1_000)
+    scheduler.markVerificationNeeded([endpoint_id], now_ms=1_000)
+    due = scheduler.pop_due(now_ms=1_000, max_count=1)[0]
+    transition = availability.resolve_probe_transition(due, _probe_result(reachable=True), now_ms=1_100, config=config)
+
+    scheduler.complete_probe(endpoint_id, transition)
+
+    assert scheduler.states[endpoint_id].priority_reason == availability.PRIORITY_REASON_REACHABLE_CANDIDATE
+    assert scheduler.states[endpoint_id].next_probe_at_ms == 3_100
+
+
+def test_verification_needed_expires_after_timeout_without_manual_clear() -> None:
+    config = availability.ExternalIedWatcherConfig(
+        verification_needed_timeout_ms=1_000,
+        interval_jitter_ratio=0,
+        cold_start_duration_ms=0,
+    )
+    scheduler = availability.ExternalIedPriorityScheduler(config)
+    endpoint_id = "7:10.10.10.20:102"
+    scheduler.set_targets([_state("10.10.10.20:102", status="offline", next_probe_at_ms=60_000)], now_ms=0)
+    scheduler.markVerificationNeeded([endpoint_id], now_ms=0)
+
+    assert scheduler.pop_due(now_ms=1_001, max_count=1) == []
+    assert scheduler.states[endpoint_id].priority_reason == availability.PRIORITY_REASON_OFFLINE
+
+
+def test_polling_interval_jitter_is_configurable(monkeypatch) -> None:
+    monkeypatch.setattr(availability.random, "uniform", lambda _low, _high: 1.2)
+    config = availability.ExternalIedWatcherConfig(
+        reachable_candidate_interval_ms=2_000,
+        interval_jitter_ratio=0.2,
+    )
+    candidate = _state("10.10.10.20:102", status="expected")
+
+    transition = availability.resolve_probe_transition(candidate, _probe_result(reachable=True), now_ms=1_000, config=config)
+
+    assert transition.next_check_at_ms == 3_400
+
+
+def test_repeated_same_status_does_not_emit_status_change() -> None:
+    config = availability.ExternalIedWatcherConfig()
+    offline = _state("10.10.10.20:102", status="offline", consecutive_failures=1)
+
+    transition = availability.resolve_probe_transition(offline, _probe_result(reachable=False), now_ms=10_000, config=config)
+
+    assert transition.old_status == "offline"
+    assert transition.new_status == "offline"
+    assert transition.status_changed is False
