@@ -1,7 +1,9 @@
 import type { SignalAllocationRow } from "@/types/signal"
+import type { ExternalIedStatus } from "@/stores/externalIedStore"
 import { resolveRuntimeChannelTypeForSignal } from "@/utils/signalRuntimeMapping"
 import { applyRuntimeTestedAt } from "@/pages/signals/utils/runtimeProjection"
 import { extractSourceRowFromSignalMetadata } from "@/pages/signals/utils/sourceColumns"
+import { resolveOnline61850TransportHost } from "@/pages/signals/utils/online61850Targets"
 import {
   resolveSignalAllocationHealthLabel,
   resolveSignalAllocationStatus,
@@ -20,6 +22,7 @@ export type SignalGridRow = Record<string, unknown> & {
 type SignalGridRuntimeOverlay = {
   workspaceId?: number | null
   getTestedAt?: TestedAtResolver
+  getExternalIedStatus?: (row: SignalAllocationRow) => ExternalIedStatus
 }
 
 type SignalGridProjectionPatch = {
@@ -59,6 +62,18 @@ function applySignalGridRuntimeOverlay(
   return applyRuntimeTestedAt(row, runtime.workspaceId, runtime.getTestedAt)
 }
 
+function resolveExternalIedIp(row: SignalAllocationRow): string {
+  return resolveOnline61850TransportHost(row)?.host ?? ""
+}
+
+function resolveExternalIedPort(row: SignalAllocationRow): number {
+  return resolveOnline61850TransportHost(row)?.port ?? 102
+}
+
+function resolveExternalIedStatus(row: SignalAllocationRow, runtime?: SignalGridRuntimeOverlay): ExternalIedStatus {
+  return runtime?.getExternalIedStatus?.(row) ?? "not_applicable"
+}
+
 function createSignalGridRow(
   row: SignalAllocationRow,
   headers: readonly string[],
@@ -71,6 +86,9 @@ function createSignalGridRow(
     rowId: projectedRow.row_id || `signal-${projectedRow.signal_id}`,
     internal_signal_type: resolveSignalGridInternalSignalType(projectedRow),
     iec61850_address: String(sourceRow.iec61850_address ?? sourceRow.iec61850Address ?? ""),
+    external_ied_ip: resolveExternalIedIp(projectedRow),
+    external_ied_port: resolveExternalIedPort(projectedRow),
+    external_ied_status: resolveExternalIedStatus(projectedRow, runtime),
     channel_select: resolveSignalAllocationDisplayLabel(projectedRow),
     tested_at: projectedRow.tested_at,
     allocation_status: resolveSignalAllocationStatus(projectedRow),

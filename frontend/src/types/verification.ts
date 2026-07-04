@@ -115,6 +115,41 @@ export interface VerificationNetworkPreflightResponse {
   preflight: VerificationNetworkPreflight
 }
 
+export interface VerificationMmsReachabilityTarget {
+  host: string
+  port?: number
+}
+
+export interface VerificationMmsReachabilityRequest {
+  targets: VerificationMmsReachabilityTarget[]
+  timeout_ms?: number
+  concurrency?: number
+}
+
+export interface VerificationMmsReachabilityResult {
+  host: string
+  port: number
+  reachable: boolean
+  checked_at: string
+  error?: string | null
+  check_kind?: "tcp_connect"
+  failure_code?: "unreachable" | "mms_unavailable" | "network_unreachable" | "probe_failed" | null
+}
+
+export interface VerificationMmsReachabilityResponse {
+  results: VerificationMmsReachabilityResult[]
+}
+
+export interface VerificationExternalIedTarget {
+  ip: string
+  port?: number
+  signal_ids: number[]
+}
+
+export interface VerificationExternalIedTargetsRequest {
+  targets: VerificationExternalIedTarget[]
+}
+
 export interface VerificationAutoRunStartPayload {
   signal_ids: number[]
   execution_context: VerificationExecutionContext

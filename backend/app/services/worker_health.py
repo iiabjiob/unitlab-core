@@ -51,6 +51,11 @@ WORKER_DEFINITIONS: tuple[WorkerDefinition, ...] = (
         impact="Device statuses become stale — online/offline state is not recalculated.",
     ),
     WorkerDefinition(
+        name="external_ied_availability",
+        display_name="External IED Availability",
+        impact="IEC 61850 external IED availability state is stale.",
+    ),
+    WorkerDefinition(
         name="signal_allocation_runner",
         display_name="Signal Allocation Runner",
         impact="Async signal allocation jobs are not processed.",

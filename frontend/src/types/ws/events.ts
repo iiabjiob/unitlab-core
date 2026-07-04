@@ -17,6 +17,7 @@ export enum WSChannel {
   DEVICE_REGISTER = "devices/register",
   DEVICE_RESP     = "devices/resp",
   DEVICE_STATUS   = "devices/status",
+  EXTERNAL_IED_STATUS = "external-ieds/status",
   TIME_STATUS     = "time/status",
 }
 
@@ -135,6 +136,45 @@ export interface DeviceHeartbeatEvent {
   heartbeat_kind?: "fast" | "diag" | null
   heartbeat_fast?: DeviceHeartbeatFastSnapshot | null
   heartbeat_diag?: DeviceHeartbeatDiagSnapshot | null
+}
+
+export type ExternalIedStatus = "not_applicable" | "unknown" | "expected" | "reachable" | "offline"
+export type ExternalIedCheckKind = "none" | "tcp_connect"
+export type ExternalIedFailureCode = "unreachable" | "mms_unavailable" | "network_unreachable" | "probe_failed"
+
+export interface ExternalIedStatusRecord {
+  ip: string
+  port: number
+  status: ExternalIedStatus
+  signal_ids: number[]
+  last_checked_at?: string | null
+  last_error?: string | null
+  check_kind: ExternalIedCheckKind
+  failure_code?: ExternalIedFailureCode | null
+}
+
+export interface ExternalIedStatusSnapshotEvent {
+  channel: WSChannel.EXTERNAL_IED_STATUS
+  event: "external_ied_status_snapshot"
+  workspace_id: number
+  devices: ExternalIedStatusRecord[]
+  removed_signal_ids: number[]
+  emitted_at: string
+}
+
+export interface ExternalIedStatusChangedEvent {
+  channel: WSChannel.EXTERNAL_IED_STATUS
+  event: "external_ied_status_changed"
+  workspace_id: number
+  ip: string
+  port: number
+  old_status: ExternalIedStatus
+  new_status: ExternalIedStatus
+  signal_ids: number[]
+  checked_at: string
+  check_kind: ExternalIedCheckKind
+  failure_code?: ExternalIedFailureCode | null
+  error?: string | null
 }
 
 export interface SystemHealthChangedEvent {
@@ -320,6 +360,8 @@ export type ChannelWSEvent =
   | SignalTestRunJobEvent
   | SignalTestRuntimePatchEvent
   | SignalRowsPatchedEvent
+  | ExternalIedStatusSnapshotEvent
+  | ExternalIedStatusChangedEvent
   | DeviceStateEvent
   | DeviceRegisterEvent
   | DeviceRespEvent

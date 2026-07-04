@@ -50,6 +50,9 @@ describe("signalGridProjection", () => {
       signal_id: 1,
       internal_signal_type: "di",
       iec61850_address: "KINTE15BCU01CTRL1/CBCSWI1/Pos/Oper.ctlVal[CO]",
+      external_ied_ip: "",
+      external_ied_port: 102,
+      external_ied_status: "not_applicable",
       channel_select: "unit-a/ch3",
       allocation_status: "assigned",
       allocation_health: "OK",
@@ -86,6 +89,34 @@ describe("signalGridProjection", () => {
 
     expect(row.tested_at).toBe("2026-01-01T00:00:01Z")
     expect(source.tested_at).toBe("2026-01-01T00:00:00Z")
+  })
+
+  it("applies external IED status through the runtime overlay", () => {
+    const source = buildRow({
+      signal_metadata: {
+        verification: {
+          enabled: true,
+          transport_host: "10.10.10.20:12447",
+          iec61850_address: "IED1/LLN0.Mod.stVal",
+        },
+        row: {
+          Host: "10.10.10.20:12447",
+        },
+      },
+    })
+
+    const [row] = createSignalGridRows([source], ["Host"], {
+      getExternalIedStatus: candidate => (
+        candidate.signal_id === 1 ? "reachable" : "not_applicable"
+      ),
+    })
+
+    expect(row).toMatchObject({
+      external_ied_ip: "10.10.10.20",
+      external_ied_port: 12447,
+      external_ied_status: "reachable",
+      [signalGridSourceColumnKey(0)]: "10.10.10.20:12447",
+    })
   })
 
   it("creates row patches through the same mapper boundary", () => {

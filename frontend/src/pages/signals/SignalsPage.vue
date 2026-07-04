@@ -467,11 +467,15 @@ import type { AoChannel, DoChannel } from "@/types/channel"
 import AllocationEditorHeader from "@/pages/signals/components/AllocationEditorHeader.vue"
 import { extractSourceRowFromSignalMetadata, resolveAllSourceColumnHeaders, resolveSourceColumnInitialWidth, resolveSourceColumnMinWidth } from "@/pages/signals/utils/sourceColumns"
 import {
+  buildExternalIedAvailabilityTargets,
   buildOnline61850PreparationTargets,
+  isSignalRow61850VerificationEnabled,
+  resolveOnline61850TransportHost,
   resolveOnline61850SignalReference,
   type Online61850PreparationTarget,
 } from "@/pages/signals/utils/online61850Targets"
 import AllocationChannelCell from "@/pages/signals/components/AllocationChannelCell.vue"
+import ExternalIedIpCell from "@/pages/signals/components/ExternalIedIpCell.vue"
 import AllocationChannelPickerPanel from "@/pages/signals/components/AllocationChannelPickerPanel.vue"
 import AllocationControlCell from "@/pages/signals/components/AllocationControlCell.vue"
 import SignalExportModal, { type ExportColumnOption } from "@/pages/signals/components/SignalExportModal.vue"
@@ -508,6 +512,7 @@ import UiAffinoDisclosure from "@/components/ui/UiAffinoDisclosure.vue"
 import UiModal from "@/components/ui/UiModal.vue"
 import { useChannelStore } from "@/stores/channelStore"
 import { useDeviceStore } from "@/stores/deviceStore"
+import { useExternalIedStore, type ExternalIedStatus } from "@/stores/externalIedStore"
 import { useSignalJobStore } from "@/stores/signalJobStore"
 import { useSignalRowsPatchStore } from "@/stores/signalRowsPatchStore"
 import { useSignalSheetStore } from "@/stores/signalSheetStore"
@@ -528,6 +533,7 @@ const signalJobStore = useSignalJobStore()
 const signalRowsPatchStore = useSignalRowsPatchStore()
 const channelStore = useChannelStore()
 const deviceStore = useDeviceStore()
+const externalIedStore = useExternalIedStore()
 const testedAtRealtimeStore = useTestedAtRealtimeStore()
 const toastStore = useToastStore()
 const route = useRoute()
@@ -537,6 +543,7 @@ const { channels } = storeToRefs(channelStore)
 const { activeJobs } = storeToRefs(signalJobStore)
 const { activeWorkspaceRevision, activeWorkspacePatchedSignalIds } = storeToRefs(testedAtRealtimeStore)
 const { activeWorkspacePatchEvent, activeWorkspacePatchRevision } = storeToRefs(signalRowsPatchStore)
+const { statusRevision: externalIedStatusRevision, lastChangedSignalIds: externalIedChangedSignalIds } = storeToRefs(externalIedStore)
 
 const error = ref<string | null>(null)
 const importModalOpen = ref(false)
@@ -881,6 +888,38 @@ const sourceHeaders = computed(() => {
   }
   return resolveAllSourceColumnHeaders(null, signalAllocationProjectionRows())
 })
+const externalIedHostSourceColumnKey = computed(() => {
+  const verification = activeSignalSheet.value?.import_meta?.verification
+  const hostColumn = verification?.enabled === true
+    ? String(verification.transport_host_column ?? "").trim()
+    : resolveExternalIedHostColumnFromRows(signalAllocationProjectionRows())
+  if (!hostColumn) {
+    return null
+  }
+  const index = sourceHeaders.value.findIndex(header => header === hostColumn)
+  return index >= 0 ? signalGridSourceColumnKey(index) : null
+})
+
+function resolveExternalIedHostColumnFromRows(rows: readonly SignalAllocationRow[]): string | null {
+  for (const row of rows) {
+    const metadata = row.signal_metadata
+    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+      continue
+    }
+    const verification = (metadata as Record<string, unknown>).verification
+    if (!verification || typeof verification !== "object" || Array.isArray(verification)) {
+      continue
+    }
+    if ((verification as Record<string, unknown>).enabled !== true) {
+      continue
+    }
+    const hostColumn = String((verification as Record<string, unknown>).transport_host_column ?? "").trim()
+    if (hostColumn) {
+      return hostColumn
+    }
+  }
+  return null
+}
 const signalGridPatchIngress = createSignalGridPatchIngress({
   cache: signalAllocationProjectionCache,
   rowModel: signalGridRowModel,
@@ -1066,6 +1105,10 @@ const allocatedCableRows = computed(() => (
     && Number.isFinite(row.channel_index as number)
     && Boolean(String(row.unit_id ?? "").trim())
   ))
+))
+
+const externalIedAvailabilityTargets = computed(() => (
+  buildExternalIedAvailabilityTargets(signalAllocationProjectionRows())
 ))
 
 const activeTestRunJob = computed(() => (
@@ -2169,7 +2212,16 @@ function signalGridRuntimeOverlay() {
   return {
     workspaceId: workspaceStore.activeWorkspaceId,
     getTestedAt: getSignalRuntimeTestedAt,
+    getExternalIedStatus: getExternalIedStatusForRow,
   }
+}
+
+function getExternalIedStatusForRow(row: SignalAllocationRow): ExternalIedStatus {
+  if (!isSignalRow61850VerificationEnabled(row) || !resolveOnline61850SignalReference(row)) {
+    return "not_applicable"
+  }
+  const endpoint = resolveOnline61850TransportHost(row)
+  return externalIedStore.getStatus(endpoint?.host ?? null, endpoint?.port ?? 102)
 }
 
 function asAllocationRow(row: GridRow): SignalAllocationRow {
@@ -3959,6 +4011,74 @@ function renderDefaultCell(context: DataGridAppCellRendererContext<GridRow>) {
   return h("span", { class: "signals-page__grid-cell" }, displayValue)
 }
 
+function normalizeExternalIedStatus(value: unknown): ExternalIedStatus {
+  const status = String(value ?? "not_applicable")
+  return ["unknown", "expected", "reachable", "offline"].includes(status)
+    ? status as ExternalIedStatus
+    : "not_applicable"
+}
+
+function normalizeExternalIedEndpoint(host: unknown, port: unknown): string | null {
+  const text = String(host ?? "").trim()
+  if (!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(text)) {
+    return null
+  }
+  const octets = text.split(".").map(part => Number.parseInt(part, 10))
+  if (octets.some(octet => !Number.isInteger(octet) || octet < 0 || octet > 255)) {
+    return null
+  }
+  const normalizedPort = Number(port)
+  return `${octets.join(".")}:${Number.isInteger(normalizedPort) && normalizedPort >= 1 && normalizedPort <= 65535 ? normalizedPort : 102}`
+}
+
+function parseExternalIedEndpointCellValue(value: unknown): string | null {
+  const text = String(value ?? "").trim().split(/\s+/, 1)[0] ?? ""
+  const match = /^(\d{1,3}(?:\.\d{1,3}){3})(?::(\d{1,5}))?$/.exec(text)
+  if (!match) {
+    return null
+  }
+  return normalizeExternalIedEndpoint(match[1], match[2] ? Number(match[2]) : 102)
+}
+
+function rowExternalIedEndpoint(row: GridRow | null | undefined): string | null {
+  return normalizeExternalIedEndpoint(row?.external_ied_ip, row?.external_ied_port)
+}
+
+function resolveExternalIedStatusForGridRow(row: GridRow | null | undefined): ExternalIedStatus {
+  const host = typeof row?.external_ied_ip === "string" ? row.external_ied_ip : null
+  const port = Number(row?.external_ied_port)
+  const liveStatus = externalIedStore.getStatus(host, Number.isFinite(port) ? port : 102)
+  if (liveStatus !== "not_applicable") {
+    return liveStatus
+  }
+  return normalizeExternalIedStatus(row?.external_ied_status)
+}
+
+function shouldRenderExternalIedSourceCell(context: DataGridAppCellRendererContext<GridRow>): boolean {
+  const status = resolveExternalIedStatusForGridRow(context.row)
+  if (status === "not_applicable") {
+    return false
+  }
+  const rowEndpoint = rowExternalIedEndpoint(context.row)
+  const cellEndpoint = parseExternalIedEndpointCellValue(context.displayValue)
+  return Boolean(rowEndpoint && cellEndpoint && rowEndpoint === cellEndpoint)
+}
+
+function renderExternalIedIpCell(context: DataGridAppCellRendererContext<GridRow>) {
+  const displayValue = context.displayValue || "-"
+  const status = resolveExternalIedStatusForGridRow(context.row)
+  return h(ExternalIedIpCell, {
+    label: displayValue,
+    status,
+  })
+}
+
+function renderSourceCell(context: DataGridAppCellRendererContext<GridRow>) {
+  return shouldRenderExternalIedSourceCell(context)
+    ? renderExternalIedIpCell(context)
+    : renderDefaultCell(context)
+}
+
 function renderTestedAtCell(context: DataGridAppCellRendererContext<GridRow>) {
   const raw = String(context.row?.tested_at ?? "").trim()
   if (!raw) {
@@ -3977,7 +4097,9 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
     initialState: { width: resolveSourceColumnInitialWidth(header) },
     presentation: { align: "left", headerAlign: "left" },
     capabilities: { editable: false },
-    cellRenderer: renderDefaultCell,
+    cellRenderer: signalGridSourceColumnKey(index) === externalIedHostSourceColumnKey.value
+      ? renderExternalIedIpCell
+      : renderSourceCell,
   }))
 
   return [
@@ -4199,6 +4321,17 @@ watch(
 )
 
 watch(
+  () => [workspaceStore.activeWorkspaceId, externalIedAvailabilityTargets.value, loading.value] as const,
+  ([workspaceId, targets, isLoading]) => {
+    if (isLoading) {
+      return
+    }
+    externalIedStore.configureExpectedDevices(workspaceId, targets)
+  },
+  { flush: "post", immediate: true },
+)
+
+watch(
   [allocationGridRef, sourceHeaders, loading],
   () => {
     tryApplyPendingSignalsGridSavedView()
@@ -4221,6 +4354,24 @@ watch(
     signalGridPatchIngress.applyRuntimeSignals(signalIds, {
       reason: "signal-tested-at-realtime-patch",
       columns: ["tested_at"],
+    })
+  },
+  { flush: "post" },
+)
+
+watch(
+  () => [externalIedStatusRevision.value, externalIedChangedSignalIds.value] as const,
+  ([, signalIds]) => {
+    const columns = ["external_ied_status"]
+    const hostColumn = externalIedHostSourceColumnKey.value
+    if (hostColumn) {
+      columns.push(hostColumn)
+    } else {
+      columns.push(...sourceHeaders.value.map((_, index) => signalGridSourceColumnKey(index)))
+    }
+    signalGridPatchIngress.applyRuntimeSignals(signalIds, {
+      reason: "external-ied-status-patch",
+      columns,
     })
   },
   { flush: "post" },

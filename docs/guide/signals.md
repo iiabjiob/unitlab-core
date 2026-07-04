@@ -76,6 +76,15 @@ Important behavior:
 4. (Optional) Fill **Save as preset**.
 5. Click **Next**.
 
+Important behavior:
+- Leave both IEC 61850 fields empty or skip this step when the project should not use MMS verification.
+- Device availability monitoring starts only for rows where both external IP and IEC 61850 address are mapped by this wizard step.
+- An imported IP-like column alone does not mark devices Offline and does not start network monitoring.
+- Availability in the Signals grid is keyed by external IED IP and is shown only as a small indicator in the mapped IP column.
+- Checks run in the backend `external_ied_availability` worker. The browser does not poll device IPs.
+- The worker checks MMS endpoint availability with a short TCP connect to the configured MMS port, defaulting to TCP 102.
+- **Offline** appears only after MMS verification context is enabled and the backend worker has failed the TCP MMS endpoint check.
+
 ### Step 5 — Configure Network
 
 The Raspberry Pi uses its wired RJ45 interface for project IEC 61850/MMS devices. This step is never applied automatically.

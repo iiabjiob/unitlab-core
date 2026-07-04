@@ -2,6 +2,9 @@ import { http, type HttpRequestOptions } from "./http"
 import { API_V1 } from "./utils"
 import type {
   VerificationAutoRunStartPayload,
+  VerificationExternalIedTargetsRequest,
+  VerificationMmsReachabilityRequest,
+  VerificationMmsReachabilityResponse,
   VerificationNetworkPreflightResponse,
   VerificationRunDetailResponse,
   VerificationRuntimeOrchestrationResponse,
@@ -14,6 +17,22 @@ export const VerificationAPI = {
 
   preflightSingleSignalRun(workspaceId: number, payload: VerificationAutoRunStartPayload) {
     return http.post<VerificationNetworkPreflightResponse>(`${API_V1}/workspaces/${workspaceId}/verification/preflight`, payload)
+  },
+
+  checkMmsReachability(workspaceId: number, payload: VerificationMmsReachabilityRequest, options?: HttpRequestOptions) {
+    return http.post<VerificationMmsReachabilityResponse>(
+      `${API_V1}/workspaces/${workspaceId}/verification/mms-reachability`,
+      payload,
+      options,
+    )
+  },
+
+  configureExternalIedTargets(workspaceId: number, payload: VerificationExternalIedTargetsRequest, options?: HttpRequestOptions) {
+    return http.put(
+      `${API_V1}/workspaces/${workspaceId}/verification/external-ieds/targets`,
+      payload,
+      options,
+    )
   },
 
   getRunDetail(workspaceId: number, testRunId: string) {

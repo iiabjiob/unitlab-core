@@ -287,6 +287,7 @@ readonly expected_running_containers=(
   unitlab-inbound-processor
   unitlab-mqtt-outbound
   unitlab-device-offline
+  unitlab-external-ied-availability
   unitlab-sequence-runner
   unitlab-signal-allocation-runner
   unitlab-signal-test-run-runner

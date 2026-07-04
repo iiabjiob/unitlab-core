@@ -13,6 +13,12 @@ export type Online61850PreparationTarget = {
   signalRows: SignalAllocationRow[]
 }
 
+export type ExternalIedAvailabilityTarget = {
+  ip: string
+  port: number
+  signalIds: number[]
+}
+
 type Online61850PreparationTargetSource = {
   signalId: number
   signalLabel: string
@@ -59,6 +65,14 @@ const ACCESS_POINT_KEYS = [
   "accesspointname",
   "ap_name",
 ]
+
+export function isSignalRow61850VerificationEnabled(row: SignalAllocationRow): boolean {
+  const metadata = row.signal_metadata
+  const verificationMeta = resolveRecordCandidate(metadata && typeof metadata === "object" && !Array.isArray(metadata)
+    ? (metadata as Record<string, unknown>).verification
+    : null)
+  return verificationMeta?.enabled === true
+}
 
 export function buildOnline61850PreparationTargets(rows: readonly SignalAllocationRow[]): {
   targets: Online61850PreparationTarget[]
@@ -107,10 +121,35 @@ export function resolveOnline61850SignalReference(row: SignalAllocationRow): str
   )
 }
 
-function resolveOnline61850PreparationTargetSource(
-  row: SignalAllocationRow,
-  signalLabel: string,
-): Online61850PreparationTargetSource | null {
+export function buildExternalIedAvailabilityTargets(rows: readonly SignalAllocationRow[]): ExternalIedAvailabilityTarget[] {
+  const signalIdsByEndpoint = new Map<string, { ip: string; port: number; signalIds: number[] }>()
+  rows.forEach((row) => {
+    if (!isSignalRow61850VerificationEnabled(row)) return
+    if (!resolveOnline61850SignalReference(row)) return
+    const host = resolveOnline61850TransportHost(row)
+    const normalizedIp = normalizeIpv4Host(host?.host ?? null)
+    if (!normalizedIp) return
+    const signalId = Number(row.signal_id)
+    if (!Number.isFinite(signalId) || signalId <= 0) return
+    const port = host?.port ?? 102
+    const key = `${normalizedIp}:${port}`
+    const existing = signalIdsByEndpoint.get(key) ?? { ip: normalizedIp, port, signalIds: [] }
+    existing.signalIds.push(signalId)
+    signalIdsByEndpoint.set(key, existing)
+  })
+
+  return Array.from(signalIdsByEndpoint.values())
+    .map(target => ({
+      ip: target.ip,
+      port: target.port,
+      signalIds: Array.from(new Set(target.signalIds)).sort((left, right) => left - right),
+    }))
+    .sort((left, right) => (
+      left.ip.localeCompare(right.ip, undefined, { numeric: true }) || left.port - right.port
+    ))
+}
+
+export function resolveOnline61850TransportHost(row: SignalAllocationRow): { host: string; port: number } | null {
   const sourceRow = extractSourceRowFromSignalMetadata(row.signal_metadata)
   const verificationMeta = resolveRecordCandidate(row.signal_metadata && typeof row.signal_metadata === "object" && !Array.isArray(row.signal_metadata)
     ? (row.signal_metadata as Record<string, unknown>).verification
@@ -122,7 +161,21 @@ function resolveOnline61850PreparationTargetSource(
     row.signal_metadata,
     TRANSPORT_HOST_KEYS,
   )
-  const normalizedHost = normalizeTransportHost(hostCandidate)
+  return normalizeTransportHost(hostCandidate)
+}
+
+function resolveOnline61850PreparationTargetSource(
+  row: SignalAllocationRow,
+  signalLabel: string,
+): Online61850PreparationTargetSource | null {
+  if (!isSignalRow61850VerificationEnabled(row)) {
+    return null
+  }
+  const sourceRow = extractSourceRowFromSignalMetadata(row.signal_metadata)
+  const verificationMeta = resolveRecordCandidate(row.signal_metadata && typeof row.signal_metadata === "object" && !Array.isArray(row.signal_metadata)
+    ? (row.signal_metadata as Record<string, unknown>).verification
+    : null)
+  const normalizedHost = resolveOnline61850TransportHost(row)
   if (!normalizedHost) {
     return null
   }
@@ -291,6 +344,14 @@ function normalizeTransportHost(rawHost: string | null): { host: string; port: n
     host: hostText,
     port,
   }
+}
+
+function normalizeIpv4Host(rawHost: string | null): string | null {
+  const text = String(rawHost ?? "").trim()
+  if (!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(text)) return null
+  const octets = text.split(".").map(part => Number.parseInt(part, 10))
+  if (octets.some(octet => !Number.isInteger(octet) || octet < 0 || octet > 255)) return null
+  return octets.join(".")
 }
 
 function parseIec61850Address(rawAddress: string | null): { iedName: string | null; accessPointName: string | null } {

@@ -12,6 +12,7 @@ import { useCoreNetworkStore } from '@/stores/coreNetworkStore'
 import { useCoreNtpStore } from '@/stores/coreNtpStore'
 import { useCoreDiagnosticsStore } from '@/stores/coreDiagnosticsStore'
 import { useCoreProvisionStore } from '@/stores/coreProvisionStore'
+import { useExternalIedStore } from '@/stores/externalIedStore'
 import { useToastStore } from '@/stores/toastStore'
 import type { SystemHealthResponse } from '@/types/health'
 import type { CoreDiagnosticsSnapshot } from '@/types/coreDiagnostics'
@@ -54,6 +55,8 @@ import type {
   SignalTestRunJobEvent,
   SignalTestRuntimePatchEvent,
   SignalRowsPatchedEvent,
+  ExternalIedStatusChangedEvent,
+  ExternalIedStatusSnapshotEvent,
 } from '@/types/ws/events'
 
 function isTestRunJobEvent(jobEvent: SignalAllocationJobEvent | SignalTestRunJobEvent): boolean {
@@ -354,6 +357,7 @@ export function handleWsEvent(event: WSEvent) {
   const coreNtpStore = useCoreNtpStore()
   const coreDiagnosticsStore = useCoreDiagnosticsStore()
   const coreProvisionStore = useCoreProvisionStore()
+  const externalIedStore = useExternalIedStore()
   const toastStore = useToastStore()
 
   // Route sequence events into the sequence store so realtime progress stays in sync.
@@ -489,6 +493,18 @@ export function handleWsEvent(event: WSEvent) {
     case WSChannel.DEVICE_STATUS:{
       logger.debug("📡 IN ← DEVICE_STATUS:", channelEvent)
       deviceStore.updateStatus(channelEvent as DeviceHeartbeatEvent)
+      break
+    }
+    case WSChannel.EXTERNAL_IED_STATUS: {
+      if ((channelEvent as ExternalIedStatusSnapshotEvent).event === "external_ied_status_snapshot") {
+        externalIedStore.applySnapshot(channelEvent as ExternalIedStatusSnapshotEvent)
+        break
+      }
+      if ((channelEvent as ExternalIedStatusChangedEvent).event === "external_ied_status_changed") {
+        externalIedStore.applyStatusChanged(channelEvent as ExternalIedStatusChangedEvent)
+        break
+      }
+      logger.warn("⚠️ Unknown EXTERNAL_IED_STATUS payload", channelEvent)
       break
     }
     // Device state broadcasts carry DI/DO/AO changes for visualization.

@@ -6,6 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.infrastructure.db.database import get_db
 from app.schemas.verification_schema import (
     VerificationAutoRunStartSchema,
+    VerificationExternalIedTargetsRequestSchema,
+    VerificationMmsReachabilityRequestSchema,
+    VerificationMmsReachabilityResponseSchema,
     VerificationNetworkPreflightResponseSchema,
     VerificationRunDetailResponseSchema,
     VerificationRunEvidenceResponseSchema,
@@ -14,8 +17,10 @@ from app.schemas.verification_schema import (
     VerificationRuntimeOrchestrationStartSchema,
     VerificationRunStepDetailsSchema,
 )
+from app.services.external_ied_availability import configure_external_ied_targets
 from app.services.verification_evidence import VerificationEvidenceRepository
 from app.services.verification_network_preflight import build_verification_network_preflight_response
+from app.services.verification_mms_reachability import check_mms_tcp_reachability
 from app.services.verification_run_service import (
     build_verification_runtime_start_context,
     execute_single_signal_verification_run,
@@ -57,6 +62,26 @@ async def preflight_verification_run(
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     return result
+
+
+@router.post("/mms-reachability", response_model=VerificationMmsReachabilityResponseSchema)
+async def probe_mms_reachability(
+    workspace_id: int,
+    payload: VerificationMmsReachabilityRequestSchema,
+):
+    _ = workspace_id
+    return await check_mms_tcp_reachability(payload)
+
+
+@router.put("/external-ieds/targets")
+async def set_external_ied_targets(
+    workspace_id: int,
+    payload: VerificationExternalIedTargetsRequestSchema,
+):
+    return await configure_external_ied_targets(
+        workspace_id,
+        [target.model_dump(mode="json") for target in payload.targets],
+    )
 
 
 @router.post("/runs", response_model=VerificationRunDetailResponseSchema)

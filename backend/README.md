@@ -32,15 +32,19 @@ For one-click startup in VS Code, run task `backend: start all` (Terminal → Ru
 	```bash
 	uv run python -m app.workers.device_offline
 	```
-6. **Sequence runner** (consumes `sequence:commands`, emits lifecycle events to `sequence:events`):
+6. External IEC 61850 IED availability watcher (watches wizard-confirmed mapped IED IPs, emits WS status changes):
+	```bash
+	uv run python -m app.workers.external_ied_availability
+	```
+7. **Sequence runner** (consumes `sequence:commands`, emits lifecycle events to `sequence:events`):
 	```bash
 	uv run python -m app.workers.sequence_runner
 	```
-7. **Signal allocation runner** (consumes `signal-allocation:jobs`, executes allocation jobs in background):
+8. **Signal allocation runner** (consumes `signal-allocation:jobs`, executes allocation jobs in background):
 	```bash
 	uv run python -m app.workers.signal_allocation_runner
 	```
-8. **Signal test-run runner** (consumes `signal-test-run:jobs`, executes long-running test toggles):
+9. **Signal test-run runner** (consumes `signal-test-run:jobs`, executes long-running test toggles):
 	```bash
 	uv run python -m app.workers.signal_test_run_runner
 	```

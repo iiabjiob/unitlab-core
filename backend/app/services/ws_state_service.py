@@ -9,6 +9,7 @@ from app.infrastructure.redis.manager import RedisManager
 from app.ws.manager import WebSocketManager
 from app.schemas.device_schema import DeviceSchema
 from app.schemas.ws.events import DeviceHeartbeatEvent, DeviceRegisterEvent
+from app.services.external_ied_availability import list_external_ied_status_snapshots
 from app.services.device_state_service import DeviceStateService
 from app.schemas.channel_schema import ChannelSchema
 from app.core.utils import to_str
@@ -90,3 +91,6 @@ class WsStateService:
 
                 # STATE snapshot
                 await WsStateService.send_cached_state_to_ui(device.unit_id, target=ws)
+
+            for event in await list_external_ied_status_snapshots():
+                await ws_manager.send_event(ws, event)

@@ -224,6 +224,41 @@ class VerificationNetworkPreflightResponseSchema(BaseModel):
     preflight: VerificationNetworkPreflightSchema
 
 
+class VerificationMmsReachabilityTargetSchema(BaseModel):
+    host: str = Field(min_length=1, max_length=255)
+    port: int = Field(default=102, ge=1, le=65535)
+
+
+class VerificationMmsReachabilityRequestSchema(BaseModel):
+    targets: list[VerificationMmsReachabilityTargetSchema] = Field(default_factory=list, min_length=1, max_length=64)
+    timeout_ms: int = Field(default=1200, ge=100, le=5000)
+    concurrency: int = Field(default=4, ge=1, le=16)
+
+
+class VerificationMmsReachabilityResultSchema(BaseModel):
+    host: str
+    port: int
+    reachable: bool
+    checked_at: str
+    error: str | None = None
+    check_kind: Literal["tcp_connect"] = "tcp_connect"
+    failure_code: Literal["unreachable", "mms_unavailable", "network_unreachable", "probe_failed"] | None = None
+
+
+class VerificationMmsReachabilityResponseSchema(BaseModel):
+    results: list[VerificationMmsReachabilityResultSchema] = Field(default_factory=list)
+
+
+class VerificationExternalIedTargetSchema(BaseModel):
+    ip: str = Field(min_length=1, max_length=64)
+    port: int = Field(default=102, ge=1, le=65535)
+    signal_ids: list[int] = Field(default_factory=list, max_length=20000)
+
+
+class VerificationExternalIedTargetsRequestSchema(BaseModel):
+    targets: list[VerificationExternalIedTargetSchema] = Field(default_factory=list, max_length=512)
+
+
 class VerificationSessionSnapshotSchema(BaseModel):
     session_id: str
     endpoint_id: str

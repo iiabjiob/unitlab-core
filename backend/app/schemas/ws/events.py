@@ -30,6 +30,7 @@ class WSChannel(str, Enum):
     DEVICE_REGISTER = "devices/register"
     DEVICE_RESP     = "devices/resp"
     DEVICE_STATUS   = "devices/status"
+    EXTERNAL_IED_STATUS = "external-ieds/status"
 
 # ---------------------------------------------------------------------
 # Device states (DI/DO/AO)
@@ -78,6 +79,46 @@ class DeviceHeartbeatEvent(BaseModel):
     heartbeat_kind: Literal["fast", "diag"] | None = None
     heartbeat_fast: Dict[str, Any] | None = None
     heartbeat_diag: Dict[str, Any] | None = None
+
+
+ExternalIedStatus = Literal["not_applicable", "unknown", "expected", "reachable", "offline"]
+ExternalIedCheckKind = Literal["none", "tcp_connect"]
+ExternalIedFailureCode = Literal["unreachable", "mms_unavailable", "network_unreachable", "probe_failed"]
+
+
+class ExternalIedStatusRecord(BaseModel):
+    ip: str
+    port: int = 102
+    status: ExternalIedStatus
+    signal_ids: list[int] = Field(default_factory=list)
+    last_checked_at: str | None = None
+    last_error: str | None = None
+    check_kind: ExternalIedCheckKind = "none"
+    failure_code: ExternalIedFailureCode | None = None
+
+
+class ExternalIedStatusSnapshotEvent(BaseModel):
+    channel: Literal[WSChannel.EXTERNAL_IED_STATUS] = WSChannel.EXTERNAL_IED_STATUS
+    event: Literal["external_ied_status_snapshot"] = "external_ied_status_snapshot"
+    workspace_id: int
+    devices: list[ExternalIedStatusRecord] = Field(default_factory=list)
+    removed_signal_ids: list[int] = Field(default_factory=list)
+    emitted_at: str
+
+
+class ExternalIedStatusChangedEvent(BaseModel):
+    channel: Literal[WSChannel.EXTERNAL_IED_STATUS] = WSChannel.EXTERNAL_IED_STATUS
+    event: Literal["external_ied_status_changed"] = "external_ied_status_changed"
+    workspace_id: int
+    ip: str
+    port: int = 102
+    old_status: ExternalIedStatus
+    new_status: ExternalIedStatus
+    signal_ids: list[int] = Field(default_factory=list)
+    checked_at: str
+    check_kind: ExternalIedCheckKind
+    failure_code: ExternalIedFailureCode | None = None
+    error: str | None = None
 
 class SequenceEventBase(BaseModel):
     topic: Literal["sequence"] = "sequence"
