@@ -116,6 +116,38 @@ async def _schedule_external_ied_discovery_for_verification_run(
             )
 
 
+async def _resolve_mapped_verification_signal_ids(
+    repo: SignalSheetRepository,
+    workspace_id: int,
+    signal_ids: list[int],
+) -> list[int]:
+    if not signal_ids:
+        return []
+    rows = await repo.list_allocation_rows_by_signal_ids(workspace_id, signal_ids)
+    mapped_by_signal_id = {
+        int(row.signal_id)
+        for row in rows
+        if _row_has_iec61850_verification_mapping(row)
+    }
+    return [signal_id for signal_id in signal_ids if signal_id in mapped_by_signal_id]
+
+
+def _row_has_iec61850_verification_mapping(row: SignalAllocationRowSchema) -> bool:
+    metadata = row.signal_metadata or {}
+    verification = metadata.get("verification") if isinstance(metadata.get("verification"), dict) else {}
+    if verification.get("enabled") is not True:
+        return False
+    return _first_row_metadata_string(verification, "iec61850_address", "iec61850", "mms_reference") is not None
+
+
+def _first_row_metadata_string(payload: dict[str, Any], *keys: str) -> str | None:
+    for key in keys:
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
 async def _ensure_group(redis) -> None:
     await ensure_stream_consumer_group(
         redis,
@@ -184,6 +216,74 @@ async def _publish_test_runtime_patch(
             tested_at_by_signal=dict(tested_at_by_signal),
             emitted_at=datetime.now(timezone.utc),
         )
+    )
+
+
+def _verification_prepare_step(
+    *,
+    step_id: str,
+    label: str,
+    status: str,
+    detail: str | None = None,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return {
+        "id": step_id,
+        "label": label,
+        "status": status,
+        "detail": detail,
+        **(extra or {}),
+    }
+
+
+def _verification_prepare_runtime_summary(runtime_snapshot) -> dict[str, Any]:
+    sessions = list(getattr(runtime_snapshot, "session_snapshots", ()) or ())
+    subscriptions = list(getattr(runtime_snapshot, "subscription_snapshots", ()) or ())
+    return {
+        "runtime_state": getattr(getattr(runtime_snapshot, "verification_run", None), "runtime_state", None),
+        "session_count": len(sessions),
+        "subscription_count": len(subscriptions),
+        "reporting_subscriptions": sum(1 for item in subscriptions if item.subscription_state == "reporting"),
+        "failed_subscriptions": sum(1 for item in subscriptions if item.subscription_state == "failed"),
+        "gi_requested_count": sum(1 for item in subscriptions if item.gi_requested),
+        "last_report_value_count": sum(max(0, int(item.last_report_value_count or 0)) for item in subscriptions),
+    }
+
+
+def _verification_prepare_subscription_rows(runtime_snapshot) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for item in list(getattr(runtime_snapshot, "subscription_snapshots", ()) or ()):
+        rows.append(
+            {
+                "subscription_id": item.subscription_id,
+                "endpoint_id": item.endpoint_id,
+                "group_id": item.group_id,
+                "report_control_name": item.report_control_name,
+                "report_control_reference": item.report_control_reference,
+                "data_set_reference": item.data_set_reference,
+                "subscription_state": item.subscription_state,
+                "report_health": item.report_health,
+                "gi_requested": bool(item.gi_requested),
+                "last_report_value_count": int(item.last_report_value_count or 0),
+                "last_error": item.last_error,
+                "diagnostic_code": item.diagnostic_code,
+            }
+        )
+    return rows
+
+
+def _verification_runtime_ready(runtime_snapshot) -> bool:
+    subscriptions = list(getattr(runtime_snapshot, "subscription_snapshots", ()) or ())
+    if not subscriptions:
+        return False
+    return all(item.subscription_state == "reporting" and bool(item.gi_requested) for item in subscriptions)
+
+
+def _verification_runtime_failed(runtime_snapshot) -> bool:
+    sessions = list(getattr(runtime_snapshot, "session_snapshots", ()) or ())
+    subscriptions = list(getattr(runtime_snapshot, "subscription_snapshots", ()) or ())
+    return any(item.runtime_state == "failed" for item in sessions) or any(
+        item.subscription_state == "failed" for item in subscriptions
     )
 
 
@@ -323,8 +423,11 @@ async def _handle_test_run(
     evidence_count = 0
     verification_failed = 0
     verification_observed = 0
+    verification_signal_ids: list[int] = []
+    verification_signal_id_set: set[int] = set()
     verification_evidence_rows = []
     verification_diagnostics = []
+    verification_prepare_steps: list[dict[str, Any]] = []
     verification_orchestrator: VerificationRuntimeOrchestrator | None = None
     verification_local_orchestration_id: str | None = None
 
@@ -332,7 +435,147 @@ async def _handle_test_run(
     pending_tested_at_by_signal: dict[int, str] = {}
     tested_at_patch_since_emit: dict[int, str] = {}
 
+    def set_verification_prepare_step(
+        *,
+        step_id: str,
+        label: str,
+        status: str,
+        detail: str | None = None,
+        extra: dict[str, Any] | None = None,
+    ) -> None:
+        next_step = _verification_prepare_step(
+            step_id=step_id,
+            label=label,
+            status=status,
+            detail=detail,
+            extra=extra,
+        )
+        for index, step in enumerate(verification_prepare_steps):
+            if step.get("id") == step_id:
+                verification_prepare_steps[index] = next_step
+                return
+        verification_prepare_steps.append(next_step)
+
+    async def publish_verification_prepare_progress(
+        *,
+        message: str,
+        runtime_snapshot=None,
+    ) -> None:
+        result_payload: dict[str, Any] = {
+            "phase": "preparing_iec61850",
+            "verification_enabled": True,
+            "verification_requested_signal_count": len(verification_signal_ids),
+            "verification_prepare_steps": list(verification_prepare_steps),
+        }
+        if runtime_snapshot is not None:
+            result_payload["verification_prepare_summary"] = _verification_prepare_runtime_summary(runtime_snapshot)
+            result_payload["verification_prepare_subscriptions"] = _verification_prepare_subscription_rows(runtime_snapshot)
+        await _publish_running_progress(
+            job_state=job_state,
+            progress_done=0,
+            progress_total=progress_total_global,
+            message=message,
+            result=result_payload,
+        )
+
+    async def wait_for_verification_runtime_ready(runtime_start) -> None:
+        if verification_orchestrator is None:
+            return
+        orchestration_id = str(getattr(runtime_start, "orchestration_id", "") or "")
+        if not orchestration_id:
+            return
+        deadline = time.monotonic() + 90.0
+        last_signature: tuple[Any, ...] | None = None
+        while True:
+            runtime_snapshot = verification_orchestrator.snapshot(orchestration_id)
+            summary = _verification_prepare_runtime_summary(runtime_snapshot)
+            subscriptions = _verification_prepare_subscription_rows(runtime_snapshot)
+            reporting = int(summary["reporting_subscriptions"])
+            total_subscriptions = int(summary["subscription_count"])
+            gi_count = int(summary["gi_requested_count"])
+            value_count = int(summary["last_report_value_count"])
+            failed = int(summary["failed_subscriptions"])
+            set_verification_prepare_step(
+                step_id="activate_reports",
+                label="Activate reports",
+                status="done" if total_subscriptions > 0 and reporting == total_subscriptions else ("failed" if failed else "running"),
+                detail=f"{reporting}/{total_subscriptions} reporting",
+                extra={
+                    "reporting": reporting,
+                    "total": total_subscriptions,
+                    "failed": failed,
+                },
+            )
+            set_verification_prepare_step(
+                step_id="general_interrogation",
+                label="General interrogation",
+                status="done" if total_subscriptions > 0 and gi_count == total_subscriptions else ("failed" if failed else "running"),
+                detail=f"GI {gi_count}/{total_subscriptions} · values {value_count}",
+                extra={
+                    "gi_requested": gi_count,
+                    "total": total_subscriptions,
+                    "last_report_value_count": value_count,
+                },
+            )
+            signature = (
+                summary.get("runtime_state"),
+                reporting,
+                total_subscriptions,
+                gi_count,
+                value_count,
+                failed,
+                tuple((row["subscription_id"], row["subscription_state"], row["gi_requested"], row["last_report_value_count"]) for row in subscriptions),
+            )
+            if signature != last_signature:
+                last_signature = signature
+                await publish_verification_prepare_progress(
+                    message=f"Preparing IEC 61850: reports {reporting}/{total_subscriptions}, GI {gi_count}/{total_subscriptions}.",
+                    runtime_snapshot=runtime_snapshot,
+                )
+            if _verification_runtime_ready(runtime_snapshot):
+                set_verification_prepare_step(
+                    step_id="runtime_ready",
+                    label="Runtime ready",
+                    status="done",
+                    detail=f"{reporting}/{total_subscriptions} reports active",
+                )
+                await publish_verification_prepare_progress(
+                    message=f"IEC 61850 ready: {reporting}/{total_subscriptions} reports active, GI {gi_count}/{total_subscriptions}.",
+                    runtime_snapshot=runtime_snapshot,
+                )
+                return
+            if _verification_runtime_failed(runtime_snapshot):
+                await publish_verification_prepare_progress(
+                    message=f"IEC 61850 preparation failed: {failed} failed report subscription(s).",
+                    runtime_snapshot=runtime_snapshot,
+                )
+                raise RuntimeError("IEC 61850 preparation failed before test run commands.")
+            if time.monotonic() >= deadline:
+                await publish_verification_prepare_progress(
+                    message="IEC 61850 preparation timed out before report subscriptions reached reporting.",
+                    runtime_snapshot=runtime_snapshot,
+                )
+                raise TimeoutError("IEC 61850 preparation timed out before report subscriptions reached reporting.")
+            await asyncio.sleep(0.25)
+
     if verification_enabled and job_id and requested_ids:
+        verification_signal_ids = await _resolve_mapped_verification_signal_ids(repo, workspace_id, original_requested_ids)
+        verification_signal_id_set = set(verification_signal_ids)
+
+    if verification_enabled and job_id and verification_signal_ids:
+        set_verification_prepare_step(
+            step_id="mapped_rows",
+            label="Mapped rows",
+            status="done",
+            detail=f"{len(verification_signal_ids)} selected IEC 61850 signal(s)",
+        )
+        set_verification_prepare_step(
+            step_id="build_graph",
+            label="Build graph",
+            status="running",
+            detail="Resolving signal -> FCDA -> DataSet -> RCB.",
+        )
+        await publish_verification_prepare_progress(message="Preparing IEC 61850: resolving discovery plan.")
         execution_context = VerificationExecutionContextSchema(
             project_id=workspace_id,
             signal_list_revision_id=verification_signal_list_revision_id,
@@ -343,19 +586,71 @@ async def _handle_test_run(
         runtime_context = await build_verification_runtime_start_context(
             workspace_id=workspace_id,
             payload=VerificationAutoRunStartSchema(
-                signal_ids=original_requested_ids,
+                signal_ids=verification_signal_ids,
                 execution_context=execution_context,
                 client_id="unitlab-test-run",
                 test_run_id=job_id,
             ),
             db=repo.db,
+            require_discovery_planning=verification_runtime_version in {"mms", "live", "live-mms", "real-mms"},
         )
+        set_verification_prepare_step(
+            step_id="build_graph",
+            label="Build graph",
+            status="done",
+            detail=(
+                f"{len(runtime_context.subscription_plan.groups)} report group(s), "
+                f"{len(runtime_context.subscription_plan.targets)} target signal(s)"
+            ),
+            extra={
+                "groups": len(runtime_context.subscription_plan.groups),
+                "targets": len(runtime_context.subscription_plan.targets),
+            },
+        )
+        if not runtime_context.subscription_plan.groups:
+            set_verification_prepare_step(
+                step_id="build_graph",
+                label="Build graph",
+                status="failed",
+                detail="No IEC 61850 report groups were resolved for selected signals.",
+            )
+            await publish_verification_prepare_progress(
+                message="IEC 61850 preparation failed: no report groups resolved.",
+            )
+            raise RuntimeError("IEC 61850 preparation failed: no report groups resolved for selected signals.")
+        set_verification_prepare_step(
+            step_id="schedule_discovery",
+            label="Discovery freshness",
+            status="running",
+            detail="Checking external IED discovery cache.",
+        )
+        await publish_verification_prepare_progress(message="Preparing IEC 61850: scheduling discovery freshness checks.")
         await _schedule_external_ied_discovery_for_verification_run(
             workspace_id=workspace_id,
             runtime_context=runtime_context,
         )
+        set_verification_prepare_step(
+            step_id="schedule_discovery",
+            label="Discovery freshness",
+            status="done",
+            detail="Discovery scheduler notified for verification priority.",
+        )
+        set_verification_prepare_step(
+            step_id="activate_reports",
+            label="Activate reports",
+            status="running",
+            detail="Opening MMS session, reserving/enabling RCBs.",
+        )
+        set_verification_prepare_step(
+            step_id="general_interrogation",
+            label="General interrogation",
+            status="pending",
+            detail="Waiting for reports to be enabled.",
+        )
+        await publish_verification_prepare_progress(message="Preparing IEC 61850: opening MMS sessions and enabling reports.")
         verification_orchestrator = VerificationRuntimeOrchestrator()
-        runtime_start = verification_orchestrator.start(
+        runtime_start_method = getattr(verification_orchestrator, "start_deferred", None)
+        runtime_start = (runtime_start_method or verification_orchestrator.start)(
             workspace_id=workspace_id,
             test_run_id=job_id,
             verification_targets=runtime_context.subscription_plan.targets,
@@ -367,6 +662,19 @@ async def _handle_test_run(
             initial_diagnostics=runtime_context.diagnostics,
         )
         verification_local_orchestration_id = runtime_start.orchestration_id
+        if runtime_start_method is not None:
+            await wait_for_verification_runtime_ready(runtime_start)
+        else:
+            set_verification_prepare_step(
+                step_id="runtime_ready",
+                label="Runtime ready",
+                status="done",
+                detail="Report runtime started.",
+            )
+            await publish_verification_prepare_progress(
+                message="IEC 61850 report runtime started.",
+                runtime_snapshot=runtime_start,
+            )
 
     async def attach_and_publish_tested_at_patch(result_payload: dict[str, Any]) -> None:
         if not tested_at_patch_since_emit:
@@ -474,10 +782,11 @@ async def _handle_test_run(
 
     def verification_result_payload() -> dict[str, Any]:
         return {
-            "verification_enabled": verification_enabled,
+            "verification_enabled": bool(verification_signal_ids),
             "verification_runtime_version": verification_runtime_version,
             "verification_requested_orchestration_id": verification_orchestration_id,
             "verification_local_orchestration_id": verification_local_orchestration_id,
+            "verification_requested_signal_count": len(verification_signal_ids),
             "verification_observed": verification_observed,
             "verification_failed": verification_failed,
         }
@@ -792,7 +1101,11 @@ async def _handle_test_run(
             success = True
 
             verification_capture = None
-            if verification_orchestrator is not None and verification_local_orchestration_id is not None:
+            if (
+                verification_orchestrator is not None
+                and verification_local_orchestration_id is not None
+                and signal_id in verification_signal_id_set
+            ):
                 if command_payload is None:
                     command_payload = {}
                 verification_capture = verification_orchestrator.capture_triggered_signal(

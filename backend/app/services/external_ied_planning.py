@@ -101,6 +101,24 @@ class ExternalIedPlanningRequest:
         )
 
 
+async def load_external_ied_planning_signal_results(
+    *,
+    workspace_id: int,
+    signal_ids: Sequence[int],
+) -> dict[int, dict[str, Any]]:
+    redis = RedisManager.get_instance()
+    result: dict[int, dict[str, Any]] = {}
+    for raw_signal_id in signal_ids:
+        signal_id = int(raw_signal_id)
+        if signal_id <= 0:
+            continue
+        payload = _parse_payload(await redis.hget(_planning_signal_key(workspace_id), str(signal_id)))
+        if payload is None:
+            continue
+        result[signal_id] = payload
+    return result
+
+
 async def emit_external_ied_planning_requested(
     *,
     workspace_id: int,

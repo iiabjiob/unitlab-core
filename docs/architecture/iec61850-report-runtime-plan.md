@@ -58,6 +58,10 @@ The Online 61850 frontend call uses a dedicated orchestration timeout instead of
 
 Signal test-run jobs can request IEC 61850 verification in their job payload. Because test-run execution happens in the worker process, the worker creates its own backend runtime orchestration from the same signal-list context, keeps those subscriptions open for the job duration, waits for a new report after each command, and records the report evidence against the test-run job id. The API Online orchestration id is carried as trace context only; it is not treated as a cross-process session handle.
 
+Start Run preparation is backend-owned. The frontend enables IEC 61850 verification when the selected rows contain wizard-confirmed IEC 61850 mappings; it does not need a pre-existing manual Online 61850 orchestration. Before sending any physical DO/AO commands, the signal test-run worker filters the selected set to mapped IEC 61850 rows, reads the persisted External IED Discovery Planner signal results, and builds the runtime subscription graph from matched FCDA -> DataSet -> RCB metadata. If a selected mapped row has no matched planning result, the worker fails the run during preparation and no hardware command is issued for that job. Rows without IEC 61850 mapping remain normal physical test steps and are not counted as failed IEC 61850 verification.
+
+During test-run preparation, the worker publishes explicit job-result telemetry (`verification_prepare_steps` and `verification_prepare_subscriptions`) before physical commands start. The operator UI uses those fields to show mapped-row resolution, graph build, discovery freshness scheduling, report activation, GI request state, report value counts, and final runtime readiness.
+
 Runtime ownership rules:
 
 - one backend runtime session is opened per resolved IED/access point endpoint;

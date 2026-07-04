@@ -5,7 +5,7 @@ from contextlib import ExitStack
 from pathlib import Path
 import tempfile
 from datetime import UTC, datetime
-from typing import Callable
+from typing import Any, Callable
 from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,6 +28,7 @@ from app.services.verification_endpoint_resolution import (
     build_verification_endpoint_resolution_diagnostic,
     resolve_verification_endpoint_resolution_policy,
 )
+from app.services.external_ied_planning import load_external_ied_planning_signal_results
 from app.services.iec61850.report_runtime import (
     Iec61850DeviceEndpoint,
     Iec61850ReportSubscriptionPlanDevice,
@@ -76,6 +77,7 @@ async def build_verification_runtime_start_context(
     payload: VerificationAutoRunStartSchema,
     db: AsyncSession,
     triggered_at: datetime | None = None,
+    require_discovery_planning: bool = False,
 ) -> VerificationRuntimeStartContext:
     selected_signal_ids = [int(signal_id) for signal_id in payload.signal_ids if int(signal_id) > 0]
     if not selected_signal_ids:
@@ -109,12 +111,18 @@ async def build_verification_runtime_start_context(
         signals_by_id=signals_by_id,
         allocation_rows_by_signal_id=allocation_rows_by_signal_id,
     )
+    runtime_mode = str(execution_context.runtime_version or "").strip().lower()
+    if runtime_mode in {"mms", "live", "live-mms", "real-mms"}:
+        sources = await _apply_external_ied_discovery_planning(
+            workspace_id=workspace_id,
+            sources=sources,
+            require_matched=require_discovery_planning,
+        )
     subscription_plan = build_verification_subscription_plan(sources)
 
     active_runtime_selection = None
     loaded_runtime_scd_endpoint_catalog = None
     loaded_runtime_scd_available = False
-    runtime_mode = str(execution_context.runtime_version or "").strip().lower()
     if runtime_mode in {"mms", "live", "live-mms", "real-mms"} and hasattr(db, "execute"):
         scl_repository = Iec61850SqlAlchemySclImportRepository(db)
         active_runtime_selection = await scl_repository.get_active_runtime_selection(workspace_id=workspace_id)
@@ -188,6 +196,112 @@ async def build_verification_runtime_start_context(
         runtime_selection=runtime_selection,
         diagnostics=(*endpoint_resolution_diagnostics, endpoint_resolution_diagnostic),
     )
+
+
+async def _apply_external_ied_discovery_planning(
+    *,
+    workspace_id: int,
+    sources: list[VerificationTargetSource],
+    require_matched: bool,
+) -> list[VerificationTargetSource]:
+    mapped_source_ids = [
+        source.signal_id
+        for source in sources
+        if _source_has_iec61850_mapping(source)
+    ]
+    if not mapped_source_ids:
+        return sources
+
+    planning_results = await load_external_ied_planning_signal_results(
+        workspace_id=workspace_id,
+        signal_ids=mapped_source_ids,
+    )
+    missing_or_unmatched = [
+        signal_id
+        for signal_id in mapped_source_ids
+        if str((planning_results.get(signal_id) or {}).get("status") or "").strip().lower() != "matched"
+    ]
+    if require_matched and missing_or_unmatched:
+        raise ValueError(
+            "IEC 61850 verification plan is not ready for selected signal_id values: "
+            f"{missing_or_unmatched}"
+        )
+
+    return [
+        _with_discovery_planning_metadata(source, planning_results.get(source.signal_id))
+        for source in sources
+    ]
+
+
+def _source_has_iec61850_mapping(source: VerificationTargetSource) -> bool:
+    metadata = source.signal_metadata if isinstance(source.signal_metadata, dict) else {}
+    verification = metadata.get("verification") if isinstance(metadata.get("verification"), dict) else {}
+    if verification.get("enabled") is not True:
+        return False
+    return _first_metadata_string(verification, "iec61850_address", "iec61850", "mms_reference") is not None
+
+
+def _with_discovery_planning_metadata(
+    source: VerificationTargetSource,
+    planning_result: dict[str, Any] | None,
+) -> VerificationTargetSource:
+    if not isinstance(planning_result, dict):
+        return source
+    if str(planning_result.get("status") or "").strip().lower() != "matched":
+        return source
+
+    metadata = dict(source.signal_metadata or {})
+    protocol_metadata = dict(metadata.get("protocol_metadata") or {})
+    verification_metadata = metadata.get("verification") if isinstance(metadata.get("verification"), dict) else {}
+    endpoint = _first_metadata_string(planning_result, "endpoint")
+    fcda_reference = _first_metadata_string(planning_result, "fcda_reference", "address")
+    dataset_reference = _first_metadata_string(planning_result, "dataset_reference")
+    rcb_reference = _first_metadata_string(planning_result, "rcb_reference")
+    rcb_name = _first_metadata_string(planning_result, "rcb_name")
+    ied_identity = _first_metadata_string(planning_result, "ied_identity")
+
+    protocol_metadata.update({
+        "protocol": "iec61850",
+        "source_kind": "discovery",
+        "source_reason": "matched by External IED Discovery Planner",
+    })
+    if endpoint is not None:
+        protocol_metadata["transport_host"] = endpoint
+    if fcda_reference is not None:
+        protocol_metadata["iec61850_address"] = fcda_reference
+        protocol_metadata["expected_feedback_path"] = fcda_reference
+        protocol_metadata["data_reference"] = fcda_reference
+    if dataset_reference is not None:
+        protocol_metadata["data_set_reference"] = dataset_reference
+    if rcb_reference is not None:
+        protocol_metadata["report_control_reference"] = rcb_reference
+        protocol_metadata["report_control_reference_hint"] = rcb_reference
+        protocol_metadata["rpt_id"] = rcb_reference
+    if rcb_name is not None:
+        protocol_metadata["report_control_name"] = rcb_name
+    if ied_identity is not None:
+        protocol_metadata["ied_name"] = ied_identity
+    if _first_metadata_string(protocol_metadata, "access_point_name") is None:
+        protocol_metadata["access_point_name"] = _first_metadata_string(verification_metadata, "access_point_name") or "AP1"
+
+    metadata["protocol"] = "iec61850"
+    metadata["protocol_metadata"] = protocol_metadata
+    metadata["source_kind"] = "discovery"
+    metadata["source_reason"] = "matched by External IED Discovery Planner"
+    return replace(
+        source,
+        signal_metadata=metadata,
+        source_kind="discovery",
+        source_reason="matched by External IED Discovery Planner",
+    )
+
+
+def _first_metadata_string(payload: dict[str, Any], *keys: str) -> str | None:
+    for key in keys:
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
 
 
 async def execute_single_signal_verification_run(

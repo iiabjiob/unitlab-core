@@ -1,47 +1,76 @@
 <template>
   <div v-if="isVisible" class="global-signal-test-status">
     <template v-if="activeTestRunJob">
-      <GlobalProgressStatusCard
-        :compact="compact"
-        interactive
-        label="Test run"
-        :percent="activeProgressPercent"
-        :detail="activeProgressDetailText"
-        @click="navigateToSignals"
-      >
-        <template #actions>
-          <UiButton
-            v-if="!compact && activeTestRunJob.status === 'running'"
-            size="xs"
-            variant="ghost"
-            :disabled="controlBusy"
-            title="Pause test run"
-            @click="control('pause')"
-          >
-            ⏸
-          </UiButton>
-          <UiButton
-            v-if="!compact && activeTestRunJob.status === 'paused'"
-            size="xs"
-            variant="ghost"
-            :disabled="controlBusy"
-            title="Resume test run"
-            @click="control('resume')"
-          >
-            ▶
-          </UiButton>
-          <UiButton
-            v-if="!compact && ['queued', 'running', 'paused'].includes(activeTestRunJob.status)"
-            size="xs"
-            variant="ghost"
-            :disabled="controlBusy"
-            title="Stop test run"
-            @click="control('stop')"
-          >
-            ■
-          </UiButton>
-        </template>
-      </GlobalProgressStatusCard>
+      <div class="global-signal-test-status__test-run">
+        <GlobalProgressStatusCard
+          :compact="compact"
+          interactive
+          label="Test run"
+          :percent="activeProgressPercent"
+          :detail="activeProgressDetailText"
+          @click="navigateToSignals"
+        >
+          <template #actions>
+            <UiButton
+              v-if="!compact && activeTestRunJob.status === 'running'"
+              size="xs"
+              variant="ghost"
+              :disabled="controlBusy"
+              title="Pause test run"
+              @click="control('pause')"
+            >
+              ⏸
+            </UiButton>
+            <UiButton
+              v-if="!compact && activeTestRunJob.status === 'paused'"
+              size="xs"
+              variant="ghost"
+              :disabled="controlBusy"
+              title="Resume test run"
+              @click="control('resume')"
+            >
+              ▶
+            </UiButton>
+            <UiButton
+              v-if="!compact && ['queued', 'running', 'paused'].includes(activeTestRunJob.status)"
+              size="xs"
+              variant="ghost"
+              :disabled="controlBusy"
+              title="Stop test run"
+              @click="control('stop')"
+            >
+              ■
+            </UiButton>
+          </template>
+        </GlobalProgressStatusCard>
+
+        <div v-if="showVerificationPrepareDetails" class="global-signal-test-status__prepare">
+          <div class="global-signal-test-status__prepare-steps">
+            <span
+              v-for="step in verificationPrepareSteps"
+              :key="step.id"
+              class="global-signal-test-status__prepare-step"
+            >
+              <span class="global-signal-test-status__prepare-dot" :class="`is-${step.status}`"></span>
+              <span class="global-signal-test-status__prepare-label">{{ step.label }}</span>
+              <span v-if="step.detail" class="global-signal-test-status__prepare-detail">{{ step.detail }}</span>
+            </span>
+          </div>
+          <div v-if="verificationPrepareSubscriptions.length" class="global-signal-test-status__prepare-subscriptions">
+            <span
+              v-for="subscription in verificationPrepareSubscriptions"
+              :key="subscription.id"
+              class="global-signal-test-status__prepare-subscription"
+              :title="subscription.title"
+            >
+              <span class="global-signal-test-status__prepare-label">{{ subscription.report }}</span>
+              <span>{{ subscription.state }}</span>
+              <span>{{ subscription.gi }}</span>
+              <span>{{ subscription.values }}</span>
+            </span>
+          </div>
+        </div>
+      </div>
     </template>
 
     <template v-if="activeAllocationJob">
@@ -109,6 +138,22 @@ const controlBusy = ref(false)
 const dismissedJobId = ref<string | null>(null)
 const compact = computed(() => Boolean(props.compact))
 
+type VerificationPrepareStepView = {
+  id: string
+  label: string
+  status: string
+  detail: string
+}
+
+type VerificationPrepareSubscriptionView = {
+  id: string
+  report: string
+  state: string
+  gi: string
+  values: string
+  title: string
+}
+
 const activeTestRunJob = computed(() => (
   activeJobs.value.find(job => String(job.operation) === "test_run") ?? null
 ))
@@ -160,19 +205,87 @@ const activeProgressDetailText = computed(() => {
   const job = activeTestRunJob.value
   if (!job) return ""
   const { done, total } = resolveActiveProgress(job)
+  const message = String(job.message ?? "").trim()
   if (total <= 0) {
-    return activeProgressText.value
+    return message || activeProgressText.value
   }
 
   const succeeded = Math.max(0, readNumericResult(job, "succeeded"))
   const skipped = Math.max(0, readNumericResult(job, "skipped"))
   const resumeMeta = formatResumeMeta(job)
   const base = `${done}/${total} · ok ${succeeded} · skip ${skipped}${resumeMeta ? ` · ${resumeMeta}` : ""}`
-  if (!activeEstText.value) {
-    return base
+  const detail = activeEstText.value ? `${base} · ${activeEstText.value}` : base
+  if (message && !message.includes(base)) {
+    return `${message} · ${detail}`
   }
-  return `${base} · ${activeEstText.value}`
+  return detail
 })
+
+const verificationPrepareSteps = computed<VerificationPrepareStepView[]>(() => {
+  const job = activeTestRunJob.value
+  const raw = (job?.result as Record<string, unknown> | undefined)?.verification_prepare_steps
+  if (!Array.isArray(raw)) {
+    return []
+  }
+  return raw
+    .map((item): VerificationPrepareStepView | null => {
+      if (!item || typeof item !== "object") {
+        return null
+      }
+      const payload = item as Record<string, unknown>
+      const id = String(payload.id ?? "").trim()
+      const label = String(payload.label ?? "").trim()
+      if (!id || !label) {
+        return null
+      }
+      return {
+        id,
+        label,
+        status: normalizePrepareStatus(payload.status),
+        detail: String(payload.detail ?? "").trim(),
+      }
+    })
+    .filter((item): item is VerificationPrepareStepView => Boolean(item))
+})
+
+const verificationPrepareSubscriptions = computed<VerificationPrepareSubscriptionView[]>(() => {
+  const job = activeTestRunJob.value
+  const raw = (job?.result as Record<string, unknown> | undefined)?.verification_prepare_subscriptions
+  if (!Array.isArray(raw)) {
+    return []
+  }
+  return raw
+    .map((item): VerificationPrepareSubscriptionView | null => {
+      if (!item || typeof item !== "object") {
+        return null
+      }
+      const payload = item as Record<string, unknown>
+      const id = String(payload.subscription_id ?? "").trim()
+      if (!id) {
+        return null
+      }
+      const report = String(payload.report_control_name ?? payload.report_control_reference ?? "Report").trim()
+      const dataset = String(payload.data_set_reference ?? "").trim()
+      const state = String(payload.subscription_state ?? "pending").trim()
+      const giRequested = Boolean(payload.gi_requested)
+      const valueCount = Math.max(0, Number(payload.last_report_value_count ?? 0))
+      return {
+        id,
+        report,
+        state,
+        gi: giRequested ? "GI sent" : "GI pending",
+        values: `${valueCount} value${valueCount === 1 ? "" : "s"}`,
+        title: [report, dataset, state].filter(Boolean).join(" · "),
+      }
+    })
+    .filter((item): item is VerificationPrepareSubscriptionView => Boolean(item))
+})
+
+const showVerificationPrepareDetails = computed(() => (
+  !compact.value
+  && activeTestRunJob.value?.status === "running"
+  && (verificationPrepareSteps.value.length > 0 || verificationPrepareSubscriptions.value.length > 0)
+))
 
 const activeEstText = computed(() => {
   const job = activeTestRunJob.value
@@ -280,6 +393,14 @@ function readNumericResult(job: SignalAllocationJob, key: string): number {
 function readStringResult(job: SignalAllocationJob, key: string): string {
   const raw = (job.result as Record<string, unknown> | undefined)?.[key]
   return String(raw ?? "").trim()
+}
+
+function normalizePrepareStatus(value: unknown): string {
+  const status = String(value ?? "").trim().toLowerCase()
+  if (["done", "running", "pending", "failed"].includes(status)) {
+    return status
+  }
+  return "pending"
 }
 
 function formatResumeMeta(job: SignalAllocationJob): string {
@@ -397,6 +518,83 @@ function dismissCompleted() {
   gap: 0.375rem;
 }
 
+.global-signal-test-status__test-run {
+  display: flex;
+  max-width: min(72vw, 820px);
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.global-signal-test-status__prepare {
+  display: flex;
+  min-width: 0;
+  max-width: 520px;
+  flex-direction: column;
+  gap: 0.125rem;
+  color: var(--color-neutral-600);
+  font-size: 10px;
+  line-height: 1.25;
+}
+
+.global-signal-test-status__prepare-steps,
+.global-signal-test-status__prepare-subscriptions {
+  display: flex;
+  min-width: 0;
+  gap: 0.25rem;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.global-signal-test-status__prepare-step,
+.global-signal-test-status__prepare-subscription {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 220px;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 0.25rem;
+  overflow: hidden;
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-sm);
+  padding: 0.125rem 0.25rem;
+  background: color-mix(in srgb, var(--color-neutral-50) 72%, transparent);
+  text-overflow: ellipsis;
+}
+
+.global-signal-test-status__prepare-dot {
+  width: 0.375rem;
+  height: 0.375rem;
+  flex: 0 0 0.375rem;
+  border-radius: 9999px;
+  background: var(--color-neutral-400);
+}
+
+.global-signal-test-status__prepare-dot.is-done {
+  background: var(--color-emerald-500);
+}
+
+.global-signal-test-status__prepare-dot.is-running {
+  background: var(--color-sky-500);
+}
+
+.global-signal-test-status__prepare-dot.is-failed {
+  background: var(--color-red-500);
+}
+
+.global-signal-test-status__prepare-label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-neutral-700);
+  font-weight: 500;
+  text-overflow: ellipsis;
+}
+
+.global-signal-test-status__prepare-detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .global-signal-test-status__completed {
   display: inline-flex;
   align-items: center;
@@ -456,6 +654,20 @@ function dismissCompleted() {
   border-color: var(--color-neutral-700);
   background: color-mix(in srgb, var(--color-neutral-800) 60%, transparent);
   color: var(--color-neutral-200);
+}
+
+:global(.dark .global-signal-test-status__prepare) {
+  color: var(--color-neutral-300);
+}
+
+:global(.dark .global-signal-test-status__prepare-step),
+:global(.dark .global-signal-test-status__prepare-subscription) {
+  border-color: var(--color-neutral-700);
+  background: color-mix(in srgb, var(--color-neutral-800) 60%, transparent);
+}
+
+:global(.dark .global-signal-test-status__prepare-label) {
+  color: var(--color-neutral-100);
 }
 
 :global(.dark .global-signal-test-status__completed-title){

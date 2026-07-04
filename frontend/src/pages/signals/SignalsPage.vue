@@ -2798,6 +2798,11 @@ async function startTestRunJob(options?: { resumeFromCursor?: boolean; resumeJob
     }
 
     const selectedSignalIds = queue.map(row => row.signal_id)
+    const selected61850VerificationRows = queue.filter(row => (
+      isSignalRow61850VerificationEnabled(row)
+      && Boolean(resolveOnline61850SignalReference(row))
+    ))
+    const enable61850Verification = selected61850VerificationRows.length > 0
     const completedJob = await signalJobStore.enqueueTestRunJob(
       workspaceId,
       selectedSignalIds,
@@ -2806,8 +2811,8 @@ async function startTestRunJob(options?: { resumeFromCursor?: boolean; resumeJob
         toggleMode: testRunToggleMode.value,
         resumeFromCursor: Boolean(options?.resumeFromCursor),
         resumeJobId: options?.resumeJobId,
-        verificationEnabled: Boolean(online61850ActiveOrchestrationId.value),
-        verificationRuntimeVersion: online61850ActiveOrchestrationId.value ? "mms" : "simulator",
+        verificationEnabled: enable61850Verification,
+        verificationRuntimeVersion: enable61850Verification ? "mms" : "simulator",
         verificationOrchestrationId: online61850ActiveOrchestrationId.value,
         verificationSignalListRevisionId: Number(allocationRevision.value ?? 0) || null,
         verificationTimeoutMs: 5000,

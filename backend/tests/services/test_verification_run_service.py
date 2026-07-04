@@ -29,6 +29,7 @@ from app.services.verification_run_service import (
     execute_single_signal_verification_run,
     load_verification_run_detail,
 )
+from app.services.verification_planner import VerificationTargetSource
 from app.services.verification_verdict_explanation_service import build_verification_verdict_explanation
 
 
@@ -183,6 +184,96 @@ def _virtual_endpoint_for_plan_device(device) -> Iec61850DeviceEndpoint:
         host="10.10.10.250",
         port=12447,
     )
+
+
+@pytest.mark.anyio
+async def test_discovery_planning_metadata_enriches_verification_sources(monkeypatch) -> None:
+    async def load_planning_results(**kwargs):
+        return {
+            101: {
+                "signal_id": 101,
+                "endpoint": "172.16.40.128:12447",
+                "status": "matched",
+                "address": "LD0/GGIO1.stVal[ST]",
+                "ied_identity": "IED-A",
+                "fcda_reference": "LD0/GGIO1.stVal",
+                "dataset_reference": "LD0/LLN0.dsST",
+                "rcb_reference": "LD0/LLN0.BR.brcb01",
+                "rcb_name": "brcb01",
+            }
+        }
+
+    monkeypatch.setattr(run_service, "load_external_ied_planning_signal_results", load_planning_results)
+    source = VerificationTargetSource(
+        signal_id=101,
+        signal_reference="Signal 101",
+        signal_path="S101",
+        signal_metadata={
+            "verification": {
+                "enabled": True,
+                "transport_host": "172.16.40.128:12447",
+                "iec61850_address": "LD0/GGIO1.stVal[ST]",
+            }
+        },
+        allocation_id=1,
+        allocation_status="assigned",
+        allocation_health={},
+        channel_id=11,
+        channel_label="DO-11",
+        unit_id="unit-1",
+        unit_online=True,
+        source_row_id="signal-101",
+    )
+
+    enriched = await run_service._apply_external_ied_discovery_planning(
+        workspace_id=5,
+        sources=[source],
+        require_matched=True,
+    )
+
+    metadata = enriched[0].signal_metadata["protocol_metadata"]
+    assert enriched[0].source_kind == "discovery"
+    assert metadata["transport_host"] == "172.16.40.128:12447"
+    assert metadata["ied_name"] == "IED-A"
+    assert metadata["expected_feedback_path"] == "LD0/GGIO1.stVal"
+    assert metadata["data_set_reference"] == "LD0/LLN0.dsST"
+    assert metadata["report_control_reference"] == "LD0/LLN0.BR.brcb01"
+    assert metadata["report_control_name"] == "brcb01"
+
+
+@pytest.mark.anyio
+async def test_discovery_planning_strict_mode_blocks_unmatched_mapped_sources(monkeypatch) -> None:
+    async def load_planning_results(**kwargs):
+        return {}
+
+    monkeypatch.setattr(run_service, "load_external_ied_planning_signal_results", load_planning_results)
+    source = VerificationTargetSource(
+        signal_id=101,
+        signal_reference="Signal 101",
+        signal_path="S101",
+        signal_metadata={
+            "verification": {
+                "enabled": True,
+                "transport_host": "172.16.40.128:12447",
+                "iec61850_address": "LD0/GGIO1.stVal[ST]",
+            }
+        },
+        allocation_id=1,
+        allocation_status="assigned",
+        allocation_health={},
+        channel_id=11,
+        channel_label="DO-11",
+        unit_id="unit-1",
+        unit_online=True,
+        source_row_id="signal-101",
+    )
+
+    with pytest.raises(ValueError, match="verification plan is not ready"):
+        await run_service._apply_external_ied_discovery_planning(
+            workspace_id=5,
+            sources=[source],
+            require_matched=True,
+        )
 
 
 def test_build_verification_verdict_explanation_includes_signal_context_and_summary() -> None:
