@@ -924,6 +924,13 @@ class Iec61850ClientControlService:
             if self._external_mms_process is None or self._external_mms_process.stdin is None or self._external_mms_process.poll() is not None:
                 raise Iec61850ReportRuntimeError("EXTERNAL_MMS_CLIENT_NOT_OPEN", "IEC 61850 external MMS client process is not open.")
             try:
+                logger.info(
+                    "External IED native MMS command sending | session=%s endpoint=%s:%s command=%s",
+                    self._session_id,
+                    self._endpoint.host,
+                    self._endpoint.port,
+                    command,
+                )
                 self._external_mms_process.stdin.write(payload)
                 self._external_mms_process.stdin.flush()
                 return
@@ -1022,6 +1029,14 @@ class Iec61850ClientControlService:
         if line.startswith("native-wire-client: subscription-summary "):
             fields = _parse_space_kv_line(line.removeprefix("native-wire-client: subscription-summary "))
             phase = fields.get("phase")
+            if phase in {"rptena", "gi", "async-report", "report"}:
+                logger.info(
+                    "External IED native MMS subscription summary | session=%s endpoint=%s:%s %s",
+                    self._session_id,
+                    self._endpoint.host,
+                    self._endpoint.port,
+                    line,
+                )
             if phase == "rptena":
                 if _external_summary_bool(fields, "rptEna") and self._external_summary_matches_selected_rcb(fields):
                     self._last_state = self._external_state(Iec61850RuntimeStatus.ENABLED, enabled=True)
@@ -1066,8 +1081,21 @@ class Iec61850ClientControlService:
         ):
             self._append_external_discovery_diagnostic(line)
         elif line.startswith("native-wire-client: async-report"):
+            logger.info(
+                "External IED native MMS async report marker | session=%s endpoint=%s:%s",
+                self._session_id,
+                self._endpoint.host,
+                self._endpoint.port,
+            )
             return
         elif line.startswith("native-wire-client: state=failed"):
+            logger.warning(
+                "External IED native MMS failed | session=%s endpoint=%s:%s %s",
+                self._session_id,
+                self._endpoint.host,
+                self._endpoint.port,
+                line,
+            )
             self._session_open = False
             self._last_state = self._external_state(Iec61850RuntimeStatus.FAILED, enabled=False)
         elif line.startswith("native-wire-client: disconnected"):

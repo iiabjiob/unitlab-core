@@ -30,6 +30,9 @@
             :style="{ width: `${percent}%` }"
           ></div>
         </div>
+        <div v-if="$slots.extra" class="global-progress-card__extra">
+          <slot name="extra" />
+        </div>
       </div>
     </template>
 
@@ -68,6 +71,8 @@ function handleClick() {
 <style scoped>
 .global-progress-card {
   display: inline-flex;
+  max-width: 100%;
+  min-width: 0;
   align-items: center;
   border: 1px solid var(--color-neutral-200);
   border-radius: var(--radius-md);
@@ -107,8 +112,9 @@ button.global-progress-card {
 }
 
 .global-progress-card__body {
-  min-width: 240px;
-  max-width: 360px;
+  width: clamp(240px, 30vw, 420px);
+  max-width: 100%;
+  min-width: 0;
 }
 
 .global-progress-card__row {
@@ -139,6 +145,11 @@ button.global-progress-card {
 .global-progress-card__bar {
   height: 100%;
   transition: width 200ms ease;
+}
+
+.global-progress-card__extra {
+  min-width: 0;
+  margin-top: 0.25rem;
 }
 
 .global-progress-card__tone--success {

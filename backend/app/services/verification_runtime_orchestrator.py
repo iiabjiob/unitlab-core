@@ -9,6 +9,7 @@ from threading import RLock, Thread
 from typing import Any, Callable, Sequence
 from uuid import uuid4
 
+from app.core.logger import get_logger
 from app.schemas.verification_schema import (
     SignalVerificationEvidenceSetSchema,
     VerificationExecutionContextSchema,
@@ -25,6 +26,7 @@ from app.services.iec61850.report_runtime import (
     Iec61850ReportRuntimeError,
     Iec61850ReportRuntimeAdapter,
     Iec61850ReportRuntimeService,
+    Iec61850RuntimeMode,
     Iec61850RuntimeDiagnostic,
     build_simulator_endpoint_for_plan_device,
     create_iec61850_simulator_adapter,
@@ -44,6 +46,7 @@ from app.services.verification_execution import (
 _MMS_ORCHESTRATION_PREFLIGHT_TIMEOUT_SECONDS = 1.0
 _MMS_ORCHESTRATION_PREFLIGHT_MAX_WORKERS = 16
 _MMS_ORCHESTRATION_ENDPOINT_MAX_WORKERS = 16
+logger = get_logger("service.verification_runtime_orchestrator")
 
 
 @dataclass
@@ -950,14 +953,6 @@ class VerificationRuntimeOrchestrator:
             subscription_state.subscription_state = "reserving"
             runtime_service.enable_report_control(session_id=session_id, candidate=report.candidate, client_id=client_id)
             subscription_state.subscription_state = "enabled"
-            if _should_defer_startup_general_interrogation(endpoint):
-                session_state.runtime_state = "reporting"
-                subscription_state.subscription_state = "reporting"
-                subscription_state.report_health = "healthy"
-                subscription_state.current_rptena_owner = client_id
-                subscription_state.stale_signal_count = 0
-                session_state.diagnostic_code = None
-                return subscription_state
             event = runtime_service.send_general_interrogation(session_id=session_id, candidate=report.candidate, client_id=client_id)
         except Iec61850ReportRuntimeError as exc:
             if exc.code == "MMS_REPORT_NOT_OBSERVED" and endpoint.mode.name == "MMS":
@@ -1058,7 +1053,10 @@ class VerificationRuntimeOrchestrator:
         self,
         handle: _VerificationRuntimeOrchestrationHandle,
         group_id: str,
+        *,
+        allowed_subscription_states: set[str] | None = None,
     ):
+        allowed_states = allowed_subscription_states or {"reporting"}
         runtime_plan = build_runtime_subscription_plan(handle.subscription_plan)
         for device_group in group_report_subscription_plan_devices_by_endpoint(
             plan=runtime_plan,
@@ -1084,10 +1082,10 @@ class VerificationRuntimeOrchestrator:
                             "SUBSCRIPTION_NOT_FOUND",
                             f'IEC 61850 subscription "{subscription_id}" is not active.',
                         )
-                    if subscription_state.subscription_state != "reporting":
+                    if subscription_state.subscription_state not in allowed_states:
                         raise Iec61850ReportRuntimeError(
                             "SUBSCRIPTION_NOT_REPORTING",
-                            f'IEC 61850 subscription "{subscription_id}" is not reporting.',
+                            f'IEC 61850 subscription "{subscription_id}" is not ready.',
                         )
                     return report, session_state, subscription_state
         raise Iec61850ReportRuntimeError(
@@ -1157,6 +1155,26 @@ def _probe_mms_endpoint_reachability(endpoint: Iec61850DeviceEndpoint) -> tuple[
             return True, None
     except OSError as exc:
         return False, str(exc)
+
+
+def _endpoint_for_session(
+    handle: _VerificationRuntimeOrchestrationHandle,
+    session_state: VerificationRuntimeSessionState,
+) -> Iec61850DeviceEndpoint:
+    runtime_plan = build_runtime_subscription_plan(handle.subscription_plan)
+    for device_group in group_report_subscription_plan_devices_by_endpoint(
+        plan=runtime_plan,
+        endpoint_for_device=handle.endpoint_for_device,
+    ):
+        if device_group.endpoint.id == session_state.endpoint_id:
+            return device_group.endpoint
+    return Iec61850DeviceEndpoint(
+        id=session_state.endpoint_id,
+        mode=Iec61850RuntimeMode.SIMULATOR,
+        ied_name=session_state.endpoint_id,
+        access_point_name="default",
+        host=None,
+    )
 
 
 def _runtime_error_to_evidence_diagnostic(
@@ -1288,10 +1306,6 @@ def _candidate_signal_scope(candidate: Any) -> str | None:
     return None
 
 
-def _should_defer_startup_general_interrogation(endpoint: Iec61850DeviceEndpoint) -> bool:
-    return False
-
-
 def _runtime_summary_key(session_state: VerificationSessionSnapshotSchema) -> str:
     return f"{session_state.endpoint_id}:{session_state.runtime_state}"
 
@@ -1311,6 +1325,9 @@ def _build_runtime_summary_for_orchestration(
         "active_subscriptions": sum(1 for snapshot in subscription_snapshots if snapshot.subscription_state != "closed"),
         "reporting_subscriptions": sum(
             1 for snapshot in subscription_snapshots if snapshot.subscription_state == "reporting"
+        ),
+        "enabled_subscriptions": sum(
+            1 for snapshot in subscription_snapshots if snapshot.subscription_state in {"enabled", "reporting"}
         ),
         "failed_subscriptions": sum(1 for snapshot in subscription_snapshots if snapshot.subscription_state == "failed"),
         "client_id": client_id,

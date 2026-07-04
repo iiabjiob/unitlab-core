@@ -102,4 +102,28 @@ describe("signalJobStore progress updates", () => {
     expect(store.jobsById["job-1"].message).toBe("Signals 6/10")
     expect(store.progressText).toContain("6/10")
   })
+
+  it("merges partial IEC 61850 preparation results without dropping steps", () => {
+    const store = useSignalJobStore()
+
+    store.applyJobEvent(buildJobEvent({
+      result: {
+        phase: "preparing_iec61850",
+        verification_prepare_steps: [
+          { id: "subscribe_reports", label: "Subscribe reports", status: "done" },
+        ],
+      },
+    }))
+    store.applyJobEvent(buildJobEvent({
+      message: "IEC 61850 unavailable; starting test without verification.",
+      result: {
+        verification_prepare_error: "MMS report timeout",
+      },
+    }))
+
+    expect(store.jobsById["job-1"].result.verification_prepare_steps).toEqual([
+      { id: "subscribe_reports", label: "Subscribe reports", status: "done" },
+    ])
+    expect(store.jobsById["job-1"].result.verification_prepare_error).toBe("MMS report timeout")
+  })
 })

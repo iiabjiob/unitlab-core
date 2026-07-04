@@ -46,7 +46,6 @@ from app.services.signal_job_service import (
     control_signal_job,
     create_signal_job,
     get_signal_job,
-    update_signal_job,
 )
 from app.schemas.ws.events import build_signal_job_event
 from app.core.events.ws_event_publisher import WsEventPublisher
@@ -574,14 +573,7 @@ async def enqueue_signal_test_run_job(
             detail=f"Too many signals for test run (max {settings.signal_test_run_max_signals})",
         )
 
-    try:
-        job_state = await create_signal_job(
-            workspace_id=workspace_id,
-            operation="test_run",
-            payload=payload.model_dump(),
-        )
-    except RuntimeError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    initial_result: dict[str, Any] = {}
     try:
         signals = await signals_repo.list_by_ids(workspace_id, payload.signal_ids)
         signals_by_id = {signal.id: signal for signal in signals}
@@ -594,25 +586,29 @@ async def enqueue_signal_test_run_job(
         )
         plan: VerificationSubscriptionPlanSchema = build_verification_subscription_plan(sources)
         confidence_report = build_planner_confidence_report(plan)
-        job_state = await update_signal_job(
-            str(job_state.get("job_id") or ""),
-            status="queued",
-            result={
-                "verification_targets": [target.model_dump(mode="json") for target in plan.targets],
-                "verification_plan": plan.model_dump(mode="json"),
-                "verification_coverage": plan.coverage.model_dump(mode="json"),
-                "verification_confidence": confidence_report.model_dump(mode="json"),
-            },
-        ) or job_state
+        initial_result = {
+            "verification_targets": [target.model_dump(mode="json") for target in plan.targets],
+            "verification_plan": plan.model_dump(mode="json"),
+            "verification_coverage": plan.coverage.model_dump(mode="json"),
+            "verification_confidence": confidence_report.model_dump(mode="json"),
+        }
     except Exception as exc:  # noqa: BLE001
         logger.exception(
             "Failed to build verification target preview | workspace=%s job_id=%s",
             workspace_id,
-            str(job_state.get("job_id") or ""),
+            "pending",
         )
-        job_state = dict(job_state)
-        job_state.setdefault("result", {})
-        job_state["result"]["verification_plan_error"] = str(exc)
+        initial_result = {"verification_plan_error": str(exc)}
+
+    try:
+        job_state = await create_signal_job(
+            workspace_id=workspace_id,
+            operation="test_run",
+            payload=payload.model_dump(),
+            initial_result=initial_result,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     await WsEventPublisher.publish(build_signal_job_event(job_state))
     return SignalJobStatusSchema.model_validate(job_state)
 

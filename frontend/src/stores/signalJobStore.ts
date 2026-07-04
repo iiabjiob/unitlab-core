@@ -65,6 +65,26 @@ function mergeJobUpdate(existing: SignalAllocationJob | undefined, next: SignalA
   }
 }
 
+function mergeJobResult(
+  existing: Record<string, unknown> | undefined,
+  incoming: Record<string, unknown> | undefined,
+  options: { terminal: boolean },
+): Record<string, unknown> {
+  const existingResult = existing ?? {}
+  const incomingResult = incoming ?? {}
+  if (options.terminal || Object.keys(existingResult).length === 0) {
+    return incomingResult
+  }
+  if (Object.keys(incomingResult).length === 0) {
+    return existingResult
+  }
+  const merged: Record<string, unknown> = {
+    ...existingResult,
+    ...incomingResult,
+  }
+  return merged
+}
+
 export const useSignalJobStore = defineStore("signalJobStore", () => {
   const workspaceStore = useWorkspaceStore()
   const jobsById = ref<Record<string, SignalAllocationJob>>({})
@@ -184,13 +204,10 @@ export const useSignalJobStore = defineStore("signalJobStore", () => {
       return
     }
 
-    const mergedResult = (
-      Object.keys(job.result ?? {}).length > 0
-        ? (job.result ?? {})
-        : (existing?.result ?? {})
-    )
-
     const nextJob = mergeJobUpdate(existing, job)
+    const mergedResult = mergeJobResult(existing?.result, job.result, {
+      terminal: isTerminalStatus(job.status),
+    })
 
     jobsById.value[job.job_id] = {
       ...nextJob,
@@ -343,7 +360,11 @@ export const useSignalJobStore = defineStore("signalJobStore", () => {
     return await awaitJobCompletion(queuedJob.job_id, workspaceId, 10 * 60_000)
   }
 
-  async function controlJob(workspaceId: number, jobId: string, action: "pause" | "resume" | "stop"): Promise<SignalAllocationJob> {
+  async function controlJob(
+    workspaceId: number,
+    jobId: string,
+    action: "pause" | "resume" | "stop",
+  ): Promise<SignalAllocationJob> {
     const { data } = await SignalSheetAPI.controlAllocationJob(workspaceId, jobId, action)
     upsertJob(data)
     return data

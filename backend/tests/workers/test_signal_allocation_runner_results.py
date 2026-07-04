@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
@@ -71,6 +72,16 @@ class FakeRedis:
 
     async def expire(self, key: str, ttl: int) -> None:
         return None
+
+
+def _valid_mms_plan_group() -> SimpleNamespace:
+    return SimpleNamespace(
+        group_id="group-1",
+        source_classification="from discovery",
+        report_control_name="brA",
+        report_control_reference="IED-A/LLN0.brA",
+        data_set_reference="IED-A/LLN0.dsA",
+    )
 
 
 def build_allocation_row(signal_id: int, **overrides) -> SignalAllocationRowSchema:
@@ -301,7 +312,7 @@ def test_signal_test_run_requires_iec61850_report_when_verification_enabled(monk
 
     async def build_context_noop(**kwargs):
         return SimpleNamespace(
-            subscription_plan=SimpleNamespace(targets=[], groups=[object()]),
+            subscription_plan=SimpleNamespace(targets=[], groups=[_valid_mms_plan_group()]),
             execution_context=kwargs["payload"].execution_context,
             runtime_selection=SimpleNamespace(adapter=object(), endpoint_for_device=lambda device: device),
             diagnostics=(),
@@ -450,7 +461,7 @@ def test_signal_test_run_publishes_iec61850_preparation_steps_before_commands(mo
 
     async def build_context_noop(**kwargs):
         return SimpleNamespace(
-            subscription_plan=SimpleNamespace(targets=[object()], groups=[object()]),
+            subscription_plan=SimpleNamespace(targets=[object()], groups=[_valid_mms_plan_group()]),
             execution_context=kwargs["payload"].execution_context,
             runtime_selection=SimpleNamespace(adapter=object(), endpoint_for_device=lambda device: device),
             diagnostics=(),
@@ -571,11 +582,16 @@ def test_signal_test_run_publishes_iec61850_preparation_steps_before_commands(mo
     assert result["verification_observed"] == 1
     assert commands and commands[0][0] == "do"
     assert prepare_results
-    assert prepare_results[-1]["verification_prepare_steps"][-1]["id"] == "runtime_ready"
+    assert prepare_results[-1]["verification_prepare_steps"][-1]["id"] == "start_test"
     assert prepare_results[-1]["verification_prepare_steps"][-1]["status"] == "done"
-    assert prepare_results[-1]["verification_prepare_subscriptions"][0]["subscription_state"] == "reporting"
-    assert prepare_results[-1]["verification_prepare_subscriptions"][0]["gi_requested"] is True
-    assert prepare_results[-1]["verification_prepare_subscriptions"][0]["last_report_value_count"] == 3
+    assert "verification_prepare_subscriptions" not in prepare_results[-1]
+    prepare_messages = [
+        str(event.get("message") or "")
+        for event in published_events
+        if isinstance(event.get("result"), dict) and event["result"].get("phase") == "preparing_iec61850"
+    ]
+    assert prepare_messages
+    assert not any(re.search(r"\d+\s*/\s*\d+", message) for message in prepare_messages)
 
 
 def test_signal_test_run_verifies_only_mapped_iec61850_rows(monkeypatch) -> None:
@@ -613,7 +629,7 @@ def test_signal_test_run_verifies_only_mapped_iec61850_rows(monkeypatch) -> None
     async def build_context_noop(**kwargs):
         context_signal_ids.append(list(kwargs["payload"].signal_ids))
         return SimpleNamespace(
-            subscription_plan=SimpleNamespace(targets=[], groups=[object()]),
+            subscription_plan=SimpleNamespace(targets=[], groups=[_valid_mms_plan_group()]),
             execution_context=kwargs["payload"].execution_context,
             runtime_selection=SimpleNamespace(adapter=object(), endpoint_for_device=lambda device: device),
             diagnostics=(),
@@ -706,8 +722,8 @@ def test_signal_test_run_verifies_only_mapped_iec61850_rows(monkeypatch) -> None
     assert [item[0] for item in commands].count("do") == 2
 
 
-def test_signal_test_run_blocks_commands_when_iec61850_preparation_is_not_ready(monkeypatch) -> None:
-    commands: list[dict] = []
+def test_signal_test_run_continues_commands_when_iec61850_preparation_is_not_ready(monkeypatch) -> None:
+    commands: list[tuple[str, dict]] = []
 
     class MappedRowsRepo(FakeLiveRowsRepo):
         async def list_allocation_rows_by_signal_ids(self, workspace_id: int, signal_ids: list[int]):
@@ -730,7 +746,10 @@ def test_signal_test_run_blocks_commands_when_iec61850_preparation_is_not_ready(
         return None
 
     async def enqueue_do_noop(**kwargs) -> None:
-        commands.append(dict(kwargs))
+        commands.append(("do", dict(kwargs)))
+
+    async def enqueue_state_noop(**kwargs) -> None:
+        commands.append(("state", dict(kwargs)))
 
     async def build_context_failed(**kwargs):
         raise ValueError("IEC 61850 verification plan is not ready for selected signal_id values: [1]")
@@ -738,6 +757,7 @@ def test_signal_test_run_blocks_commands_when_iec61850_preparation_is_not_ready(
     monkeypatch.setattr(signal_test_run_runner.RedisManager, "get_instance", lambda: FakeRedis())
     monkeypatch.setattr(signal_test_run_runner.WsEventPublisher, "publish", publish_noop)
     monkeypatch.setattr(signal_test_run_runner, "enqueue_do_command", enqueue_do_noop)
+    monkeypatch.setattr(signal_test_run_runner, "enqueue_request_state", enqueue_state_noop)
     monkeypatch.setattr(signal_test_run_runner, "build_verification_runtime_start_context", build_context_failed)
 
     job_state = {
@@ -757,10 +777,118 @@ def test_signal_test_run_blocks_commands_when_iec61850_preparation_is_not_ready(
         "verification_signal_list_revision_id": 2,
     }
 
-    with pytest.raises(ValueError, match="verification plan is not ready"):
-        run_async(signal_test_run_runner._handle_test_run(MappedRowsRepo(), 7, payload, job_state))  # type: ignore[arg-type]
+    result = run_async(signal_test_run_runner._handle_test_run(MappedRowsRepo(), 7, payload, job_state))  # type: ignore[arg-type]
 
-    assert commands == []
+    assert result["succeeded"] == 1
+    assert result["verification_available"] is False
+    assert result["verification_requested_signal_count"] == 1
+    assert result["verification_observed"] == 0
+    assert result["verification_prepare_error"] == "IEC 61850 verification plan is not ready for selected signal_id values: [1]"
+    assert commands and commands[0][0] == "do"
+
+
+def test_signal_test_run_skips_offline_peripheral_rows_and_runs_online_selection(monkeypatch) -> None:
+    commands: list[tuple[str, dict]] = []
+    published_events: list[dict] = []
+    context_signal_ids: list[list[int]] = []
+
+    class MappedRowsRepo(FakeLiveRowsRepo):
+        async def list_allocation_rows_by_signal_ids(self, workspace_id: int, signal_ids: list[int]):
+            self.calls.append([int(signal_id) for signal_id in signal_ids])
+            return [
+                build_allocation_row(
+                    int(signal_id),
+                    unit_online=int(signal_id) != 2,
+                    signal_metadata={
+                        "verification": {
+                            "enabled": True,
+                            "transport_host": "172.16.40.128:12447",
+                            "iec61850_address": "IEDLD0/GGIO1.stVal[ST]",
+                        }
+                    },
+                )
+                for signal_id in signal_ids
+            ]
+
+    async def publish_capture(event) -> None:
+        published_events.append(event.model_dump(mode="json") if hasattr(event, "model_dump") else dict(event))
+
+    async def enqueue_do_noop(**kwargs) -> None:
+        commands.append(("do", dict(kwargs)))
+
+    async def enqueue_state_noop(**kwargs) -> None:
+        commands.append(("state", dict(kwargs)))
+
+    async def build_context_failed(**kwargs):
+        context_signal_ids.append(list(kwargs["payload"].signal_ids))
+        raise ValueError("IEC 61850 verification plan is not ready for selected signal_id values: [1]")
+
+    monkeypatch.setattr(signal_test_run_runner.RedisManager, "get_instance", lambda: FakeRedis())
+    monkeypatch.setattr(signal_test_run_runner.WsEventPublisher, "publish", publish_capture)
+    monkeypatch.setattr(signal_test_run_runner, "enqueue_do_command", enqueue_do_noop)
+    monkeypatch.setattr(signal_test_run_runner, "enqueue_request_state", enqueue_state_noop)
+    monkeypatch.setattr(signal_test_run_runner, "build_verification_runtime_start_context", build_context_failed)
+
+    job_state = {
+        "job_id": "job-1",
+        "workspace_id": 7,
+        "operation": "test_run",
+        "status": "queued",
+        "created_at": "2026-01-01T12:30:00+00:00",
+    }
+    payload = {
+        "job_id": "job-1",
+        "signal_ids": [1, 2],
+        "signal_interval_ms": 100,
+        "toggle_mode": "single",
+        "verification_enabled": True,
+        "verification_runtime_version": "mms",
+        "verification_signal_list_revision_id": 2,
+    }
+
+    result = run_async(signal_test_run_runner._handle_test_run(MappedRowsRepo(), 7, payload, job_state))  # type: ignore[arg-type]
+
+    prepare_results = [
+        event.get("result") for event in published_events
+        if isinstance(event.get("result"), dict) and event["result"].get("phase") == "preparing_iec61850"
+    ]
+    assert result["processed"] == 2
+    assert result["succeeded"] == 1
+    assert result["skipped"] == 1
+    assert result["skip_reasons"]["offline_unit"] == 1
+    assert result["verification_available"] is False
+    assert "peripheral device offline" in result["verification_prepare_warning"]
+    assert context_signal_ids == [[1]]
+    assert [item[0] for item in commands] == ["do", "state"]
+    assert prepare_results
+    assert [step["id"] for step in prepare_results[-1]["verification_prepare_steps"]] == [
+        "peripheral_online",
+        "subscribe_reports",
+        "general_interrogation",
+        "start_test",
+    ]
+    assert prepare_results[-1]["verification_prepare_steps"][0]["status"] == "warning"
+    assert prepare_results[-1]["verification_prepare_steps"][1]["status"] == "failed"
+
+
+def test_mms_subscription_plan_blockers_reject_fallback_groups() -> None:
+    context = SimpleNamespace(
+        subscription_plan=SimpleNamespace(
+            groups=[
+                SimpleNamespace(
+                    group_id="group-1",
+                    source_classification="fallback",
+                    report_control_name=None,
+                    report_control_reference=None,
+                    data_set_reference=None,
+                )
+            ]
+        )
+    )
+
+    blockers = signal_test_run_runner._mms_subscription_plan_blockers(context)  # noqa: SLF001
+
+    assert blockers == ["group-1: missing fallback planning, report control, dataset"]
 
 
 def test_signal_test_run_skips_non_executable_current_bindings(monkeypatch) -> None:

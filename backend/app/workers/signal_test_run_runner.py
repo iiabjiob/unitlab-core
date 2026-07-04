@@ -5,6 +5,7 @@ import random
 import time
 from collections import defaultdict
 from contextlib import suppress
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
@@ -19,7 +20,11 @@ from app.infrastructure.redis.manager import RedisManager
 from app.infrastructure.redis.stream_bus import parse_signal_allocation_job_entry
 from app.schemas.ws.events import SignalTestRuntimePatchEvent, build_signal_job_event
 from app.schemas.signal_sheet_schema import SignalAllocationRowSchema
-from app.schemas.verification_schema import VerificationAutoRunStartSchema, VerificationExecutionContextSchema
+from app.schemas.verification_schema import (
+    VerificationAutoRunStartSchema,
+    VerificationEvidenceDiagnosticSchema,
+    VerificationExecutionContextSchema,
+)
 from app.services.command_queue_service import enqueue_ao_command, enqueue_do_command, enqueue_request_state
 from app.services.external_ied_discovery_scheduler import schedule_external_ied_discovery_for_verification
 from app.services.iec61850.report_runtime import group_report_subscription_plan_devices_by_endpoint
@@ -140,6 +145,42 @@ def _row_has_iec61850_verification_mapping(row: SignalAllocationRowSchema) -> bo
     return _first_row_metadata_string(verification, "iec61850_address", "iec61850", "mms_reference") is not None
 
 
+@dataclass(frozen=True)
+class PeripheralPreflightResult:
+    executable_signal_ids: list[int]
+    notes: list[str]
+
+
+async def _collect_peripheral_preflight(
+    repo: SignalSheetRepository,
+    workspace_id: int,
+    signal_ids: list[int],
+) -> PeripheralPreflightResult:
+    if not signal_ids:
+        return PeripheralPreflightResult(executable_signal_ids=[], notes=[])
+    rows = await repo.list_allocation_rows_by_signal_ids(workspace_id, signal_ids)
+    rows_by_signal_id = {int(row.signal_id): row for row in rows}
+    executable_signal_ids: list[int] = []
+    notes: list[str] = []
+    for signal_id in signal_ids:
+        row = rows_by_signal_id.get(int(signal_id))
+        if row is None:
+            notes.append(f"{signal_id}: missing allocation row")
+            continue
+        if not row.unit_id or not isinstance(row.channel_index, int):
+            notes.append(f"{signal_id}: missing peripheral binding")
+            continue
+        channel_type = str(row.channel_type or "").strip().lower()
+        if not channel_type.startswith("do") and not channel_type.startswith("ao"):
+            notes.append(f"{signal_id}: incompatible peripheral channel")
+            continue
+        if row.unit_online is False:
+            notes.append(f"{signal_id}: peripheral device offline ({row.unit_id})")
+            continue
+        executable_signal_ids.append(int(signal_id))
+    return PeripheralPreflightResult(executable_signal_ids=executable_signal_ids, notes=notes)
+
+
 def _first_row_metadata_string(payload: dict[str, Any], *keys: str) -> str | None:
     for key in keys:
         value = payload.get(key)
@@ -243,33 +284,15 @@ def _verification_prepare_runtime_summary(runtime_snapshot) -> dict[str, Any]:
         "runtime_state": getattr(getattr(runtime_snapshot, "verification_run", None), "runtime_state", None),
         "session_count": len(sessions),
         "subscription_count": len(subscriptions),
+        "enabled_subscriptions": sum(1 for item in subscriptions if item.subscription_state in {"enabled", "reporting"}),
         "reporting_subscriptions": sum(1 for item in subscriptions if item.subscription_state == "reporting"),
         "failed_subscriptions": sum(1 for item in subscriptions if item.subscription_state == "failed"),
+        "degraded_subscriptions": sum(
+            1 for item in subscriptions if item.subscription_state == "degraded" or item.report_health == "degraded"
+        ),
         "gi_requested_count": sum(1 for item in subscriptions if item.gi_requested),
         "last_report_value_count": sum(max(0, int(item.last_report_value_count or 0)) for item in subscriptions),
     }
-
-
-def _verification_prepare_subscription_rows(runtime_snapshot) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    for item in list(getattr(runtime_snapshot, "subscription_snapshots", ()) or ()):
-        rows.append(
-            {
-                "subscription_id": item.subscription_id,
-                "endpoint_id": item.endpoint_id,
-                "group_id": item.group_id,
-                "report_control_name": item.report_control_name,
-                "report_control_reference": item.report_control_reference,
-                "data_set_reference": item.data_set_reference,
-                "subscription_state": item.subscription_state,
-                "report_health": item.report_health,
-                "gi_requested": bool(item.gi_requested),
-                "last_report_value_count": int(item.last_report_value_count or 0),
-                "last_error": item.last_error,
-                "diagnostic_code": item.diagnostic_code,
-            }
-        )
-    return rows
 
 
 def _verification_runtime_ready(runtime_snapshot) -> bool:
@@ -282,9 +305,34 @@ def _verification_runtime_ready(runtime_snapshot) -> bool:
 def _verification_runtime_failed(runtime_snapshot) -> bool:
     sessions = list(getattr(runtime_snapshot, "session_snapshots", ()) or ())
     subscriptions = list(getattr(runtime_snapshot, "subscription_snapshots", ()) or ())
-    return any(item.runtime_state == "failed" for item in sessions) or any(
-        item.subscription_state == "failed" for item in subscriptions
+    return any(item.runtime_state in {"failed", "degraded"} for item in sessions) or any(
+        item.subscription_state in {"failed", "degraded"} or item.report_health == "degraded" for item in subscriptions
     )
+
+
+def _mms_subscription_plan_blockers(runtime_context) -> list[str]:
+    plan = getattr(runtime_context, "subscription_plan", None)
+    groups = list(getattr(plan, "groups", ()) or ())
+    blockers: list[str] = []
+    if not groups:
+        blockers.append("no IEC 61850 report groups were resolved")
+        return blockers
+    for group in groups:
+        group_id = str(getattr(group, "group_id", "") or "unknown")
+        source_classification = str(getattr(group, "source_classification", "") or "").strip().lower()
+        report_control_name = str(getattr(group, "report_control_name", "") or "").strip()
+        report_control_reference = str(getattr(group, "report_control_reference", "") or "").strip()
+        data_set_reference = str(getattr(group, "data_set_reference", "") or "").strip()
+        missing = []
+        if source_classification == "fallback":
+            missing.append("fallback planning")
+        if not report_control_name and not report_control_reference:
+            missing.append("report control")
+        if not data_set_reference:
+            missing.append("dataset")
+        if missing:
+            blockers.append(f"{group_id}: missing {', '.join(missing)}")
+    return blockers
 
 
 def _extract_job_attempt_meta(job_state: dict[str, Any] | None) -> tuple[str | None, int]:
@@ -425,8 +473,11 @@ async def _handle_test_run(
     verification_observed = 0
     verification_signal_ids: list[int] = []
     verification_signal_id_set: set[int] = set()
+    verification_requested_signal_count = 0
     verification_evidence_rows = []
     verification_diagnostics = []
+    verification_prepare_error: str | None = None
+    verification_prepare_warning: str | None = None
     verification_prepare_steps: list[dict[str, Any]] = []
     verification_orchestrator: VerificationRuntimeOrchestrator | None = None
     verification_local_orchestration_id: str | None = None
@@ -464,12 +515,16 @@ async def _handle_test_run(
         result_payload: dict[str, Any] = {
             "phase": "preparing_iec61850",
             "verification_enabled": True,
-            "verification_requested_signal_count": len(verification_signal_ids),
+            "verification_available": verification_orchestrator is not None and verification_local_orchestration_id is not None,
+            "verification_requested_signal_count": verification_requested_signal_count,
             "verification_prepare_steps": list(verification_prepare_steps),
         }
+        if verification_prepare_error:
+            result_payload["verification_prepare_error"] = verification_prepare_error
+        if verification_prepare_warning:
+            result_payload["verification_prepare_warning"] = verification_prepare_warning
         if runtime_snapshot is not None:
             result_payload["verification_prepare_summary"] = _verification_prepare_runtime_summary(runtime_snapshot)
-            result_payload["verification_prepare_subscriptions"] = _verification_prepare_subscription_rows(runtime_snapshot)
         await _publish_running_progress(
             job_state=job_state,
             progress_done=0,
@@ -478,75 +533,92 @@ async def _handle_test_run(
             result=result_payload,
         )
 
-    async def wait_for_verification_runtime_ready(runtime_start) -> None:
+    async def wait_for_verification_runtime_ready(runtime_start):
         if verification_orchestrator is None:
-            return
+            return None
         orchestration_id = str(getattr(runtime_start, "orchestration_id", "") or "")
         if not orchestration_id:
-            return
+            return None
         deadline = time.monotonic() + 90.0
         last_signature: tuple[Any, ...] | None = None
         while True:
             runtime_snapshot = verification_orchestrator.snapshot(orchestration_id)
             summary = _verification_prepare_runtime_summary(runtime_snapshot)
-            subscriptions = _verification_prepare_subscription_rows(runtime_snapshot)
+            subscriptions = list(getattr(runtime_snapshot, "subscription_snapshots", ()) or ())
+            enabled = int(summary["enabled_subscriptions"])
             reporting = int(summary["reporting_subscriptions"])
             total_subscriptions = int(summary["subscription_count"])
             gi_count = int(summary["gi_requested_count"])
             value_count = int(summary["last_report_value_count"])
             failed = int(summary["failed_subscriptions"])
+            degraded = int(summary["degraded_subscriptions"])
+            failed_or_degraded = failed + degraded
             set_verification_prepare_step(
-                step_id="activate_reports",
-                label="Activate reports",
-                status="done" if total_subscriptions > 0 and reporting == total_subscriptions else ("failed" if failed else "running"),
-                detail=f"{reporting}/{total_subscriptions} reporting",
+                step_id="subscribe_reports",
+                label="Subscribe reports",
+                status="done" if total_subscriptions > 0 and enabled == total_subscriptions else ("failed" if failed_or_degraded else "running"),
+                detail=None,
                 extra={
+                    "enabled": enabled,
                     "reporting": reporting,
                     "total": total_subscriptions,
                     "failed": failed,
+                    "degraded": degraded,
                 },
             )
             set_verification_prepare_step(
                 step_id="general_interrogation",
                 label="General interrogation",
-                status="done" if total_subscriptions > 0 and gi_count == total_subscriptions else ("failed" if failed else "running"),
-                detail=f"GI {gi_count}/{total_subscriptions} · values {value_count}",
+                status="done" if total_subscriptions > 0 and gi_count == total_subscriptions else ("failed" if failed_or_degraded else "running"),
+                detail=None,
                 extra={
                     "gi_requested": gi_count,
                     "total": total_subscriptions,
                     "last_report_value_count": value_count,
+                    "failed": failed,
+                    "degraded": degraded,
                 },
             )
             signature = (
                 summary.get("runtime_state"),
+                enabled,
                 reporting,
                 total_subscriptions,
                 gi_count,
                 value_count,
                 failed,
-                tuple((row["subscription_id"], row["subscription_state"], row["gi_requested"], row["last_report_value_count"]) for row in subscriptions),
+                degraded,
+                tuple(
+                    (
+                        item.subscription_id,
+                        item.subscription_state,
+                        item.gi_requested,
+                        item.last_report_value_count,
+                    )
+                    for item in subscriptions
+                ),
             )
             if signature != last_signature:
                 last_signature = signature
                 await publish_verification_prepare_progress(
-                    message=f"Preparing IEC 61850: reports {reporting}/{total_subscriptions}, GI {gi_count}/{total_subscriptions}.",
+                    message="Preparing IEC 61850 verification.",
                     runtime_snapshot=runtime_snapshot,
                 )
             if _verification_runtime_ready(runtime_snapshot):
                 set_verification_prepare_step(
-                    step_id="runtime_ready",
-                    label="Runtime ready",
+                    step_id="start_test",
+                    label="Start test",
                     status="done",
-                    detail=f"{reporting}/{total_subscriptions} reports active",
+                    detail=None,
                 )
                 await publish_verification_prepare_progress(
-                    message=f"IEC 61850 ready: {reporting}/{total_subscriptions} reports active, GI {gi_count}/{total_subscriptions}.",
+                    message="IEC 61850 ready; starting test.",
                     runtime_snapshot=runtime_snapshot,
                 )
-                return
+                return runtime_snapshot
             if _verification_runtime_failed(runtime_snapshot):
                 await publish_verification_prepare_progress(
-                    message=f"IEC 61850 preparation failed: {failed} failed report subscription(s).",
+                    message="IEC 61850 preparation failed; starting test without verification.",
                     runtime_snapshot=runtime_snapshot,
                 )
                 raise RuntimeError("IEC 61850 preparation failed before test run commands.")
@@ -561,120 +633,121 @@ async def _handle_test_run(
     if verification_enabled and job_id and requested_ids:
         verification_signal_ids = await _resolve_mapped_verification_signal_ids(repo, workspace_id, original_requested_ids)
         verification_signal_id_set = set(verification_signal_ids)
+        verification_requested_signal_count = len(verification_signal_ids)
 
     if verification_enabled and job_id and verification_signal_ids:
-        set_verification_prepare_step(
-            step_id="mapped_rows",
-            label="Mapped rows",
-            status="done",
-            detail=f"{len(verification_signal_ids)} selected IEC 61850 signal(s)",
-        )
-        set_verification_prepare_step(
-            step_id="build_graph",
-            label="Build graph",
-            status="running",
-            detail="Resolving signal -> FCDA -> DataSet -> RCB.",
-        )
-        await publish_verification_prepare_progress(message="Preparing IEC 61850: resolving discovery plan.")
-        execution_context = VerificationExecutionContextSchema(
-            project_id=workspace_id,
-            signal_list_revision_id=verification_signal_list_revision_id,
-            planner_version="unitlab-test-run.v1",
-            runtime_version=verification_runtime_version or "simulator",
-            policy_version="iec61850-test-run.v1",
-        )
-        runtime_context = await build_verification_runtime_start_context(
-            workspace_id=workspace_id,
-            payload=VerificationAutoRunStartSchema(
-                signal_ids=verification_signal_ids,
-                execution_context=execution_context,
-                client_id="unitlab-test-run",
-                test_run_id=job_id,
-            ),
-            db=repo.db,
-            require_discovery_planning=verification_runtime_version in {"mms", "live", "live-mms", "real-mms"},
-        )
-        set_verification_prepare_step(
-            step_id="build_graph",
-            label="Build graph",
-            status="done",
-            detail=(
-                f"{len(runtime_context.subscription_plan.groups)} report group(s), "
-                f"{len(runtime_context.subscription_plan.targets)} target signal(s)"
-            ),
-            extra={
-                "groups": len(runtime_context.subscription_plan.groups),
-                "targets": len(runtime_context.subscription_plan.targets),
-            },
-        )
-        if not runtime_context.subscription_plan.groups:
+        set_verification_prepare_step(step_id="peripheral_online", label="Peripheral online", status="running")
+        set_verification_prepare_step(step_id="subscribe_reports", label="Subscribe reports", status="pending")
+        set_verification_prepare_step(step_id="general_interrogation", label="General interrogation", status="pending")
+        set_verification_prepare_step(step_id="start_test", label="Start test", status="pending")
+        await publish_verification_prepare_progress(message="Checking UnitLab peripheral device.")
+        peripheral_preflight = await _collect_peripheral_preflight(repo, workspace_id, requested_ids)
+        if peripheral_preflight.notes:
+            verification_prepare_warning = "; ".join(peripheral_preflight.notes[:3])
+            if len(peripheral_preflight.notes) > 3:
+                verification_prepare_warning = f"{verification_prepare_warning}; +{len(peripheral_preflight.notes) - 3} more"
             set_verification_prepare_step(
-                step_id="build_graph",
-                label="Build graph",
-                status="failed",
-                detail="No IEC 61850 report groups were resolved for selected signals.",
+                step_id="peripheral_online",
+                label="Peripheral online",
+                status="warning",
+                extra={"notes": peripheral_preflight.notes},
             )
-            await publish_verification_prepare_progress(
-                message="IEC 61850 preparation failed: no report groups resolved.",
-            )
-            raise RuntimeError("IEC 61850 preparation failed: no report groups resolved for selected signals.")
-        set_verification_prepare_step(
-            step_id="schedule_discovery",
-            label="Discovery freshness",
-            status="running",
-            detail="Checking external IED discovery cache.",
-        )
-        await publish_verification_prepare_progress(message="Preparing IEC 61850: scheduling discovery freshness checks.")
-        await _schedule_external_ied_discovery_for_verification_run(
-            workspace_id=workspace_id,
-            runtime_context=runtime_context,
-        )
-        set_verification_prepare_step(
-            step_id="schedule_discovery",
-            label="Discovery freshness",
-            status="done",
-            detail="Discovery scheduler notified for verification priority.",
-        )
-        set_verification_prepare_step(
-            step_id="activate_reports",
-            label="Activate reports",
-            status="running",
-            detail="Opening MMS session, reserving/enabling RCBs.",
-        )
-        set_verification_prepare_step(
-            step_id="general_interrogation",
-            label="General interrogation",
-            status="pending",
-            detail="Waiting for reports to be enabled.",
-        )
-        await publish_verification_prepare_progress(message="Preparing IEC 61850: opening MMS sessions and enabling reports.")
-        verification_orchestrator = VerificationRuntimeOrchestrator()
-        runtime_start_method = getattr(verification_orchestrator, "start_deferred", None)
-        runtime_start = (runtime_start_method or verification_orchestrator.start)(
-            workspace_id=workspace_id,
-            test_run_id=job_id,
-            verification_targets=runtime_context.subscription_plan.targets,
-            subscription_plan=runtime_context.subscription_plan,
-            execution_context=runtime_context.execution_context,
-            client_id="unitlab-test-run",
-            endpoint_for_device=runtime_context.runtime_selection.endpoint_for_device,
-            adapter=runtime_context.runtime_selection.adapter,
-            initial_diagnostics=runtime_context.diagnostics,
-        )
-        verification_local_orchestration_id = runtime_start.orchestration_id
-        if runtime_start_method is not None:
-            await wait_for_verification_runtime_ready(runtime_start)
+            await publish_verification_prepare_progress(message="Some selected UnitLab peripheral devices are offline; they will be skipped.")
         else:
-            set_verification_prepare_step(
-                step_id="runtime_ready",
-                label="Runtime ready",
-                status="done",
-                detail="Report runtime started.",
-            )
-            await publish_verification_prepare_progress(
-                message="IEC 61850 report runtime started.",
-                runtime_snapshot=runtime_start,
-            )
+            set_verification_prepare_step(step_id="peripheral_online", label="Peripheral online", status="done")
+
+        executable_signal_id_set = set(peripheral_preflight.executable_signal_ids)
+        verification_signal_ids = [signal_id for signal_id in verification_signal_ids if signal_id in executable_signal_id_set]
+        verification_signal_id_set = set(verification_signal_ids)
+        if not verification_signal_ids:
+            set_verification_prepare_step(step_id="subscribe_reports", label="Subscribe reports", status="pending")
+            set_verification_prepare_step(step_id="general_interrogation", label="General interrogation", status="pending")
+            set_verification_prepare_step(step_id="start_test", label="Start test", status="done")
+            await publish_verification_prepare_progress(message="No online IEC 61850 mapped signals; starting test with offline rows skipped.")
+        else:
+            set_verification_prepare_step(step_id="subscribe_reports", label="Subscribe reports", status="running")
+            await publish_verification_prepare_progress(message="Preparing IEC 61850 verification.")
+        if verification_signal_ids:
+            try:
+                execution_context = VerificationExecutionContextSchema(
+                    project_id=workspace_id,
+                    signal_list_revision_id=verification_signal_list_revision_id,
+                    planner_version="unitlab-test-run.v1",
+                    runtime_version=verification_runtime_version or "simulator",
+                    policy_version="iec61850-test-run.v1",
+                )
+                runtime_context = await build_verification_runtime_start_context(
+                    workspace_id=workspace_id,
+                    payload=VerificationAutoRunStartSchema(
+                        signal_ids=verification_signal_ids,
+                        execution_context=execution_context,
+                        client_id="unitlab-test-run",
+                        test_run_id=job_id,
+                    ),
+                    db=repo.db,
+                    require_discovery_planning=verification_runtime_version in {"mms", "live", "live-mms", "real-mms"},
+                )
+                if verification_runtime_version in {"mms", "live", "live-mms", "real-mms"}:
+                    blockers = _mms_subscription_plan_blockers(runtime_context)
+                    if blockers:
+                        detail = "; ".join(blockers[:3])
+                        if len(blockers) > 3:
+                            detail = f"{detail}; +{len(blockers) - 3} more"
+                        raise RuntimeError(f"IEC 61850 discovery planning is incomplete: {detail}")
+                if not runtime_context.subscription_plan.groups:
+                    raise RuntimeError("IEC 61850 preparation failed: no report groups resolved for selected signals.")
+                await _schedule_external_ied_discovery_for_verification_run(
+                    workspace_id=workspace_id,
+                    runtime_context=runtime_context,
+                )
+                verification_orchestrator = VerificationRuntimeOrchestrator()
+                runtime_start_method = getattr(verification_orchestrator, "start_deferred", None)
+                runtime_start = (runtime_start_method or verification_orchestrator.start)(
+                    workspace_id=workspace_id,
+                    test_run_id=job_id,
+                    verification_targets=runtime_context.subscription_plan.targets,
+                    subscription_plan=runtime_context.subscription_plan,
+                    execution_context=runtime_context.execution_context,
+                    client_id="unitlab-test-run",
+                    endpoint_for_device=runtime_context.runtime_selection.endpoint_for_device,
+                    adapter=runtime_context.runtime_selection.adapter,
+                    initial_diagnostics=runtime_context.diagnostics,
+                )
+                verification_local_orchestration_id = runtime_start.orchestration_id
+                if runtime_start_method is not None:
+                    await wait_for_verification_runtime_ready(runtime_start)
+                else:
+                    set_verification_prepare_step(step_id="start_test", label="Start test", status="done")
+                    await publish_verification_prepare_progress(
+                        message="IEC 61850 report runtime started.",
+                        runtime_snapshot=runtime_start,
+                    )
+            except Exception as exc:  # noqa: BLE001
+                verification_prepare_error = str(exc)
+                logger.warning(
+                    "IEC 61850 verification preparation failed; continuing test without verification | workspace=%s job=%s error=%s",
+                    workspace_id,
+                    job_id,
+                    verification_prepare_error,
+                )
+                if verification_orchestrator is not None and verification_local_orchestration_id is not None:
+                    with suppress(Exception):
+                        verification_orchestrator.stop(verification_local_orchestration_id)
+                verification_orchestrator = None
+                verification_local_orchestration_id = None
+                verification_diagnostics.append(
+                    VerificationEvidenceDiagnosticSchema(
+                        code="IEC61850_PREPARATION_FAILED",
+                        message=verification_prepare_error,
+                        severity="warning",
+                    )
+                )
+                verification_signal_ids = []
+                verification_signal_id_set = set()
+                set_verification_prepare_step(step_id="subscribe_reports", label="Subscribe reports", status="failed")
+                set_verification_prepare_step(step_id="general_interrogation", label="General interrogation", status="failed")
+                set_verification_prepare_step(step_id="start_test", label="Start test", status="done")
+                await publish_verification_prepare_progress(message="IEC 61850 unavailable; starting test without verification.")
 
     async def attach_and_publish_tested_at_patch(result_payload: dict[str, Any]) -> None:
         if not tested_at_patch_since_emit:
@@ -781,15 +854,21 @@ async def _handle_test_run(
         )
 
     def verification_result_payload() -> dict[str, Any]:
-        return {
-            "verification_enabled": bool(verification_signal_ids),
+        payload = {
+            "verification_enabled": verification_requested_signal_count > 0,
+            "verification_available": verification_orchestrator is not None and verification_local_orchestration_id is not None,
             "verification_runtime_version": verification_runtime_version,
             "verification_requested_orchestration_id": verification_orchestration_id,
             "verification_local_orchestration_id": verification_local_orchestration_id,
-            "verification_requested_signal_count": len(verification_signal_ids),
+            "verification_requested_signal_count": verification_requested_signal_count,
             "verification_observed": verification_observed,
             "verification_failed": verification_failed,
         }
+        if verification_prepare_error:
+            payload["verification_prepare_error"] = verification_prepare_error
+        if verification_prepare_warning:
+            payload["verification_prepare_warning"] = verification_prepare_warning
+        return payload
 
     async def flush_verification_evidence_set() -> None:
         if not verification_evidence_rows:
@@ -1108,22 +1187,39 @@ async def _handle_test_run(
             ):
                 if command_payload is None:
                     command_payload = {}
-                verification_capture = verification_orchestrator.capture_triggered_signal(
-                    verification_local_orchestration_id,
-                    signal_id=signal_id,
-                    triggered_at=datetime.now(timezone.utc),
-                    test_run_id=job_id,
-                    timeout_ms=verification_timeout_ms,
-                )
-                await record_verification_evidence(verification_capture)
-                command_payload["iec61850_verification"] = {
-                    "source": "worker_runtime_orchestration",
-                    "requested_online_orchestration_id": verification_orchestration_id,
-                    "local_orchestration_id": verification_local_orchestration_id,
-                    "evidence": verification_capture.evidence.model_dump(mode="json"),
-                    "step": verification_capture.step.model_dump(mode="json"),
-                }
-                success = verification_capture.step.verdict_state == "pass"
+                try:
+                    verification_capture = verification_orchestrator.capture_triggered_signal(
+                        verification_local_orchestration_id,
+                        signal_id=signal_id,
+                        triggered_at=datetime.now(timezone.utc),
+                        test_run_id=job_id,
+                        timeout_ms=verification_timeout_ms,
+                    )
+                    await record_verification_evidence(verification_capture)
+                    command_payload["iec61850_verification"] = {
+                        "source": "worker_runtime_orchestration",
+                        "requested_online_orchestration_id": verification_orchestration_id,
+                        "local_orchestration_id": verification_local_orchestration_id,
+                        "evidence": verification_capture.evidence.model_dump(mode="json"),
+                        "step": verification_capture.step.model_dump(mode="json"),
+                    }
+                except Exception as exc:  # noqa: BLE001
+                    verification_failed += 1
+                    verification_diagnostics.append(
+                        VerificationEvidenceDiagnosticSchema(
+                            code="IEC61850_SIGNAL_VERIFICATION_FAILED",
+                            message=str(exc),
+                            severity="warning",
+                            details={"signal_id": signal_id},
+                        )
+                    )
+                    command_payload["iec61850_verification"] = {
+                        "source": "worker_runtime_orchestration",
+                        "requested_online_orchestration_id": verification_orchestration_id,
+                        "local_orchestration_id": verification_local_orchestration_id,
+                        "status": "not_validated",
+                        "error": str(exc),
+                    }
 
         if success:
             succeeded_signal_ids.append(signal_id)

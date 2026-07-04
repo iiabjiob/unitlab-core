@@ -10,6 +10,19 @@
           :detail="activeProgressDetailText"
           @click="navigateToSignals"
         >
+          <template #extra>
+            <div v-if="showVerificationPrepareDetails" class="global-signal-test-status__prepare">
+              <span
+                v-for="step in verificationPrepareSteps"
+                :key="step.id"
+                class="global-signal-test-status__prepare-step"
+              >
+                <span class="global-signal-test-status__prepare-dot" :class="`is-${step.status}`"></span>
+                <span class="global-signal-test-status__prepare-label">{{ step.label }}</span>
+              </span>
+            </div>
+          </template>
+
           <template #actions>
             <UiButton
               v-if="!compact && activeTestRunJob.status === 'running'"
@@ -43,33 +56,6 @@
             </UiButton>
           </template>
         </GlobalProgressStatusCard>
-
-        <div v-if="showVerificationPrepareDetails" class="global-signal-test-status__prepare">
-          <div class="global-signal-test-status__prepare-steps">
-            <span
-              v-for="step in verificationPrepareSteps"
-              :key="step.id"
-              class="global-signal-test-status__prepare-step"
-            >
-              <span class="global-signal-test-status__prepare-dot" :class="`is-${step.status}`"></span>
-              <span class="global-signal-test-status__prepare-label">{{ step.label }}</span>
-              <span v-if="step.detail" class="global-signal-test-status__prepare-detail">{{ step.detail }}</span>
-            </span>
-          </div>
-          <div v-if="verificationPrepareSubscriptions.length" class="global-signal-test-status__prepare-subscriptions">
-            <span
-              v-for="subscription in verificationPrepareSubscriptions"
-              :key="subscription.id"
-              class="global-signal-test-status__prepare-subscription"
-              :title="subscription.title"
-            >
-              <span class="global-signal-test-status__prepare-label">{{ subscription.report }}</span>
-              <span>{{ subscription.state }}</span>
-              <span>{{ subscription.gi }}</span>
-              <span>{{ subscription.values }}</span>
-            </span>
-          </div>
-        </div>
       </div>
     </template>
 
@@ -143,15 +129,6 @@ type VerificationPrepareStepView = {
   label: string
   status: string
   detail: string
-}
-
-type VerificationPrepareSubscriptionView = {
-  id: string
-  report: string
-  state: string
-  gi: string
-  values: string
-  title: string
 }
 
 const activeTestRunJob = computed(() => (
@@ -248,43 +225,10 @@ const verificationPrepareSteps = computed<VerificationPrepareStepView[]>(() => {
     .filter((item): item is VerificationPrepareStepView => Boolean(item))
 })
 
-const verificationPrepareSubscriptions = computed<VerificationPrepareSubscriptionView[]>(() => {
-  const job = activeTestRunJob.value
-  const raw = (job?.result as Record<string, unknown> | undefined)?.verification_prepare_subscriptions
-  if (!Array.isArray(raw)) {
-    return []
-  }
-  return raw
-    .map((item): VerificationPrepareSubscriptionView | null => {
-      if (!item || typeof item !== "object") {
-        return null
-      }
-      const payload = item as Record<string, unknown>
-      const id = String(payload.subscription_id ?? "").trim()
-      if (!id) {
-        return null
-      }
-      const report = String(payload.report_control_name ?? payload.report_control_reference ?? "Report").trim()
-      const dataset = String(payload.data_set_reference ?? "").trim()
-      const state = String(payload.subscription_state ?? "pending").trim()
-      const giRequested = Boolean(payload.gi_requested)
-      const valueCount = Math.max(0, Number(payload.last_report_value_count ?? 0))
-      return {
-        id,
-        report,
-        state,
-        gi: giRequested ? "GI sent" : "GI pending",
-        values: `${valueCount} value${valueCount === 1 ? "" : "s"}`,
-        title: [report, dataset, state].filter(Boolean).join(" · "),
-      }
-    })
-    .filter((item): item is VerificationPrepareSubscriptionView => Boolean(item))
-})
-
 const showVerificationPrepareDetails = computed(() => (
   !compact.value
   && activeTestRunJob.value?.status === "running"
-  && (verificationPrepareSteps.value.length > 0 || verificationPrepareSubscriptions.value.length > 0)
+  && verificationPrepareSteps.value.length > 0
 ))
 
 const activeEstText = computed(() => {
@@ -397,7 +341,7 @@ function readStringResult(job: SignalAllocationJob, key: string): string {
 
 function normalizePrepareStatus(value: unknown): string {
   const status = String(value ?? "").trim().toLowerCase()
-  if (["done", "running", "pending", "failed"].includes(status)) {
+  if (["done", "running", "pending", "warning", "failed"].includes(status)) {
     return status
   }
   return "pending"
@@ -514,13 +458,16 @@ function dismissCompleted() {
 <style scoped>
 .global-signal-test-status {
   display: flex;
+  max-width: 100%;
+  min-width: 0;
   align-items: center;
   gap: 0.375rem;
 }
 
 .global-signal-test-status__test-run {
   display: flex;
-  max-width: min(72vw, 820px);
+  max-width: 100%;
+  min-width: 0;
   align-items: center;
   gap: 0.375rem;
 }
@@ -528,28 +475,17 @@ function dismissCompleted() {
 .global-signal-test-status__prepare {
   display: flex;
   min-width: 0;
-  max-width: 520px;
-  flex-direction: column;
-  gap: 0.125rem;
-  color: var(--color-neutral-600);
-  font-size: 10px;
-  line-height: 1.25;
-}
-
-.global-signal-test-status__prepare-steps,
-.global-signal-test-status__prepare-subscriptions {
-  display: flex;
-  min-width: 0;
   gap: 0.25rem;
   overflow: hidden;
+  font-size: 10px;
+  line-height: 1.25;
   white-space: nowrap;
 }
 
-.global-signal-test-status__prepare-step,
-.global-signal-test-status__prepare-subscription {
+.global-signal-test-status__prepare-step {
   display: inline-flex;
   min-width: 0;
-  max-width: 220px;
+  max-width: none;
   flex: 0 1 auto;
   align-items: center;
   gap: 0.25rem;
@@ -577,6 +513,10 @@ function dismissCompleted() {
   background: var(--color-sky-500);
 }
 
+.global-signal-test-status__prepare-dot.is-warning {
+  background: var(--color-amber-500);
+}
+
 .global-signal-test-status__prepare-dot.is-failed {
   background: var(--color-red-500);
 }
@@ -586,12 +526,6 @@ function dismissCompleted() {
   overflow: hidden;
   color: var(--color-neutral-700);
   font-weight: 500;
-  text-overflow: ellipsis;
-}
-
-.global-signal-test-status__prepare-detail {
-  min-width: 0;
-  overflow: hidden;
   text-overflow: ellipsis;
 }
 
@@ -656,12 +590,7 @@ function dismissCompleted() {
   color: var(--color-neutral-200);
 }
 
-:global(.dark .global-signal-test-status__prepare) {
-  color: var(--color-neutral-300);
-}
-
-:global(.dark .global-signal-test-status__prepare-step),
-:global(.dark .global-signal-test-status__prepare-subscription) {
+:global(.dark .global-signal-test-status__prepare-step) {
   border-color: var(--color-neutral-700);
   background: color-mix(in srgb, var(--color-neutral-800) 60%, transparent);
 }

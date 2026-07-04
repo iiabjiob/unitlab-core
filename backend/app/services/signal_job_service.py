@@ -10,7 +10,6 @@ from app.infrastructure.redis.manager import RedisManager
 from app.infrastructure.redis.stream_bus import enqueue_signal_allocation_job, enqueue_signal_test_run_job
 
 settings = get_settings()
-
 SignalJobStatus = Literal[
     "queued",
     "running",
@@ -68,6 +67,7 @@ async def create_signal_job(
     workspace_id: int,
     operation: SignalJobOperation,
     payload: dict[str, Any],
+    initial_result: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     redis = RedisManager.get_instance()
     job_id = uuid4().hex
@@ -97,7 +97,7 @@ async def create_signal_job(
         "progress_done": 0,
         "message": "Queued",
         "error": None,
-        "result": {},
+        "result": dict(initial_result or {}),
         "created_at": now_iso,
         "updated_at": now_iso,
     }
@@ -400,7 +400,10 @@ async def refresh_signal_job_ttl(
             await redis.expire(lock_key, ttl_seconds)
 
 
-async def control_signal_job(job_id: str, action: Literal["pause", "resume", "stop"]) -> dict[str, Any] | None:
+async def control_signal_job(
+    job_id: str,
+    action: Literal["pause", "resume", "stop"],
+) -> dict[str, Any] | None:
     current = await get_signal_job(job_id)
     if current is None:
         return None
