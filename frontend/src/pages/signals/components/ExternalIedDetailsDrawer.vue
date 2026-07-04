@@ -108,6 +108,7 @@
                 'is-active': meta.active,
                 'is-selected': tree.isSelected(row.value),
                 'is-match': meta.matched,
+                'is-report-enabled': row.kind === 'Report' && isReportEnabled(row.value),
               }"
               role="treeitem"
               :aria-level="meta.depth + 1"
@@ -126,6 +127,12 @@
               </span>
               <span class="external-ied-details__tree-kind">{{ row.kind }}</span>
               <span class="external-ied-details__tree-label">{{ row.label }}</span>
+              <span
+                v-if="row.kind === 'Report' && isReportEnabled(row.value)"
+                class="external-ied-details__tree-enabled"
+                title="Report enabled"
+                aria-label="Report enabled"
+              />
               <span v-if="row.valueLabel" class="external-ied-details__tree-value">{{ row.valueLabel }}</span>
             </button>
           </div>
@@ -133,6 +140,21 @@
       </section>
 
       <div class="external-ied-details__actions">
+        <div v-if="selectedReportRow" class="external-ied-details__selected-report">
+          <span class="external-ied-details__selected-report-label">{{ selectedReportRow.label }}</span>
+          <span class="external-ied-details__selected-report-state">
+            {{ selectedReportEnabled ? "Enabled" : "Disabled" }}
+          </span>
+        </div>
+        <UiButton
+          v-if="selectedReportRow"
+          :variant="selectedReportEnabled ? 'danger' : 'success'"
+          size="sm"
+          :disabled="!record || refreshing || record.status !== 'reachable'"
+          @click="toggleSelectedReportEnabled"
+        >
+          {{ selectedReportEnabled ? "Disable" : "Enable" }}
+        </UiButton>
         <UiButton
           variant="secondary"
           size="sm"
@@ -155,7 +177,7 @@ import UiButton from "@/components/ui/UiButton.vue"
 import type { ExternalIedDiscoveryTree, ExternalIedRecord } from "@/stores/externalIedStore"
 
 type NodeValue = string
-type TreeKind = "Report" | "Dataset" | "Signal"
+type TreeKind = "LD" | "LN" | "Report" | "Dataset" | "Signal"
 
 interface ModelTreeRow {
   value: NodeValue
@@ -190,6 +212,8 @@ const emit = defineEmits<{
 }>()
 
 const treeSearch = ref("")
+const selectedTreeValue = ref<NodeValue | null>(null)
+const enabledReportValues = ref<Set<NodeValue>>(new Set())
 const treeItemElements = new Map<NodeValue, HTMLElement>()
 const treeViewportRef = ref<HTMLElement | null>(null)
 let treeViewportResizeObserver: ResizeObserver | null = null
@@ -326,6 +350,15 @@ const renderedTreeRows = computed<RenderedModelTreeRow[]>(() => {
   }
   return rendered
 })
+const selectedReportRow = computed(() => {
+  const value = selectedTreeValue.value
+  if (!value) return null
+  const row = rowByValue.value.get(value)
+  return row?.kind === "Report" ? row : null
+})
+const selectedReportEnabled = computed(() => (
+  selectedReportRow.value ? enabledReportValues.value.has(selectedReportRow.value.value) : false
+))
 const treeVisibleCount = computed(() => {
   void tree.state.value
   return tree.getVisibleCount()
@@ -377,6 +410,12 @@ onUnmounted(() => {
 
 watch(modelTreeNodes, (nodes) => {
   tree.registerNodes(nodes)
+  if (selectedTreeValue.value && !rowByValue.value.has(selectedTreeValue.value)) {
+    selectedTreeValue.value = null
+  }
+  enabledReportValues.value = new Set(
+    [...enabledReportValues.value].filter(value => rowByValue.value.get(value)?.kind === "Report"),
+  )
   syncTreeExpansion()
 }, { immediate: true })
 
@@ -389,6 +428,7 @@ watch(treeSearch, (query) => {
 watch(() => props.open, (open) => {
   if (!open) {
     treeSearch.value = ""
+    selectedTreeValue.value = null
     return
   }
   syncTreeExpansion()
@@ -399,13 +439,60 @@ watch(() => props.open, (open) => {
 function buildModelTreeRows(model: ExternalIedDiscoveryTree | null): ModelTreeRow[] {
   if (!model?.reports.length) return []
   const rows: ModelTreeRow[] = []
+  const emittedGroups = new Set<string>()
+  const hierarchyByReport = model.reports.map(resolveReportHierarchy)
+  const logicalDeviceLabels = resolveLogicalDeviceLabels(hierarchyByReport.map(item => item.logicalDevice))
+  const ldStats = new Map<string, { logicalNodes: Set<string>; reports: number }>()
+  const lnStats = new Map<string, { reports: number }>()
+
+  hierarchyByReport.forEach((hierarchy) => {
+    const ld = ldStats.get(hierarchy.logicalDevice) ?? { logicalNodes: new Set<string>(), reports: 0 }
+    ld.logicalNodes.add(hierarchy.logicalNode)
+    ld.reports += 1
+    ldStats.set(hierarchy.logicalDevice, ld)
+
+    const lnKey = modelTreeGroupKey(hierarchy.logicalDevice, hierarchy.logicalNode)
+    const ln = lnStats.get(lnKey) ?? { reports: 0 }
+    ln.reports += 1
+    lnStats.set(lnKey, ln)
+  })
+
   model.reports.forEach((report, reportIndex) => {
+    const hierarchy = hierarchyByReport[reportIndex]
+    const ldValue = `ld:${hierarchy.logicalDevice}`
+    const lnValue = `ln:${hierarchy.logicalDevice}:${hierarchy.logicalNode}`
+    if (!emittedGroups.has(ldValue)) {
+      emittedGroups.add(ldValue)
+      const stats = ldStats.get(hierarchy.logicalDevice)
+      rows.push({
+        value: ldValue,
+        parent: null,
+        kind: "LD",
+        label: logicalDeviceLabels.get(hierarchy.logicalDevice) ?? hierarchy.logicalDevice,
+        valueLabel: stats ? `${stats.logicalNodes.size} LN · ${stats.reports} reports` : null,
+        isLeaf: false,
+        text: hierarchy.logicalDevice,
+      })
+    }
+    if (!emittedGroups.has(lnValue)) {
+      emittedGroups.add(lnValue)
+      const stats = lnStats.get(modelTreeGroupKey(hierarchy.logicalDevice, hierarchy.logicalNode))
+      rows.push({
+        value: lnValue,
+        parent: ldValue,
+        kind: "LN",
+        label: hierarchy.logicalNode,
+        valueLabel: stats ? `${stats.reports} report${stats.reports === 1 ? "" : "s"}` : null,
+        isLeaf: false,
+        text: [hierarchy.logicalDevice, hierarchy.logicalNode].join(" "),
+      })
+    }
     const reportValue = `report:${reportIndex}:${report.reference}`
     rows.push({
       value: reportValue,
-      parent: null,
+      parent: lnValue,
       kind: "Report",
-      label: report.name || report.reference,
+      label: resolveReportLabel(report),
       valueLabel: report.kind,
       isLeaf: false,
       text: [report.name, report.reference, report.kind, report.dataset_reference].filter(Boolean).join(" "),
@@ -434,6 +521,92 @@ function buildModelTreeRows(model: ExternalIedDiscoveryTree | null): ModelTreeRo
     })
   })
   return rows
+}
+
+function modelTreeGroupKey(logicalDevice: string, logicalNode: string): string {
+  return `${logicalDevice}\u0000${logicalNode}`
+}
+
+function resolveLogicalDeviceLabels(logicalDevices: readonly string[]): Map<string, string> {
+  const uniqueLogicalDevices = Array.from(new Set(logicalDevices.map(value => value.trim()).filter(Boolean)))
+  const labels = new Map<string, string>()
+  if (uniqueLogicalDevices.length <= 1) {
+    uniqueLogicalDevices.forEach(value => labels.set(value, value))
+    return labels
+  }
+
+  const prefix = trimLogicalDeviceDisplayPrefix(resolveCommonPrefix(uniqueLogicalDevices))
+  uniqueLogicalDevices.forEach((logicalDevice) => {
+    const candidate = prefix && logicalDevice.startsWith(prefix)
+      ? logicalDevice.slice(prefix.length).trim()
+      : logicalDevice
+    labels.set(logicalDevice, candidate || logicalDevice)
+  })
+  return labels
+}
+
+function resolveCommonPrefix(values: readonly string[]): string {
+  if (!values.length) return ""
+  let prefix = values[0] ?? ""
+  for (const value of values.slice(1)) {
+    while (prefix && !value.startsWith(prefix)) {
+      prefix = prefix.slice(0, -1)
+    }
+    if (!prefix) break
+  }
+  return prefix
+}
+
+function trimLogicalDeviceDisplayPrefix(prefix: string): string {
+  let value = prefix
+  while (value && /[A-Za-z]$/.test(value)) {
+    value = value.slice(0, -1)
+  }
+  return value
+}
+
+function resolveReportHierarchy(report: ExternalIedDiscoveryTree["reports"][number]): { logicalDevice: string; logicalNode: string } {
+  const candidates = [
+    report.reference,
+    report.dataset_reference,
+    report.dataset?.reference,
+    report.dataset?.signals[0]?.reference,
+  ]
+  for (const candidate of candidates) {
+    const parsed = parseIec61850Hierarchy(candidate)
+    if (parsed) {
+      return parsed
+    }
+  }
+  return {
+    logicalDevice: "Unknown LD",
+    logicalNode: "Unknown LN",
+  }
+}
+
+function parseIec61850Hierarchy(reference: string | null | undefined): { logicalDevice: string; logicalNode: string } | null {
+  let text = String(reference ?? "").trim()
+  if (!text) return null
+  if (text.includes("!")) {
+    text = text.split("!", 2)[1] ?? text
+  }
+  const slashIndex = text.indexOf("/")
+  if (slashIndex <= 0) return null
+  const logicalDevice = text.slice(0, slashIndex).trim()
+  const rest = text.slice(slashIndex + 1).trim()
+  if (!logicalDevice || !rest) return null
+  const logicalNode = rest.split(/[.$\/]/, 1)[0]?.trim()
+  if (!logicalNode) return null
+  return { logicalDevice, logicalNode }
+}
+
+function resolveReportLabel(report: ExternalIedDiscoveryTree["reports"][number]): string {
+  const name = String(report.name ?? "").trim()
+  if (name) return name
+  const reference = String(report.reference ?? "").trim()
+  if (!reference) return "Report"
+  const parts = reference.split(/[\/.$]/).filter(Boolean)
+  return parts[parts.length - 1] ?? reference
 }
 
 function resolveDiscoveryFactCount(recordCount: number | null | undefined, treeCount: number, fallbackCount: number): number {
@@ -474,11 +647,28 @@ function onTreeRowClick(value: NodeValue) {
   tree.focus(value)
   tree.clearSelection()
   tree.select(value)
+  selectedTreeValue.value = value
   const row = rowByValue.value.get(value)
   if (row && !row.isLeaf) {
     tree.toggle(value)
     tree.refreshWindow()
   }
+}
+
+function isReportEnabled(value: NodeValue): boolean {
+  return enabledReportValues.value.has(value)
+}
+
+function toggleSelectedReportEnabled() {
+  const report = selectedReportRow.value
+  if (!report) return
+  const next = new Set(enabledReportValues.value)
+  if (next.has(report.value)) {
+    next.delete(report.value)
+  } else {
+    next.add(report.value)
+  }
+  enabledReportValues.value = next
 }
 
 function onTreeRootKeydown(event: KeyboardEvent) {
@@ -791,6 +981,10 @@ function onTreeScroll(event: Event) {
   background: color-mix(in srgb, var(--color-blue-50) 85%, var(--color-white));
 }
 
+.external-ied-details__tree-row.is-report-enabled .external-ied-details__tree-label {
+  color: var(--color-emerald-700);
+}
+
 .external-ied-details__tree-row.is-match .external-ied-details__tree-label {
   color: var(--color-blue-700);
   font-weight: 700;
@@ -821,6 +1015,15 @@ function onTreeScroll(event: Event) {
   white-space: nowrap;
 }
 
+.external-ied-details__tree-enabled {
+  background: var(--color-emerald-500);
+  border-radius: 999px;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-emerald-100) 80%, transparent);
+  flex: 0 0 auto;
+  height: 0.45rem;
+  width: 0.45rem;
+}
+
 .external-ied-details__tree-value {
   color: var(--color-neutral-500);
   flex: 0 0 auto;
@@ -832,8 +1035,35 @@ function onTreeScroll(event: Event) {
   border-top: 1px solid var(--color-neutral-200);
   display: flex;
   flex: 0 0 auto;
+  gap: 0.5rem;
   justify-content: flex-end;
   padding-top: 0.875rem;
+}
+
+.external-ied-details__selected-report {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.external-ied-details__selected-report-label {
+  color: var(--color-neutral-800);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.external-ied-details__selected-report-state {
+  color: var(--color-neutral-500);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 :global(.dark .external-ied-details__header),
@@ -914,7 +1144,23 @@ function onTreeScroll(event: Event) {
   background: color-mix(in srgb, var(--color-blue-950) 65%, var(--color-neutral-950));
 }
 
+:global(.dark .external-ied-details__tree-row.is-report-enabled .external-ied-details__tree-label) {
+  color: var(--color-emerald-200);
+}
+
 :global(.dark .external-ied-details__tree-row.is-match .external-ied-details__tree-label) {
   color: var(--color-blue-300);
+}
+
+:global(.dark .external-ied-details__tree-enabled) {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-emerald-950) 80%, transparent);
+}
+
+:global(.dark .external-ied-details__selected-report-label) {
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .external-ied-details__selected-report-state) {
+  color: var(--color-neutral-400);
 }
 </style>
