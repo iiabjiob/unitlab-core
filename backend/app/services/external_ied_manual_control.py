@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+import logging
 import re
-from threading import RLock
+from threading import Event, RLock, Thread
 from typing import Callable
+from uuid import uuid4
 
 from app.services.iec61850.client_control import Iec61850ClientControlService
 from app.services.iec61850.report_runtime import (
@@ -15,6 +18,11 @@ from app.services.iec61850.report_runtime import (
     Iec61850RuntimeMode,
     Iec61850RuntimeTriggerOptions,
 )
+
+_MANUAL_INSPECTOR_OWNER = "unitlab-manual-ied-inspector"
+_DEFAULT_LEASE_TTL_SECONDS = 15.0
+_DEFAULT_CLEANUP_INTERVAL_SECONDS = 2.0
+_logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,6 +43,29 @@ class ExternalIedManualReportResult:
     enabled: bool
     status: str
     message: str | None = None
+    lease_id: str | None = None
+    owner: str | None = None
+    created_at: str | None = None
+    renewed_at: str | None = None
+    expires_at: str | None = None
+
+
+@dataclass(slots=True)
+class _ExternalIedManualReportLease:
+    lease_id: str
+    owner: str
+    workspace_id: int
+    endpoint: str
+    report_reference: str
+    session_key: str
+    created_at: datetime
+    renewed_at: datetime
+    expires_at: datetime
+
+    def renew(self, ttl: timedelta) -> None:
+        now = _utc_now()
+        self.renewed_at = now
+        self.expires_at = now + ttl
 
 
 class ExternalIedManualReportControlService:
@@ -42,10 +73,31 @@ class ExternalIedManualReportControlService:
         self,
         *,
         control_service_factory: Callable[..., Iec61850ClientControlService] = Iec61850ClientControlService,
+        lease_ttl_seconds: float = _DEFAULT_LEASE_TTL_SECONDS,
+        cleanup_interval_seconds: float = _DEFAULT_CLEANUP_INTERVAL_SECONDS,
+        start_cleanup_thread: bool = True,
     ) -> None:
         self._control_service_factory = control_service_factory
+        self._lease_ttl = timedelta(seconds=max(float(lease_ttl_seconds), 0.05))
+        self._cleanup_interval_seconds = max(float(cleanup_interval_seconds), 0.25)
         self._sessions: dict[str, Iec61850ClientControlService] = {}
+        self._leases_by_session: dict[str, _ExternalIedManualReportLease] = {}
+        self._session_by_lease_id: dict[str, str] = {}
         self._lock = RLock()
+        self._stop_cleanup = Event()
+        self._cleanup_thread: Thread | None = None
+        if start_cleanup_thread:
+            self._cleanup_thread = Thread(
+                target=self._cleanup_expired_leases_loop,
+                name="external-ied-manual-lease-cleanup",
+                daemon=True,
+            )
+            self._cleanup_thread.start()
+
+    def shutdown(self) -> None:
+        self._stop_cleanup.set()
+        if self._cleanup_thread is not None:
+            self._cleanup_thread.join(timeout=2.0)
 
     def set_report_enabled(
         self,
@@ -62,13 +114,31 @@ class ExternalIedManualReportControlService:
                 if service is None:
                     service = self._control_service_factory(
                         session_id=f"external-ied-manual:{request.workspace_id}:{endpoint.host}:{endpoint.port}:{len(self._sessions)}",
-                        client_id="unitlab-manual-ied-inspector",
+                        client_id=_MANUAL_INSPECTOR_OWNER,
                         endpoint=endpoint,
                         candidate=candidate,
                         available_candidates=(candidate,),
                     )
                     self._sessions[session_key] = service
                 snapshot = service.enable_reporting()
+                lease = self._leases_by_session.get(session_key)
+                if lease is None:
+                    now = _utc_now()
+                    lease = _ExternalIedManualReportLease(
+                        lease_id=uuid4().hex,
+                        owner=_MANUAL_INSPECTOR_OWNER,
+                        workspace_id=request.workspace_id,
+                        endpoint=request.endpoint,
+                        report_reference=request.report_reference,
+                        session_key=session_key,
+                        created_at=now,
+                        renewed_at=now,
+                        expires_at=now + self._lease_ttl,
+                    )
+                    self._leases_by_session[session_key] = lease
+                    self._session_by_lease_id[lease.lease_id] = session_key
+                else:
+                    lease.renew(self._lease_ttl)
                 return ExternalIedManualReportResult(
                     workspace_id=request.workspace_id,
                     endpoint=request.endpoint,
@@ -76,18 +146,141 @@ class ExternalIedManualReportControlService:
                     enabled=True,
                     status=str(snapshot.last_state.runtime_status.value if snapshot.last_state else "enabled"),
                     message=snapshot.last_diagnostic.message if snapshot.last_diagnostic else None,
+                    **_lease_fields(lease),
                 )
 
-            service = self._sessions.pop(session_key, None)
-            if service is not None:
-                service.close_ied()
-            return ExternalIedManualReportResult(
+            return self._release_session_locked(
+                session_key,
                 workspace_id=request.workspace_id,
                 endpoint=request.endpoint,
                 report_reference=request.report_reference,
-                enabled=False,
-                status="disabled",
+                reason="manual-release",
             )
+
+    def renew_lease(
+        self,
+        *,
+        workspace_id: int,
+        endpoint: str,
+        lease_id: str,
+    ) -> ExternalIedManualReportResult:
+        with self._lock:
+            session_key = self._session_by_lease_id.get(lease_id)
+            if session_key is None:
+                raise ValueError("External IED manual report lease was not found.")
+            lease = self._leases_by_session.get(session_key)
+            if lease is None or lease.workspace_id != workspace_id or lease.endpoint != endpoint:
+                raise ValueError("External IED manual report lease does not match this endpoint.")
+            service = self._sessions.get(session_key)
+            if service is None or _service_report_enabled(service) is False:
+                return self._release_session_locked(
+                    session_key,
+                    workspace_id=lease.workspace_id,
+                    endpoint=lease.endpoint,
+                    report_reference=lease.report_reference,
+                    reason="report-disabled",
+                )
+            if lease.expires_at <= _utc_now():
+                return self._release_session_locked(
+                    session_key,
+                    workspace_id=lease.workspace_id,
+                    endpoint=lease.endpoint,
+                    report_reference=lease.report_reference,
+                    reason="lease-expired",
+                )
+            lease.renew(self._lease_ttl)
+            return ExternalIedManualReportResult(
+                workspace_id=lease.workspace_id,
+                endpoint=lease.endpoint,
+                report_reference=lease.report_reference,
+                enabled=True,
+                status="enabled",
+                **_lease_fields(lease),
+            )
+
+    def release_lease(
+        self,
+        *,
+        workspace_id: int,
+        endpoint: str,
+        lease_id: str,
+    ) -> ExternalIedManualReportResult:
+        with self._lock:
+            session_key = self._session_by_lease_id.get(lease_id)
+            if session_key is None:
+                raise ValueError("External IED manual report lease was not found.")
+            lease = self._leases_by_session.get(session_key)
+            if lease is None or lease.workspace_id != workspace_id or lease.endpoint != endpoint:
+                raise ValueError("External IED manual report lease does not match this endpoint.")
+            return self._release_session_locked(
+                session_key,
+                workspace_id=lease.workspace_id,
+                endpoint=lease.endpoint,
+                report_reference=lease.report_reference,
+                reason="lease-release",
+            )
+
+    def cleanup_expired_leases(self) -> None:
+        now = _utc_now()
+        with self._lock:
+            expired = [
+                session_key
+                for session_key, lease in self._leases_by_session.items()
+                if lease.expires_at <= now
+            ]
+            for session_key in expired:
+                lease = self._leases_by_session.get(session_key)
+                if lease is None:
+                    continue
+                try:
+                    self._release_session_locked(
+                        session_key,
+                        workspace_id=lease.workspace_id,
+                        endpoint=lease.endpoint,
+                        report_reference=lease.report_reference,
+                        reason="lease-expired",
+                    )
+                except Exception:
+                    _logger.exception(
+                        "Failed to cleanup expired External IED manual report lease",
+                        extra={
+                            "workspace_id": lease.workspace_id,
+                            "endpoint": lease.endpoint,
+                            "report_reference": lease.report_reference,
+                            "lease_id": lease.lease_id,
+                        },
+                    )
+
+    def _cleanup_expired_leases_loop(self) -> None:
+        while not self._stop_cleanup.wait(self._cleanup_interval_seconds):
+            self.cleanup_expired_leases()
+
+    def _release_session_locked(
+        self,
+        session_key: str,
+        *,
+        workspace_id: int,
+        endpoint: str,
+        report_reference: str,
+        reason: str,
+    ) -> ExternalIedManualReportResult:
+        lease = self._leases_by_session.pop(session_key, None)
+        if lease is not None:
+            self._session_by_lease_id.pop(lease.lease_id, None)
+        service = self._sessions.pop(session_key, None)
+        if service is not None:
+            disconnect = getattr(service, "disconnect_ied", None)
+            if callable(disconnect):
+                disconnect()
+            service.close_ied()
+        return ExternalIedManualReportResult(
+            workspace_id=workspace_id,
+            endpoint=endpoint,
+            report_reference=report_reference,
+            enabled=False,
+            status="disabled",
+            message=reason,
+        )
 
 
 def _parse_endpoint(endpoint: str) -> Iec61850DeviceEndpoint:
@@ -108,6 +301,31 @@ def _parse_endpoint(endpoint: str) -> Iec61850DeviceEndpoint:
         host=host.strip(),
         port=port,
     )
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _lease_fields(lease: _ExternalIedManualReportLease) -> dict[str, str]:
+    return {
+        "lease_id": lease.lease_id,
+        "owner": lease.owner,
+        "created_at": lease.created_at.isoformat(),
+        "renewed_at": lease.renewed_at.isoformat(),
+        "expires_at": lease.expires_at.isoformat(),
+    }
+
+
+def _service_report_enabled(service: Iec61850ClientControlService) -> bool | None:
+    snapshot_method = getattr(service, "snapshot", None)
+    if not callable(snapshot_method):
+        return None
+    snapshot = snapshot_method()
+    last_state = getattr(snapshot, "last_state", None)
+    if last_state is None:
+        return None
+    return bool(getattr(last_state, "enabled", False))
 
 
 def _candidate_from_report_request(request: ExternalIedManualReportRequest) -> Iec61850ReportControlCandidate:

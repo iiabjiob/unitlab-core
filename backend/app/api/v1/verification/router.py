@@ -179,6 +179,44 @@ async def disable_external_ied_report(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@router.post("/external-ieds/{endpoint}/reports/leases/{lease_id}/heartbeat", response_model=VerificationExternalIedManualReportResponseSchema)
+async def heartbeat_external_ied_report_lease(
+    workspace_id: int,
+    endpoint: str,
+    lease_id: str,
+):
+    try:
+        return await asyncio.to_thread(
+            get_external_ied_manual_report_control_service().renew_lease,
+            workspace_id=workspace_id,
+            endpoint=endpoint,
+            lease_id=lease_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/external-ieds/{endpoint}/reports/leases/{lease_id}/release", response_model=VerificationExternalIedManualReportResponseSchema)
+async def release_external_ied_report_lease(
+    workspace_id: int,
+    endpoint: str,
+    lease_id: str,
+):
+    try:
+        return await asyncio.to_thread(
+            get_external_ied_manual_report_control_service().release_lease,
+            workspace_id=workspace_id,
+            endpoint=endpoint,
+            lease_id=lease_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @router.post("/runs", response_model=VerificationRunDetailResponseSchema)
 async def start_verification_run(
     workspace_id: int,

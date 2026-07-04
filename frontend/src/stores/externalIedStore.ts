@@ -19,6 +19,7 @@ import type {
 import type {
   VerificationExternalIedDiscoveryTreeResponse,
   VerificationExternalIedManualReportRequest,
+  VerificationExternalIedManualReportResponse,
 } from "@/types/verification"
 
 export type ExternalIedStatus = WsExternalIedStatus
@@ -289,6 +290,7 @@ export const useExternalIedStore = defineStore("externalIedStore", () => {
   const planningCoverageBySignalId = ref<Record<number, ExternalIedPlanningCoverage>>({})
   const discoveryTreeCache = ref<Record<string, ExternalIedDiscoveryTree>>({})
   const manualEnabledReports = ref<Record<string, true>>({})
+  const manualReportLeases = ref<Record<string, VerificationExternalIedManualReportResponse>>({})
   const configuredTargets = ref<Record<string, ExternalIedTarget>>({})
   const statusRevision = ref(0)
   const lastChangedIps = ref<string[]>([])
@@ -534,6 +536,7 @@ export const useExternalIedStore = defineStore("externalIedStore", () => {
     planningCoverageBySignalId.value = {}
     discoveryTreeCache.value = {}
     manualEnabledReports.value = {}
+    manualReportLeases.value = {}
     configuredTargets.value = {}
     publishChanged([], normalizeSignalIds(signalIds))
   }
@@ -665,13 +668,139 @@ export const useExternalIedStore = defineStore("externalIedStore", () => {
     )
     const key = manualReportKey(normalizedIp, normalizedPort, reportReference)
     const next = { ...manualEnabledReports.value }
+    const nextLeases = { ...manualReportLeases.value }
     if (response.data.enabled) {
       next[key] = true
+      if (response.data.lease_id) {
+        nextLeases[key] = response.data
+      }
     } else {
       delete next[key]
+      delete nextLeases[key]
     }
     manualEnabledReports.value = next
+    manualReportLeases.value = nextLeases
     return response.data
+  }
+
+  async function heartbeatManualReportLease(
+    ip: string | null | undefined,
+    port: number | null | undefined,
+    reportReference: string | null | undefined,
+  ) {
+    const normalizedIp = normalizeIp(ip)
+    const normalizedPort = normalizePort(port)
+    const normalizedReportReference = normalizeOptionalText(reportReference)
+    const workspaceId = Number(workspaceStore.activeWorkspaceId)
+    if (!normalizedIp || !normalizedReportReference || !Number.isFinite(workspaceId) || workspaceId <= 0) {
+      return null
+    }
+    const key = manualReportKey(normalizedIp, normalizedPort, normalizedReportReference)
+    const leaseId = manualReportLeases.value[key]?.lease_id
+    if (!leaseId) {
+      return null
+    }
+    let response
+    try {
+      response = await VerificationAPI.heartbeatExternalIedReportLease(workspaceId, normalizedIp, normalizedPort, leaseId)
+    } catch (error) {
+      clearManualReportLease(key)
+      throw error
+    }
+    if (response.data.enabled) {
+      manualReportLeases.value = {
+        ...manualReportLeases.value,
+        [key]: response.data,
+      }
+    } else {
+      const nextEnabled = { ...manualEnabledReports.value }
+      const nextLeases = { ...manualReportLeases.value }
+      delete nextEnabled[key]
+      delete nextLeases[key]
+      manualEnabledReports.value = nextEnabled
+      manualReportLeases.value = nextLeases
+    }
+    return response.data
+  }
+
+  function clearManualReportLease(key: string) {
+    const nextEnabled = { ...manualEnabledReports.value }
+    const nextLeases = { ...manualReportLeases.value }
+    delete nextEnabled[key]
+    delete nextLeases[key]
+    manualEnabledReports.value = nextEnabled
+    manualReportLeases.value = nextLeases
+  }
+
+  function getManualReportLeaseCountForEndpoint(ip: string | null | undefined, port: number | null | undefined): number {
+    const normalizedIp = normalizeIp(ip)
+    if (!normalizedIp) return 0
+    const prefix = `${endpointKey(normalizedIp, normalizePort(port))}|`
+    return Object.keys(manualReportLeases.value).filter(key => key.startsWith(prefix)).length
+  }
+
+  async function heartbeatManualReportLeasesForEndpoint(ip: string | null | undefined, port: number | null | undefined) {
+    const normalizedIp = normalizeIp(ip)
+    const normalizedPort = normalizePort(port)
+    const workspaceId = Number(workspaceStore.activeWorkspaceId)
+    if (!normalizedIp || !Number.isFinite(workspaceId) || workspaceId <= 0) {
+      return []
+    }
+    const prefix = `${endpointKey(normalizedIp, normalizedPort)}|`
+    const entries = Object.entries(manualReportLeases.value).filter(([key, lease]) => key.startsWith(prefix) && lease.lease_id)
+    const results = await Promise.all(entries.map(async ([key, lease]) => {
+      try {
+        const response = await VerificationAPI.heartbeatExternalIedReportLease(
+          workspaceId,
+          normalizedIp,
+          normalizedPort,
+          String(lease.lease_id),
+        )
+        return { key, data: response.data }
+      } catch {
+        return { key, data: null }
+      }
+    }))
+    const nextEnabled = { ...manualEnabledReports.value }
+    const nextLeases = { ...manualReportLeases.value }
+    const renewed: VerificationExternalIedManualReportResponse[] = []
+    results.forEach((result) => {
+      const { key, data } = result
+      if (data?.enabled) {
+        nextEnabled[key] = true
+        nextLeases[key] = data
+        renewed.push(data)
+      } else {
+        delete nextEnabled[key]
+        delete nextLeases[key]
+      }
+    })
+    manualEnabledReports.value = nextEnabled
+    manualReportLeases.value = nextLeases
+    return renewed
+  }
+
+  async function releaseManualReportLeasesForEndpoint(ip: string | null | undefined, port: number | null | undefined) {
+    const normalizedIp = normalizeIp(ip)
+    const normalizedPort = normalizePort(port)
+    const workspaceId = Number(workspaceStore.activeWorkspaceId)
+    if (!normalizedIp || !Number.isFinite(workspaceId) || workspaceId <= 0) {
+      return
+    }
+    const prefix = `${endpointKey(normalizedIp, normalizedPort)}|`
+    const entries = Object.entries(manualReportLeases.value).filter(([key, lease]) => key.startsWith(prefix) && lease.lease_id)
+    await Promise.allSettled(entries.map(([, lease]) => VerificationAPI.releaseExternalIedReportLease(
+      workspaceId,
+      normalizedIp,
+      normalizedPort,
+      String(lease.lease_id),
+    )))
+    manualEnabledReports.value = Object.fromEntries(
+      Object.entries(manualEnabledReports.value).filter(([key]) => !key.startsWith(prefix)),
+    )
+    manualReportLeases.value = Object.fromEntries(
+      Object.entries(manualReportLeases.value).filter(([key]) => !key.startsWith(prefix)),
+    )
   }
 
   return {
@@ -684,6 +813,7 @@ export const useExternalIedStore = defineStore("externalIedStore", () => {
     lastChangedSignalIds,
     lastError,
     manualEnabledReports,
+    manualReportLeases,
     configureExpectedDevices,
     applySnapshot,
     applyStatusChanged,
@@ -695,6 +825,10 @@ export const useExternalIedStore = defineStore("externalIedStore", () => {
     refreshDiscovery,
     isManualReportEnabled,
     setManualReportEnabled,
+    heartbeatManualReportLease,
+    heartbeatManualReportLeasesForEndpoint,
+    getManualReportLeaseCountForEndpoint,
+    releaseManualReportLeasesForEndpoint,
     applyPlanningSnapshot,
     applyPlanningChanged,
     clearLocal,

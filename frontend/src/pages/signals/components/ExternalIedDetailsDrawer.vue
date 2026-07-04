@@ -121,6 +121,7 @@
                 paddingLeft: `${Math.max(8, (meta.depth + 1) * 14)}px`,
               }"
               @click="onTreeRowClick(row.value)"
+              @dblclick="onTreeRowDoubleClick(row.value)"
             >
               <span v-if="row.isLeaf" class="external-ied-details__tree-toggle" aria-hidden="true">•</span>
               <span
@@ -234,6 +235,7 @@ type HighlightTextPart = {
 
 const TREE_ROW_HEIGHT = 28
 const TREE_OVERSCAN_ROWS = 10
+const MANUAL_REPORT_LEASE_HEARTBEAT_MS = 5000
 
 const props = defineProps<{
   open: boolean
@@ -256,6 +258,7 @@ const selectedTreeValue = ref<NodeValue | null>(null)
 const manualReportBusy = ref(false)
 const treeItemElements = new Map<NodeValue, HTMLElement>()
 const treeViewportRef = ref<HTMLElement | null>(null)
+let manualReportLeaseHeartbeatTimer: ReturnType<typeof window.setInterval> | null = null
 let treeViewportResizeObserver: ResizeObserver | null = null
 const tree = useVirtualTreeviewController<NodeValue>({
   nodes: [],
@@ -401,6 +404,11 @@ const selectedReportEnabled = computed(() => (
     ? externalIedStore.isManualReportEnabled(props.record.ip, props.record.port, selectedReportRow.value.reportReference)
     : false
 ))
+const activeManualReportLeaseCount = computed(() => (
+  props.record
+    ? externalIedStore.getManualReportLeaseCountForEndpoint(props.record.ip, props.record.port)
+    : 0
+))
 const treeVisibleCount = computed(() => {
   void tree.state.value
   return tree.getVisibleCount()
@@ -446,6 +454,8 @@ watch(
 )
 
 onUnmounted(() => {
+  stopManualReportLeaseHeartbeat()
+  void releaseEndpointManualReportLeases()
   treeViewportResizeObserver?.disconnect()
   treeViewportResizeObserver = null
 })
@@ -464,8 +474,11 @@ watch(treeSearch, (query) => {
   setTreeScrollTop(0)
 })
 
-watch(() => props.open, (open) => {
+watch(() => props.open, (open, wasOpen) => {
   if (!open) {
+    if (wasOpen) {
+      void releaseEndpointManualReportLeases()
+    }
     treeSearch.value = ""
     selectedTreeValue.value = null
     return
@@ -474,6 +487,23 @@ watch(() => props.open, (open) => {
   const first = renderedTreeRows.value[0]?.row
   if (first) tree.focus(first.value)
 })
+
+watch(
+  () => [
+    props.open,
+    props.record?.ip ?? "",
+    props.record?.port ?? 102,
+    activeManualReportLeaseCount.value,
+  ] as const,
+  () => {
+    if (props.open && activeManualReportLeaseCount.value > 0) {
+      startManualReportLeaseHeartbeat()
+    } else {
+      stopManualReportLeaseHeartbeat()
+    }
+  },
+  { immediate: true },
+)
 
 function buildModelTreeRows(model: ExternalIedDiscoveryTree | null): ModelTreeRow[] {
   if (!model?.reports.length) return []
@@ -719,6 +749,19 @@ function bindTreeItem(value: NodeValue) {
 }
 
 function onTreeRowClick(value: NodeValue) {
+  selectTreeRow(value)
+}
+
+function onTreeRowDoubleClick(value: NodeValue) {
+  const row = rowByValue.value.get(value)
+  selectTreeRow(value)
+  if (row && !row.isLeaf) {
+    tree.toggle(value)
+    tree.refreshWindow()
+  }
+}
+
+function selectTreeRow(value: NodeValue) {
   tree.focus(value)
   tree.clearSelection()
   tree.select(value)
@@ -728,10 +771,7 @@ function onTreeRowClick(value: NodeValue) {
 function onTreeToggleClick(value: NodeValue) {
   const row = rowByValue.value.get(value)
   if (row && !row.isLeaf) {
-    tree.focus(value)
-    tree.clearSelection()
-    tree.select(value)
-    selectedTreeValue.value = value
+    selectTreeRow(value)
     tree.toggle(value)
     tree.refreshWindow()
   }
@@ -790,6 +830,36 @@ async function toggleSelectedReportEnabled() {
   } finally {
     manualReportBusy.value = false
   }
+}
+
+function startManualReportLeaseHeartbeat() {
+  stopManualReportLeaseHeartbeat()
+  if (typeof window === "undefined") return
+  manualReportLeaseHeartbeatTimer = window.setInterval(() => {
+    void heartbeatEndpointManualReportLeases()
+  }, MANUAL_REPORT_LEASE_HEARTBEAT_MS)
+}
+
+function stopManualReportLeaseHeartbeat() {
+  if (manualReportLeaseHeartbeatTimer === null || typeof window === "undefined") return
+  window.clearInterval(manualReportLeaseHeartbeatTimer)
+  manualReportLeaseHeartbeatTimer = null
+}
+
+async function heartbeatEndpointManualReportLeases() {
+  const record = props.record
+  if (!props.open || !record) return
+  try {
+    await externalIedStore.heartbeatManualReportLeasesForEndpoint(record.ip, record.port)
+  } catch {
+    stopManualReportLeaseHeartbeat()
+  }
+}
+
+async function releaseEndpointManualReportLeases() {
+  const record = props.record
+  if (!record) return
+  await externalIedStore.releaseManualReportLeasesForEndpoint(record.ip, record.port)
 }
 
 function onTreeRootKeydown(event: KeyboardEvent) {

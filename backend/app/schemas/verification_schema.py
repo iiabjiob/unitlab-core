@@ -297,6 +297,11 @@ class VerificationExternalIedManualReportResponseSchema(BaseModel):
     enabled: bool
     status: str
     message: str | None = None
+    lease_id: str | None = None
+    owner: str | None = None
+    created_at: str | None = None
+    renewed_at: str | None = None
+    expires_at: str | None = None
 
 
 class VerificationSessionSnapshotSchema(BaseModel):

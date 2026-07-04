@@ -188,6 +188,11 @@ export interface VerificationExternalIedManualReportResponse {
   enabled: boolean
   status: string
   message?: string | null
+  lease_id?: string | null
+  owner?: string | null
+  created_at?: string | null
+  renewed_at?: string | null
+  expires_at?: string | null
 }
 
 export interface VerificationAutoRunStartPayload {
