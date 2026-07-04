@@ -4,6 +4,8 @@ import type {
   VerificationAutoRunStartPayload,
   VerificationExternalIedTargetsRequest,
   VerificationExternalIedDiscoveryTreeResponse,
+  VerificationExternalIedManualReportRequest,
+  VerificationExternalIedManualReportResponse,
   VerificationMmsReachabilityRequest,
   VerificationMmsReachabilityResponse,
   VerificationNetworkPreflightResponse,
@@ -46,6 +48,14 @@ export const VerificationAPI = {
   getExternalIedDiscoveryTree(workspaceId: number, ip: string, port = 102, options?: HttpRequestOptions) {
     return http.get<VerificationExternalIedDiscoveryTreeResponse>(
       `${API_V1}/workspaces/${workspaceId}/verification/external-ieds/${encodeURIComponent(`${ip}:${port}`)}/discovery/tree`,
+      options,
+    )
+  },
+
+  setExternalIedReportEnabled(workspaceId: number, ip: string, port: number, payload: VerificationExternalIedManualReportRequest, enabled: boolean, options?: HttpRequestOptions) {
+    return http.post<VerificationExternalIedManualReportResponse>(
+      `${API_V1}/workspaces/${workspaceId}/verification/external-ieds/${encodeURIComponent(`${ip}:${port}`)}/reports/${enabled ? "enable" : "disable"}`,
+      payload,
       options,
     )
   },

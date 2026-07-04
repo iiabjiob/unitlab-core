@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,6 +10,8 @@ from app.schemas.verification_schema import (
     VerificationAutoRunStartSchema,
     VerificationExternalIedTargetsRequestSchema,
     VerificationExternalIedDiscoveryTreeResponseSchema,
+    VerificationExternalIedManualReportRequestSchema,
+    VerificationExternalIedManualReportResponseSchema,
     VerificationMmsReachabilityRequestSchema,
     VerificationMmsReachabilityResponseSchema,
     VerificationNetworkPreflightResponseSchema,
@@ -22,6 +26,10 @@ from app.services.external_ied_availability import (
     configure_external_ied_targets,
     load_external_ied_discovery_tree,
     publish_external_ied_status_snapshot,
+)
+from app.services.external_ied_manual_control import (
+    ExternalIedManualReportRequest,
+    get_external_ied_manual_report_control_service,
 )
 from app.services.external_ied_discovery_scheduler import schedule_external_ied_discovery_for_user_request
 from app.services.verification_evidence import VerificationEvidenceRepository
@@ -119,6 +127,56 @@ async def get_external_ied_discovery_tree(
     if tree is None:
         raise HTTPException(status_code=404, detail="External IED discovery model is not available")
     return tree
+
+
+@router.post("/external-ieds/{endpoint}/reports/enable", response_model=VerificationExternalIedManualReportResponseSchema)
+async def enable_external_ied_report(
+    workspace_id: int,
+    endpoint: str,
+    payload: VerificationExternalIedManualReportRequestSchema,
+):
+    try:
+        return await asyncio.to_thread(
+            get_external_ied_manual_report_control_service().set_report_enabled,
+            ExternalIedManualReportRequest(
+                workspace_id=workspace_id,
+                endpoint=endpoint,
+                report_reference=payload.report_reference,
+                report_name=payload.report_name,
+                report_kind=payload.report_kind,
+                dataset_reference=payload.dataset_reference,
+            ),
+            enabled=True,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/external-ieds/{endpoint}/reports/disable", response_model=VerificationExternalIedManualReportResponseSchema)
+async def disable_external_ied_report(
+    workspace_id: int,
+    endpoint: str,
+    payload: VerificationExternalIedManualReportRequestSchema,
+):
+    try:
+        return await asyncio.to_thread(
+            get_external_ied_manual_report_control_service().set_report_enabled,
+            ExternalIedManualReportRequest(
+                workspace_id=workspace_id,
+                endpoint=endpoint,
+                report_reference=payload.report_reference,
+                report_name=payload.report_name,
+                report_kind=payload.report_kind,
+                dataset_reference=payload.dataset_reference,
+            ),
+            enabled=False,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.post("/runs", response_model=VerificationRunDetailResponseSchema)

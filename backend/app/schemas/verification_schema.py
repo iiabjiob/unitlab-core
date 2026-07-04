@@ -283,6 +283,22 @@ class VerificationExternalIedDiscoveryTreeResponseSchema(BaseModel):
     reports: list[VerificationExternalIedDiscoveryTreeReportSchema] = Field(default_factory=list)
 
 
+class VerificationExternalIedManualReportRequestSchema(BaseModel):
+    report_reference: str = Field(min_length=1, max_length=512)
+    report_name: str | None = Field(default=None, max_length=256)
+    report_kind: str | None = Field(default=None, max_length=64)
+    dataset_reference: str | None = Field(default=None, max_length=512)
+
+
+class VerificationExternalIedManualReportResponseSchema(BaseModel):
+    workspace_id: int
+    endpoint: str
+    report_reference: str
+    enabled: bool
+    status: str
+    message: str | None = None
+
+
 class VerificationSessionSnapshotSchema(BaseModel):
     session_id: str
     endpoint_id: str

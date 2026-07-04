@@ -174,6 +174,22 @@ export interface VerificationExternalIedDiscoveryTreeResponse {
   reports: VerificationExternalIedDiscoveryTreeReport[]
 }
 
+export interface VerificationExternalIedManualReportRequest {
+  report_reference: string
+  report_name?: string | null
+  report_kind?: string | null
+  dataset_reference?: string | null
+}
+
+export interface VerificationExternalIedManualReportResponse {
+  workspace_id: number
+  endpoint: string
+  report_reference: string
+  enabled: boolean
+  status: string
+  message?: string | null
+}
+
 export interface VerificationAutoRunStartPayload {
   signal_ids: number[]
   execution_context: VerificationExecutionContext

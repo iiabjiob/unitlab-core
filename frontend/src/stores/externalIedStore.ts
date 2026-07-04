@@ -16,7 +16,10 @@ import type {
   ExternalIedStatusRecord,
   ExternalIedStatusSnapshotEvent,
 } from "@/types/ws/events"
-import type { VerificationExternalIedDiscoveryTreeResponse } from "@/types/verification"
+import type {
+  VerificationExternalIedDiscoveryTreeResponse,
+  VerificationExternalIedManualReportRequest,
+} from "@/types/verification"
 
 export type ExternalIedStatus = WsExternalIedStatus
 export type ExternalIedDiscoveryTree = VerificationExternalIedDiscoveryTreeResponse
@@ -117,6 +120,10 @@ function normalizePort(value: unknown): number {
 
 function endpointKey(ip: string, port: number): string {
   return `${ip}:${port}`
+}
+
+function manualReportKey(ip: string, port: number, reportReference: string): string {
+  return `${endpointKey(ip, port)}|${reportReference}`
 }
 
 function normalizeDiscoveryState(value: unknown): ExternalIedDiscoveryState {
@@ -281,6 +288,7 @@ export const useExternalIedStore = defineStore("externalIedStore", () => {
   const records = ref<Record<string, ExternalIedRecord>>({})
   const planningCoverageBySignalId = ref<Record<number, ExternalIedPlanningCoverage>>({})
   const discoveryTreeCache = ref<Record<string, ExternalIedDiscoveryTree>>({})
+  const manualEnabledReports = ref<Record<string, true>>({})
   const configuredTargets = ref<Record<string, ExternalIedTarget>>({})
   const statusRevision = ref(0)
   const lastChangedIps = ref<string[]>([])
@@ -525,6 +533,7 @@ export const useExternalIedStore = defineStore("externalIedStore", () => {
     records.value = {}
     planningCoverageBySignalId.value = {}
     discoveryTreeCache.value = {}
+    manualEnabledReports.value = {}
     configuredTargets.value = {}
     publishChanged([], normalizeSignalIds(signalIds))
   }
@@ -627,6 +636,44 @@ export const useExternalIedStore = defineStore("externalIedStore", () => {
     return discoveryTreeCache.value[endpointKey(normalizedIp, normalizePort(port))] ?? null
   }
 
+  function isManualReportEnabled(ip: string | null | undefined, port: number | null | undefined, reportReference: string | null | undefined): boolean {
+    const normalizedIp = normalizeIp(ip)
+    const normalizedReportReference = normalizeOptionalText(reportReference)
+    if (!normalizedIp || !normalizedReportReference) return false
+    return manualEnabledReports.value[manualReportKey(normalizedIp, normalizePort(port), normalizedReportReference)] === true
+  }
+
+  async function setManualReportEnabled(
+    ip: string | null | undefined,
+    port: number | null | undefined,
+    payload: VerificationExternalIedManualReportRequest,
+    enabled: boolean,
+  ) {
+    const normalizedIp = normalizeIp(ip)
+    const normalizedPort = normalizePort(port)
+    const reportReference = normalizeOptionalText(payload.report_reference)
+    const workspaceId = Number(workspaceStore.activeWorkspaceId)
+    if (!normalizedIp || !reportReference || !Number.isFinite(workspaceId) || workspaceId <= 0) {
+      throw new Error("External IED report cannot be controlled without workspace, endpoint and report reference.")
+    }
+    const response = await VerificationAPI.setExternalIedReportEnabled(
+      workspaceId,
+      normalizedIp,
+      normalizedPort,
+      { ...payload, report_reference: reportReference },
+      enabled,
+    )
+    const key = manualReportKey(normalizedIp, normalizedPort, reportReference)
+    const next = { ...manualEnabledReports.value }
+    if (response.data.enabled) {
+      next[key] = true
+    } else {
+      delete next[key]
+    }
+    manualEnabledReports.value = next
+    return response.data
+  }
+
   return {
     active,
     records,
@@ -636,6 +683,7 @@ export const useExternalIedStore = defineStore("externalIedStore", () => {
     lastChangedIps,
     lastChangedSignalIds,
     lastError,
+    manualEnabledReports,
     configureExpectedDevices,
     applySnapshot,
     applyStatusChanged,
@@ -645,6 +693,8 @@ export const useExternalIedStore = defineStore("externalIedStore", () => {
     getDiscoveryTree,
     loadDiscoveryTree,
     refreshDiscovery,
+    isManualReportEnabled,
+    setManualReportEnabled,
     applyPlanningSnapshot,
     applyPlanningChanged,
     clearLocal,

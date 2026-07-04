@@ -39,8 +39,8 @@ importers:
         specifier: ^1.0.0
         version: 1.0.0(vue@3.5.25(typescript@5.8.3))
       '@affino/treeview-vue':
-        specifier: ^0.2.0
-        version: 0.2.0(vue@3.5.25(typescript@5.8.3))
+        specifier: ^0.2.1
+        version: 0.2.1(vue@3.5.25(typescript@5.8.3))
       pinia:
         specifier: ^3.0.1
         version: 3.0.4(typescript@5.8.3)(vue@3.5.25(typescript@5.8.3))
@@ -237,11 +237,11 @@ packages:
     peerDependencies:
       vue: ^3.3.0
 
-  '@affino/treeview-core@0.2.0':
-    resolution: {integrity: sha512-67C3mZ8BOX0kiEKD3vjhBYKSGeKCSoUPw0s7NteEStHutJwX7pQ2DMRu6Rx0iITMNoPa/sREh1/upNnGQTZ4yg==}
+  '@affino/treeview-core@0.2.2':
+    resolution: {integrity: sha512-vAKnFAWNcObMhCL8sYwdJhdnEqIaC9eP4S4OmOzVu64ohqr6Yx5Ry8eIeUSCXXr40bY6Ur8eoPpizPzLHsGVFA==}
 
-  '@affino/treeview-vue@0.2.0':
-    resolution: {integrity: sha512-THna7edJrOraKRFgy0HFd90QsTxJabu2Ck7LpiN8OUoewXA4vqoFw+h/XSrPlJQLBl8oX7TZq7CjjQg0ttqQDQ==}
+  '@affino/treeview-vue@0.2.1':
+    resolution: {integrity: sha512-LlKz25eEN66S/aN5/i4woKbeYH4BysZR2mZ37/RogC8IoOXsR0xLh0stsaf/TqaThDS/SZ1FpShieKvtYMoetw==}
     peerDependencies:
       vue: ^3.3.0
 
@@ -1687,13 +1687,13 @@ snapshots:
       '@affino/tooltip-core': 1.0.0
       vue: 3.5.25(typescript@5.8.3)
 
-  '@affino/treeview-core@0.2.0':
+  '@affino/treeview-core@0.2.2':
     dependencies:
       '@affino/projection-engine': 0.2.2
 
-  '@affino/treeview-vue@0.2.0(vue@3.5.25(typescript@5.8.3))':
+  '@affino/treeview-vue@0.2.1(vue@3.5.25(typescript@5.8.3))':
     dependencies:
-      '@affino/treeview-core': 0.2.0
+      '@affino/treeview-core': 0.2.2
       vue: 3.5.25(typescript@5.8.3)
 
   '@antfu/utils@0.7.10': {}

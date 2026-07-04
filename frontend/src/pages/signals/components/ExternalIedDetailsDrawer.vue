@@ -108,7 +108,7 @@
                 'is-active': meta.active,
                 'is-selected': tree.isSelected(row.value),
                 'is-match': meta.matched,
-                'is-report-enabled': row.kind === 'Report' && isReportEnabled(row.value),
+                'is-report-enabled': isReportEnabled(row),
               }"
               role="treeitem"
               :aria-level="meta.depth + 1"
@@ -128,7 +128,7 @@
               <span class="external-ied-details__tree-kind">{{ row.kind }}</span>
               <span class="external-ied-details__tree-label">{{ row.label }}</span>
               <span
-                v-if="row.kind === 'Report' && isReportEnabled(row.value)"
+                v-if="isReportEnabled(row)"
                 class="external-ied-details__tree-enabled"
                 title="Report enabled"
                 aria-label="Report enabled"
@@ -150,10 +150,10 @@
           v-if="selectedReportRow"
           :variant="selectedReportEnabled ? 'danger' : 'success'"
           size="sm"
-          :disabled="!record || refreshing || record.status !== 'reachable'"
+          :disabled="!record || refreshing || manualReportBusy || record.status !== 'reachable'"
           @click="toggleSelectedReportEnabled"
         >
-          {{ selectedReportEnabled ? "Disable" : "Enable" }}
+          {{ manualReportBusy ? "Applying..." : (selectedReportEnabled ? "Disable" : "Enable") }}
         </UiButton>
         <UiButton
           variant="secondary"
@@ -172,9 +172,11 @@
 import { computed, nextTick, onUnmounted, ref, watch, type ComponentPublicInstance } from "vue"
 import { useVirtualTreeviewController, type TreeviewNode, type VirtualTreeviewRow } from "@affino/treeview-vue"
 
+import { normalizeHttpError } from "@/api/http"
 import SlideOver from "@/components/ui/SlideOver.vue"
 import UiButton from "@/components/ui/UiButton.vue"
-import type { ExternalIedDiscoveryTree, ExternalIedRecord } from "@/stores/externalIedStore"
+import { useExternalIedStore, type ExternalIedDiscoveryTree, type ExternalIedRecord } from "@/stores/externalIedStore"
+import { useToastStore } from "@/stores/toastStore"
 
 type NodeValue = string
 type TreeKind = "LD" | "LN" | "Report" | "Dataset" | "Signal"
@@ -187,6 +189,10 @@ interface ModelTreeRow {
   valueLabel: string | null
   isLeaf: boolean
   text: string
+  reportReference: string | null
+  reportName: string | null
+  reportKind: string | null
+  datasetReference: string | null
 }
 
 type RenderedModelTreeRow = {
@@ -211,9 +217,11 @@ const emit = defineEmits<{
   (event: "refreshDiscovery"): void
 }>()
 
+const externalIedStore = useExternalIedStore()
+const toastStore = useToastStore()
 const treeSearch = ref("")
 const selectedTreeValue = ref<NodeValue | null>(null)
-const enabledReportValues = ref<Set<NodeValue>>(new Set())
+const manualReportBusy = ref(false)
 const treeItemElements = new Map<NodeValue, HTMLElement>()
 const treeViewportRef = ref<HTMLElement | null>(null)
 let treeViewportResizeObserver: ResizeObserver | null = null
@@ -357,7 +365,9 @@ const selectedReportRow = computed(() => {
   return row?.kind === "Report" ? row : null
 })
 const selectedReportEnabled = computed(() => (
-  selectedReportRow.value ? enabledReportValues.value.has(selectedReportRow.value.value) : false
+  selectedReportRow.value && props.record
+    ? externalIedStore.isManualReportEnabled(props.record.ip, props.record.port, selectedReportRow.value.reportReference)
+    : false
 ))
 const treeVisibleCount = computed(() => {
   void tree.state.value
@@ -413,9 +423,6 @@ watch(modelTreeNodes, (nodes) => {
   if (selectedTreeValue.value && !rowByValue.value.has(selectedTreeValue.value)) {
     selectedTreeValue.value = null
   }
-  enabledReportValues.value = new Set(
-    [...enabledReportValues.value].filter(value => rowByValue.value.get(value)?.kind === "Report"),
-  )
   syncTreeExpansion()
 }, { immediate: true })
 
@@ -472,6 +479,10 @@ function buildModelTreeRows(model: ExternalIedDiscoveryTree | null): ModelTreeRo
         valueLabel: stats ? `${stats.logicalNodes.size} LN · ${stats.reports} reports` : null,
         isLeaf: false,
         text: hierarchy.logicalDevice,
+        reportReference: null,
+        reportName: null,
+        reportKind: null,
+        datasetReference: null,
       })
     }
     if (!emittedGroups.has(lnValue)) {
@@ -485,9 +496,14 @@ function buildModelTreeRows(model: ExternalIedDiscoveryTree | null): ModelTreeRo
         valueLabel: stats ? `${stats.reports} report${stats.reports === 1 ? "" : "s"}` : null,
         isLeaf: false,
         text: [hierarchy.logicalDevice, hierarchy.logicalNode].join(" "),
+        reportReference: null,
+        reportName: null,
+        reportKind: null,
+        datasetReference: null,
       })
     }
     const reportValue = `report:${reportIndex}:${report.reference}`
+    const datasetReference = report.dataset?.reference ?? report.dataset_reference ?? null
     rows.push({
       value: reportValue,
       parent: lnValue,
@@ -496,17 +512,25 @@ function buildModelTreeRows(model: ExternalIedDiscoveryTree | null): ModelTreeRo
       valueLabel: report.kind,
       isLeaf: false,
       text: [report.name, report.reference, report.kind, report.dataset_reference].filter(Boolean).join(" "),
+      reportReference: report.reference,
+      reportName: report.name,
+      reportKind: report.kind,
+      datasetReference,
     })
     const dataset = report.dataset
-    const datasetValue = `dataset:${reportIndex}:${dataset?.reference ?? report.dataset_reference ?? "missing"}`
+    const datasetValue = `dataset:${reportIndex}:${datasetReference ?? "missing"}`
     rows.push({
       value: datasetValue,
       parent: reportValue,
       kind: "Dataset",
-      label: dataset?.reference ?? report.dataset_reference ?? "Dataset not resolved",
+      label: datasetReference ?? "Dataset not resolved",
       valueLabel: dataset ? `${dataset.signals.length} signals` : null,
       isLeaf: !dataset?.signals.length,
       text: [dataset?.reference, report.dataset_reference].filter(Boolean).join(" "),
+      reportReference: null,
+      reportName: null,
+      reportKind: null,
+      datasetReference: null,
     })
     dataset?.signals.forEach((signal, signalIndex) => {
       rows.push({
@@ -517,6 +541,10 @@ function buildModelTreeRows(model: ExternalIedDiscoveryTree | null): ModelTreeRo
         valueLabel: signal.fc ?? null,
         isLeaf: true,
         text: [signal.reference, signal.fc].filter(Boolean).join(" "),
+        reportReference: null,
+        reportName: null,
+        reportKind: null,
+        datasetReference: null,
       })
     })
   })
@@ -655,20 +683,35 @@ function onTreeRowClick(value: NodeValue) {
   }
 }
 
-function isReportEnabled(value: NodeValue): boolean {
-  return enabledReportValues.value.has(value)
+function isReportEnabled(row: ModelTreeRow): boolean {
+  if (row.kind !== "Report" || !props.record) return false
+  return externalIedStore.isManualReportEnabled(props.record.ip, props.record.port, row.reportReference)
 }
 
-function toggleSelectedReportEnabled() {
+async function toggleSelectedReportEnabled() {
   const report = selectedReportRow.value
-  if (!report) return
-  const next = new Set(enabledReportValues.value)
-  if (next.has(report.value)) {
-    next.delete(report.value)
-  } else {
-    next.add(report.value)
+  const record = props.record
+  if (!report?.reportReference || !record || manualReportBusy.value) return
+  const targetEnabled = !selectedReportEnabled.value
+  manualReportBusy.value = true
+  try {
+    await externalIedStore.setManualReportEnabled(
+      record.ip,
+      record.port,
+      {
+        report_reference: report.reportReference,
+        report_name: report.reportName,
+        report_kind: report.reportKind,
+        dataset_reference: report.datasetReference,
+      },
+      targetEnabled,
+    )
+    toastStore.success(`Report ${targetEnabled ? "enabled" : "disabled"}.`)
+  } catch (error) {
+    toastStore.error(normalizeHttpError(error, `Failed to ${targetEnabled ? "enable" : "disable"} report`).message)
+  } finally {
+    manualReportBusy.value = false
   }
-  enabledReportValues.value = next
 }
 
 function onTreeRootKeydown(event: KeyboardEvent) {
