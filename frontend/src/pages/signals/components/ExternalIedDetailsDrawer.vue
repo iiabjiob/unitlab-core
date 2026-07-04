@@ -3,7 +3,7 @@
     :open="open"
     placement="right"
     title="IEC 61850 IED"
-    :width-px="540"
+    :width-px="740"
     @close="emit('close')"
   >
     <div class="external-ied-details">
@@ -98,17 +98,17 @@
             class="external-ied-details__tree-spacer"
             :style="{ height: `${tree.totalHeight.value}px` }"
           >
-            <button
+            <div
               v-for="{ row, meta } in renderedTreeRows"
               :key="row.value"
               :ref="bindTreeItem(row.value)"
-              type="button"
               class="external-ied-details__tree-row external-ied-details__tree-row--virtual"
               :class="{
                 'is-active': meta.active,
                 'is-selected': tree.isSelected(row.value),
                 'is-match': meta.matched,
                 'is-report-enabled': isReportEnabled(row),
+                'is-leaf': row.isLeaf,
               }"
               role="treeitem"
               :aria-level="meta.depth + 1"
@@ -122,40 +122,66 @@
               }"
               @click="onTreeRowClick(row.value)"
             >
-              <span class="external-ied-details__tree-toggle" aria-hidden="true">
-                {{ row.isLeaf ? "•" : (tree.isExpanded(row.value) ? "▾" : "▸") }}
+              <span v-if="row.isLeaf" class="external-ied-details__tree-toggle" aria-hidden="true">•</span>
+              <span
+                v-else
+                class="external-ied-details__tree-toggle external-ied-details__tree-toggle--caret"
+                role="button"
+                tabindex="-1"
+                :aria-label="tree.isExpanded(row.value) ? 'Collapse node' : 'Expand node'"
+                @click.stop="onTreeToggleClick(row.value)"
+              >
+                {{ tree.isExpanded(row.value) ? "▾" : "▸" }}
               </span>
-              <span class="external-ied-details__tree-kind">{{ row.kind }}</span>
-              <span class="external-ied-details__tree-label">{{ row.label }}</span>
+              <span class="external-ied-details__tree-kind">
+                <template v-for="(part, partIndex) in highlightedTextParts(row.kind)" :key="`kind-${partIndex}`">
+                  <mark v-if="part.match" class="external-ied-details__tree-highlight">{{ part.text }}</mark>
+                  <template v-else>{{ part.text }}</template>
+                </template>
+              </span>
+              <span class="external-ied-details__tree-label">
+                <template v-for="(part, partIndex) in highlightedTextParts(row.label)" :key="`label-${partIndex}`">
+                  <mark v-if="part.match" class="external-ied-details__tree-highlight">{{ part.text }}</mark>
+                  <template v-else>{{ part.text }}</template>
+                </template>
+              </span>
               <span
                 v-if="isReportEnabled(row)"
                 class="external-ied-details__tree-enabled"
                 title="Report enabled"
                 aria-label="Report enabled"
               />
-              <span v-if="row.valueLabel" class="external-ied-details__tree-value">{{ row.valueLabel }}</span>
-            </button>
+              <span v-if="row.valueLabel" class="external-ied-details__tree-value">
+                <template v-for="(part, partIndex) in highlightedTextParts(row.valueLabel)" :key="`value-${partIndex}`">
+                  <mark v-if="part.match" class="external-ied-details__tree-highlight">{{ part.text }}</mark>
+                  <template v-else>{{ part.text }}</template>
+                </template>
+              </span>
+            </div>
           </div>
         </div>
       </section>
 
       <div class="external-ied-details__actions">
-        <div v-if="selectedReportRow" class="external-ied-details__selected-report">
-          <span class="external-ied-details__selected-report-label">{{ selectedReportRow.label }}</span>
+        <div class="external-ied-details__selected-report" :class="{ 'is-empty': !selectedReportRow }">
+          <span class="external-ied-details__selected-report-label">
+            {{ selectedReportRow?.label ?? "Select a report" }}
+          </span>
           <span class="external-ied-details__selected-report-state">
-            {{ selectedReportEnabled ? "Enabled" : "Disabled" }}
+            {{ selectedReportRow ? (selectedReportEnabled ? "Enabled" : "Disabled") : "No report selected" }}
           </span>
         </div>
         <UiButton
-          v-if="selectedReportRow"
+          class="external-ied-details__action-button"
           :variant="selectedReportEnabled ? 'danger' : 'success'"
           size="sm"
-          :disabled="!record || refreshing || manualReportBusy || record.status !== 'reachable'"
+          :disabled="!selectedReportRow || !record || refreshing || manualReportBusy || record.status !== 'reachable'"
           @click="toggleSelectedReportEnabled"
         >
           {{ manualReportBusy ? "Applying..." : (selectedReportEnabled ? "Disable" : "Enable") }}
         </UiButton>
         <UiButton
+          class="external-ied-details__refresh-button"
           variant="secondary"
           size="sm"
           :disabled="!record || refreshing || record.status !== 'reachable'"
@@ -170,7 +196,8 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, ref, watch, type ComponentPublicInstance } from "vue"
-import { useVirtualTreeviewController, type TreeviewNode, type VirtualTreeviewRow } from "@affino/treeview-vue"
+import type { TreeviewNode } from "@/types/affinoTreeview"
+import { useVirtualTreeviewController, type VirtualTreeviewRow } from "@affino/treeview-vue"
 
 import { normalizeHttpError } from "@/api/http"
 import SlideOver from "@/components/ui/SlideOver.vue"
@@ -198,6 +225,11 @@ interface ModelTreeRow {
 type RenderedModelTreeRow = {
   row: ModelTreeRow
   meta: VirtualTreeviewRow<NodeValue>
+}
+
+type HighlightTextPart = {
+  text: string
+  match: boolean
 }
 
 const TREE_ROW_HEIGHT = 28
@@ -629,12 +661,27 @@ function parseIec61850Hierarchy(reference: string | null | undefined): { logical
 }
 
 function resolveReportLabel(report: ExternalIedDiscoveryTree["reports"][number]): string {
+  const indexedName = indexedReportName(report.reference)
+  if (indexedName) return indexedName
   const name = String(report.name ?? "").trim()
   if (name) return name
   const reference = String(report.reference ?? "").trim()
   if (!reference) return "Report"
   const parts = reference.split(/[\/.$]/).filter(Boolean)
   return parts[parts.length - 1] ?? reference
+}
+
+function indexedReportName(reference: string | null | undefined): string {
+  const text = String(reference ?? "").trim()
+  if (!text) return ""
+  const item = text.includes(":") ? text.split(":", 2)[1] ?? text : text
+  const parts = item.split("$")
+  const reportFolderIndex = parts.findIndex(part => part === "BR" || part === "RP")
+  if (reportFolderIndex >= 0) {
+    return parts[reportFolderIndex + 1]?.trim() ?? ""
+  }
+  const pathParts = text.split(/[\/.]/).filter(Boolean)
+  return pathParts[pathParts.length - 1]?.trim() ?? ""
 }
 
 function resolveDiscoveryFactCount(recordCount: number | null | undefined, treeCount: number, fallbackCount: number): number {
@@ -676,8 +723,15 @@ function onTreeRowClick(value: NodeValue) {
   tree.clearSelection()
   tree.select(value)
   selectedTreeValue.value = value
+}
+
+function onTreeToggleClick(value: NodeValue) {
   const row = rowByValue.value.get(value)
   if (row && !row.isLeaf) {
+    tree.focus(value)
+    tree.clearSelection()
+    tree.select(value)
+    selectedTreeValue.value = value
     tree.toggle(value)
     tree.refreshWindow()
   }
@@ -686,6 +740,30 @@ function onTreeRowClick(value: NodeValue) {
 function isReportEnabled(row: ModelTreeRow): boolean {
   if (row.kind !== "Report" || !props.record) return false
   return externalIedStore.isManualReportEnabled(props.record.ip, props.record.port, row.reportReference)
+}
+
+function highlightedTextParts(value: string | null | undefined): HighlightTextPart[] {
+  const text = String(value ?? "")
+  const query = normalizedTreeSearch.value
+  if (!text || !query) return [{ text, match: false }]
+
+  const lowerText = text.toLocaleLowerCase()
+  const lowerQuery = query.toLocaleLowerCase()
+  const parts: HighlightTextPart[] = []
+  let cursor = 0
+  while (cursor < text.length) {
+    const matchIndex = lowerText.indexOf(lowerQuery, cursor)
+    if (matchIndex < 0) {
+      parts.push({ text: text.slice(cursor), match: false })
+      break
+    }
+    if (matchIndex > cursor) {
+      parts.push({ text: text.slice(cursor, matchIndex), match: false })
+    }
+    parts.push({ text: text.slice(matchIndex, matchIndex + query.length), match: true })
+    cursor = matchIndex + query.length
+  }
+  return parts.length > 0 ? parts : [{ text, match: false }]
 }
 
 async function toggleSelectedReportEnabled() {
@@ -997,6 +1075,7 @@ function onTreeScroll(event: Event) {
   align-items: center;
   border-radius: 0.375rem;
   color: var(--color-neutral-700);
+  cursor: pointer;
   display: flex;
   gap: 0.375rem;
   min-height: 1.75rem;
@@ -1004,6 +1083,7 @@ function onTreeScroll(event: Event) {
   padding-right: 0.5rem;
   padding-top: 0.25rem;
   text-align: left;
+  user-select: none;
   width: 100%;
 }
 
@@ -1021,7 +1101,16 @@ function onTreeScroll(event: Event) {
 }
 
 .external-ied-details__tree-row.is-selected {
-  background: color-mix(in srgb, var(--color-blue-50) 85%, var(--color-white));
+  background: color-mix(in srgb, var(--color-blue-100) 88%, var(--color-white));
+  box-shadow:
+    inset 3px 0 0 var(--color-blue-500),
+    inset 0 0 0 1px color-mix(in srgb, var(--color-blue-300) 82%, transparent);
+  color: var(--color-blue-950);
+}
+
+.external-ied-details__tree-row.is-selected:hover,
+.external-ied-details__tree-row.is-selected.is-active {
+  background: color-mix(in srgb, var(--color-blue-100) 92%, var(--color-white));
 }
 
 .external-ied-details__tree-row.is-report-enabled .external-ied-details__tree-label {
@@ -1033,11 +1122,35 @@ function onTreeScroll(event: Event) {
   font-weight: 700;
 }
 
+.external-ied-details__tree-highlight {
+  background: color-mix(in srgb, var(--color-yellow-300) 56%, var(--color-white));
+  border-radius: 0.1875rem;
+  color: var(--color-neutral-950);
+  font: inherit;
+  padding: 0 0.125rem;
+}
+
 .external-ied-details__tree-toggle {
+  align-items: center;
   color: var(--color-neutral-400);
-  flex: 0 0 0.75rem;
+  display: inline-flex;
+  flex: 0 0 1rem;
   font-size: var(--text-xs);
+  height: 1rem;
+  justify-content: center;
+  line-height: 1;
   text-align: center;
+}
+
+.external-ied-details__tree-toggle--caret {
+  border-radius: 0.25rem;
+  color: var(--color-neutral-600);
+  cursor: pointer;
+}
+
+.external-ied-details__tree-toggle--caret:hover {
+  background: var(--color-neutral-100);
+  color: var(--color-neutral-900);
 }
 
 .external-ied-details__tree-kind {
@@ -1076,10 +1189,10 @@ function onTreeScroll(event: Event) {
 .external-ied-details__actions {
   align-items: center;
   border-top: 1px solid var(--color-neutral-200);
-  display: flex;
+  display: grid;
   flex: 0 0 auto;
   gap: 0.5rem;
-  justify-content: flex-end;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   padding-top: 0.875rem;
 }
 
@@ -1089,6 +1202,10 @@ function onTreeScroll(event: Event) {
   flex-direction: column;
   gap: 0.125rem;
   min-width: 0;
+}
+
+.external-ied-details__selected-report.is-empty {
+  color: var(--color-neutral-400);
 }
 
 .external-ied-details__selected-report-label {
@@ -1107,6 +1224,14 @@ function onTreeScroll(event: Event) {
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+.external-ied-details__action-button {
+  min-width: 6.75rem;
+}
+
+.external-ied-details__refresh-button {
+  min-width: 8.75rem;
 }
 
 :global(.dark .external-ied-details__header),
@@ -1184,7 +1309,16 @@ function onTreeScroll(event: Event) {
 }
 
 :global(.dark .external-ied-details__tree-row.is-selected) {
-  background: color-mix(in srgb, var(--color-blue-950) 65%, var(--color-neutral-950));
+  background: color-mix(in srgb, var(--color-blue-900) 58%, var(--color-neutral-950));
+  box-shadow:
+    inset 3px 0 0 var(--color-blue-400),
+    inset 0 0 0 1px color-mix(in srgb, var(--color-blue-700) 70%, transparent);
+  color: var(--color-blue-100);
+}
+
+:global(.dark .external-ied-details__tree-row.is-selected:hover),
+:global(.dark .external-ied-details__tree-row.is-selected.is-active) {
+  background: color-mix(in srgb, var(--color-blue-900) 68%, var(--color-neutral-950));
 }
 
 :global(.dark .external-ied-details__tree-row.is-report-enabled .external-ied-details__tree-label) {
@@ -1199,11 +1333,26 @@ function onTreeScroll(event: Event) {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-emerald-950) 80%, transparent);
 }
 
+:global(.dark .external-ied-details__tree-highlight) {
+  background: color-mix(in srgb, var(--color-yellow-300) 82%, var(--color-amber-500));
+  color: var(--color-neutral-950);
+}
+
+:global(.dark .external-ied-details__tree-toggle--caret:hover) {
+  background: var(--color-neutral-800);
+  color: var(--color-neutral-100);
+}
+
 :global(.dark .external-ied-details__selected-report-label) {
   color: var(--color-neutral-100);
 }
 
 :global(.dark .external-ied-details__selected-report-state) {
   color: var(--color-neutral-400);
+}
+
+:global(.dark .external-ied-details__selected-report.is-empty .external-ied-details__selected-report-label),
+:global(.dark .external-ied-details__selected-report.is-empty .external-ied-details__selected-report-state) {
+  color: var(--color-neutral-500);
 }
 </style>

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, h, nextTick, onBeforeUnmount, ref, watch, type ComponentPublicInstance } from "vue"
 import { defineDataGridComponent, type DataGridAppColumnInput, type DataGridProps } from "@affino/datagrid-vue-app"
-import { useTreeviewController, type TreeviewNode } from "@affino/treeview-vue"
+import type { TreeviewNode } from "@/types/affinoTreeview"
+import { useTreeviewController } from "@affino/treeview-vue"
 import type { Device } from "@/types/device"
 import UiAffinoDisclosure from "@/components/ui/UiAffinoDisclosure.vue"
 import InlineInfoTooltip from "@/components/ui/InlineInfoTooltip.vue"

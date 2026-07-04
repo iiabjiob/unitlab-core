@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, ref, shallowRef, watch, type ComponentPublicInstance } from "vue"
 import { RouterLink } from "vue-router"
-import { useVirtualTreeviewController, type TreeviewNode, type VirtualTreeviewRow } from "@affino/treeview-vue"
+import type { TreeviewNode } from "@/types/affinoTreeview"
+import { useVirtualTreeviewController, type VirtualTreeviewRow } from "@affino/treeview-vue"
 
 import UiButton from "@/components/ui/UiButton.vue"
 import UiModal from "@/components/ui/UiModal.vue"

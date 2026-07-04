@@ -170,7 +170,8 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch, type ComponentPublicInstance } from "vue"
-import { useTreeviewController, type TreeviewNode } from "@affino/treeview-vue"
+import type { TreeviewNode } from "@/types/affinoTreeview"
+import { useTreeviewController } from "@affino/treeview-vue"
 
 import SlideOver from "@/components/ui/SlideOver.vue"
 import UiHoverTooltip from "@/components/ui/UiHoverTooltip.vue"
