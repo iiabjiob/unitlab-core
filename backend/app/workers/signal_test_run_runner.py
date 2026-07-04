@@ -18,11 +18,11 @@ from app.infrastructure.protocol.modes import Cmd, State
 from app.infrastructure.redis.manager import RedisManager
 from app.infrastructure.redis.stream_bus import parse_signal_allocation_job_entry
 from app.schemas.ws.events import SignalTestRuntimePatchEvent, build_signal_job_event
+from app.schemas.signal_sheet_schema import SignalAllocationRowSchema
 from app.schemas.verification_schema import VerificationAutoRunStartSchema, VerificationExecutionContextSchema
 from app.services.command_queue_service import enqueue_ao_command, enqueue_do_command, enqueue_request_state
-from app.services.verification_evidence import VerificationEvidenceRepository, build_signal_verification_evidence_set
-from app.services.verification_run_service import build_verification_runtime_start_context
-from app.services.verification_runtime_orchestrator import VerificationRuntimeOrchestrator
+from app.services.external_ied_discovery_scheduler import schedule_external_ied_discovery_for_verification
+from app.services.iec61850.report_runtime import group_report_subscription_plan_devices_by_endpoint
 from app.services.signal_job_service import (
     acquire_signal_test_run_execution_lease,
     get_signal_job,
@@ -40,6 +40,10 @@ from app.services.processed_job_service import (
     has_processed_job_marker,
     write_processed_job_marker_best_effort,
 )
+from app.services.verification_evidence import VerificationEvidenceRepository, build_signal_verification_evidence_set
+from app.services.verification_execution import build_runtime_subscription_plan
+from app.services.verification_run_service import build_verification_runtime_start_context
+from app.services.verification_runtime_orchestrator import VerificationRuntimeOrchestrator
 from app.services.worker_health import clear_worker_status, start_worker_heartbeat
 from app.workers.stream_worker_runtime import (
     build_worker_consumer_name,
@@ -75,6 +79,41 @@ async def _record_lease_stat(name: str) -> int:
     except Exception:  # noqa: BLE001
         logger.exception("💥 Failed to persist signal test run lease stat %s", name)
     return count
+
+
+async def _schedule_external_ied_discovery_for_verification_run(
+    *,
+    workspace_id: int,
+    runtime_context,
+) -> None:
+    if getattr(runtime_context.runtime_selection, "runtime_mode", None) != "mms":
+        return
+    runtime_plan = build_runtime_subscription_plan(runtime_context.subscription_plan)
+    device_groups = group_report_subscription_plan_devices_by_endpoint(
+        plan=runtime_plan,
+        endpoint_for_device=runtime_context.runtime_selection.endpoint_for_device,
+    )
+    seen_endpoints: set[str] = set()
+    for device_group in device_groups:
+        endpoint = device_group.endpoint
+        if not endpoint.host:
+            continue
+        endpoint_key = f"{endpoint.host}:{endpoint.port}"
+        if endpoint_key in seen_endpoints:
+            continue
+        seen_endpoints.add(endpoint_key)
+        try:
+            await schedule_external_ied_discovery_for_verification(
+                workspace_id=workspace_id,
+                endpoint=endpoint_key,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "External IED discovery scheduling failed for verification run | workspace=%s endpoint=%s error=%s",
+                workspace_id,
+                endpoint_key,
+                exc,
+            )
 
 
 async def _ensure_group(redis) -> None:
@@ -310,6 +349,10 @@ async def _handle_test_run(
                 test_run_id=job_id,
             ),
             db=repo.db,
+        )
+        await _schedule_external_ied_discovery_for_verification_run(
+            workspace_id=workspace_id,
+            runtime_context=runtime_context,
         )
         verification_orchestrator = VerificationRuntimeOrchestrator()
         runtime_start = verification_orchestrator.start(

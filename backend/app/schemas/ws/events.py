@@ -84,6 +84,7 @@ class DeviceHeartbeatEvent(BaseModel):
 ExternalIedStatus = Literal["not_applicable", "unknown", "expected", "reachable", "offline"]
 ExternalIedCheckKind = Literal["none", "tcp_connect"]
 ExternalIedFailureCode = Literal["unreachable", "mms_unavailable", "network_unreachable", "probe_failed"]
+ExternalIedDiscoveryState = Literal["NeverDiscovered", "Queued", "Running", "Succeeded", "Failed", "RetryWaiting", "Cancelled", "Stale"]
 
 
 class ExternalIedStatusRecord(BaseModel):
@@ -95,6 +96,11 @@ class ExternalIedStatusRecord(BaseModel):
     last_error: str | None = None
     check_kind: ExternalIedCheckKind = "none"
     failure_code: ExternalIedFailureCode | None = None
+    discovery_state: ExternalIedDiscoveryState = "NeverDiscovered"
+    discovery_retry_at_ms: int | None = None
+    discovery_last_error: str | None = None
+    discovery_updated_at_ms: int | None = None
+    discovery_ready_for_verification: bool = False
 
 
 class ExternalIedStatusSnapshotEvent(BaseModel):
@@ -119,6 +125,11 @@ class ExternalIedStatusChangedEvent(BaseModel):
     check_kind: ExternalIedCheckKind
     failure_code: ExternalIedFailureCode | None = None
     error: str | None = None
+    discovery_state: ExternalIedDiscoveryState = "NeverDiscovered"
+    discovery_retry_at_ms: int | None = None
+    discovery_last_error: str | None = None
+    discovery_updated_at_ms: int | None = None
+    discovery_ready_for_verification: bool = False
 
 class SequenceEventBase(BaseModel):
     topic: Literal["sequence"] = "sequence"

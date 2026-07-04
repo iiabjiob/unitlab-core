@@ -142,6 +142,26 @@ services:
     networks:
       - app_network
 
+  external_ied_discovery:
+    image: ${UNITLAB_BACKEND_IMAGE:-unitlab-backend:${RELEASE_VERSION:-dev}}
+    container_name: unitlab-external-ied-discovery
+    labels:
+      <<: *release-labels
+    command: ["python", "-m", "app.workers.external_ied_discovery"]
+    restart: unless-stopped
+    mem_limit: 256m
+    cpus: 0.50
+    logging: *default-logging
+    env_file:
+      - /opt/unitlab/shared/backend.env
+    environment:
+      APP_ENV: production
+    depends_on:
+      redis:
+        condition: service_started
+    networks:
+      - app_network
+
   sequence_runner:
     image: ${UNITLAB_BACKEND_IMAGE:-unitlab-backend:${RELEASE_VERSION:-dev}}
     container_name: unitlab-sequence-runner

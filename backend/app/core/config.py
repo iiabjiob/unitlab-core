@@ -60,6 +60,14 @@ class Settings(BaseSettings):
     signal_test_run_tested_at_batch_size: int = 50
     signal_test_run_ttl_refresh_seconds: int = 15
     signal_test_run_cancelling_stale_seconds: int = 90
+    external_ied_discovery_job_stream: str = "external-ied-discovery:jobs"
+    external_ied_discovery_job_stream_maxlen: int = 5000
+    external_ied_discovery_job_dedupe_ttl_seconds: int = 300
+    external_ied_planning_event_stream: str = "external-ied-planning:events"
+    external_ied_planning_event_stream_maxlen: int = 5000
+    external_ied_discovery_retry_base_ms: int = 5000
+    external_ied_discovery_retry_max_ms: int = 60000
+    external_ied_discovery_running_timeout_ms: int = 120000
 
     # ---- Redis ----
     redis_host: str

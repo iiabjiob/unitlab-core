@@ -38,6 +38,9 @@ class _FakeRedis:
     async def hgetall(self, key: str) -> dict[str, str]:
         return dict(self.hashes.get(key, {}))
 
+    async def hget(self, key: str, field: str) -> str | None:
+        return self.hashes.get(key, {}).get(field)
+
     async def hset(self, key: str, field: str, value: str) -> None:
         self.hashes.setdefault(key, {})[field] = value
 
@@ -61,6 +64,15 @@ class _FakeRedis:
             return False
         self.values[key] = value
         return True
+
+    async def get(self, key: str) -> str | None:
+        return self.values.get(key)
+
+    async def xadd(self, stream: str, fields: dict, **_kwargs) -> str:
+        self.values.setdefault(f"xadd:{stream}", "0")
+        current = int(self.values[f"xadd:{stream}"]) + 1
+        self.values[f"xadd:{stream}"] = str(current)
+        return f"{current}-0"
 
     def pipeline(self) -> _FakePipeline:
         return _FakePipeline(self)

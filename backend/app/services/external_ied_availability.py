@@ -18,6 +18,11 @@ from app.schemas.ws.events import (
     ExternalIedStatusRecord,
     ExternalIedStatusSnapshotEvent,
 )
+from app.services.external_ied_discovery_scheduler import (
+    _discovery_state_key,
+    discovery_ui_fields_from_payload,
+    schedule_external_ied_discovery_from_watcher_payload,
+)
 from app.services.verification_mms_reachability import check_mms_tcp_endpoint
 
 logger = get_logger("external_ied")
@@ -227,7 +232,12 @@ def normalize_external_ied_targets(raw_targets: list[Any]) -> dict[str, External
     return targets
 
 
-def _record_from_payload(ip: str, payload: str | None, target: ExternalIedTarget | None = None) -> ExternalIedStatusRecord:
+def _record_from_payload(
+    ip: str,
+    payload: str | None,
+    target: ExternalIedTarget | None = None,
+    discovery_payload: str | None = None,
+) -> ExternalIedStatusRecord:
     parsed: dict[str, Any] = {}
     if payload:
         try:
@@ -237,6 +247,7 @@ def _record_from_payload(ip: str, payload: str | None, target: ExternalIedTarget
         except json.JSONDecodeError:
             parsed = {}
     signal_ids = list(target.signal_ids if target else _normalize_signal_ids(parsed.get("signal_ids")))
+    discovery_fields = discovery_ui_fields_from_payload(discovery_payload)
     return ExternalIedStatusRecord(
         ip=ip,
         port=target.port if target else _normalize_port(parsed.get("port")),
@@ -246,6 +257,7 @@ def _record_from_payload(ip: str, payload: str | None, target: ExternalIedTarget
         last_error=parsed.get("last_error") if isinstance(parsed.get("last_error"), str) else None,
         check_kind=parsed.get("check_kind") if parsed.get("check_kind") in {"none", "tcp_connect"} else "none",
         failure_code=parsed.get("failure_code") if parsed.get("failure_code") in {"unreachable", "mms_unavailable", "network_unreachable", "probe_failed"} else None,
+        **discovery_fields,
     )
 
 
@@ -662,6 +674,7 @@ async def configure_external_ied_targets(workspace_id: int, raw_targets: list[An
     status_key = _status_key(workspace_id)
     previous_targets = await redis.hgetall(target_key)
     previous_statuses = await redis.hgetall(status_key)
+    previous_discovery_states = await redis.hgetall(_discovery_state_key(workspace_id))
     previous_signal_ids = [
         signal_id
         for payload in previous_targets.values()
@@ -670,7 +683,7 @@ async def configure_external_ied_targets(workspace_id: int, raw_targets: list[An
 
     if not targets:
         if previous_targets or previous_statuses:
-            await redis.delete(target_key, status_key)
+            await redis.delete(target_key, status_key, _discovery_state_key(workspace_id))
             await redis.srem(TARGET_WORKSPACES_KEY, str(workspace_id))
             logger.info("External IED targets cleared | workspace=%s", workspace_id)
         event = ExternalIedStatusSnapshotEvent(
@@ -690,7 +703,7 @@ async def configure_external_ied_targets(workspace_id: int, raw_targets: list[An
     devices: list[ExternalIedStatusRecord] = []
     now_ms = int(time.time() * 1000)
     for key, target in targets.items():
-        record = _record_from_payload(target.ip, previous_statuses.get(key), target)
+        record = _record_from_payload(target.ip, previous_statuses.get(key), target, previous_discovery_states.get(key))
         devices.append(record)
         pipe.hset(target_key, key, json.dumps({"ip": target.ip, "port": target.port, "signal_ids": list(target.signal_ids)}, separators=(",", ":")))
         pipe.hset(status_key, key, _serialize_record(record, next_check_at_ms=now_ms))
@@ -724,7 +737,11 @@ async def list_external_ied_status_snapshots() -> list[ExternalIedStatusSnapshot
         except (TypeError, ValueError):
             continue
         statuses = await redis.hgetall(_status_key(workspace_id))
-        devices = [_record_from_payload(endpoint.rsplit(":", 1)[0], payload) for endpoint, payload in statuses.items()]
+        discovery_states = await redis.hgetall(_discovery_state_key(workspace_id))
+        devices = [
+            _record_from_payload(endpoint.rsplit(":", 1)[0], payload, discovery_payload=discovery_states.get(endpoint))
+            for endpoint, payload in statuses.items()
+        ]
         events.append(
             ExternalIedStatusSnapshotEvent(
                 workspace_id=workspace_id,
@@ -773,11 +790,31 @@ async def _probe_state(
             now_ms=int(time.time() * 1000),
             config=config,
         )
+        serialized_state = _serialize_state_record(transition.state, transition.record)
         await redis.hset(
             _status_key(state.workspace_id),
             endpoint,
-            _serialize_state_record(transition.state, transition.record),
+            serialized_state,
         )
+        discovery_fields = discovery_ui_fields_from_payload(None)
+        try:
+            discovery_request = await schedule_external_ied_discovery_from_watcher_payload(
+                workspace_id=state.workspace_id,
+                endpoint=endpoint,
+                payload=serialized_state,
+            )
+            if discovery_request is not None:
+                discovery_fields = discovery_ui_fields_from_payload({"state": "Queued", "updated_at_ms": discovery_request.requested_at_ms})
+            else:
+                discovery_payload = await redis.hget(_discovery_state_key(state.workspace_id), endpoint)
+                discovery_fields = discovery_ui_fields_from_payload(discovery_payload)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "External IED discovery scheduling failed | workspace=%s endpoint=%s error=%s",
+                state.workspace_id,
+                endpoint,
+                exc,
+            )
         if not transition.status_changed:
             return transition
         logger.info(
@@ -800,6 +837,7 @@ async def _probe_state(
                 check_kind=result.check_kind,
                 failure_code=result.failure_code,
                 error=result.error,
+                **discovery_fields,
             )
         )
         return transition
