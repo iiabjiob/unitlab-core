@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest"
 import type { SignalAllocationRow } from "@/types/signal"
 import {
   buildExternalIedAvailabilityTargets,
-  buildOnline61850PreparationTargets,
   resolveOnline61850SignalReference,
 } from "./online61850Targets"
 
@@ -38,46 +37,6 @@ describe("online61850Targets", () => {
     })
 
     expect(resolveOnline61850SignalReference(row)).toBe("KINTE15BCU01CTRL1/CBCSWI1/Pos/stVal[ST]")
-  })
-
-  it("keeps rows grouped by host and port when building preparation targets", () => {
-    const row = buildRow({
-      signal_id: 10,
-      signal_metadata: {
-        verification: {
-          enabled: true,
-          transport_host: "172.16.40.128:12447",
-          iec61850_address: "KINTE15BCU01CTRL1/CBCSWI1/Pos/stVal[ST]",
-        },
-        row: {
-          host: "172.16.40.128:12447",
-        },
-      },
-    })
-
-    const result = buildOnline61850PreparationTargets([row])
-
-    expect(result.targets).toHaveLength(1)
-    expect(result.targets[0]?.host).toBe("172.16.40.128")
-    expect(result.targets[0]?.port).toBe(12447)
-    expect(result.targets[0]?.signalIds).toEqual([10])
-  })
-
-  it("does not build targets from IP-like row data without wizard-confirmed verification", () => {
-    const row = buildRow({
-      signal_id: 11,
-      signal_metadata: {
-        row: {
-          host: "172.16.40.129",
-          iec61850_address: "KINTE15BCU01CTRL1/CBCSWI1/Pos/stVal[ST]",
-        },
-      },
-    })
-
-    const result = buildOnline61850PreparationTargets([row])
-
-    expect(result.targets).toHaveLength(0)
-    expect(result.skippedRows).toHaveLength(1)
   })
 
   it("builds external IED watcher targets only from mapped verification rows", () => {

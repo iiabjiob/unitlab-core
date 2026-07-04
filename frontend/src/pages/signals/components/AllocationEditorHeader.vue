@@ -98,17 +98,6 @@
             {{ deallocateSelectedLabel }}
           </UiButton>
 
-          <UiButton
-            v-if="canPrepareOnline61850"
-            variant="secondary"
-            size="sm"
-            class="allocation-editor-header__button"
-            :disabled="loading || isPreparingOnline61850"
-            @click="emit('prepareOnline61850')"
-          >
-            {{ isPreparingOnline61850 ? "Preparing 61850..." : "Online 61850" }}
-          </UiButton>
-
           <span v-if="canRunTest" class="allocation-editor-header__run-wrap">
             <UiMenu>
               <div class="allocation-editor-header__run-segment">
@@ -205,9 +194,7 @@ const props = defineProps<{
   canResumeActiveTestRun: boolean
   canAllocateSelected: boolean
   canDeallocateSelected: boolean
-  canPrepareOnline61850: boolean
   canRunTest: boolean
-  isPreparingOnline61850: boolean
   isTestRunBusy: boolean
   testRunToggleMode: "single" | "double"
   testRunIntervalMs: number
@@ -226,7 +213,6 @@ const emit = defineEmits<{
   (event: "exportReport"): void
   (event: "allocateSelected"): void
   (event: "deallocateSelected"): void
-  (event: "prepareOnline61850"): void
   (event: "runTest"): void
   (event: "setToggleMode", mode: "single" | "double"): void
   (event: "setIntervalMs", intervalMs: number): void
