@@ -38,15 +38,15 @@
         </div>
         <div class="external-ied-details__fact">
           <dt>Datasets</dt>
-          <dd>{{ record?.discoveryDatasets ?? "—" }}</dd>
+          <dd>{{ discoveryFacts.datasets }}</dd>
         </div>
         <div class="external-ied-details__fact">
           <dt>RCBs</dt>
-          <dd>{{ record?.discoveryRcbs ?? "—" }}</dd>
+          <dd>{{ discoveryFacts.rcbs }}</dd>
         </div>
         <div class="external-ied-details__fact">
           <dt>Signals</dt>
-          <dd>{{ record?.discoveryModelSignals ?? record?.signalIds.length ?? 0 }}</dd>
+          <dd>{{ discoveryFacts.signals }}</dd>
         </div>
       </dl>
 
@@ -265,6 +265,33 @@ const lastError = computed(() => props.record?.planningLastError ?? props.record
 
 const normalizedTreeSearch = computed(() => treeSearch.value.trim())
 const modelTreeRows = computed<ModelTreeRow[]>(() => buildModelTreeRows(props.discoveryTree))
+const discoveryTreeCounts = computed(() => {
+  const reports = props.discoveryTree?.reports ?? []
+  const datasetReferences = new Set<string>()
+  const signalReferences = new Set<string>()
+  reports.forEach((report) => {
+    const datasetReference = String(report.dataset?.reference ?? report.dataset_reference ?? "").trim()
+    if (datasetReference) datasetReferences.add(datasetReference)
+    report.dataset?.signals.forEach((signal) => {
+      const signalReference = String(signal.reference ?? "").trim()
+      if (signalReference) signalReferences.add(signalReference)
+    })
+  })
+  return {
+    datasets: datasetReferences.size,
+    rcbs: reports.length,
+    signals: signalReferences.size,
+  }
+})
+const discoveryFacts = computed(() => {
+  const treeCounts = discoveryTreeCounts.value
+  const record = props.record
+  return {
+    datasets: resolveDiscoveryFactCount(record?.discoveryDatasets, treeCounts.datasets, 0),
+    rcbs: resolveDiscoveryFactCount(record?.discoveryRcbs, treeCounts.rcbs, 0),
+    signals: resolveDiscoveryFactCount(record?.discoveryModelSignals, treeCounts.signals, record?.signalIds.length ?? 0),
+  }
+})
 const modelTreeNodes = computed<TreeviewNode<NodeValue>[]>(() => modelTreeRows.value.map(row => ({
   value: row.value,
   parent: row.parent,
@@ -407,6 +434,16 @@ function buildModelTreeRows(model: ExternalIedDiscoveryTree | null): ModelTreeRo
     })
   })
   return rows
+}
+
+function resolveDiscoveryFactCount(recordCount: number | null | undefined, treeCount: number, fallbackCount: number): number {
+  if (Number.isFinite(recordCount) && Number(recordCount) > 0) {
+    return Number(recordCount)
+  }
+  if (treeCount > 0) {
+    return treeCount
+  }
+  return fallbackCount
 }
 
 function syncTreeExpansion() {

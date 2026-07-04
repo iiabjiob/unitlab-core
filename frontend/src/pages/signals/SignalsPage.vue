@@ -327,6 +327,8 @@ const SIGNAL_GRID_SKELETON_FIXED_HEIGHT = 88
 const SIGNAL_GRID_SKELETON_ROW_HEIGHT = 36
 const SIGNAL_GRID_SKELETON_FALLBACK_ROWS = 12
 const BULK_ALLOCATION_COMPLETION_CHUNK_SIZE = 250
+const DEFAULT_IEC61850_VERIFICATION_TIMEOUT_MS = 5000
+const DEV_IEC61850_VERIFICATION_TIMEOUT_STORAGE_KEY = "unitlab.dev.iec61850.verificationTimeoutMs"
 const signalGridSkeletonRef = ref<HTMLElement | null>(null)
 const signalGridSkeletonHeight = ref(0)
 const signalListDropActive = ref(false)
@@ -2345,6 +2347,18 @@ function setTestRunIntervalMs(intervalMs: number) {
   testRunIntervalMs.value = normalized
 }
 
+function resolveIec61850VerificationTimeoutMs(): number {
+  if (!import.meta.env.DEV || typeof window === "undefined") {
+    return DEFAULT_IEC61850_VERIFICATION_TIMEOUT_MS
+  }
+  const rawValue = window.localStorage.getItem(DEV_IEC61850_VERIFICATION_TIMEOUT_STORAGE_KEY)
+  const value = Number(rawValue)
+  if (!Number.isFinite(value) || value <= 0) {
+    return DEFAULT_IEC61850_VERIFICATION_TIMEOUT_MS
+  }
+  return Math.max(1000, Math.min(120000, Math.trunc(value)))
+}
+
 async function controlActiveTestRun(action: "pause" | "resume" | "stop") {
   const workspaceId = workspaceStore.activeWorkspaceId
   const jobId = activeTestRunJob.value?.job_id
@@ -2393,7 +2407,7 @@ async function startTestRunJob(options?: { resumeFromCursor?: boolean; resumeJob
         verificationRuntimeVersion: enable61850Verification ? "mms" : "simulator",
         verificationOrchestrationId: null,
         verificationSignalListRevisionId: Number(allocationRevision.value ?? 0) || null,
-        verificationTimeoutMs: 5000,
+        verificationTimeoutMs: resolveIec61850VerificationTimeoutMs(),
       },
     )
 
