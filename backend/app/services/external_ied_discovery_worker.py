@@ -9,6 +9,7 @@ from typing import Any, Protocol
 from app.core.logger import get_logger
 from app.services.external_ied_discovery_scheduler import (
     DiscoveryCacheMetadata,
+    EXTERNAL_IED_DISCOVERY_VERSION,
     ExternalIedDiscoveryRequest,
 )
 from app.services.iec61850.client_control import (
@@ -83,7 +84,7 @@ class MmsExternalIedDiscoveryEngine:
             model_fingerprint = compute_model_fingerprint(model)
             now_ms = int(time.time() * 1000)
             metadata = DiscoveryCacheMetadata(
-                discovery_version="unitlab.external-ied.discovery.v1",
+                discovery_version=EXTERNAL_IED_DISCOVERY_VERSION,
                 device_identity=_device_identity(discovery),
                 vendor=_first_non_empty(discovery.get("vendor"), discovery.get("manufacturer")),
                 model=_first_non_empty(discovery.get("model"), discovery.get("modelName")),
@@ -157,6 +158,7 @@ def build_discovery_model(discovery: dict[str, Any]) -> dict[str, Any]:
         "datasets": sorted(datasets, key=lambda item: item["reference"]),
         "rcbs": sorted(rcbs, key=lambda item: item["reference"]),
         "fcdas": sorted(fcdas.values(), key=lambda item: item["reference"]),
+        "diagnostics": _diagnostics(discovery),
     }
 
 
@@ -176,7 +178,8 @@ def build_discovery_summary(model: dict[str, Any], *, duration_ms: int) -> Disco
 
 
 def compute_model_fingerprint(model: dict[str, Any]) -> str:
-    raw = json.dumps(model, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    fingerprint_model = {key: value for key, value in model.items() if key != "diagnostics"}
+    raw = json.dumps(fingerprint_model, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(raw).hexdigest()
 
 
@@ -218,3 +221,15 @@ def _first_non_empty(*values: Any) -> str | None:
         if isinstance(value, str) and value.strip():
             return value.strip()
     return None
+
+
+def _diagnostics(discovery: dict[str, Any]) -> list[str]:
+    values = discovery.get("diagnostics")
+    if not isinstance(values, list):
+        return []
+    result: list[str] = []
+    for value in values:
+        text = str(value or "").strip()
+        if text and text not in result:
+            result.append(text)
+    return result

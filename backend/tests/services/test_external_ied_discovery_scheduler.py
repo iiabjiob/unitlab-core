@@ -69,9 +69,10 @@ def _metadata(
     *,
     planning_fingerprint: str = "plan-a",
     model_fingerprint: str = "model-a",
+    discovery_version: str = scheduler.EXTERNAL_IED_DISCOVERY_VERSION,
 ) -> scheduler.DiscoveryCacheMetadata:
     return scheduler.DiscoveryCacheMetadata(
-        discovery_version="unitlab-discovery.v1",
+        discovery_version=discovery_version,
         device_identity="IED-A",
         vendor="UnitLab",
         model="VirtualIED",
@@ -94,6 +95,17 @@ def test_policy_reachable_stable_with_valid_cache_is_no_action() -> None:
     )
 
     assert decision.decision == "NoAction"
+
+
+def test_policy_old_discovery_version_queues_stale_refresh() -> None:
+    decision = scheduler.DiscoveryPolicy().evaluate(
+        endpoint_state=_endpoint(priority_reason=scheduler.REACHABLE_STABLE_REASON),
+        cache_metadata=_metadata(discovery_version="unitlab.external-ied.discovery.v1"),
+        now_ms=123_000,
+    )
+
+    assert decision.decision == "QueueDiscovery"
+    assert decision.reason == "cache_stale"
 
 
 def test_policy_cache_missing_with_reachable_stable_queues_discovery() -> None:

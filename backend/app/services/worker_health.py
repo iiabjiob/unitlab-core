@@ -61,6 +61,11 @@ WORKER_DEFINITIONS: tuple[WorkerDefinition, ...] = (
         impact="IEC 61850 external IED discovery jobs are not processed.",
     ),
     WorkerDefinition(
+        name="external_ied_planning",
+        display_name="External IED Planning",
+        impact="IEC 61850 Signal List to IED model matching is stale.",
+    ),
+    WorkerDefinition(
         name="signal_allocation_runner",
         display_name="Signal Allocation Runner",
         impact="Async signal allocation jobs are not processed.",

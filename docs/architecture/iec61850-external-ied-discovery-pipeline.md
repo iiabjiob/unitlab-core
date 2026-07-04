@@ -9,6 +9,7 @@ Network Watcher
   -> Discovery State Machine
   -> Discovery Worker
   -> Discovery Cache
+  -> Planning Worker
   -> Discovery Planner
   -> Verification Plan
 ```
@@ -21,6 +22,7 @@ Network Watcher
 - Discovery State Machine owns explicit lifecycle transitions: queued, running, succeeded, failed, retry waiting, cancelled, and stale.
 - Discovery Worker consumes `DiscoveryRequest`, opens the MMS association, performs discovery, builds the model, computes `ModelFingerprint`, and writes `DiscoveryResult`.
 - Discovery Cache stores metadata and discovered model data separately from scheduler state.
+- Planning Worker consumes discovery-completed and mapping-changed events, then invokes the planner in a separate backend process.
 - Discovery Planner consumes the Signal List and cached model data to build the Verification Plan without MMS communication.
 
 ## Non-Ownership
@@ -49,3 +51,14 @@ Network Watcher
 ## Planning Event
 
 After successful discovery, the worker stores metadata and model data, then emits `ExternalIedDiscoveryCompleted` on the backend planning event stream. The event is a domain signal for planning consumers, not a UI update.
+
+## Planning Coverage
+
+The planning worker persists endpoint-level planning state and signal-level coverage. The Signal List grid consumes websocket diffs to color only affected IEC 61850 address cells:
+
+- matched: the imported IEC 61850 address resolved against the cached IED model.
+- unmatched: the imported address did not resolve and should be corrected or rediscovered if the cache is stale.
+- ambiguous: multiple possible model matches were found.
+- not planned/stale: planning has not completed or the cached plan is no longer current.
+
+Planning coverage is derived from the wizard-confirmed IEC 61850 mapping only. An IP-like column by itself does not activate planning or monitoring.

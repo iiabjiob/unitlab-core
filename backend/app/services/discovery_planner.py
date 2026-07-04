@@ -200,6 +200,9 @@ class DiscoveryPlanner:
 def _plan_signal(signal: DiscoveryPlanSignalInput, discovery_cache: DiscoveryCache) -> VerificationPlanSignal:
     ied = _select_ied(signal, discovery_cache)
     if ied is None:
+        incomplete_ied = _select_ied_with_incomplete_domain(signal, discovery_cache)
+        if incomplete_ied is not None:
+            return _unresolved(signal, "discovery cache has no dataset members for IED domain", ied_identity=incomplete_ied.identity)
         return _unresolved(signal, "IED not found in discovery cache")
     fcda = _lookup_fcda(signal.address, ied)
     if fcda is None:
@@ -238,11 +241,23 @@ def _select_ied(signal: DiscoveryPlanSignalInput, discovery_cache: DiscoveryCach
 
 def _lookup_fcda(address: str, ied: DiscoveryCacheIed) -> DiscoveryCacheFcda | None:
     desired = _canonical_address(address)
+    desired_fc = _functional_constraint_from_reference(address)
+    matches: list[DiscoveryCacheFcda] = []
     for fcda in ied.fcdas:
         candidate = _canonical_address(fcda.reference)
-        if desired == candidate or desired.endswith("." + candidate) or candidate.endswith("." + desired):
-            return fcda
-    return None
+        if _address_matches_fcda(desired, candidate):
+            matches.append(fcda)
+    if not matches:
+        return None
+    if desired_fc:
+        for fcda in matches:
+            if (fcda.fc or "").strip().upper() == desired_fc:
+                return fcda
+        for fcda in matches:
+            if _compatible_functional_constraint(desired_fc, fcda.fc, address):
+                return fcda
+        return None
+    return matches[0]
 
 
 def _lookup_dataset(fcda: DiscoveryCacheFcda, ied: DiscoveryCacheIed) -> DiscoveryCacheDataset | None:
@@ -258,6 +273,16 @@ def _select_rcb(dataset: DiscoveryCacheDataset, ied: DiscoveryCacheIed) -> Disco
     if not candidates:
         return None
     return sorted(candidates, key=_rcb_selection_key)[0]
+
+
+def _select_ied_with_incomplete_domain(signal: DiscoveryPlanSignalInput, discovery_cache: DiscoveryCache) -> DiscoveryCacheIed | None:
+    domain = _domain_from_reference(signal.address)
+    if not domain:
+        return None
+    for ied in discovery_cache.ieds:
+        if any(_reference_domain(dataset.reference) == domain and not dataset.members for dataset in ied.datasets):
+            return ied
+    return None
 
 
 def _rcb_selection_key(rcb: DiscoveryCacheRcb) -> tuple[int, str, str]:
@@ -370,6 +395,69 @@ def _signal_key(signal_id: int, address: str, ied_identity: str | None) -> str:
 
 def _same_reference(left: str, right: str) -> bool:
     return _canonical_address(left) == _canonical_address(right)
+
+
+def _address_matches_fcda(desired: str, candidate: str) -> bool:
+    if not desired or not candidate:
+        return False
+    if (
+        desired == candidate
+        or desired.endswith("." + candidate)
+        or candidate.endswith("." + desired)
+        or desired.startswith(candidate + ".")
+        or candidate.startswith(desired + ".")
+    ):
+        return True
+    desired_compact = _compact_address(desired)
+    candidate_compact = _compact_address(candidate)
+    return bool(
+        desired_compact
+        and candidate_compact
+        and min(len(desired_compact), len(candidate_compact)) >= 8
+        and (desired_compact in candidate_compact or candidate_compact in desired_compact)
+    )
+
+
+def _compact_address(value: str) -> str:
+    return "".join(character for character in value.lower() if character.isalnum())
+
+
+def _functional_constraint_from_reference(value: str) -> str | None:
+    text = str(value or "").strip()
+    bracket_match = re.search(r"\[([A-Za-z0-9]+)\]$", text)
+    if bracket_match is not None:
+        return bracket_match.group(1).upper()
+    if "!" in text:
+        text = text.split("!", 1)[1]
+    domain, separator, item = text.partition("/")
+    parts = item.split("$") if separator else text.split("$")
+    if len(parts) >= 3 and parts[1].lower() in IEC61850_FUNCTIONAL_CONSTRAINTS:
+        return parts[1].upper()
+    return None
+
+
+def _compatible_functional_constraint(desired_fc: str, candidate_fc: str | None, address: str) -> bool:
+    candidate = (candidate_fc or "").strip().upper()
+    if desired_fc == "CO" and candidate == "OR" and _is_control_oper_reference(address):
+        return True
+    return False
+
+
+def _is_control_oper_reference(value: str) -> bool:
+    normalized = _canonical_address(value)
+    return normalized.endswith(".oper.ctlval") or ".oper.ctlval." in normalized
+
+
+def _domain_from_reference(value: str) -> str | None:
+    text = str(value or "").strip()
+    if "!" in text:
+        text = text.split("!", 1)[1]
+    domain, separator, _item = text.partition("/")
+    return domain.strip().lower() if separator and domain.strip() else None
+
+
+def _reference_domain(value: str) -> str | None:
+    return _domain_from_reference(value)
 
 
 def _canonical_address(value: str) -> str:

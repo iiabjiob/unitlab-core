@@ -305,6 +305,18 @@ def test_model_fingerprint_ignores_endpoint_and_signal_list_configuration() -> N
     assert compute_model_fingerprint(model_a) == compute_model_fingerprint(model_b)
 
 
+def test_model_fingerprint_ignores_discovery_diagnostics() -> None:
+    discovery = {
+        "iedName": "IED_A",
+        "dataSets": [{"reference": "IED_ALD0/LLN0.ds", "members": [{"reference": "IED_ALD0/GGIO1.ST.stVal", "fc": "ST"}]}],
+        "reportControls": [{"id": "IED_ALD0/LLN0.BR.brcb01", "name": "brcb01", "dataSetRef": "IED_ALD0/LLN0.ds"}],
+    }
+    model = build_discovery_model(discovery)
+    model_with_diagnostics = {**model, "diagnostics": ["native-wire-client: discover-skip=dataset-members domain=IED_A reason=decode-failed"]}
+
+    assert compute_model_fingerprint(model) == compute_model_fingerprint(model_with_diagnostics)
+
+
 def test_build_discovery_summary_counts_model_elements() -> None:
     model = build_discovery_model(
         {

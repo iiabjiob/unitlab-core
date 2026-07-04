@@ -13,6 +13,7 @@ from app.schemas.ws.events import ExternalIedStatusRecord
 
 logger = get_logger("external_ied_discovery")
 _REDIS_SCHEDULER: ExternalIedDiscoveryScheduler | None = None
+EXTERNAL_IED_DISCOVERY_VERSION = "unitlab.external-ied.discovery.v2"
 
 DiscoveryScheduleReason = Literal[
     "reachable_stable",
@@ -378,6 +379,14 @@ class DiscoveryPolicy:
                 reason="cache_missing",
                 earliest_execution_at_ms=now_ms,
                 planning_fingerprint=verification.planning_fingerprint,
+            )
+        if cache_metadata.discovery_version != EXTERNAL_IED_DISCOVERY_VERSION:
+            return DiscoveryDecision(
+                decision="QueueDiscovery",
+                reason="cache_stale",
+                earliest_execution_at_ms=now_ms,
+                model_fingerprint=cache_metadata.model_fingerprint,
+                planning_fingerprint=verification.planning_fingerprint or cache_metadata.planning_fingerprint,
             )
         if lifecycle.state == "Stale":
             return DiscoveryDecision(
@@ -924,7 +933,7 @@ async def record_external_ied_discovery_failure(
     settings = get_settings()
     previous = await load_external_ied_discovery_cache(workspace_id=workspace_id, endpoint=endpoint)
     metadata = DiscoveryCacheMetadata(
-        discovery_version=(previous.discovery_version if previous is not None else "unitlab.external-ied.discovery.v1"),
+        discovery_version=(previous.discovery_version if previous is not None else EXTERNAL_IED_DISCOVERY_VERSION),
         device_identity=previous.device_identity if previous is not None else None,
         vendor=previous.vendor if previous is not None else None,
         model=previous.model if previous is not None else None,

@@ -55,6 +55,8 @@ import type {
   SignalTestRunJobEvent,
   SignalTestRuntimePatchEvent,
   SignalRowsPatchedEvent,
+  ExternalIedPlanningChangedEvent,
+  ExternalIedPlanningSnapshotEvent,
   ExternalIedStatusChangedEvent,
   ExternalIedStatusSnapshotEvent,
 } from '@/types/ws/events'
@@ -496,12 +498,21 @@ export function handleWsEvent(event: WSEvent) {
       break
     }
     case WSChannel.EXTERNAL_IED_STATUS: {
-      if ((channelEvent as ExternalIedStatusSnapshotEvent).event === "external_ied_status_snapshot") {
+      const eventName = String((channelEvent as { event?: unknown }).event ?? "")
+      if (eventName === "external_ied_status_snapshot") {
         externalIedStore.applySnapshot(channelEvent as ExternalIedStatusSnapshotEvent)
         break
       }
-      if ((channelEvent as ExternalIedStatusChangedEvent).event === "external_ied_status_changed") {
+      if (eventName === "external_ied_status_changed") {
         externalIedStore.applyStatusChanged(channelEvent as ExternalIedStatusChangedEvent)
+        break
+      }
+      if (eventName === "external_ied_planning_snapshot") {
+        externalIedStore.applyPlanningSnapshot(channelEvent as unknown as ExternalIedPlanningSnapshotEvent)
+        break
+      }
+      if (eventName === "external_ied_planning_changed") {
+        externalIedStore.applyPlanningChanged(channelEvent as unknown as ExternalIedPlanningChangedEvent)
         break
       }
       logger.warn("⚠️ Unknown EXTERNAL_IED_STATUS payload", channelEvent)

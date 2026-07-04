@@ -65,6 +65,7 @@ class Settings(BaseSettings):
     external_ied_discovery_job_dedupe_ttl_seconds: int = 300
     external_ied_planning_event_stream: str = "external-ied-planning:events"
     external_ied_planning_event_stream_maxlen: int = 5000
+    external_ied_planning_running_timeout_ms: int = 60000
     external_ied_discovery_retry_base_ms: int = 5000
     external_ied_discovery_retry_max_ms: int = 60000
     external_ied_discovery_running_timeout_ms: int = 120000

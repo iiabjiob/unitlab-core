@@ -251,12 +251,17 @@ const discoveryLabel = computed(() => {
 const planningLabel = computed(() => {
   const record = props.record
   if (!record) return "—"
-  return record.discoveryReadyForVerification ? "✔" : "Pending"
+  if (record.planningState === "Ready") return "✔"
+  if (record.planningState === "Partial") return `${record.planningMatchedCount}/${record.planningMatchedCount + record.planningUnmatchedCount + record.planningAmbiguousCount} matched`
+  if (record.planningState === "Running" || record.planningState === "Queued") return "Running"
+  if (record.planningState === "WaitingForDiscovery") return "Waiting for discovery"
+  if (record.planningState === "Failed") return "Failed"
+  return record.discoveryReadyForVerification ? "Pending" : "—"
 })
 
 const verificationLabel = computed(() => "Not Started")
 
-const lastError = computed(() => props.record?.discoveryLastError ?? props.record?.lastError ?? null)
+const lastError = computed(() => props.record?.planningLastError ?? props.record?.discoveryLastError ?? props.record?.lastError ?? null)
 
 const normalizedTreeSearch = computed(() => treeSearch.value.trim())
 const modelTreeRows = computed<ModelTreeRow[]>(() => buildModelTreeRows(props.discoveryTree))

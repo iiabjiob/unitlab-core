@@ -142,6 +142,8 @@ export type ExternalIedStatus = "not_applicable" | "unknown" | "expected" | "rea
 export type ExternalIedCheckKind = "none" | "tcp_connect"
 export type ExternalIedFailureCode = "unreachable" | "mms_unavailable" | "network_unreachable" | "probe_failed"
 export type ExternalIedDiscoveryState = "NeverDiscovered" | "Queued" | "Running" | "Succeeded" | "Failed" | "RetryWaiting" | "Cancelled" | "Stale"
+export type ExternalIedPlanningState = "NotPlanned" | "Queued" | "Running" | "Ready" | "Partial" | "Failed" | "Stale" | "WaitingForDiscovery"
+export type ExternalIedPlanningSignalStatus = "matched" | "unmatched" | "ambiguous" | "not_planned" | "stale"
 
 export interface ExternalIedStatusRecord {
   ip: string
@@ -163,6 +165,12 @@ export interface ExternalIedStatusRecord {
   discovery_datasets?: number | null
   discovery_rcbs?: number | null
   discovery_model_signals?: number | null
+  planning_state?: ExternalIedPlanningState
+  planning_updated_at_ms?: number | null
+  planning_matched_count?: number
+  planning_unmatched_count?: number
+  planning_ambiguous_count?: number
+  planning_last_error?: string | null
 }
 
 export interface ExternalIedStatusSnapshotEvent {
@@ -198,6 +206,60 @@ export interface ExternalIedStatusChangedEvent {
   discovery_datasets?: number | null
   discovery_rcbs?: number | null
   discovery_model_signals?: number | null
+  planning_state?: ExternalIedPlanningState
+  planning_updated_at_ms?: number | null
+  planning_matched_count?: number
+  planning_unmatched_count?: number
+  planning_ambiguous_count?: number
+  planning_last_error?: string | null
+}
+
+export interface ExternalIedPlanningSignalResult {
+  signal_id: number
+  endpoint: string
+  status: ExternalIedPlanningSignalStatus
+  address?: string | null
+  reason?: string | null
+  ied_identity?: string | null
+  fcda_reference?: string | null
+  dataset_reference?: string | null
+  rcb_reference?: string | null
+  rcb_name?: string | null
+}
+
+export interface ExternalIedPlanningEndpointRecord {
+  endpoint: string
+  ip: string
+  port: number
+  state: ExternalIedPlanningState
+  planning_fingerprint?: string | null
+  model_fingerprint?: string | null
+  updated_at_ms?: number | null
+  matched_count: number
+  unmatched_count: number
+  ambiguous_count: number
+  signal_ids: number[]
+  last_error?: string | null
+}
+
+export interface ExternalIedPlanningSnapshotEvent {
+  channel: WSChannel.EXTERNAL_IED_STATUS
+  event: "external_ied_planning_snapshot"
+  workspace_id: number
+  endpoints: ExternalIedPlanningEndpointRecord[]
+  signal_results: ExternalIedPlanningSignalResult[]
+  removed_signal_ids: number[]
+  emitted_at: string
+}
+
+export interface ExternalIedPlanningChangedEvent {
+  channel: WSChannel.EXTERNAL_IED_STATUS
+  event: "external_ied_planning_changed"
+  workspace_id: number
+  endpoint: ExternalIedPlanningEndpointRecord
+  signal_results: ExternalIedPlanningSignalResult[]
+  removed_signal_ids: number[]
+  emitted_at: string
 }
 
 export interface SystemHealthChangedEvent {

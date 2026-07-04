@@ -3169,7 +3169,7 @@ typedef enum UnitLabNativeWireClientReadStatus {
     UNITLAB_NATIVE_WIRE_CLIENT_READ_SYSTEM_ERROR = -4
 } UnitLabNativeWireClientReadStatus;
 
-static UnitLabNativeWireClientReadStatus read_tpkt_frame_status(int fd, uint8_t* frame, size_t frame_length, size_t* encoded_length)
+static UnitLabNativeWireClientReadStatus read_single_tpkt_frame_status(int fd, uint8_t* frame, size_t frame_length, size_t* encoded_length)
 {
     uint8_t header[4U];
     uint16_t total_length;
@@ -3221,6 +3221,98 @@ static UnitLabNativeWireClientReadStatus read_tpkt_frame_status(int fd, uint8_t*
     if (encoded_length != NULL) {
         *encoded_length = (size_t)total_length;
     }
+    return UNITLAB_NATIVE_WIRE_CLIENT_READ_OK;
+}
+
+static UnitLabNativeWireClientReadStatus read_tpkt_frame_status(int fd, uint8_t* frame, size_t frame_length, size_t* encoded_length)
+{
+    UnitLabNativeWireClientReadStatus status;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsTransportFrame transport_frame;
+    UnitLabMmsTransportFrame reassembled_frame;
+    uint8_t* segment_frame = NULL;
+    uint8_t* reassembled_user_data = NULL;
+    size_t segment_length = 0U;
+    size_t consumed_length = 0U;
+    size_t reassembled_user_data_length = 0U;
+    size_t reassembled_frame_length = 0U;
+    size_t segment_count = 0U;
+
+    status = read_single_tpkt_frame_status(fd, frame, frame_length, encoded_length);
+    if (status != UNITLAB_NATIVE_WIRE_CLIENT_READ_OK) {
+        return status;
+    }
+    if (encoded_length == NULL || *encoded_length == 0U) {
+        return UNITLAB_NATIVE_WIRE_CLIENT_READ_OK;
+    }
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_transport_frame_init(&transport_frame);
+    if (!unitlab_mms_transport_frame_decode(&transport_frame, frame, *encoded_length, &consumed_length, &diagnostic)
+        || transport_frame.cotp.kind != UNITLAB_MMS_COTP_TPDU_DT
+        || transport_frame.cotp.eot) {
+        return UNITLAB_NATIVE_WIRE_CLIENT_READ_OK;
+    }
+
+    segment_frame = (uint8_t*)malloc(frame_length);
+    reassembled_user_data = (uint8_t*)malloc(frame_length);
+    if (segment_frame == NULL || reassembled_user_data == NULL) {
+        free(segment_frame);
+        free(reassembled_user_data);
+        return UNITLAB_NATIVE_WIRE_CLIENT_READ_SYSTEM_ERROR;
+    }
+
+    for (;;) {
+        if (transport_frame.cotp.user_data_length > frame_length - reassembled_user_data_length) {
+            free(segment_frame);
+            free(reassembled_user_data);
+            return UNITLAB_NATIVE_WIRE_CLIENT_READ_OVERSIZED;
+        }
+        if (transport_frame.cotp.user_data_length > 0U) {
+            memcpy(&reassembled_user_data[reassembled_user_data_length], transport_frame.cotp.user_data, transport_frame.cotp.user_data_length);
+            reassembled_user_data_length += transport_frame.cotp.user_data_length;
+        }
+        segment_count++;
+        if (transport_frame.cotp.eot) {
+            break;
+        }
+
+        status = read_single_tpkt_frame_status(fd, segment_frame, frame_length, &segment_length);
+        if (status != UNITLAB_NATIVE_WIRE_CLIENT_READ_OK) {
+            free(segment_frame);
+            free(reassembled_user_data);
+            return status;
+        }
+        unitlab_mms_diagnostic_clear(&diagnostic);
+        unitlab_mms_transport_frame_init(&transport_frame);
+        if (!unitlab_mms_transport_frame_decode(&transport_frame, segment_frame, segment_length, &consumed_length, &diagnostic)
+            || transport_frame.cotp.kind != UNITLAB_MMS_COTP_TPDU_DT) {
+            free(segment_frame);
+            free(reassembled_user_data);
+            return UNITLAB_NATIVE_WIRE_CLIENT_READ_MALFORMED;
+        }
+    }
+
+    unitlab_mms_transport_frame_init(&reassembled_frame);
+    reassembled_frame.cotp.kind = UNITLAB_MMS_COTP_TPDU_DT;
+    reassembled_frame.cotp.eot = 1;
+    reassembled_frame.cotp.user_data = reassembled_user_data;
+    reassembled_frame.cotp.user_data_length = reassembled_user_data_length;
+    if (!unitlab_mms_transport_frame_encode(&reassembled_frame, frame, frame_length, &reassembled_frame_length, &diagnostic)) {
+        free(segment_frame);
+        free(reassembled_user_data);
+        return UNITLAB_NATIVE_WIRE_CLIENT_READ_OVERSIZED;
+    }
+    if (encoded_length != NULL) {
+        *encoded_length = reassembled_frame_length;
+    }
+    printf(
+        "native-wire-client: cotp-segment-reassembled user-data=%zu segments=%zu\n",
+        reassembled_user_data_length,
+        segment_count);
+    fflush(stdout);
+    free(segment_frame);
+    free(reassembled_user_data);
     return UNITLAB_NATIVE_WIRE_CLIENT_READ_OK;
 }
 

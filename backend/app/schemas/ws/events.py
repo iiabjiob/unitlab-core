@@ -85,6 +85,8 @@ ExternalIedStatus = Literal["not_applicable", "unknown", "expected", "reachable"
 ExternalIedCheckKind = Literal["none", "tcp_connect"]
 ExternalIedFailureCode = Literal["unreachable", "mms_unavailable", "network_unreachable", "probe_failed"]
 ExternalIedDiscoveryState = Literal["NeverDiscovered", "Queued", "Running", "Succeeded", "Failed", "RetryWaiting", "Cancelled", "Stale"]
+ExternalIedPlanningState = Literal["NotPlanned", "Queued", "Running", "Ready", "Partial", "Failed", "Stale", "WaitingForDiscovery"]
+ExternalIedPlanningSignalStatus = Literal["matched", "unmatched", "ambiguous", "not_planned", "stale"]
 
 
 class ExternalIedStatusRecord(BaseModel):
@@ -107,6 +109,12 @@ class ExternalIedStatusRecord(BaseModel):
     discovery_datasets: int | None = None
     discovery_rcbs: int | None = None
     discovery_model_signals: int | None = None
+    planning_state: ExternalIedPlanningState = "NotPlanned"
+    planning_updated_at_ms: int | None = None
+    planning_matched_count: int = 0
+    planning_unmatched_count: int = 0
+    planning_ambiguous_count: int = 0
+    planning_last_error: str | None = None
 
 
 class ExternalIedStatusSnapshotEvent(BaseModel):
@@ -142,6 +150,60 @@ class ExternalIedStatusChangedEvent(BaseModel):
     discovery_datasets: int | None = None
     discovery_rcbs: int | None = None
     discovery_model_signals: int | None = None
+    planning_state: ExternalIedPlanningState = "NotPlanned"
+    planning_updated_at_ms: int | None = None
+    planning_matched_count: int = 0
+    planning_unmatched_count: int = 0
+    planning_ambiguous_count: int = 0
+    planning_last_error: str | None = None
+
+
+class ExternalIedPlanningSignalResult(BaseModel):
+    signal_id: int
+    endpoint: str
+    status: ExternalIedPlanningSignalStatus
+    address: str | None = None
+    reason: str | None = None
+    ied_identity: str | None = None
+    fcda_reference: str | None = None
+    dataset_reference: str | None = None
+    rcb_reference: str | None = None
+    rcb_name: str | None = None
+
+
+class ExternalIedPlanningEndpointRecord(BaseModel):
+    endpoint: str
+    ip: str
+    port: int = 102
+    state: ExternalIedPlanningState = "NotPlanned"
+    planning_fingerprint: str | None = None
+    model_fingerprint: str | None = None
+    updated_at_ms: int | None = None
+    matched_count: int = 0
+    unmatched_count: int = 0
+    ambiguous_count: int = 0
+    signal_ids: list[int] = Field(default_factory=list)
+    last_error: str | None = None
+
+
+class ExternalIedPlanningSnapshotEvent(BaseModel):
+    channel: Literal[WSChannel.EXTERNAL_IED_STATUS] = WSChannel.EXTERNAL_IED_STATUS
+    event: Literal["external_ied_planning_snapshot"] = "external_ied_planning_snapshot"
+    workspace_id: int
+    endpoints: list[ExternalIedPlanningEndpointRecord] = Field(default_factory=list)
+    signal_results: list[ExternalIedPlanningSignalResult] = Field(default_factory=list)
+    removed_signal_ids: list[int] = Field(default_factory=list)
+    emitted_at: str
+
+
+class ExternalIedPlanningChangedEvent(BaseModel):
+    channel: Literal[WSChannel.EXTERNAL_IED_STATUS] = WSChannel.EXTERNAL_IED_STATUS
+    event: Literal["external_ied_planning_changed"] = "external_ied_planning_changed"
+    workspace_id: int
+    endpoint: ExternalIedPlanningEndpointRecord
+    signal_results: list[ExternalIedPlanningSignalResult] = Field(default_factory=list)
+    removed_signal_ids: list[int] = Field(default_factory=list)
+    emitted_at: str
 
 class SequenceEventBase(BaseModel):
     topic: Literal["sequence"] = "sequence"

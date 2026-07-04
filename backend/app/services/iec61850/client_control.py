@@ -16,6 +16,7 @@ import tempfile
 import xml.etree.ElementTree as ET
 
 from app.core.config import get_settings
+from app.core.logger import get_logger
 
 from .client_runtime import Iec61850MmsClientEvent, Iec61850MmsClientRuntime
 from .ied_simulator_fixture import build_ied_simulator_fixture_from_subscription_plan
@@ -52,6 +53,8 @@ from .report_runtime import (
     report_control_key,
     to_report_control_ref,
 )
+
+logger = get_logger("iec61850.client_control")
 
 
 @dataclass(frozen=True, slots=True)
@@ -201,6 +204,7 @@ class Iec61850ClientControlService:
         self._external_discovered_rcbs: list[_ExternalDiscoveredReportControl] = []
         self._external_discovered_rcbs_native = False
         self._external_discover_summary_seen = False
+        self._external_discover_step: str | None = None
         self._external_live_discovery: dict | None = None
         self._pending_external_report_entries: list[dict[str, str]] = []
         self._current_external_report_values: dict[str, Iec61850ReportEventValue] = {}
@@ -622,6 +626,7 @@ class Iec61850ClientControlService:
         self._external_discovered_rcbs.clear()
         self._external_discovered_rcbs_native = True
         self._external_discover_summary_seen = False
+        self._external_discover_step = None
         self._external_live_discovery = _empty_wire_discovery_structure(self._endpoint, self._build_external_discover_command(), source="live")
         self._write_external_mms_command(self._build_external_discover_command())
         try:
@@ -1046,8 +1051,20 @@ class Iec61850ClientControlService:
             self._apply_external_discovered_rcb_line(line)
         elif line.startswith("native-wire-client: discovered-rcb-attr["):
             self._apply_external_discovered_rcb_attr_line(line)
+        elif line.startswith("native-wire-client: discover-step="):
+            self._external_discover_step = _external_discover_step_label(line)
+            if self._external_discover_step == "dataset-members":
+                self._append_external_discovery_diagnostic(line)
         elif line.startswith("native-wire-client: model-summary phase=discover"):
             self._external_discover_summary_seen = True
+            self._append_external_discovery_diagnostic(line)
+        elif line.startswith("native-wire-client: discover-skip="):
+            self._append_external_discovery_diagnostic(line)
+        elif self._external_live_discovery is not None and self._external_discover_step == "dataset-members" and (
+            line.startswith("mms-summary: pdu=")
+            or line.startswith("mms-summary: nvl-")
+        ):
+            self._append_external_discovery_diagnostic(line)
         elif line.startswith("native-wire-client: async-report"):
             return
         elif line.startswith("native-wire-client: state=failed"):
@@ -1121,6 +1138,13 @@ class Iec61850ClientControlService:
         if self._external_live_discovery is None:
             self._external_live_discovery = _empty_wire_discovery_structure(self._endpoint, self._build_external_discover_command(), source="live")
         return self._external_live_discovery
+
+    def _append_external_discovery_diagnostic(self, line: str) -> None:
+        discovery = self._ensure_external_live_discovery()
+        diagnostics = discovery.setdefault("diagnostics", [])
+        if isinstance(diagnostics, list) and line not in diagnostics:
+            diagnostics.append(line)
+        logger.warning("External IED native discovery diagnostic | endpoint=%s:%s %s", self._endpoint.host, self._endpoint.port, line)
 
     def _set_external_live_identity(self, ied_name: str) -> None:
         normalized = ied_name.strip()
@@ -1901,6 +1925,11 @@ def _parse_indexed_space_kv_line(text: str, prefix: str) -> dict[str, str]:
 
 def _external_summary_bool(fields: dict[str, str], key: str) -> bool:
     return str(fields.get(key, "")).strip().lower() == "true"
+
+
+def _external_discover_step_label(line: str) -> str | None:
+    fields = _parse_space_kv_line(line.removeprefix("native-wire-client: "))
+    return fields.get("discover-step")
 
 
 def _external_summary_has_report(fields: dict[str, str]) -> bool:

@@ -6,6 +6,12 @@ import { useWorkspaceStore } from "@/stores/workspaceStore"
 import type {
   ExternalIedStatus as WsExternalIedStatus,
   ExternalIedDiscoveryState,
+  ExternalIedPlanningChangedEvent,
+  ExternalIedPlanningEndpointRecord,
+  ExternalIedPlanningSignalResult,
+  ExternalIedPlanningSignalStatus,
+  ExternalIedPlanningSnapshotEvent,
+  ExternalIedPlanningState,
   ExternalIedStatusChangedEvent,
   ExternalIedStatusRecord,
   ExternalIedStatusSnapshotEvent,
@@ -14,7 +20,7 @@ import type { VerificationExternalIedDiscoveryTreeResponse } from "@/types/verif
 
 export type ExternalIedStatus = WsExternalIedStatus
 export type ExternalIedDiscoveryTree = VerificationExternalIedDiscoveryTreeResponse
-export type { ExternalIedDiscoveryState }
+export type { ExternalIedDiscoveryState, ExternalIedPlanningSignalStatus, ExternalIedPlanningState }
 
 export interface ExternalIedTarget {
   ip: string
@@ -42,6 +48,24 @@ export interface ExternalIedRecord {
   discoveryDatasets: number | null
   discoveryRcbs: number | null
   discoveryModelSignals: number | null
+  planningState: ExternalIedPlanningState
+  planningUpdatedAtMs: number | null
+  planningMatchedCount: number
+  planningUnmatchedCount: number
+  planningAmbiguousCount: number
+  planningLastError: string | null
+}
+
+export interface ExternalIedPlanningCoverage {
+  signalId: number
+  endpoint: string
+  status: ExternalIedPlanningSignalStatus
+  address: string | null
+  reason: string | null
+  fcdaReference: string | null
+  datasetReference: string | null
+  rcbReference: string | null
+  rcbName: string | null
 }
 
 export interface ExternalIedSummary {
@@ -53,6 +77,8 @@ export interface ExternalIedSummary {
 }
 
 const VALID_STATUSES = new Set<ExternalIedStatus>(["not_applicable", "unknown", "expected", "reachable", "offline"])
+const VALID_PLANNING_STATES = new Set<ExternalIedPlanningState>(["NotPlanned", "Queued", "Running", "Ready", "Partial", "Failed", "Stale", "WaitingForDiscovery"])
+const VALID_PLANNING_SIGNAL_STATUSES = new Set<ExternalIedPlanningSignalStatus>(["matched", "unmatched", "ambiguous", "not_planned", "stale"])
 const VALID_DISCOVERY_STATES = new Set<ExternalIedDiscoveryState>([
   "NeverDiscovered",
   "Queued",
@@ -108,6 +134,20 @@ function normalizeOptionalMs(value: unknown): number | null {
 function normalizeOptionalText(value: unknown): string | null {
   const text = String(value ?? "").trim()
   return text ? text : null
+}
+
+function normalizePlanningState(value: unknown): ExternalIedPlanningState {
+  const state = String(value ?? "NotPlanned")
+  return VALID_PLANNING_STATES.has(state as ExternalIedPlanningState)
+    ? state as ExternalIedPlanningState
+    : "NotPlanned"
+}
+
+function normalizePlanningSignalStatus(value: unknown): ExternalIedPlanningSignalStatus {
+  const status = String(value ?? "not_planned")
+  return VALID_PLANNING_SIGNAL_STATUSES.has(status as ExternalIedPlanningSignalStatus)
+    ? status as ExternalIedPlanningSignalStatus
+    : "not_planned"
 }
 
 function normalizeDiscoveryTree(value: unknown): ExternalIedDiscoveryTree | null {
@@ -194,6 +234,30 @@ function normalizeRecord(record: ExternalIedStatusRecord): ExternalIedRecord | n
     discoveryDatasets: normalizeOptionalMs(record.discovery_datasets),
     discoveryRcbs: normalizeOptionalMs(record.discovery_rcbs),
     discoveryModelSignals: normalizeOptionalMs(record.discovery_model_signals),
+    planningState: normalizePlanningState(record.planning_state),
+    planningUpdatedAtMs: normalizeOptionalMs(record.planning_updated_at_ms),
+    planningMatchedCount: normalizeOptionalMs(record.planning_matched_count) ?? 0,
+    planningUnmatchedCount: normalizeOptionalMs(record.planning_unmatched_count) ?? 0,
+    planningAmbiguousCount: normalizeOptionalMs(record.planning_ambiguous_count) ?? 0,
+    planningLastError: normalizeOptionalText(record.planning_last_error),
+  }
+}
+
+function normalizePlanningCoverage(result: ExternalIedPlanningSignalResult): ExternalIedPlanningCoverage | null {
+  const signalId = Number(result.signal_id)
+  if (!Number.isFinite(signalId) || signalId <= 0) return null
+  const endpoint = normalizeOptionalText(result.endpoint)
+  if (!endpoint) return null
+  return {
+    signalId,
+    endpoint,
+    status: normalizePlanningSignalStatus(result.status),
+    address: normalizeOptionalText(result.address),
+    reason: normalizeOptionalText(result.reason),
+    fcdaReference: normalizeOptionalText(result.fcda_reference),
+    datasetReference: normalizeOptionalText(result.dataset_reference),
+    rcbReference: normalizeOptionalText(result.rcb_reference),
+    rcbName: normalizeOptionalText(result.rcb_name),
   }
 }
 
@@ -215,6 +279,7 @@ function targetSignature(workspaceId: number | null | undefined, targets: readon
 export const useExternalIedStore = defineStore("externalIedStore", () => {
   const workspaceStore = useWorkspaceStore()
   const records = ref<Record<string, ExternalIedRecord>>({})
+  const planningCoverageBySignalId = ref<Record<number, ExternalIedPlanningCoverage>>({})
   const discoveryTreeCache = ref<Record<string, ExternalIedDiscoveryTree>>({})
   const configuredTargets = ref<Record<string, ExternalIedTarget>>({})
   const statusRevision = ref(0)
@@ -288,6 +353,12 @@ export const useExternalIedStore = defineStore("externalIedStore", () => {
           discoveryDatasets: null,
           discoveryRcbs: null,
           discoveryModelSignals: null,
+          planningState: "NotPlanned",
+          planningUpdatedAtMs: null,
+          planningMatchedCount: 0,
+          planningUnmatchedCount: 0,
+          planningAmbiguousCount: 0,
+          planningLastError: null,
         }
         nextRecords[key].signalIds = target.signalIds
       })
@@ -379,13 +450,80 @@ export const useExternalIedStore = defineStore("externalIedStore", () => {
         discoveryDatasets: normalizeOptionalMs(event.discovery_datasets) ?? previous?.discoveryDatasets ?? null,
         discoveryRcbs: normalizeOptionalMs(event.discovery_rcbs) ?? previous?.discoveryRcbs ?? null,
         discoveryModelSignals: normalizeOptionalMs(event.discovery_model_signals) ?? previous?.discoveryModelSignals ?? null,
+        planningState: normalizePlanningState(event.planning_state ?? previous?.planningState),
+        planningUpdatedAtMs: normalizeOptionalMs(event.planning_updated_at_ms) ?? previous?.planningUpdatedAtMs ?? null,
+        planningMatchedCount: normalizeOptionalMs(event.planning_matched_count) ?? previous?.planningMatchedCount ?? 0,
+        planningUnmatchedCount: normalizeOptionalMs(event.planning_unmatched_count) ?? previous?.planningUnmatchedCount ?? 0,
+        planningAmbiguousCount: normalizeOptionalMs(event.planning_ambiguous_count) ?? previous?.planningAmbiguousCount ?? 0,
+        planningLastError: normalizeOptionalText(event.planning_last_error) ?? previous?.planningLastError ?? null,
       },
     }
     publishChanged([ip], effectiveSignalIds)
   }
 
+  function applyPlanningSnapshot(event: ExternalIedPlanningSnapshotEvent) {
+    if (Number(event.workspace_id) !== Number(workspaceStore.activeWorkspaceId)) {
+      return
+    }
+    const nextCoverage: Record<number, ExternalIedPlanningCoverage> = {}
+    const changedSignalIds = normalizeSignalIds(event.removed_signal_ids ?? [])
+    event.signal_results.forEach((result) => {
+      const coverage = normalizePlanningCoverage(result)
+      if (!coverage) return
+      nextCoverage[coverage.signalId] = coverage
+      if (JSON.stringify(planningCoverageBySignalId.value[coverage.signalId] ?? null) !== JSON.stringify(coverage)) {
+        changedSignalIds.push(coverage.signalId)
+      }
+    })
+    const nextRecords = { ...records.value }
+    event.endpoints.forEach((endpoint) => {
+      applyPlanningEndpointToRecords(nextRecords, endpoint)
+    })
+    records.value = nextRecords
+    planningCoverageBySignalId.value = nextCoverage
+    publishChanged([], changedSignalIds)
+  }
+
+  function applyPlanningChanged(event: ExternalIedPlanningChangedEvent) {
+    if (Number(event.workspace_id) !== Number(workspaceStore.activeWorkspaceId)) {
+      return
+    }
+    const changedSignalIds = normalizeSignalIds(event.removed_signal_ids ?? [])
+    const nextCoverage = { ...planningCoverageBySignalId.value }
+    changedSignalIds.forEach(signalId => delete nextCoverage[signalId])
+    event.signal_results.forEach((result) => {
+      const coverage = normalizePlanningCoverage(result)
+      if (!coverage) return
+      nextCoverage[coverage.signalId] = coverage
+      changedSignalIds.push(coverage.signalId)
+    })
+    const nextRecords = { ...records.value }
+    applyPlanningEndpointToRecords(nextRecords, event.endpoint)
+    records.value = nextRecords
+    planningCoverageBySignalId.value = nextCoverage
+    publishChanged([], changedSignalIds)
+  }
+
+  function applyPlanningEndpointToRecords(nextRecords: Record<string, ExternalIedRecord>, endpoint: ExternalIedPlanningEndpointRecord) {
+    const ip = normalizeIp(endpoint.ip)
+    if (!ip) return
+    const key = endpointKey(ip, normalizePort(endpoint.port))
+    const previous = nextRecords[key]
+    if (!previous) return
+    nextRecords[key] = {
+      ...previous,
+      planningState: normalizePlanningState(endpoint.state),
+      planningUpdatedAtMs: normalizeOptionalMs(endpoint.updated_at_ms),
+      planningMatchedCount: normalizeOptionalMs(endpoint.matched_count) ?? 0,
+      planningUnmatchedCount: normalizeOptionalMs(endpoint.unmatched_count) ?? 0,
+      planningAmbiguousCount: normalizeOptionalMs(endpoint.ambiguous_count) ?? 0,
+      planningLastError: normalizeOptionalText(endpoint.last_error),
+    }
+  }
+
   function clearLocal(signalIds: readonly number[] = Object.values(records.value).flatMap(record => record.signalIds)) {
     records.value = {}
+    planningCoverageBySignalId.value = {}
     discoveryTreeCache.value = {}
     configuredTargets.value = {}
     publishChanged([], normalizeSignalIds(signalIds))
@@ -401,6 +539,12 @@ export const useExternalIedStore = defineStore("externalIedStore", () => {
     const normalizedIp = normalizeIp(ip)
     if (!normalizedIp) return null
     return records.value[endpointKey(normalizedIp, normalizePort(port))] ?? null
+  }
+
+  function getPlanningCoverage(signalId: number | null | undefined): ExternalIedPlanningCoverage | null {
+    const normalizedSignalId = Number(signalId)
+    if (!Number.isFinite(normalizedSignalId) || normalizedSignalId <= 0) return null
+    return planningCoverageBySignalId.value[normalizedSignalId] ?? null
   }
 
   const active = computed(() => Object.keys(configuredTargets.value).length > 0 || Object.keys(records.value).length > 0)
@@ -497,9 +641,12 @@ export const useExternalIedStore = defineStore("externalIedStore", () => {
     applyStatusChanged,
     getStatus,
     getRecord,
+    getPlanningCoverage,
     getDiscoveryTree,
     loadDiscoveryTree,
     refreshDiscovery,
+    applyPlanningSnapshot,
+    applyPlanningChanged,
     clearLocal,
   }
 })

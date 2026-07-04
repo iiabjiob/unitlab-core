@@ -26,6 +26,10 @@ from app.services.external_ied_discovery_scheduler import (
     discovery_ui_fields_from_payload,
     schedule_external_ied_discovery_from_watcher_payload,
 )
+from app.services.external_ied_planning import (
+    emit_external_ied_planning_requested,
+    load_external_ied_planning_endpoint_fields,
+)
 from app.services.verification_mms_reachability import check_mms_tcp_endpoint
 
 logger = get_logger("external_ied")
@@ -686,7 +690,14 @@ async def configure_external_ied_targets(workspace_id: int, raw_targets: list[An
 
     if not targets:
         if previous_targets or previous_statuses:
-            await redis.delete(target_key, status_key, _discovery_state_key(workspace_id))
+            await redis.delete(
+                target_key,
+                status_key,
+                _discovery_state_key(workspace_id),
+                f"external_ied:workspace:{workspace_id}:planning_state",
+                f"external_ied:workspace:{workspace_id}:planning_signal",
+                f"external_ied:workspace:{workspace_id}:verification_plan",
+            )
             await redis.srem(TARGET_WORKSPACES_KEY, str(workspace_id))
             logger.info("External IED targets cleared | workspace=%s", workspace_id)
         event = ExternalIedStatusSnapshotEvent(
@@ -727,6 +738,15 @@ async def configure_external_ied_targets(workspace_id: int, raw_targets: list[An
         emitted_at=_utc_now_iso(),
     )
     await WsEventPublisher.publish(event)
+    for key, target in targets.items():
+        await emit_external_ied_planning_requested(
+            workspace_id=workspace_id,
+            endpoint=key,
+            ip=target.ip,
+            port=target.port,
+            signal_ids=target.signal_ids,
+            reason="mapping_changed",
+        )
     return event
 
 
@@ -757,6 +777,8 @@ async def build_external_ied_status_snapshot(workspace_id: int) -> ExternalIedSt
             cache_payload=discovery_cache.get(endpoint),
             model_payload=discovery_models.get(endpoint),
         )
+        for field, value in (await load_external_ied_planning_endpoint_fields(workspace_id, endpoint)).items():
+            setattr(record, field, value)
         devices.append(record)
     return ExternalIedStatusSnapshotEvent(
         workspace_id=workspace_id,

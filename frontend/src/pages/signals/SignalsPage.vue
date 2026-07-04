@@ -488,6 +488,7 @@ import {
   type Online61850PreparationTarget,
 } from "@/pages/signals/utils/online61850Targets"
 import AllocationChannelCell from "@/pages/signals/components/AllocationChannelCell.vue"
+import ExternalIedAddressCell from "@/pages/signals/components/ExternalIedAddressCell.vue"
 import ExternalIedIpCell from "@/pages/signals/components/ExternalIedIpCell.vue"
 import ExternalIedDetailsDrawer from "@/pages/signals/components/ExternalIedDetailsDrawer.vue"
 import AllocationChannelPickerPanel from "@/pages/signals/components/AllocationChannelPickerPanel.vue"
@@ -920,6 +921,17 @@ const externalIedHostSourceColumnKey = computed(() => {
     return null
   }
   const index = sourceHeaders.value.findIndex(header => header === hostColumn)
+  return index >= 0 ? signalGridSourceColumnKey(index) : null
+})
+const externalIedAddressSourceColumnKey = computed(() => {
+  const verification = activeSignalSheet.value?.import_meta?.verification
+  const addressColumn = verification?.enabled === true
+    ? String(verification.iec61850_address_column ?? "").trim()
+    : null
+  if (!addressColumn) {
+    return null
+  }
+  const index = sourceHeaders.value.findIndex(header => header === addressColumn)
   return index >= 0 ? signalGridSourceColumnKey(index) : null
 })
 
@@ -4215,6 +4227,16 @@ function renderExternalIedIpCell(context: DataGridAppCellRendererContext<GridRow
   })
 }
 
+function renderExternalIedAddressCell(context: DataGridAppCellRendererContext<GridRow>) {
+  const displayValue = context.displayValue || "-"
+  const coverage = externalIedStore.getPlanningCoverage(context.row?.signal_id)
+  return h(ExternalIedAddressCell, {
+    label: displayValue,
+    coverageStatus: coverage?.status ?? "not_planned",
+    reason: coverage?.reason ?? null,
+  })
+}
+
 function renderSourceCell(context: DataGridAppCellRendererContext<GridRow>) {
   return shouldRenderExternalIedSourceCell(context)
     ? renderExternalIedIpCell(context)
@@ -4241,7 +4263,9 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
     capabilities: { editable: false },
     cellRenderer: signalGridSourceColumnKey(index) === externalIedHostSourceColumnKey.value
       ? renderExternalIedIpCell
-      : renderSourceCell,
+      : signalGridSourceColumnKey(index) === externalIedAddressSourceColumnKey.value
+        ? renderExternalIedAddressCell
+        : renderSourceCell,
   }))
 
   return [
@@ -4253,7 +4277,7 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
       initialState: { width: 208 },
       presentation: { align: "left", headerAlign: "left" },
       capabilities: { editable: false },
-      cellRenderer: renderDefaultCell,
+      cellRenderer: renderExternalIedAddressCell,
     },
     {
       key: "internal_signal_type",
@@ -4506,11 +4530,16 @@ watch(
   ([, signalIds]) => {
     const columns = ["external_ied_status"]
     const hostColumn = externalIedHostSourceColumnKey.value
+    const addressColumn = externalIedAddressSourceColumnKey.value
     if (hostColumn) {
       columns.push(hostColumn)
     } else {
       columns.push(...sourceHeaders.value.map((_, index) => signalGridSourceColumnKey(index)))
     }
+    if (addressColumn) {
+      columns.push(addressColumn)
+    }
+    columns.push("iec61850_address")
     signalGridPatchIngress.applyRuntimeSignals(signalIds, {
       reason: "external-ied-status-patch",
       columns,
