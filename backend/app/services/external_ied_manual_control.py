@@ -2,12 +2,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+import json
 import logging
 import re
 from threading import Event, RLock, Thread
 from typing import Any, Callable
 from uuid import uuid4
 
+from redis import Redis
+
+from app.core.config import get_settings
+from app.schemas.ws.events import ExternalIedManualReportValuesChangedEvent
 from app.services.iec61850.client_control import Iec61850ClientControlService
 from app.services.iec61850.report_runtime import (
     Iec61850DataSetMember,
@@ -22,7 +27,10 @@ from app.services.iec61850.report_runtime import (
 _MANUAL_INSPECTOR_OWNER = "unitlab-manual-ied-inspector"
 _DEFAULT_LEASE_TTL_SECONDS = 15.0
 _DEFAULT_CLEANUP_INTERVAL_SECONDS = 2.0
+_DEFAULT_REPORT_POLL_INTERVAL_SECONDS = 0.5
 _logger = logging.getLogger(__name__)
+_settings = get_settings()
+_sync_redis: Redis | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,19 +83,25 @@ class ExternalIedManualReportControlService:
         self,
         *,
         control_service_factory: Callable[..., Iec61850ClientControlService] = Iec61850ClientControlService,
+        event_publisher: Callable[[dict[str, Any]], None] | None = None,
         lease_ttl_seconds: float = _DEFAULT_LEASE_TTL_SECONDS,
         cleanup_interval_seconds: float = _DEFAULT_CLEANUP_INTERVAL_SECONDS,
+        report_poll_interval_seconds: float = _DEFAULT_REPORT_POLL_INTERVAL_SECONDS,
         start_cleanup_thread: bool = True,
     ) -> None:
         self._control_service_factory = control_service_factory
+        self._event_publisher = event_publisher or _publish_ws_event_sync
         self._lease_ttl = timedelta(seconds=max(float(lease_ttl_seconds), 0.05))
         self._cleanup_interval_seconds = max(float(cleanup_interval_seconds), 0.25)
+        self._report_poll_interval_seconds = max(float(report_poll_interval_seconds), 0.1)
         self._sessions: dict[str, Iec61850ClientControlService] = {}
         self._leases_by_session: dict[str, _ExternalIedManualReportLease] = {}
         self._session_by_lease_id: dict[str, str] = {}
+        self._last_published_report_signatures: dict[str, str] = {}
         self._lock = RLock()
         self._stop_cleanup = Event()
         self._cleanup_thread: Thread | None = None
+        self._report_poll_thread: Thread | None = None
         if start_cleanup_thread:
             self._cleanup_thread = Thread(
                 target=self._cleanup_expired_leases_loop,
@@ -95,11 +109,19 @@ class ExternalIedManualReportControlService:
                 daemon=True,
             )
             self._cleanup_thread.start()
+            self._report_poll_thread = Thread(
+                target=self._poll_manual_report_values_loop,
+                name="external-ied-manual-report-poll",
+                daemon=True,
+            )
+            self._report_poll_thread.start()
 
     def shutdown(self) -> None:
         self._stop_cleanup.set()
         if self._cleanup_thread is not None:
             self._cleanup_thread.join(timeout=2.0)
+        if self._report_poll_thread is not None:
+            self._report_poll_thread.join(timeout=2.0)
 
     def set_report_enabled(
         self,
@@ -194,16 +216,13 @@ class ExternalIedManualReportControlService:
                     reason="lease-expired",
                 )
             lease.renew(self._lease_ttl)
-            refresh = getattr(service, "refresh_reporting", None)
-            snapshot = refresh() if callable(refresh) else _service_snapshot(service)
+            snapshot = _service_snapshot(service)
             return ExternalIedManualReportResult(
                 workspace_id=lease.workspace_id,
                 endpoint=lease.endpoint,
                 report_reference=lease.report_reference,
                 enabled=True,
                 status=str(snapshot.last_state.runtime_status.value if snapshot and snapshot.last_state else "enabled"),
-                signal_states=_snapshot_signal_states(snapshot),
-                report_values=_snapshot_report_values(snapshot),
                 **_lease_fields(lease),
             )
 
@@ -235,6 +254,7 @@ class ExternalIedManualReportControlService:
                 raise ValueError("External IED manual report session does not support GI.")
             snapshot = send_gi()
             lease.renew(self._lease_ttl)
+            self._remember_report_signature_locked(session_key, snapshot)
             return ExternalIedManualReportResult(
                 workspace_id=lease.workspace_id,
                 endpoint=lease.endpoint,
@@ -304,6 +324,76 @@ class ExternalIedManualReportControlService:
         while not self._stop_cleanup.wait(self._cleanup_interval_seconds):
             self.cleanup_expired_leases()
 
+    def _poll_manual_report_values_loop(self) -> None:
+        while not self._stop_cleanup.wait(self._report_poll_interval_seconds):
+            try:
+                self.poll_manual_report_values_once()
+            except Exception:
+                _logger.exception("Failed to poll External IED manual report values")
+
+    def poll_manual_report_values_once(self) -> int:
+        with self._lock:
+            entries = [
+                (session_key, lease, service)
+                for session_key, lease in self._leases_by_session.items()
+                if lease.expires_at > _utc_now()
+                for service in [self._sessions.get(session_key)]
+                if service is not None
+            ]
+
+        published = 0
+        for session_key, lease, service in entries:
+            refresh = getattr(service, "refresh_reporting", None)
+            if not callable(refresh):
+                continue
+            try:
+                snapshot = refresh()
+            except Exception:
+                _logger.exception(
+                    "Failed to refresh External IED manual report values",
+                    extra={
+                        "workspace_id": lease.workspace_id,
+                        "endpoint": lease.endpoint,
+                        "report_reference": lease.report_reference,
+                        "lease_id": lease.lease_id,
+                    },
+                )
+                continue
+
+            signal_states = _snapshot_signal_states(snapshot)
+            report_values = _snapshot_report_values(snapshot)
+            if not signal_states and not report_values:
+                continue
+            signature = _report_payload_signature(signal_states, report_values)
+            with self._lock:
+                current_lease = self._leases_by_session.get(session_key)
+                if current_lease is None or current_lease.lease_id != lease.lease_id:
+                    continue
+                if self._last_published_report_signatures.get(session_key) == signature:
+                    continue
+                self._last_published_report_signatures[session_key] = signature
+
+            event = _manual_report_values_event(
+                lease=lease,
+                status=str(snapshot.last_state.runtime_status.value if snapshot and snapshot.last_state else "enabled"),
+                signal_states=signal_states,
+                report_values=report_values,
+            )
+            try:
+                self._event_publisher(event)
+                published += 1
+            except Exception:
+                _logger.exception(
+                    "Failed to publish External IED manual report values",
+                    extra={
+                        "workspace_id": lease.workspace_id,
+                        "endpoint": lease.endpoint,
+                        "report_reference": lease.report_reference,
+                        "lease_id": lease.lease_id,
+                    },
+                )
+        return published
+
     def _release_session_locked(
         self,
         session_key: str,
@@ -316,6 +406,7 @@ class ExternalIedManualReportControlService:
         lease = self._leases_by_session.pop(session_key, None)
         if lease is not None:
             self._session_by_lease_id.pop(lease.lease_id, None)
+        self._last_published_report_signatures.pop(session_key, None)
         service = self._sessions.pop(session_key, None)
         if service is not None:
             disconnect = getattr(service, "disconnect_ied", None)
@@ -330,6 +421,12 @@ class ExternalIedManualReportControlService:
             status="disabled",
             message=reason,
         )
+
+    def _remember_report_signature_locked(self, session_key: str, snapshot) -> None:
+        signal_states = _snapshot_signal_states(snapshot)
+        report_values = _snapshot_report_values(snapshot)
+        if signal_states or report_values:
+            self._last_published_report_signatures[session_key] = _report_payload_signature(signal_states, report_values)
 
 
 def _parse_endpoint(endpoint: str) -> Iec61850DeviceEndpoint:
@@ -407,6 +504,58 @@ def _snapshot_report_values(snapshot) -> tuple[dict[str, Any], ...]:
     if not isinstance(values, list):
         return ()
     return tuple(value for value in values if isinstance(value, dict))
+
+
+def _report_payload_signature(signal_states: tuple[dict[str, Any], ...], report_values: tuple[dict[str, Any], ...]) -> str:
+    return json.dumps(
+        {
+            "signal_states": signal_states,
+            "report_values": report_values,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+
+
+def _endpoint_host_port(endpoint: str) -> tuple[str, int]:
+    host, separator, raw_port = endpoint.rpartition(":")
+    if separator != ":":
+        return endpoint, 102
+    try:
+        return host, int(raw_port)
+    except ValueError:
+        return host, 102
+
+
+def _manual_report_values_event(
+    *,
+    lease: _ExternalIedManualReportLease,
+    status: str,
+    signal_states: tuple[dict[str, Any], ...],
+    report_values: tuple[dict[str, Any], ...],
+) -> dict[str, Any]:
+    host, port = _endpoint_host_port(lease.endpoint)
+    event = ExternalIedManualReportValuesChangedEvent(
+        workspace_id=lease.workspace_id,
+        endpoint=lease.endpoint,
+        ip=host,
+        port=port,
+        report_reference=lease.report_reference,
+        lease_id=lease.lease_id,
+        status=status,
+        signal_states=list(signal_states),
+        report_values=list(report_values),
+        emitted_at=_utc_now().isoformat(),
+    )
+    return event.model_dump(mode="json")
+
+
+def _publish_ws_event_sync(event: dict[str, Any]) -> None:
+    global _sync_redis
+    if _sync_redis is None:
+        _sync_redis = Redis.from_url(_settings.redis_url, encoding="utf-8", decode_responses=True)
+    _sync_redis.publish(_settings.ws_events_channel, json.dumps(event, separators=(",", ":")))
 
 
 def _candidate_from_report_request(request: ExternalIedManualReportRequest) -> Iec61850ReportControlCandidate:

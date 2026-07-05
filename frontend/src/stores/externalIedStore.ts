@@ -12,6 +12,7 @@ import type {
   ExternalIedPlanningSignalStatus,
   ExternalIedPlanningSnapshotEvent,
   ExternalIedPlanningState,
+  ExternalIedManualReportValuesChangedEvent,
   ExternalIedStatusChangedEvent,
   ExternalIedStatusRecord,
   ExternalIedStatusSnapshotEvent,
@@ -802,19 +803,9 @@ export const useExternalIedStore = defineStore("externalIedStore", () => {
       throw error
     }
     if (response.data.enabled) {
-      const normalizedStates = normalizeManualSignalStates(response.data.signal_states ?? [], response.data.report_values ?? [])
       manualReportLeases.value = {
         ...manualReportLeases.value,
         [key]: response.data,
-      }
-      if (Object.keys(normalizedStates).length) {
-        manualReportSignalStates.value = {
-          ...manualReportSignalStates.value,
-          [key]: {
-            ...(manualReportSignalStates.value[key] ?? {}),
-            ...normalizedStates,
-          },
-        }
       }
     } else {
       const nextEnabled = { ...manualEnabledReports.value }
@@ -915,15 +906,9 @@ export const useExternalIedStore = defineStore("externalIedStore", () => {
     results.forEach((result) => {
       const { key, data } = result
       if (data?.enabled) {
-        const normalizedStates = normalizeManualSignalStates(data.signal_states ?? [], data.report_values ?? [])
         nextEnabled[key] = true
         nextLeases[key] = data
-        if (Object.keys(normalizedStates).length) {
-          nextSignalStates[key] = {
-            ...(nextSignalStates[key] ?? {}),
-            ...normalizedStates,
-          }
-        } else if (!nextSignalStates[key]) {
+        if (!nextSignalStates[key]) {
           nextSignalStates[key] = {}
         }
         renewed.push(data)
@@ -937,6 +922,34 @@ export const useExternalIedStore = defineStore("externalIedStore", () => {
     manualReportLeases.value = nextLeases
     manualReportSignalStates.value = nextSignalStates
     return renewed
+  }
+
+  function applyManualReportValuesChanged(event: ExternalIedManualReportValuesChangedEvent) {
+    const workspaceId = Number(workspaceStore.activeWorkspaceId)
+    if (!Number.isFinite(workspaceId) || workspaceId <= 0 || Number(event.workspace_id) !== workspaceId) {
+      return
+    }
+    const normalizedIp = normalizeIp(event.ip)
+    const normalizedReportReference = normalizeOptionalText(event.report_reference)
+    if (!normalizedIp || !normalizedReportReference) {
+      return
+    }
+    const key = manualReportKey(normalizedIp, normalizePort(event.port), normalizedReportReference)
+    const lease = manualReportLeases.value[key]
+    if (lease?.lease_id && event.lease_id && lease.lease_id !== event.lease_id) {
+      return
+    }
+    const normalizedStates = normalizeManualSignalStates(event.signal_states ?? [], event.report_values ?? [])
+    if (!Object.keys(normalizedStates).length) {
+      return
+    }
+    manualReportSignalStates.value = {
+      ...manualReportSignalStates.value,
+      [key]: {
+        ...(manualReportSignalStates.value[key] ?? {}),
+        ...normalizedStates,
+      },
+    }
   }
 
   async function releaseManualReportLeasesForEndpoint(ip: string | null | undefined, port: number | null | undefined) {
@@ -1018,6 +1031,7 @@ export const useExternalIedStore = defineStore("externalIedStore", () => {
     releaseManualReportLeasesForEndpoint,
     applyPlanningSnapshot,
     applyPlanningChanged,
+    applyManualReportValuesChanged,
     clearLocal,
   }
 })

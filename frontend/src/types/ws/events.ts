@@ -7,6 +7,10 @@ import type { CoreNtpSnapshot } from "../coreNtp"
 import type { CoreDiagnosticsSnapshot } from "../coreDiagnostics"
 import type { CoreProvisionSnapshot } from "../coreProvision"
 import type { SequenceRuntimeState } from "../sequences"
+import type {
+  VerificationExternalIedManualReportValue,
+  VerificationExternalIedManualSignalState,
+} from "../verification"
 // ---------------------------------------------------------------------
 // WS channels (Backend → Frontend)
 // ---------------------------------------------------------------------
@@ -18,6 +22,7 @@ export enum WSChannel {
   DEVICE_RESP     = "devices/resp",
   DEVICE_STATUS   = "devices/status",
   EXTERNAL_IED_STATUS = "external-ieds/status",
+  EXTERNAL_IED_MANUAL_REPORTS = "external-ieds/manual-reports",
   TIME_STATUS     = "time/status",
 }
 
@@ -262,6 +267,21 @@ export interface ExternalIedPlanningChangedEvent {
   emitted_at: string
 }
 
+export interface ExternalIedManualReportValuesChangedEvent {
+  channel: WSChannel.EXTERNAL_IED_MANUAL_REPORTS
+  event: "external_ied_manual_report_values_changed"
+  workspace_id: number
+  endpoint: string
+  ip: string
+  port: number
+  report_reference: string
+  lease_id: string
+  status: string
+  signal_states: VerificationExternalIedManualSignalState[]
+  report_values: VerificationExternalIedManualReportValue[]
+  emitted_at: string
+}
+
 export interface SystemHealthChangedEvent {
   channel: WSChannel.SYSTEM_INFO
   event: "system_health_changed"
@@ -447,6 +467,7 @@ export type ChannelWSEvent =
   | SignalRowsPatchedEvent
   | ExternalIedStatusSnapshotEvent
   | ExternalIedStatusChangedEvent
+  | ExternalIedManualReportValuesChangedEvent
   | DeviceStateEvent
   | DeviceRegisterEvent
   | DeviceRespEvent

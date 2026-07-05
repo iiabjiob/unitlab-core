@@ -45,7 +45,7 @@ Scope: this audit covers generic IEC 61850-8-1 MMS client/server behavior needed
 | Trigger/options profile | Backend writes a default live SCADA profile before `RptEna`. | Promote `TrgOps`/`OptFlds` into an explicit subscription profile contract with source tracking: SCD default, UnitLab default, live override, and operator-approved advanced override. |
 | Time and quality semantics | Quality and source timestamp are surfaced when present. | Normalize IEC quality bits, timestamp precision/invalidity/leap-second flags, and separate source timestamp from backend receive timestamp. |
 | Multi-device support | Current flow is one active debug session/device. | Add multiple concurrent associations, per-device runtime state, per-device event queues, isolation of report streams, and reconnect/resubscribe behavior. |
-| Runtime eventing | Debug UI polls REST snapshot. | Replace production live updates with backend-published deltas over WebSocket while retaining REST snapshot for initial load and reconnect recovery. |
+| Runtime eventing | Manual IED report values are pushed by the backend on `external-ieds/manual-reports` when the lease-owned backend reader observes changed report values; REST heartbeat only renews the manual lease. | Extend the same backend-published delta pattern to production verification subscriptions, retaining REST snapshot endpoints for initial load and reconnect recovery. |
 | Diagnostics | Command failure codes are structured enough for current slices. | Add protocol-level diagnostics for APDU decode failures, service errors, access-result details, reject/error PDUs, timeout phase, invoke-id correlation, and pcap-friendly frame identifiers. |
 | Conformance tests | Focused service tests and live pcap checks exist. | Add replay tests from captured MMS frames, simulator/client interoperability matrix, negative APDU tests, and cross-checks against an external reference client. |
 
@@ -72,7 +72,7 @@ Scope: this audit covers generic IEC 61850-8-1 MMS client/server behavior needed
 3. Complete RCB lifecycle behavior for BRCB and URCB before broadening into unrelated MMS services.
 4. Harden discovery pagination and typed model building so connect-from-discovery does not depend on SCD shortcuts.
 5. Move subscription options into an explicit profile contract and expose effective options read-only in the UI.
-6. Replace debug REST polling with WebSocket deltas after the event payload is stable.
+6. Extend the manual-inspector WebSocket delta path to production verification subscriptions after the event payload is stable.
 7. Expand server conformance only after the client can consume the same behavior from an external IED or reference simulator.
 
 ## Ownership Model

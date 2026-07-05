@@ -217,17 +217,67 @@ def test_manual_report_heartbeat_renews_lease():
     assert renewed.enabled is True
     assert renewed.lease_id == enabled.lease_id
     assert renewed.renewed_at >= enabled.renewed_at
-    assert renewed.signal_states == (
-        {
-            "index": 0,
-            "reference": "KINTE15BCU01CTRL1/XCBR1.Pos.stVal[ST]",
-            "value": "false",
-            "timestamp": "2026-07-04T18:00:01Z",
-            "reason": "data-change",
-        },
-    )
-    assert _RecordingControlService.instances[0].refresh_calls == 1
+    assert renewed.signal_states == ()
+    assert renewed.report_values == ()
+    assert _RecordingControlService.instances[0].refresh_calls == 0
     assert _RecordingControlService.instances[0].close_calls == 0
+
+
+def test_manual_report_poll_publishes_changed_values():
+    _RecordingControlService.instances = []
+    events: list[dict] = []
+    service = ExternalIedManualReportControlService(
+        control_service_factory=_RecordingControlService,
+        event_publisher=events.append,
+        start_cleanup_thread=False,
+    )
+    request = ExternalIedManualReportRequest(
+        workspace_id=5,
+        endpoint="172.16.40.128:12447",
+        report_reference="KINTE15BCU01CTRL1/LLN0.BR.brcbST",
+        report_kind="buffered",
+    )
+
+    enabled = service.set_report_enabled(request, enabled=True)
+    published = service.poll_manual_report_values_once()
+    duplicate = service.poll_manual_report_values_once()
+
+    assert published == 1
+    assert duplicate == 0
+    assert _RecordingControlService.instances[0].refresh_calls == 2
+    assert events == [
+        {
+            "channel": "external-ieds/manual-reports",
+            "event": "external_ied_manual_report_values_changed",
+            "workspace_id": 5,
+            "endpoint": "172.16.40.128:12447",
+            "ip": "172.16.40.128",
+            "port": 12447,
+            "report_reference": "KINTE15BCU01CTRL1/LLN0.BR.brcbST",
+            "lease_id": enabled.lease_id,
+            "status": "reporting",
+            "signal_states": [
+                {
+                    "index": 0,
+                    "reference": "KINTE15BCU01CTRL1/XCBR1.Pos.stVal[ST]",
+                    "value": "false",
+                    "timestamp": "2026-07-04T18:00:01Z",
+                    "reason": "data-change",
+                },
+            ],
+            "report_values": [
+                {
+                    "index": 0,
+                    "reference": "KINTE15BCU01CTRL1/XCBR1$ST$Pos$stVal",
+                    "data_reference": "KINTE15BCU01CTRL1/XCBR1$ST$Pos$stVal",
+                    "value": "true",
+                    "timestamp": "2026-07-04T18:00:00Z",
+                    "reason": "general-interrogation",
+                },
+            ],
+            "emitted_at": events[0]["emitted_at"],
+        },
+    ]
 
 
 def test_manual_report_heartbeat_clears_disabled_session_state():

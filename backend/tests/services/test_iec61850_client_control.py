@@ -313,7 +313,7 @@ class _DelayedGiExternalMmsClientStdin:
             self._stdout.lines.append("native-wire-client: state=ready\n")
         elif command.startswith("poll-reports "):
             self._stdout.lines.append(
-                "native-wire-client: report-entry index=0 reference=KINTE13LVC01CTRL/XCBR1$ST$Pos$stVal dataRef=KINTE13LVC01CTRL/XCBR1$ST$Pos$stVal value=true kind=bool reason=data-change datasetMatch=true discoveredMatch=true\n"
+                "native-wire-client: report-entry index=0 reference=KINTE13LVC01CTRL/XCBR1$ST$Pos$stVal dataRef=KINTE13LVC01CTRL/XCBR1$ST$Pos$stVal value=true kind=bool reason=general-interrogation datasetMatch=true discoveredMatch=true\n"
             )
             self._stdout.lines.append("native-wire-client: async-report\n")
             self._stdout.lines.append(
@@ -1981,7 +1981,7 @@ def test_external_mms_snapshot_surfaces_pending_report_entries_without_summary()
     assert snapshot.ui_state["report"]["signal_states"][0]["value"] is True
 
 
-def test_external_mms_gi_context_marks_fresh_report_entries_as_gi() -> None:
+def test_external_mms_report_entries_keep_native_reason() -> None:
     candidate = client_control_module.Iec61850ReportControlCandidate(
         id="KINTE15BCU01CTRL1:LLN0$BR$brcbST01",
         ied_name="KINTE15BCU01",
@@ -2002,7 +2002,6 @@ def test_external_mms_gi_context_marks_fresh_report_entries_as_gi() -> None:
     )
     service = Iec61850ClientControlService(candidate=candidate)
     service._last_state = service._external_state(Iec61850RuntimeStatus.ENABLED, enabled=True)  # noqa: SLF001
-    service._external_report_reason_override = Iec61850ReportReason.GENERAL_INTERROGATION  # noqa: SLF001
 
     service._apply_external_mms_client_line(  # noqa: SLF001
         "native-wire-client: report-entry index=0 "
@@ -2011,12 +2010,11 @@ def test_external_mms_gi_context_marks_fresh_report_entries_as_gi() -> None:
         "value=false kind=bool reason=data-change datasetMatch=true discoveredMatch=true"
     )
     service._finalize_pending_external_report_entries()  # noqa: SLF001
-    service._external_report_reason_override = None  # noqa: SLF001
     snapshot = service.snapshot()
 
     assert snapshot.last_report is not None
-    assert snapshot.ui_state["report"]["values"][0]["reason"] == "general-interrogation"
-    assert snapshot.ui_state["report"]["signal_states"][0]["reason"] == "general-interrogation"
+    assert snapshot.ui_state["report"]["values"][0]["reason"] == "data-change"
+    assert snapshot.ui_state["report"]["signal_states"][0]["reason"] == "data-change"
     assert snapshot.ui_state["report"]["signal_states"][0]["value"] is False
 
 

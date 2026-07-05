@@ -211,7 +211,6 @@ class Iec61850ClientControlService:
         self._external_live_discovery: dict | None = None
         self._pending_external_report_entries: list[dict[str, str]] = []
         self._current_external_report_values: dict[str, Iec61850ReportEventValue] = {}
-        self._external_report_reason_override: Iec61850ReportReason | None = None
         self._lock = RLock()
 
     @property
@@ -402,7 +401,6 @@ class Iec61850ClientControlService:
             self._last_plan = None
             self._last_diagnostic = None
             self._current_external_report_values.clear()
-            self._external_report_reason_override = None
             self._live_wire_last_frame = None
             self._live_wire_last_diagnostic = None
             self._runtime._append_event(
@@ -738,24 +736,20 @@ class Iec61850ClientControlService:
         self._last_report = None
         self._pending_external_report_entries.clear()
         self._current_external_report_values.clear()
-        self._external_report_reason_override = Iec61850ReportReason.GENERAL_INTERROGATION
-        try:
-            self._write_external_mms_command(gi_command)
-            self._drain_external_mms_process_stdout(
-                timeout_seconds=_EXTERNAL_MMS_CLIENT_GI_TIMEOUT_SECONDS,
-                stop_on="native-wire-client: state=ready",
-                refresh_timeout_on_activity=True,
-                accept_on_eof_prefixes=(
-                    "native-wire-client: subscription-summary phase=gi",
-                    "native-wire-client: subscription-summary phase=async-report",
-                    "native-wire-client: async-report",
-                ),
-            )
-            self._ensure_external_mms_command_not_failed(gi_command)
-            self._poll_external_mms_reports_after_gi()
-            self._finalize_pending_external_report_entries()
-        finally:
-            self._external_report_reason_override = None
+        self._write_external_mms_command(gi_command)
+        self._drain_external_mms_process_stdout(
+            timeout_seconds=_EXTERNAL_MMS_CLIENT_GI_TIMEOUT_SECONDS,
+            stop_on="native-wire-client: state=ready",
+            refresh_timeout_on_activity=True,
+            accept_on_eof_prefixes=(
+                "native-wire-client: subscription-summary phase=gi",
+                "native-wire-client: subscription-summary phase=async-report",
+                "native-wire-client: async-report",
+            ),
+        )
+        self._ensure_external_mms_command_not_failed(gi_command)
+        self._poll_external_mms_reports_after_gi()
+        self._finalize_pending_external_report_entries()
         if (
             direct_rcb_command
             and self._last_report is None
@@ -1371,20 +1365,16 @@ class Iec61850ClientControlService:
         now = _utc_now().isoformat().replace("+00:00", "Z")
         sequence_number = _parse_int_or_none(fields.get("asyncReports") or fields.get("count"))
         reason = Iec61850ReportReason.GENERAL_INTERROGATION
-        values = tuple(_external_report_values(
-            self._candidate,
-            self._pending_external_report_entries,
-            now,
-            reason_override=self._external_report_reason_override,
-        ))
+        values = tuple(_external_report_values(self._candidate, self._pending_external_report_entries, now))
         for value in values:
             self._current_external_report_values[value.data_reference or value.reference] = value
         if not values and self._last_report is not None:
             values = self._last_report.values
         if (
-            self._external_report_reason_override == Iec61850ReportReason.GENERAL_INTERROGATION
-            and self._last_report is not None
+            self._last_report is not None
             and len(self._last_report.values) > len(values)
+            and values
+            and all(value.reason_code == Iec61850ReportReason.GENERAL_INTERROGATION for value in values)
         ):
             self._pending_external_report_entries.clear()
             return self._last_report
@@ -1421,7 +1411,6 @@ class Iec61850ClientControlService:
         self._external_mms_stdout_buffer.clear()
         self._pending_external_report_entries.clear()
         self._current_external_report_values.clear()
-        self._external_report_reason_override = None
         self._external_discovered_rcbs_native = False
         if process is None:
             return
@@ -1632,7 +1621,6 @@ class Iec61850ClientControlService:
         self._last_report = None
         self._last_plan = None
         self._last_diagnostic = None
-        self._external_report_reason_override = None
         self._live_wire_last_frame = None
         self._live_wire_last_diagnostic = None
         self._endpoint_resolution = _default_endpoint_resolution(self._endpoint)
@@ -2134,8 +2122,6 @@ def _external_report_values(
     candidate: Iec61850ReportControlCandidate,
     entries: Sequence[dict[str, str]],
     timestamp: str,
-    *,
-    reason_override: Iec61850ReportReason | None = None,
 ) -> list[Iec61850ReportEventValue]:
     values: list[Iec61850ReportEventValue] = []
     for fallback_index, entry in enumerate(entries):
@@ -2150,7 +2136,7 @@ def _external_report_values(
                 reference=matched_reference or data_reference or "<unknown>",
                 data_reference=data_reference,
                 value=_parse_external_report_value(entry.get("value")),
-                reason_code=reason_override or _external_report_reason(entry.get("reason")),
+                reason_code=_external_report_reason(entry.get("reason")),
                 timestamp=timestamp,
             )
         )

@@ -31,6 +31,7 @@ class WSChannel(str, Enum):
     DEVICE_RESP     = "devices/resp"
     DEVICE_STATUS   = "devices/status"
     EXTERNAL_IED_STATUS = "external-ieds/status"
+    EXTERNAL_IED_MANUAL_REPORTS = "external-ieds/manual-reports"
 
 # ---------------------------------------------------------------------
 # Device states (DI/DO/AO)
@@ -203,6 +204,21 @@ class ExternalIedPlanningChangedEvent(BaseModel):
     endpoint: ExternalIedPlanningEndpointRecord
     signal_results: list[ExternalIedPlanningSignalResult] = Field(default_factory=list)
     removed_signal_ids: list[int] = Field(default_factory=list)
+    emitted_at: str
+
+
+class ExternalIedManualReportValuesChangedEvent(BaseModel):
+    channel: Literal[WSChannel.EXTERNAL_IED_MANUAL_REPORTS] = WSChannel.EXTERNAL_IED_MANUAL_REPORTS
+    event: Literal["external_ied_manual_report_values_changed"] = "external_ied_manual_report_values_changed"
+    workspace_id: int
+    endpoint: str
+    ip: str
+    port: int = 102
+    report_reference: str
+    lease_id: str
+    status: str
+    signal_states: list[dict[str, Any]] = Field(default_factory=list)
+    report_values: list[dict[str, Any]] = Field(default_factory=list)
     emitted_at: str
 
 class SequenceEventBase(BaseModel):

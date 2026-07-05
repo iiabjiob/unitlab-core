@@ -57,6 +57,7 @@ import type {
   SignalRowsPatchedEvent,
   ExternalIedPlanningChangedEvent,
   ExternalIedPlanningSnapshotEvent,
+  ExternalIedManualReportValuesChangedEvent,
   ExternalIedStatusChangedEvent,
   ExternalIedStatusSnapshotEvent,
 } from '@/types/ws/events'
@@ -516,6 +517,15 @@ export function handleWsEvent(event: WSEvent) {
         break
       }
       logger.warn("⚠️ Unknown EXTERNAL_IED_STATUS payload", channelEvent)
+      break
+    }
+    case WSChannel.EXTERNAL_IED_MANUAL_REPORTS: {
+      const eventName = String((channelEvent as { event?: unknown }).event ?? "")
+      if (eventName === "external_ied_manual_report_values_changed") {
+        externalIedStore.applyManualReportValuesChanged(channelEvent as ExternalIedManualReportValuesChangedEvent)
+        break
+      }
+      logger.warn("⚠️ Unknown EXTERNAL_IED_MANUAL_REPORTS payload", channelEvent)
       break
     }
     // Device state broadcasts carry DI/DO/AO changes for visualization.
