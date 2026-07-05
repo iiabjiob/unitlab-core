@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 import logging
 import re
 from threading import Event, RLock, Thread
-from typing import Callable
+from typing import Any, Callable
 from uuid import uuid4
 
 from app.services.iec61850.client_control import Iec61850ClientControlService
@@ -48,6 +48,8 @@ class ExternalIedManualReportResult:
     created_at: str | None = None
     renewed_at: str | None = None
     expires_at: str | None = None
+    signal_states: tuple[dict[str, Any], ...] = ()
+    report_values: tuple[dict[str, Any], ...] = ()
 
 
 @dataclass(slots=True)
@@ -121,6 +123,7 @@ class ExternalIedManualReportControlService:
                     )
                     self._sessions[session_key] = service
                 snapshot = service.enable_reporting()
+                message = snapshot.last_diagnostic.message if snapshot.last_diagnostic else None
                 lease = self._leases_by_session.get(session_key)
                 if lease is None:
                     now = _utc_now()
@@ -145,7 +148,9 @@ class ExternalIedManualReportControlService:
                     report_reference=request.report_reference,
                     enabled=True,
                     status=str(snapshot.last_state.runtime_status.value if snapshot.last_state else "enabled"),
-                    message=snapshot.last_diagnostic.message if snapshot.last_diagnostic else None,
+                    message=message,
+                    signal_states=_snapshot_signal_states(snapshot),
+                    report_values=_snapshot_report_values(snapshot),
                     **_lease_fields(lease),
                 )
 
@@ -189,12 +194,56 @@ class ExternalIedManualReportControlService:
                     reason="lease-expired",
                 )
             lease.renew(self._lease_ttl)
+            refresh = getattr(service, "refresh_reporting", None)
+            snapshot = refresh() if callable(refresh) else _service_snapshot(service)
             return ExternalIedManualReportResult(
                 workspace_id=lease.workspace_id,
                 endpoint=lease.endpoint,
                 report_reference=lease.report_reference,
                 enabled=True,
-                status="enabled",
+                status=str(snapshot.last_state.runtime_status.value if snapshot and snapshot.last_state else "enabled"),
+                signal_states=_snapshot_signal_states(snapshot),
+                report_values=_snapshot_report_values(snapshot),
+                **_lease_fields(lease),
+            )
+
+    def send_general_interrogation(
+        self,
+        *,
+        workspace_id: int,
+        endpoint: str,
+        lease_id: str,
+    ) -> ExternalIedManualReportResult:
+        with self._lock:
+            session_key = self._session_by_lease_id.get(lease_id)
+            if session_key is None:
+                raise ValueError("External IED manual report lease was not found.")
+            lease = self._leases_by_session.get(session_key)
+            if lease is None or lease.workspace_id != workspace_id or lease.endpoint != endpoint:
+                raise ValueError("External IED manual report lease does not match this endpoint.")
+            service = self._sessions.get(session_key)
+            if service is None or _service_report_enabled(service) is False:
+                return self._release_session_locked(
+                    session_key,
+                    workspace_id=lease.workspace_id,
+                    endpoint=lease.endpoint,
+                    report_reference=lease.report_reference,
+                    reason="report-disabled",
+                )
+            send_gi = getattr(service, "send_general_interrogation", None)
+            if not callable(send_gi):
+                raise ValueError("External IED manual report session does not support GI.")
+            snapshot = send_gi()
+            lease.renew(self._lease_ttl)
+            return ExternalIedManualReportResult(
+                workspace_id=lease.workspace_id,
+                endpoint=lease.endpoint,
+                report_reference=lease.report_reference,
+                enabled=True,
+                status=str(snapshot.last_state.runtime_status.value if snapshot.last_state else "enabled"),
+                message=snapshot.last_diagnostic.message if snapshot.last_diagnostic else None,
+                signal_states=_snapshot_signal_states(snapshot),
+                report_values=_snapshot_report_values(snapshot),
                 **_lease_fields(lease),
             )
 
@@ -318,14 +367,46 @@ def _lease_fields(lease: _ExternalIedManualReportLease) -> dict[str, str]:
 
 
 def _service_report_enabled(service: Iec61850ClientControlService) -> bool | None:
-    snapshot_method = getattr(service, "snapshot", None)
-    if not callable(snapshot_method):
+    snapshot = _service_snapshot(service)
+    if snapshot is None:
         return None
-    snapshot = snapshot_method()
     last_state = getattr(snapshot, "last_state", None)
     if last_state is None:
         return None
     return bool(getattr(last_state, "enabled", False))
+
+
+def _service_snapshot(service: Iec61850ClientControlService):
+    snapshot_method = getattr(service, "snapshot", None)
+    if not callable(snapshot_method):
+        return None
+    return snapshot_method()
+
+
+def _snapshot_signal_states(snapshot) -> tuple[dict[str, Any], ...]:
+    ui_state = getattr(snapshot, "ui_state", None)
+    if not isinstance(ui_state, dict):
+        return ()
+    report = ui_state.get("report")
+    if not isinstance(report, dict):
+        return ()
+    signal_states = report.get("signal_states")
+    if not isinstance(signal_states, list):
+        return ()
+    return tuple(state for state in signal_states if isinstance(state, dict))
+
+
+def _snapshot_report_values(snapshot) -> tuple[dict[str, Any], ...]:
+    ui_state = getattr(snapshot, "ui_state", None)
+    if not isinstance(ui_state, dict):
+        return ()
+    report = ui_state.get("report")
+    if not isinstance(report, dict):
+        return ()
+    values = report.get("values")
+    if not isinstance(values, list):
+        return ()
+    return tuple(value for value in values if isinstance(value, dict))
 
 
 def _candidate_from_report_request(request: ExternalIedManualReportRequest) -> Iec61850ReportControlCandidate:

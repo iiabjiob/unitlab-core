@@ -91,6 +91,9 @@ _EXTERNAL_RCB_TRGOPS_HEX = "0274"
 _EXTERNAL_MMS_CLIENT_STARTUP_TIMEOUT_SECONDS = 1.5
 _EXTERNAL_MMS_CLIENT_DISCOVER_TIMEOUT_SECONDS = 3.0
 _EXTERNAL_MMS_CLIENT_REPORTING_TIMEOUT_SECONDS = 1.5
+_EXTERNAL_MMS_CLIENT_GI_TIMEOUT_SECONDS = 5.0
+_EXTERNAL_MMS_CLIENT_GI_POLL_TIMEOUT_MS = 1000
+_EXTERNAL_MMS_CLIENT_GI_POLL_ATTEMPTS = 4
 _EXTERNAL_MMS_CLIENT_DISCONNECT_TIMEOUT_SECONDS = 1.5
 _EXTERNAL_MMS_ENDPOINT_PROBE_TIMEOUT_SECONDS = 2.0
 
@@ -208,6 +211,7 @@ class Iec61850ClientControlService:
         self._external_live_discovery: dict | None = None
         self._pending_external_report_entries: list[dict[str, str]] = []
         self._current_external_report_values: dict[str, Iec61850ReportEventValue] = {}
+        self._external_report_reason_override: Iec61850ReportReason | None = None
         self._lock = RLock()
 
     @property
@@ -398,6 +402,7 @@ class Iec61850ClientControlService:
             self._last_plan = None
             self._last_diagnostic = None
             self._current_external_report_values.clear()
+            self._external_report_reason_override = None
             self._live_wire_last_frame = None
             self._live_wire_last_diagnostic = None
             self._runtime._append_event(
@@ -448,6 +453,12 @@ class Iec61850ClientControlService:
                 lambda: self._runtime.send_general_interrogation(session_id=self._session_id, candidate=self._candidate, client_id=self._client_id),
                 post=lambda result: setattr(self, "_last_report", result),
             )
+
+    def refresh_reporting(self) -> Iec61850ClientControlSnapshot:
+        with self._lock:
+            if self._endpoint.mode == Iec61850RuntimeMode.MMS:
+                return self._run("external-report-refresh", self._refresh_external_mms_reports)
+            return self.snapshot()
 
     def disable_report_control(self) -> Iec61850ClientControlSnapshot:
         with self._lock:
@@ -677,7 +688,10 @@ class Iec61850ClientControlService:
         self._ensure_external_mms_command_not_failed(rptena_command)
         if direct_rcb_command and self._last_state is not None and self._last_state.runtime_status == Iec61850RuntimeStatus.READ:
             self._last_state = self._external_state(Iec61850RuntimeStatus.ENABLED, enabled=True)
-        if self._last_state is None or self._last_state.runtime_status != Iec61850RuntimeStatus.ENABLED:
+        if self._last_state is None or self._last_state.runtime_status not in {
+            Iec61850RuntimeStatus.ENABLED,
+            Iec61850RuntimeStatus.REPORTING,
+        }:
             returncode = self._external_mms_process.poll() if self._external_mms_process is not None else None
             if returncode is not None:
                 raise Iec61850ReportRuntimeError(
@@ -688,6 +702,9 @@ class Iec61850ClientControlService:
                 "EXTERNAL_MMS_RPTENA_NOT_CONFIRMED",
                 "IEC 61850 external MMS client did not confirm RptEna=true.",
             )
+        self._last_report = None
+        self._pending_external_report_entries.clear()
+        self._current_external_report_values.clear()
         self._last_state = self._external_state(Iec61850RuntimeStatus.ENABLED, enabled=True)
         self._runtime._append_event(
             kind="external-report-control-enable",
@@ -717,17 +734,28 @@ class Iec61850ClientControlService:
         self._ensure_external_mms_client_started()
         direct_rcb_command = self._uses_external_direct_rcb_commands()
         gi_command = self._external_gi_command()
-        self._write_external_mms_command(gi_command)
-        self._drain_external_mms_process_stdout(
-            timeout_seconds=_EXTERNAL_MMS_CLIENT_REPORTING_TIMEOUT_SECONDS,
-            require_stop=False,
-            accept_on_eof_prefixes=(
-                "native-wire-client: subscription-summary phase=gi",
-                "native-wire-client: subscription-summary phase=async-report",
-                "native-wire-client: async-report",
-            ),
-        )
-        self._ensure_external_mms_command_not_failed(gi_command)
+        self._drain_external_mms_process_stdout(timeout_seconds=0.0)
+        self._last_report = None
+        self._pending_external_report_entries.clear()
+        self._current_external_report_values.clear()
+        self._external_report_reason_override = Iec61850ReportReason.GENERAL_INTERROGATION
+        try:
+            self._write_external_mms_command(gi_command)
+            self._drain_external_mms_process_stdout(
+                timeout_seconds=_EXTERNAL_MMS_CLIENT_GI_TIMEOUT_SECONDS,
+                stop_on="native-wire-client: state=ready",
+                refresh_timeout_on_activity=True,
+                accept_on_eof_prefixes=(
+                    "native-wire-client: subscription-summary phase=gi",
+                    "native-wire-client: subscription-summary phase=async-report",
+                    "native-wire-client: async-report",
+                ),
+            )
+            self._ensure_external_mms_command_not_failed(gi_command)
+            self._poll_external_mms_reports_after_gi()
+            self._finalize_pending_external_report_entries()
+        finally:
+            self._external_report_reason_override = None
         if (
             direct_rcb_command
             and self._last_report is None
@@ -759,6 +787,41 @@ class Iec61850ClientControlService:
             message="Persistent external MMS client requested GI.",
         )
         self._drain_external_mms_process_stdout(timeout_seconds=1.0)
+
+    def _refresh_external_mms_reports(self) -> None:
+        self._ensure_external_mms_client_started()
+        if self._last_state is None or not self._last_state.enabled:
+            return
+        self._poll_external_mms_reports(timeout_ms=250, attempts=1)
+
+    def _poll_external_mms_reports_after_gi(self) -> None:
+        attempts = 1 if self._last_report is not None else _EXTERNAL_MMS_CLIENT_GI_POLL_ATTEMPTS
+        self._poll_external_mms_reports(
+            timeout_ms=_EXTERNAL_MMS_CLIENT_GI_POLL_TIMEOUT_MS,
+            attempts=attempts,
+        )
+
+    def _poll_external_mms_reports(self, *, timeout_ms: int, attempts: int) -> None:
+        for _ in range(max(attempts, 0)):
+            if (
+                self._last_report is not None
+                and self._external_mms_process is not None
+                and self._external_mms_process.poll() is not None
+            ):
+                return
+            poll_command = f"poll-reports {max(timeout_ms, 0)}"
+            self._write_external_mms_command(poll_command)
+            self._drain_external_mms_process_stdout(
+                timeout_seconds=(max(timeout_ms, 0) / 1000.0) + 0.5,
+                stop_on="native-wire-client: state=ready",
+                require_stop=False,
+                accept_on_eof_prefixes=(
+                    "native-wire-client: subscription-summary phase=async-report",
+                    "native-wire-client: async-report",
+                ),
+            )
+            self._ensure_external_mms_command_not_failed(poll_command)
+            self._finalize_pending_external_report_entries()
 
     def _disconnect_external_mms_ied(self) -> None:
         if self._external_mms_process is not None:
@@ -1053,7 +1116,17 @@ class Iec61850ClientControlService:
                     self._last_report = self._external_report_event(fields)
                     self._last_state = self._external_state(Iec61850RuntimeStatus.REPORTING, enabled=True, gi_in_progress=False)
         elif line.startswith("native-wire-client: report-entry "):
-            self._pending_external_report_entries.append(_parse_space_kv_line(line.removeprefix("native-wire-client: report-entry ")))
+            fields = _parse_space_kv_line(line.removeprefix("native-wire-client: report-entry "))
+            logger.debug(
+                "External IED native MMS report entry | session=%s endpoint=%s:%s reference=%s reason=%s matched=%s",
+                self._session_id,
+                self._endpoint.host,
+                self._endpoint.port,
+                fields.get("dataRef") or fields.get("reference"),
+                fields.get("reason"),
+                fields.get("matched"),
+            )
+            self._pending_external_report_entries.append(fields)
         elif line.startswith("native-wire-client: discovered-logical-device["):
             self._apply_external_discovered_logical_device_line(line)
         elif line.startswith("native-wire-client: discovered-logical-node["):
@@ -1298,11 +1371,23 @@ class Iec61850ClientControlService:
         now = _utc_now().isoformat().replace("+00:00", "Z")
         sequence_number = _parse_int_or_none(fields.get("asyncReports") or fields.get("count"))
         reason = Iec61850ReportReason.GENERAL_INTERROGATION
-        values = tuple(_external_report_values(self._candidate, self._pending_external_report_entries, now))
+        values = tuple(_external_report_values(
+            self._candidate,
+            self._pending_external_report_entries,
+            now,
+            reason_override=self._external_report_reason_override,
+        ))
         for value in values:
             self._current_external_report_values[value.data_reference or value.reference] = value
         if not values and self._last_report is not None:
             values = self._last_report.values
+        if (
+            self._external_report_reason_override == Iec61850ReportReason.GENERAL_INTERROGATION
+            and self._last_report is not None
+            and len(self._last_report.values) > len(values)
+        ):
+            self._pending_external_report_entries.clear()
+            return self._last_report
         self._pending_external_report_entries.clear()
         return Iec61850ReportEvent(
             id=f"{self._session_id}:external-report:{sequence_number or 0}",
@@ -1336,6 +1421,7 @@ class Iec61850ClientControlService:
         self._external_mms_stdout_buffer.clear()
         self._pending_external_report_entries.clear()
         self._current_external_report_values.clear()
+        self._external_report_reason_override = None
         self._external_discovered_rcbs_native = False
         if process is None:
             return
@@ -1546,6 +1632,7 @@ class Iec61850ClientControlService:
         self._last_report = None
         self._last_plan = None
         self._last_diagnostic = None
+        self._external_report_reason_override = None
         self._live_wire_last_frame = None
         self._live_wire_last_diagnostic = None
         self._endpoint_resolution = _default_endpoint_resolution(self._endpoint)
@@ -2047,6 +2134,8 @@ def _external_report_values(
     candidate: Iec61850ReportControlCandidate,
     entries: Sequence[dict[str, str]],
     timestamp: str,
+    *,
+    reason_override: Iec61850ReportReason | None = None,
 ) -> list[Iec61850ReportEventValue]:
     values: list[Iec61850ReportEventValue] = []
     for fallback_index, entry in enumerate(entries):
@@ -2061,7 +2150,7 @@ def _external_report_values(
                 reference=matched_reference or data_reference or "<unknown>",
                 data_reference=data_reference,
                 value=_parse_external_report_value(entry.get("value")),
-                reason_code=_external_report_reason(entry.get("reason")),
+                reason_code=reason_override or _external_report_reason(entry.get("reason")),
                 timestamp=timestamp,
             )
         )

@@ -193,6 +193,33 @@ export interface VerificationExternalIedManualReportResponse {
   created_at?: string | null
   renewed_at?: string | null
   expires_at?: string | null
+  signal_states?: VerificationExternalIedManualSignalState[]
+  report_values?: VerificationExternalIedManualReportValue[]
+}
+
+export interface VerificationExternalIedManualSignalState {
+  index?: number | null
+  reference: string
+  fc?: string | null
+  value?: unknown
+  value_data_reference?: string | null
+  quality?: string | null
+  quality_data_reference?: string | null
+  source_timestamp?: string | null
+  source_timestamp_data_reference?: string | null
+  timestamp?: string | null
+  reason?: string | null
+  leaf_count?: number | null
+}
+
+export interface VerificationExternalIedManualReportValue {
+  index?: number | null
+  reference?: string | null
+  data_reference?: string | null
+  value?: unknown
+  reason?: string | null
+  timestamp?: string | null
+  matched?: boolean | null
 }
 
 export interface VerificationAutoRunStartPayload {

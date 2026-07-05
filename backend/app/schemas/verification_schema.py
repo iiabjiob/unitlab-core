@@ -302,6 +302,8 @@ class VerificationExternalIedManualReportResponseSchema(BaseModel):
     created_at: str | None = None
     renewed_at: str | None = None
     expires_at: str | None = None
+    signal_states: list[dict[str, Any]] = Field(default_factory=list)
+    report_values: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class VerificationSessionSnapshotSchema(BaseModel):

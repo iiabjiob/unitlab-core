@@ -152,11 +152,17 @@
                 title="Report enabled"
                 aria-label="Report enabled"
               />
-              <span v-if="row.valueLabel" class="external-ied-details__tree-value">
-                <template v-for="(part, partIndex) in highlightedTextParts(row.valueLabel)" :key="`value-${partIndex}`">
+              <span v-if="treeRowValueText(row)" class="external-ied-details__tree-value">
+                <template v-for="(part, partIndex) in highlightedTextParts(treeRowValueText(row))" :key="`value-${partIndex}`">
                   <mark v-if="part.match" class="external-ied-details__tree-highlight">{{ part.text }}</mark>
                   <template v-else>{{ part.text }}</template>
                 </template>
+                <span v-if="treeRowValueSource(row)" class="external-ied-details__tree-source">
+                  {{ treeRowValueSource(row) }}
+                </span>
+                <span v-if="treeRowValueTimestamp(row)" class="external-ied-details__tree-time">
+                  {{ treeRowValueTimestamp(row) }}
+                </span>
               </span>
             </div>
           </div>
@@ -176,10 +182,19 @@
           class="external-ied-details__action-button"
           :variant="selectedReportEnabled ? 'danger' : 'success'"
           size="sm"
-          :disabled="!selectedReportRow || !record || refreshing || manualReportBusy || record.status !== 'reachable'"
+          :disabled="!selectedReportRow || !record || refreshing || manualReportBusy || manualGiBusy || record.status !== 'reachable'"
           @click="toggleSelectedReportEnabled"
         >
           {{ manualReportBusy ? "Applying..." : (selectedReportEnabled ? "Disable" : "Enable") }}
+        </UiButton>
+        <UiButton
+          class="external-ied-details__action-button"
+          variant="secondary"
+          size="sm"
+          :disabled="!selectedReportRow || !selectedReportEnabled || !record || refreshing || manualReportBusy || manualGiBusy || record.status !== 'reachable'"
+          @click="sendSelectedReportGi"
+        >
+          {{ manualGiBusy ? "GI..." : "GI" }}
         </UiButton>
         <UiButton
           class="external-ied-details__refresh-button"
@@ -256,6 +271,7 @@ const toastStore = useToastStore()
 const treeSearch = ref("")
 const selectedTreeValue = ref<NodeValue | null>(null)
 const manualReportBusy = ref(false)
+const manualGiBusy = ref(false)
 const treeItemElements = new Map<NodeValue, HTMLElement>()
 const treeViewportRef = ref<HTMLElement | null>(null)
 let manualReportLeaseHeartbeatTimer: ReturnType<typeof window.setInterval> | null = null
@@ -603,7 +619,7 @@ function buildModelTreeRows(model: ExternalIedDiscoveryTree | null): ModelTreeRo
         valueLabel: signal.fc ?? null,
         isLeaf: true,
         text: [signal.reference, signal.fc].filter(Boolean).join(" "),
-        reportReference: null,
+        reportReference: report.reference,
         reportName: null,
         reportKind: null,
         datasetReference: null,
@@ -782,6 +798,35 @@ function isReportEnabled(row: ModelTreeRow): boolean {
   return externalIedStore.isManualReportEnabled(props.record.ip, props.record.port, row.reportReference)
 }
 
+function treeRowValueText(row: ModelTreeRow): string | null {
+  const state = signalRuntimeState(row)
+  if (state) {
+    return state.value ?? "—"
+  }
+  return row.valueLabel
+}
+
+function treeRowValueSource(row: ModelTreeRow): string | null {
+  const reason = signalRuntimeState(row)?.reason
+  if (!reason) return null
+  if (reason.toLowerCase().includes("general")) return "GI"
+  if (reason.toLowerCase().includes("data")) return "RPT"
+  return reason.toUpperCase()
+}
+
+function treeRowValueTimestamp(row: ModelTreeRow): string | null {
+  const timestamp = signalRuntimeState(row)?.timestamp
+  if (!timestamp) return null
+  const date = new Date(timestamp)
+  if (!Number.isFinite(date.getTime())) return timestamp
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+}
+
+function signalRuntimeState(row: ModelTreeRow) {
+  if (row.kind !== "Signal" || !props.record || !row.reportReference) return null
+  return externalIedStore.getManualReportSignalState(props.record.ip, props.record.port, row.reportReference, row.label)
+}
+
 function highlightedTextParts(value: string | null | undefined): HighlightTextPart[] {
   const text = String(value ?? "")
   const query = normalizedTreeSearch.value
@@ -829,6 +874,21 @@ async function toggleSelectedReportEnabled() {
     toastStore.error(normalizeHttpError(error, `Failed to ${targetEnabled ? "enable" : "disable"} report`).message)
   } finally {
     manualReportBusy.value = false
+  }
+}
+
+async function sendSelectedReportGi() {
+  const report = selectedReportRow.value
+  const record = props.record
+  if (!report?.reportReference || !record || !selectedReportEnabled.value || manualGiBusy.value) return
+  manualGiBusy.value = true
+  try {
+    await externalIedStore.sendManualReportGi(record.ip, record.port, report.reportReference)
+    toastStore.success("GI completed.")
+  } catch (error) {
+    toastStore.error(normalizeHttpError(error, "Failed to run GI").message)
+  } finally {
+    manualGiBusy.value = false
   }
 }
 
@@ -1251,9 +1311,28 @@ function onTreeScroll(event: Event) {
 }
 
 .external-ied-details__tree-value {
+  align-items: center;
   color: var(--color-neutral-500);
+  display: inline-flex;
   flex: 0 0 auto;
   font-size: 0.6875rem;
+  gap: 0.25rem;
+}
+
+.external-ied-details__tree-source {
+  background: color-mix(in srgb, var(--color-emerald-500) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-emerald-500) 36%, transparent);
+  border-radius: 4px;
+  color: var(--color-emerald-700);
+  font-size: 0.625rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0.125rem 0.25rem;
+}
+
+.external-ied-details__tree-time {
+  color: var(--color-neutral-400);
+  font-size: 0.625rem;
 }
 
 .external-ied-details__actions {
@@ -1262,7 +1341,7 @@ function onTreeScroll(event: Event) {
   display: grid;
   flex: 0 0 auto;
   gap: 0.5rem;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   padding-top: 0.875rem;
 }
 
@@ -1355,6 +1434,16 @@ function onTreeScroll(event: Event) {
 :global(.dark .external-ied-details__tree-kind),
 :global(.dark .external-ied-details__tree-value),
 :global(.dark .external-ied-details__tree-toggle) {
+  color: var(--color-neutral-500);
+}
+
+:global(.dark .external-ied-details__tree-source) {
+  background: color-mix(in srgb, var(--color-emerald-500) 18%, transparent);
+  border-color: color-mix(in srgb, var(--color-emerald-500) 42%, transparent);
+  color: var(--color-emerald-300);
+}
+
+:global(.dark .external-ied-details__tree-time) {
   color: var(--color-neutral-500);
 }
 

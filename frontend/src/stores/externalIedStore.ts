@@ -18,8 +18,10 @@ import type {
 } from "@/types/ws/events"
 import type {
   VerificationExternalIedDiscoveryTreeResponse,
+  VerificationExternalIedManualReportValue,
   VerificationExternalIedManualReportRequest,
   VerificationExternalIedManualReportResponse,
+  VerificationExternalIedManualSignalState,
 } from "@/types/verification"
 
 export type ExternalIedStatus = WsExternalIedStatus
@@ -78,6 +80,16 @@ export interface ExternalIedSummary {
   discovering: number
   offline: number
   failed: number
+}
+
+export interface ExternalIedManualSignalRuntimeState {
+  reference: string
+  value: string | null
+  reason: string | null
+  timestamp: string | null
+  sourceTimestamp: string | null
+  quality: string | null
+  leafCount: number | null
 }
 
 const VALID_STATUSES = new Set<ExternalIedStatus>(["not_applicable", "unknown", "expected", "reachable", "offline"])
@@ -218,6 +230,82 @@ function normalizeDiscoveryTree(value: unknown): ExternalIedDiscoveryTree | null
   }
 }
 
+function normalizeManualSignalStates(
+  states: readonly VerificationExternalIedManualSignalState[],
+  values: readonly VerificationExternalIedManualReportValue[] = [],
+): Record<string, ExternalIedManualSignalRuntimeState> {
+  const normalized: Record<string, ExternalIedManualSignalRuntimeState> = {}
+  values.forEach((value) => {
+    const reference = normalizeOptionalText(value.data_reference) ?? normalizeOptionalText(value.reference)
+    if (!reference) return
+    const state: ExternalIedManualSignalRuntimeState = {
+      reference,
+      value: formatRuntimeValue(value.value),
+      reason: normalizeOptionalText(value.reason),
+      timestamp: normalizeOptionalText(value.timestamp),
+      sourceTimestamp: null,
+      quality: null,
+      leafCount: null,
+    }
+    referenceAliases(reference).forEach(alias => { normalized[alias] = state })
+  })
+  states.forEach((state) => {
+    const reference = normalizeOptionalText(state.reference)
+    if (!reference) return
+    const normalizedState = {
+      reference,
+      value: formatRuntimeValue(state.value),
+      reason: normalizeOptionalText(state.reason),
+      timestamp: normalizeOptionalText(state.timestamp),
+      sourceTimestamp: normalizeOptionalText(state.source_timestamp),
+      quality: normalizeOptionalText(state.quality),
+      leafCount: normalizeOptionalMs(state.leaf_count),
+    }
+    referenceAliases(reference).forEach(alias => { normalized[alias] = normalizedState })
+  })
+  return normalized
+}
+
+function referenceAliases(reference: string): string[] {
+  const text = reference.trim()
+  const aliases = new Set<string>()
+  const add = (value: string | null | undefined) => {
+    const normalized = String(value ?? "").trim()
+    if (normalized) aliases.add(normalized.toLowerCase())
+  }
+  add(text)
+  const withoutIed = text.includes("!") ? text.split("!", 2)[1] : text
+  add(withoutIed)
+  const slashFcMatch = withoutIed.match(/^([^/]+)\/([^/.$]+)[/.](.+)\[([A-Za-z0-9]+)\]$/)
+  if (slashFcMatch) {
+    const [, ld, ln, objectPath, fc] = slashFcMatch
+    add(`${ld}/${ln}$${fc}$${objectPath.replace(/[/.]+/g, "$")}`)
+  }
+  const slashObjectFcMatch = withoutIed.match(/^([^/]+)\/([^/.$]+)\/(.+)\[([A-Za-z0-9]+)\]$/)
+  if (slashObjectFcMatch) {
+    const [, ld, ln, objectPath, fc] = slashObjectFcMatch
+    add(`${ld}/${ln}$${fc}$${objectPath.replace(/[/.]+/g, "$")}`)
+  }
+  const mmsMatch = withoutIed.match(/^([^/]+)\/([^$]+)\$([A-Za-z0-9]+)\$(.+)$/)
+  if (mmsMatch) {
+    const [, ld, ln, fc, objectPath] = mmsMatch
+    add(`${ld}/${ln}/${objectPath.replace(/\$/g, "/")}[${fc}]`)
+    add(`${ld}/${ln}.${objectPath.replace(/\$/g, ".")}[${fc}]`)
+  }
+  return Array.from(aliases)
+}
+
+function formatRuntimeValue(value: unknown): string | null {
+  if (value === null || value === undefined) {
+    return null
+  }
+  if (typeof value === "string") {
+    const text = value.trim()
+    return text ? text : null
+  }
+  return String(value)
+}
+
 function normalizeRecord(record: ExternalIedStatusRecord): ExternalIedRecord | null {
   const ip = normalizeIp(record.ip)
   if (!ip) return null
@@ -291,6 +379,7 @@ export const useExternalIedStore = defineStore("externalIedStore", () => {
   const discoveryTreeCache = ref<Record<string, ExternalIedDiscoveryTree>>({})
   const manualEnabledReports = ref<Record<string, true>>({})
   const manualReportLeases = ref<Record<string, VerificationExternalIedManualReportResponse>>({})
+  const manualReportSignalStates = ref<Record<string, Record<string, ExternalIedManualSignalRuntimeState>>>({})
   const configuredTargets = ref<Record<string, ExternalIedTarget>>({})
   const statusRevision = ref(0)
   const lastChangedIps = ref<string[]>([])
@@ -537,6 +626,7 @@ export const useExternalIedStore = defineStore("externalIedStore", () => {
     discoveryTreeCache.value = {}
     manualEnabledReports.value = {}
     manualReportLeases.value = {}
+    manualReportSignalStates.value = {}
     configuredTargets.value = {}
     publishChanged([], normalizeSignalIds(signalIds))
   }
@@ -669,17 +759,21 @@ export const useExternalIedStore = defineStore("externalIedStore", () => {
     const key = manualReportKey(normalizedIp, normalizedPort, reportReference)
     const next = { ...manualEnabledReports.value }
     const nextLeases = { ...manualReportLeases.value }
+    const nextSignalStates = { ...manualReportSignalStates.value }
     if (response.data.enabled) {
       next[key] = true
       if (response.data.lease_id) {
         nextLeases[key] = response.data
       }
+      nextSignalStates[key] = {}
     } else {
       delete next[key]
       delete nextLeases[key]
+      delete nextSignalStates[key]
     }
     manualEnabledReports.value = next
     manualReportLeases.value = nextLeases
+    manualReportSignalStates.value = nextSignalStates
     return response.data
   }
 
@@ -708,17 +802,67 @@ export const useExternalIedStore = defineStore("externalIedStore", () => {
       throw error
     }
     if (response.data.enabled) {
+      const normalizedStates = normalizeManualSignalStates(response.data.signal_states ?? [], response.data.report_values ?? [])
       manualReportLeases.value = {
         ...manualReportLeases.value,
         [key]: response.data,
       }
+      if (Object.keys(normalizedStates).length) {
+        manualReportSignalStates.value = {
+          ...manualReportSignalStates.value,
+          [key]: {
+            ...(manualReportSignalStates.value[key] ?? {}),
+            ...normalizedStates,
+          },
+        }
+      }
     } else {
       const nextEnabled = { ...manualEnabledReports.value }
       const nextLeases = { ...manualReportLeases.value }
+      const nextSignalStates = { ...manualReportSignalStates.value }
       delete nextEnabled[key]
       delete nextLeases[key]
+      delete nextSignalStates[key]
       manualEnabledReports.value = nextEnabled
       manualReportLeases.value = nextLeases
+      manualReportSignalStates.value = nextSignalStates
+    }
+    return response.data
+  }
+
+  async function sendManualReportGi(
+    ip: string | null | undefined,
+    port: number | null | undefined,
+    reportReference: string | null | undefined,
+  ) {
+    const normalizedIp = normalizeIp(ip)
+    const normalizedPort = normalizePort(port)
+    const normalizedReportReference = normalizeOptionalText(reportReference)
+    const workspaceId = Number(workspaceStore.activeWorkspaceId)
+    if (!normalizedIp || !normalizedReportReference || !Number.isFinite(workspaceId) || workspaceId <= 0) {
+      throw new Error("External IED report GI requires workspace, endpoint and report reference.")
+    }
+    const key = manualReportKey(normalizedIp, normalizedPort, normalizedReportReference)
+    const leaseId = manualReportLeases.value[key]?.lease_id
+    if (!leaseId) {
+      throw new Error("External IED report must be enabled before GI.")
+    }
+    const response = await VerificationAPI.sendExternalIedReportGi(workspaceId, normalizedIp, normalizedPort, leaseId)
+    if (response.data.enabled) {
+      manualEnabledReports.value = {
+        ...manualEnabledReports.value,
+        [key]: true,
+      }
+      manualReportLeases.value = {
+        ...manualReportLeases.value,
+        [key]: response.data,
+      }
+      manualReportSignalStates.value = {
+        ...manualReportSignalStates.value,
+        [key]: normalizeManualSignalStates(response.data.signal_states ?? [], response.data.report_values ?? []),
+      }
+    } else {
+      clearManualReportLease(key)
     }
     return response.data
   }
@@ -726,10 +870,13 @@ export const useExternalIedStore = defineStore("externalIedStore", () => {
   function clearManualReportLease(key: string) {
     const nextEnabled = { ...manualEnabledReports.value }
     const nextLeases = { ...manualReportLeases.value }
+    const nextSignalStates = { ...manualReportSignalStates.value }
     delete nextEnabled[key]
     delete nextLeases[key]
+    delete nextSignalStates[key]
     manualEnabledReports.value = nextEnabled
     manualReportLeases.value = nextLeases
+    manualReportSignalStates.value = nextSignalStates
   }
 
   function getManualReportLeaseCountForEndpoint(ip: string | null | undefined, port: number | null | undefined): number {
@@ -763,20 +910,32 @@ export const useExternalIedStore = defineStore("externalIedStore", () => {
     }))
     const nextEnabled = { ...manualEnabledReports.value }
     const nextLeases = { ...manualReportLeases.value }
+    const nextSignalStates = { ...manualReportSignalStates.value }
     const renewed: VerificationExternalIedManualReportResponse[] = []
     results.forEach((result) => {
       const { key, data } = result
       if (data?.enabled) {
+        const normalizedStates = normalizeManualSignalStates(data.signal_states ?? [], data.report_values ?? [])
         nextEnabled[key] = true
         nextLeases[key] = data
+        if (Object.keys(normalizedStates).length) {
+          nextSignalStates[key] = {
+            ...(nextSignalStates[key] ?? {}),
+            ...normalizedStates,
+          }
+        } else if (!nextSignalStates[key]) {
+          nextSignalStates[key] = {}
+        }
         renewed.push(data)
       } else {
         delete nextEnabled[key]
         delete nextLeases[key]
+        delete nextSignalStates[key]
       }
     })
     manualEnabledReports.value = nextEnabled
     manualReportLeases.value = nextLeases
+    manualReportSignalStates.value = nextSignalStates
     return renewed
   }
 
@@ -801,6 +960,31 @@ export const useExternalIedStore = defineStore("externalIedStore", () => {
     manualReportLeases.value = Object.fromEntries(
       Object.entries(manualReportLeases.value).filter(([key]) => !key.startsWith(prefix)),
     )
+    manualReportSignalStates.value = Object.fromEntries(
+      Object.entries(manualReportSignalStates.value).filter(([key]) => !key.startsWith(prefix)),
+    )
+  }
+
+  function getManualReportSignalState(
+    ip: string | null | undefined,
+    port: number | null | undefined,
+    reportReference: string | null | undefined,
+    signalReference: string | null | undefined,
+  ): ExternalIedManualSignalRuntimeState | null {
+    const normalizedIp = normalizeIp(ip)
+    const normalizedReportReference = normalizeOptionalText(reportReference)
+    const normalizedSignalReference = normalizeOptionalText(signalReference)
+    if (!normalizedIp || !normalizedReportReference || !normalizedSignalReference) {
+      return null
+    }
+    const reportKey = manualReportKey(normalizedIp, normalizePort(port), normalizedReportReference)
+    const states = manualReportSignalStates.value[reportKey]
+    if (!states) return null
+    for (const alias of referenceAliases(normalizedSignalReference)) {
+      const state = states[alias]
+      if (state) return state
+    }
+    return null
   }
 
   return {
@@ -814,6 +998,7 @@ export const useExternalIedStore = defineStore("externalIedStore", () => {
     lastError,
     manualEnabledReports,
     manualReportLeases,
+    manualReportSignalStates,
     configureExpectedDevices,
     applySnapshot,
     applyStatusChanged,
@@ -825,9 +1010,11 @@ export const useExternalIedStore = defineStore("externalIedStore", () => {
     refreshDiscovery,
     isManualReportEnabled,
     setManualReportEnabled,
+    sendManualReportGi,
     heartbeatManualReportLease,
     heartbeatManualReportLeasesForEndpoint,
     getManualReportLeaseCountForEndpoint,
+    getManualReportSignalState,
     releaseManualReportLeasesForEndpoint,
     applyPlanningSnapshot,
     applyPlanningChanged,

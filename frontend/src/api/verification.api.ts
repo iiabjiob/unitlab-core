@@ -68,6 +68,14 @@ export const VerificationAPI = {
     )
   },
 
+  sendExternalIedReportGi(workspaceId: number, ip: string, port: number, leaseId: string, options?: HttpRequestOptions) {
+    return http.post<VerificationExternalIedManualReportResponse>(
+      `${API_V1}/workspaces/${workspaceId}/verification/external-ieds/${encodeURIComponent(`${ip}:${port}`)}/reports/leases/${encodeURIComponent(leaseId)}/gi`,
+      {},
+      options,
+    )
+  },
+
   releaseExternalIedReportLease(workspaceId: number, ip: string, port: number, leaseId: string, options?: HttpRequestOptions) {
     return http.post<VerificationExternalIedManualReportResponse>(
       `${API_V1}/workspaces/${workspaceId}/verification/external-ieds/${encodeURIComponent(`${ip}:${port}`)}/reports/leases/${encodeURIComponent(leaseId)}/release`,

@@ -198,6 +198,25 @@ async def heartbeat_external_ied_report_lease(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@router.post("/external-ieds/{endpoint}/reports/leases/{lease_id}/gi", response_model=VerificationExternalIedManualReportResponseSchema)
+async def gi_external_ied_report_lease(
+    workspace_id: int,
+    endpoint: str,
+    lease_id: str,
+):
+    try:
+        return await asyncio.to_thread(
+            get_external_ied_manual_report_control_service().send_general_interrogation,
+            workspace_id=workspace_id,
+            endpoint=endpoint,
+            lease_id=lease_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @router.post("/external-ieds/{endpoint}/reports/leases/{lease_id}/release", response_model=VerificationExternalIedManualReportResponseSchema)
 async def release_external_ied_report_lease(
     workspace_id: int,

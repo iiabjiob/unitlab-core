@@ -371,6 +371,78 @@ static int native_wire_client_drain_pending_async_frames(
     return 1;
 }
 
+static int native_wire_client_poll_async_frames(
+    UnitLabNativeClientSessionState* session,
+    UnitLabNativeSessionRuntime* session_runtime,
+    int data_fd,
+    uint8_t* response,
+    size_t response_length,
+    size_t* encoded_response_length,
+    uint8_t* text_buffer,
+    size_t text_buffer_length,
+    UnitLabMmsDiagnostic* diagnostic,
+    int timeout_ms);
+
+static int native_wire_client_split_rcb_field_item(const char* item_id, const char* field_name, char* rcb_item, size_t rcb_item_size)
+{
+    size_t item_length;
+    size_t field_length;
+    size_t rcb_length;
+
+    if (item_id == NULL || field_name == NULL || rcb_item == NULL || rcb_item_size == 0U) {
+        return 0;
+    }
+    item_length = strlen(item_id);
+    field_length = strlen(field_name);
+    if (item_length <= field_length + 1U) {
+        return 0;
+    }
+    if (item_id[item_length - field_length - 1U] != '$') {
+        return 0;
+    }
+    if (strcmp(&item_id[item_length - field_length], field_name) != 0) {
+        return 0;
+    }
+    rcb_length = item_length - field_length - 1U;
+    if (rcb_length == 0U || rcb_length >= rcb_item_size) {
+        return 0;
+    }
+    memcpy(rcb_item, item_id, rcb_length);
+    rcb_item[rcb_length] = '\0';
+    return 1;
+}
+
+static void native_wire_client_observe_direct_rcb_write(UnitLabNativeClientSessionState* session, const char* domain_id, const char* item_id, uint8_t boolean_value, uint32_t invoke_id, int emit_summary)
+{
+    char rcb_item[320U];
+
+    if (session == NULL || domain_id == NULL || domain_id[0] == '\0' || item_id == NULL || item_id[0] == '\0') {
+        return;
+    }
+    if (native_wire_client_split_rcb_field_item(item_id, "RptEna", rcb_item, sizeof(rcb_item))) {
+        snprintf(session->subscription_model.rcb_domain, sizeof(session->subscription_model.rcb_domain), "%s", domain_id);
+        snprintf(session->subscription_model.rcb_item, sizeof(session->subscription_model.rcb_item), "%s", rcb_item);
+        session->subscription_model.rpt_enabled = boolean_value != 0U ? 1 : 0;
+        session->subscription_model.last_rptena_invoke_id = invoke_id;
+        if (boolean_value != 0U) {
+            unitlab_native_client_session_reset_report_sequence(session);
+        }
+        if (emit_summary) {
+            emit_subscription_summary(session, "rptena");
+        }
+        return;
+    }
+    if (native_wire_client_split_rcb_field_item(item_id, "GI", rcb_item, sizeof(rcb_item)) && boolean_value != 0U) {
+        snprintf(session->subscription_model.rcb_domain, sizeof(session->subscription_model.rcb_domain), "%s", domain_id);
+        snprintf(session->subscription_model.rcb_item, sizeof(session->subscription_model.rcb_item), "%s", rcb_item);
+        session->subscription_model.gi_requested = 1;
+        session->subscription_model.last_gi_invoke_id = invoke_id;
+        if (emit_summary) {
+            emit_subscription_summary(session, "gi");
+        }
+    }
+}
+
 static int native_wire_client_execute_command(
     UnitLabNativeWireClientWorkerContext* context,
     UnitLabNativeSessionRuntime* runtime,
@@ -480,13 +552,15 @@ static int native_wire_client_execute_command(
             return 0;
         }
         invoke_id = unitlab_native_client_session_reserve_invoke_id(&context->session);
-        if (!emit_discovered_rcb_bool_step(&context->session, runtime, context->data_fd, "gi", selected_rcb->domain, selected_rcb->item, "GI", 1U, invoke_id, scratch, scratch_length, request, request_length, response, response_length, encoded_response_length, text_buffer, text_buffer_length, diagnostic)) {
-            set_result(result, "NATIVE_WIRE_CLIENT_GI_FAILED", diagnostic->message);
-            return 0;
-        }
         context->session.subscription_model.gi_requested = 1;
         context->session.subscription_model.last_gi_invoke_id = invoke_id;
         context->session.subscription_model.selected_rcb_index = selected_rcb_index;
+        if (!emit_discovered_rcb_bool_step(&context->session, runtime, context->data_fd, "gi", selected_rcb->domain, selected_rcb->item, "GI", 1U, invoke_id, scratch, scratch_length, request, request_length, response, response_length, encoded_response_length, text_buffer, text_buffer_length, diagnostic)) {
+            context->session.subscription_model.gi_requested = 0;
+            context->session.subscription_model.last_gi_invoke_id = 0U;
+            set_result(result, "NATIVE_WIRE_CLIENT_GI_FAILED", diagnostic->message);
+            return 0;
+        }
         emit_subscription_summary(&context->session, "gi");
         if (!native_wire_client_emit_command_ready()) {
             set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit ready after gi.");
@@ -523,6 +597,7 @@ static int native_wire_client_execute_command(
             set_result(result, "NATIVE_WIRE_CLIENT_WRITE_BOOL_VALUE_INVALID", "Native wire client write-bool command requires true, false, 1, or 0.");
             return 0;
         }
+        native_wire_client_observe_direct_rcb_write(&context->session, domain_id, item_id, boolean_value, invoke_id, 0);
         if (!emit_write_bool_response(
                 &context->session,
                 runtime,
@@ -544,6 +619,7 @@ static int native_wire_client_execute_command(
             set_result(result, "NATIVE_WIRE_CLIENT_WRITE_BOOL_FAILED", diagnostic->message);
             return 0;
         }
+        native_wire_client_observe_direct_rcb_write(&context->session, domain_id, item_id, boolean_value, invoke_id, 1);
         if (!native_wire_client_emit_command_ready()) {
             set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit ready after write-bool.");
             return 0;
@@ -925,6 +1001,45 @@ static int native_wire_client_execute_command(
         emit_discovered_model_summary(&context->session, "status");
         if (!native_wire_client_emit_command_ready()) {
             set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit ready after status.");
+            return 0;
+        }
+        return 1;
+    }
+
+    if (strcmp(verb, "poll-reports") == 0) {
+        char* timeout_text = strtok_r(NULL, delimiters, &saveptr);
+        char* extra = strtok_r(NULL, delimiters, &saveptr);
+        uint32_t timeout_ms = 750U;
+        if (extra != NULL) {
+            set_result(result, "NATIVE_WIRE_CLIENT_POLL_REPORTS_COMMAND_INVALID", "Usage: poll-reports [timeoutMs].");
+            return 0;
+        }
+        if (timeout_text != NULL && timeout_text[0] != '\0') {
+            if (!native_wire_client_parse_uint32_token(timeout_text, &timeout_ms)) {
+                set_result(result, "NATIVE_WIRE_CLIENT_POLL_REPORTS_TIMEOUT_INVALID", "Native wire client poll-reports command requires a valid timeoutMs.");
+                return 0;
+            }
+            if (timeout_ms > 5000U) {
+                timeout_ms = 5000U;
+            }
+        }
+        if (!native_wire_client_poll_async_frames(
+                &context->session,
+                runtime,
+                context->data_fd,
+                response,
+                response_length,
+                encoded_response_length,
+                text_buffer,
+                text_buffer_length,
+                diagnostic,
+                (int)timeout_ms)) {
+            set_result(result, "NATIVE_WIRE_CLIENT_POLL_REPORTS_FAILED", diagnostic->message);
+            return 0;
+        }
+        emit_subscription_summary(&context->session, "poll-reports");
+        if (!native_wire_client_emit_command_ready()) {
+            set_result(result, "NATIVE_WIRE_CLIENT_STATE_FAILED", "Native wire client could not emit ready after poll-reports.");
             return 0;
         }
         return 1;
@@ -2341,7 +2456,9 @@ static void emit_information_report_summary(
             report_sequence_number,
             has_sub_sequence_number,
             report_sub_sequence_number);
-        if (sequence_disposition == UNITLAB_NATIVE_REPORT_SEQUENCE_DUPLICATE || sequence_disposition == UNITLAB_NATIVE_REPORT_SEQUENCE_OUT_OF_ORDER) {
+        if (
+            (sequence_disposition == UNITLAB_NATIVE_REPORT_SEQUENCE_DUPLICATE || sequence_disposition == UNITLAB_NATIVE_REPORT_SEQUENCE_OUT_OF_ORDER)
+            && !session->subscription_model.gi_requested) {
             if (session_runtime != NULL) {
                 unitlab_native_session_runtime_mark_report_health_stale(
                     session_runtime,
@@ -3071,12 +3188,14 @@ int unitlab_native_wire_client_worker_subscribe(
     snprintf(context->session.subscription_model.rcb_item, sizeof(context->session.subscription_model.rcb_item), "%s", selected_rcb->item);
     if (runtime->intent.wants_gi) {
         uint32_t gi_invoke_id = unitlab_native_client_session_reserve_invoke_id(&context->session);
+        context->session.subscription_model.gi_requested = 1;
+        context->session.subscription_model.last_gi_invoke_id = gi_invoke_id;
         if (!emit_discovered_rcb_bool_step(&context->session, runtime, context->data_fd, "gi", selected_rcb->domain, selected_rcb->item, "GI", 1U, gi_invoke_id, scratch, sizeof(scratch), read_request, sizeof(read_request), report_frame, sizeof(report_frame), &report_length, frame, sizeof(frame), &diagnostic)) {
+            context->session.subscription_model.gi_requested = 0;
+            context->session.subscription_model.last_gi_invoke_id = 0U;
             worker_copy_error(error_code, error_code_size, error_message, error_message_size, "NATIVE_WIRE_CLIENT_GI_FAILED", diagnostic.message);
             return 0;
         }
-        context->session.subscription_model.gi_requested = 1;
-        context->session.subscription_model.last_gi_invoke_id = gi_invoke_id;
     }
     emit_subscription_summary(&context->session, runtime->intent.wants_gi ? "gi" : "rptena");
     return 1;
@@ -3481,6 +3600,98 @@ static int emit_async_data_frame_if_ready(
     return 1;
 }
 
+static int native_wire_client_poll_async_frames(
+    UnitLabNativeClientSessionState* session,
+    UnitLabNativeSessionRuntime* session_runtime,
+    int data_fd,
+    uint8_t* response,
+    size_t response_length,
+    size_t* encoded_response_length,
+    uint8_t* text_buffer,
+    size_t text_buffer_length,
+    UnitLabMmsDiagnostic* diagnostic,
+    int timeout_ms)
+{
+    int remaining_ms = timeout_ms;
+
+    if (timeout_ms < 0) {
+        timeout_ms = 0;
+        remaining_ms = 0;
+    }
+    while (remaining_ms >= 0) {
+        int emitted;
+        int wait_ms = remaining_ms > 250 ? 250 : remaining_ms;
+        int available = read_tpkt_frame_if_available(data_fd, response, response_length, encoded_response_length, wait_ms);
+        if (available < 0) {
+            if (diagnostic != NULL) {
+                diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR;
+                snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Native wire client could not receive a polled async report frame.");
+            }
+            return 0;
+        }
+        if (available > 0) {
+            printf("native-wire-client: async-report\n");
+            if (encoded_response_length == NULL || !emit_wire_frame_response(session, session_runtime, response, *encoded_response_length, text_buffer, text_buffer_length)) {
+                if (diagnostic != NULL) {
+                    diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL;
+                    snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Native wire client could not format a polled async report frame.");
+                }
+                return 0;
+            }
+            if (session != NULL) {
+                session->subscription_model.async_report_count++;
+                emit_subscription_summary(session, "async-report");
+            }
+            do {
+                emitted = emit_async_data_frame_if_ready(
+                    session,
+                    session_runtime,
+                    data_fd,
+                    response,
+                    response_length,
+                    encoded_response_length,
+                    text_buffer,
+                    text_buffer_length,
+                    diagnostic);
+                if (emitted < 0) {
+                    return 0;
+                }
+            } while (emitted == 1);
+            return 1;
+        }
+        if (remaining_ms == 0) {
+            break;
+        }
+        remaining_ms -= wait_ms;
+    }
+    return 1;
+}
+
+static int native_wire_client_frame_is_information_report(const uint8_t* response, size_t response_length)
+{
+    UnitLabMmsAssociationFrame association_frame;
+    UnitLabMmsPdu pdu;
+    UnitLabMmsDiagnostic diagnostic;
+    size_t consumed = 0U;
+
+    if (response == NULL || response_length == 0U) {
+        return 0;
+    }
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_association_frame_init(&association_frame);
+    if (!unitlab_mms_association_frame_decode(&association_frame, response, response_length, &consumed, &diagnostic)
+        || association_frame.presentation.payload_bytes == NULL
+        || association_frame.presentation.payload_length == 0U) {
+        return 0;
+    }
+    unitlab_mms_pdu_init(&pdu);
+    consumed = 0U;
+    if (!unitlab_mms_pdu_decode(&pdu, association_frame.presentation.payload_bytes, association_frame.presentation.payload_length, &consumed, &diagnostic)) {
+        return 0;
+    }
+    return pdu.kind == UNITLAB_MMS_PDU_UNCONFIRMED && pdu.service_kind == UNITLAB_MMS_SERVICE_INFORMATION_REPORT;
+}
+
 static int emit_confirmed_response(
     UnitLabNativeClientSessionState* session,
     int data_fd,
@@ -3551,6 +3762,9 @@ static int emit_confirmed_write_response(
         }
         if (validate_confirmed_write_response(response, *encoded_response_length, diagnostic)) {
             return 1;
+        }
+        if (native_wire_client_frame_is_information_report(response, *encoded_response_length)) {
+            continue;
         }
         if (diagnostic == NULL || strstr(diagnostic->message, "service=6") == NULL) {
             return 0;
