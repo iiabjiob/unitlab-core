@@ -529,17 +529,19 @@ def map_report_event_to_signal_observations(
 ) -> Iec61850ReportObservationResult:
     values_by_reference: dict[str, Iec61850ReportEventValue] = {}
     for value in event.values:
-        values_by_reference.setdefault(_normalize_observation_reference(value.reference, candidate), value)
+        for alias in _observation_reference_aliases(value.reference, candidate):
+            values_by_reference.setdefault(alias, value)
         if value.data_reference:
-            values_by_reference.setdefault(_normalize_observation_reference(value.data_reference, candidate), value)
+            for alias in _observation_reference_aliases(value.data_reference, candidate):
+                values_by_reference.setdefault(alias, value)
     selected_references: set[str] = set()
     observations: list[Iec61850SignalObservation] = []
     diagnostics: list[Iec61850ReportObservationDiagnostic] = []
 
     for signal in matched_signals:
-        key = _normalize_observation_reference(signal.model_reference, candidate)
-        selected_references.add(key)
-        value = values_by_reference.get(key)
+        keys = _observation_reference_aliases(signal.model_reference, candidate)
+        selected_references.update(keys)
+        value = next((values_by_reference[key] for key in keys if key in values_by_reference), None)
         if value is None:
             diagnostics.append(Iec61850ReportObservationDiagnostic(
                 severity="info",
@@ -576,7 +578,7 @@ def map_report_event_to_signal_observations(
             value=value.value,
         )
         for value in event.values
-        if _normalize_observation_reference(value.reference, candidate) not in selected_references
+        if _observation_reference_aliases(value.reference, candidate).isdisjoint(selected_references)
     )
 
     return Iec61850ReportObservationResult(
@@ -1293,6 +1295,16 @@ def report_control_key(reference: Iec61850ReportControlRef) -> str:
 
 def _normalize_observation_reference(reference: str, candidate: Iec61850ReportControlCandidate) -> str:
     return normalize_report_data_reference(reference, candidate).lower()
+
+
+def _observation_reference_aliases(reference: str, candidate: Iec61850ReportControlCandidate) -> set[str]:
+    normalized = _normalize_observation_reference(reference, candidate)
+    aliases = {normalized}
+    if normalized.endswith("[st]"):
+        base = normalized[:-4]
+        if base and not base.endswith(".stval"):
+            aliases.add(f"{base}.stval[st]")
+    return aliases
 
 
 def _mms_reference_to_dot_reference(reference: str) -> str:

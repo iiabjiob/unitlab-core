@@ -362,6 +362,7 @@ export interface SignalTestRuntimePatchEvent {
   workspace_id: number
   patch_type: "tested_at"
   tested_at_by_signal: Record<string, string>
+  test_status_by_signal?: Record<string, string>
   emitted_at: string
 }
 

@@ -429,7 +429,11 @@ def _build_step_and_evidence(
         actual_report_path=actual_report_path,
         source_ied=report.ied_name if report is not None else target.protocol_metadata.get("ied_name"),
         endpoint_id=report.event.endpoint_id if report is not None and report.event is not None else target.endpoint_id,
-        rpt_id=report.event.rpt_id if report is not None and report.event is not None else target.protocol_metadata.get("report_control_reference_hint"),
+        rpt_id=_first_non_empty_report_text(
+            report.event.rpt_id if report is not None and report.event is not None else None,
+            report.report_control_name if report is not None else None,
+            target.protocol_metadata.get("report_control_reference_hint"),
+        ),
         dataset=report.data_set_ref if report is not None else target.protocol_metadata.get("data_set_reference"),
         observed_at=observed_at,
         latency_ms=computed_latency_ms,
@@ -666,6 +670,16 @@ def _resolve_recovery_reason(
         return "report_health_degraded"
     if any(diagnostic.severity == "error" for diagnostic in runtime_diagnostics):
         return "runtime_failure"
+    return None
+
+
+def _first_non_empty_report_text(*values: Any) -> str | None:
+    for value in values:
+        if not isinstance(value, str):
+            continue
+        normalized = value.strip()
+        if normalized and normalized.lower() not in {"<empty>", "<none>", "none", "null"}:
+            return normalized
     return None
 
 

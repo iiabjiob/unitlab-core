@@ -14,6 +14,11 @@ type TestedAtResolver = (
   workspaceId?: number | null,
 ) => string | null
 
+type TestStatusResolver = (
+  signalId: number | null | undefined,
+  workspaceId?: number | null,
+) => string | null
+
 export type SignalGridRow = Record<string, unknown> & {
   signal_id: number
   rowId: string
@@ -22,6 +27,7 @@ export type SignalGridRow = Record<string, unknown> & {
 type SignalGridRuntimeOverlay = {
   workspaceId?: number | null
   getTestedAt?: TestedAtResolver
+  getTestStatus?: TestStatusResolver
   getExternalIedStatus?: (row: SignalAllocationRow) => ExternalIedStatus
 }
 
@@ -62,6 +68,10 @@ function applySignalGridRuntimeOverlay(
   return applyRuntimeTestedAt(row, runtime.workspaceId, runtime.getTestedAt)
 }
 
+function resolveRuntimeTestStatus(row: SignalAllocationRow, runtime?: SignalGridRuntimeOverlay): string {
+  return String(runtime?.getTestStatus?.(row.signal_id, runtime.workspaceId) ?? "").trim()
+}
+
 function resolveExternalIedIp(row: SignalAllocationRow): string {
   return resolveOnline61850TransportHost(row)?.host ?? ""
 }
@@ -90,6 +100,7 @@ function createSignalGridRow(
     external_ied_port: resolveExternalIedPort(projectedRow),
     external_ied_status: resolveExternalIedStatus(projectedRow, runtime),
     channel_select: resolveSignalAllocationDisplayLabel(projectedRow),
+    test_status: resolveRuntimeTestStatus(projectedRow, runtime),
     tested_at: projectedRow.tested_at,
     allocation_status: resolveSignalAllocationStatus(projectedRow),
     allocation_health: resolveSignalAllocationHealthLabel(projectedRow),

@@ -91,6 +91,19 @@ describe("signalGridProjection", () => {
     expect(source.tested_at).toBe("2026-01-01T00:00:00Z")
   })
 
+  it("applies runtime test status overlay to projected rows", () => {
+    const source = buildRow()
+
+    const [row] = createSignalGridRows([source], [], {
+      workspaceId: 7,
+      getTestStatus: (signalId, workspaceId) => (
+        signalId === 1 && workspaceId === 7 ? "late" : null
+      ),
+    })
+
+    expect(row.test_status).toBe("late")
+  })
+
   it("applies external IED status through the runtime overlay", () => {
     const source = buildRow({
       signal_metadata: {

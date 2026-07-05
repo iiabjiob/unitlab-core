@@ -8,7 +8,11 @@ from types import SimpleNamespace
 import pytest
 
 from app.schemas.signal_sheet_schema import SignalAllocationRowSchema
-from app.schemas.verification_schema import SignalVerificationEvidenceSchema, VerificationStepSchema
+from app.schemas.verification_schema import (
+    SignalVerificationEvidenceSchema,
+    VerificationEvidenceDiagnosticSchema,
+    VerificationStepSchema,
+)
 from app.schemas.ws.events import SignalRowsPatchedEvent, SignalTestRuntimePatchEvent, WSChannel
 from app.workers import signal_test_run_runner
 from app.workers.signal_allocation_runner import _serialize_allocation_job_row_patches
@@ -135,6 +139,7 @@ def test_signal_test_runtime_patch_event_serializes_tested_at_by_signal() -> Non
         job_id="job-1",
         workspace_id=7,
         tested_at_by_signal={1: "2026-01-01T12:30:00+00:00"},
+        test_status_by_signal={1: "late"},
         emitted_at=datetime(2026, 1, 1, 12, 30, tzinfo=timezone.utc),
     )
 
@@ -144,7 +149,40 @@ def test_signal_test_runtime_patch_event_serializes_tested_at_by_signal() -> Non
     assert payload["event"] == "signal_test_runtime_patch"
     assert payload["patch_type"] == "tested_at"
     assert payload["tested_at_by_signal"] == {"1": "2026-01-01T12:30:00+00:00"}
+    assert payload["test_status_by_signal"] == {"1": "late"}
     assert payload["emitted_at"].startswith("2026-01-01T12:30:00")
+
+
+def test_signal_test_status_derives_operator_verification_statuses() -> None:
+    assert signal_test_run_runner._derive_test_status_from_verification(
+        SimpleNamespace(evidence_status="observed", signal_value=True, diagnostics=[]),
+        expected_value=True,
+    ) == "verified"
+    assert signal_test_run_runner._derive_test_status_from_verification(
+        SimpleNamespace(evidence_status="late", signal_value=True, diagnostics=[]),
+        expected_value=True,
+    ) == "late"
+    assert signal_test_run_runner._derive_test_status_from_verification(
+        SimpleNamespace(evidence_status="timeout", signal_value=None, diagnostics=[]),
+        expected_value=True,
+    ) == "missing"
+    assert signal_test_run_runner._derive_test_status_from_verification(
+        SimpleNamespace(
+            evidence_status="timeout",
+            signal_value=None,
+            diagnostics=[
+                VerificationEvidenceDiagnosticSchema(
+                    code="SIGNAL_NOT_INCLUDED_IN_REPORT_EVENT",
+                    message="Different selected signal arrived.",
+                )
+            ],
+        ),
+        expected_value=True,
+    ) == "unexpected"
+    assert signal_test_run_runner._derive_test_status_from_verification(
+        SimpleNamespace(evidence_status="observed", signal_value=False, diagnostics=[]),
+        expected_value=True,
+    ) == "inverted"
 
 
 def test_signal_rows_patched_event_serializes_grid_patch_contract() -> None:
@@ -419,8 +457,15 @@ def test_signal_test_run_requires_iec61850_report_when_verification_enabled(monk
     assert result["succeeded"] == 1
     assert result["verification_observed"] == 1
     assert result["verification_failed"] == 0
+    assert result["test_status_by_signal"] == {1: "verified"}
+    assert result["test_report_by_signal"][1]["test_status"] == "verified"
+    assert result["test_report_by_signal"][1]["iec61850_address"] == "LD0/XCBR1.Pos.stVal[ST]"
+    assert result["test_report_by_signal"][1]["iec61850_verification"]["timeout_ms"] == 5000
+    assert result["test_report_by_signal"][1]["iec61850_verification"]["triggered_at"]
+    assert result["test_report_by_signal"][1]["iec61850_verification"]["evidence"]["actual_report_path"] == "LD0/XCBR1.Pos.stVal[ST]"
+    assert result["test_report_by_signal"][1]["command"]["expected_feedback_value"] == 1
     assert repo.evidence[0]["status"] == "succeeded"
-    assert repo.evidence[0]["result_state"] == "commands_enqueued_report_observed"
+    assert repo.evidence[0]["result_state"] == "commands_enqueued_report_verified"
     assert repo.evidence[0]["command_payload"]["iec61850_verification"]["requested_online_orchestration_id"] == "api-orch-1"
     assert persisted_verification[0]["kind"] == "row"
     assert persisted_verification[-1]["kind"] == "set"

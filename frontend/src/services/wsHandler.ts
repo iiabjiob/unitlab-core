@@ -25,6 +25,7 @@ const lastTestRunJobEventMetaByJobId = new Map<string, {
   progressTotal: number
   progressDone: number
   message: string
+  resultSignature: string
 }>()
 const pendingTestRunJobEventsById = new Map<string, SignalAllocationJobEvent | SignalTestRunJobEvent>()
 let testRunJobFlushFrame: number | null = null
@@ -88,6 +89,10 @@ function shouldProcessTestRunJobEvent(jobEvent: SignalAllocationJobEvent | Signa
   const progressTotal = Number(jobEvent.progress_total ?? 0)
   const progressDone = Number(jobEvent.progress_done ?? 0)
   const message = String(jobEvent.message ?? "")
+  const resultSignature = JSON.stringify({
+    tested_at_patch: (jobEvent.result as Record<string, unknown> | undefined)?.tested_at_patch ?? null,
+    test_status_patch: (jobEvent.result as Record<string, unknown> | undefined)?.test_status_patch ?? null,
+  })
   const prev = lastTestRunJobEventMetaByJobId.get(jobId)
 
   if (prev) {
@@ -96,12 +101,13 @@ function shouldProcessTestRunJobEvent(jobEvent: SignalAllocationJobEvent | Signa
       && prev.progressTotal === progressTotal
       && prev.progressDone === progressDone
       && prev.message === message
+      && prev.resultSignature === resultSignature
     if (unchangedState) {
       return false
     }
   }
 
-  lastTestRunJobEventMetaByJobId.set(jobId, { status, updatedAt, progressTotal, progressDone, message })
+  lastTestRunJobEventMetaByJobId.set(jobId, { status, updatedAt, progressTotal, progressDone, message, resultSignature })
   return true
 }
 
@@ -127,10 +133,22 @@ function applySignalJobEvent(
   const testedAtPatch = ["tested_at_patch", "tested_at_by_signal"]
     .map(key => result[key])
     .find(value => value && typeof value === "object" && !Array.isArray(value))
+  const testStatusPatch = ["test_status_patch", "test_status_by_signal"]
+    .map(key => result[key])
+    .find(value => value && typeof value === "object" && !Array.isArray(value))
+  const testStatusPatchRecord = testStatusPatch && typeof testStatusPatch === "object"
+    ? testStatusPatch as Record<string, string>
+    : {}
   const jobId = String(jobEvent.job_id)
   const isTerminal = isTerminalJobStatus(jobEvent.status)
 
   if (!testedAtPatch || typeof testedAtPatch !== "object") {
+    if (Object.keys(testStatusPatchRecord).length > 0) {
+      testedAtRealtimeStore.applyPatch(jobEvent.workspace_id, {}, {
+        flush: "microtask",
+        testStatusBySignal: testStatusPatchRecord,
+      })
+    }
     if (isTerminal) {
       const pendingForJob = pendingTestedAtPatchByJobId.get(jobId)
       pendingTestedAtPatchByJobId.delete(jobId)
@@ -143,7 +161,10 @@ function applySignalJobEvent(
 
   const testedAtPatchRecord = testedAtPatch as Record<string, string>
 
-  testedAtRealtimeStore.applyPatch(jobEvent.workspace_id, testedAtPatchRecord, { flush: "microtask" })
+  testedAtRealtimeStore.applyPatch(jobEvent.workspace_id, testedAtPatchRecord, {
+    flush: "microtask",
+    testStatusBySignal: testStatusPatchRecord,
+  })
 
   if (isTerminal) {
     const pendingForJob = pendingTestedAtPatchByJobId.get(jobId)
@@ -153,6 +174,12 @@ function applySignalJobEvent(
       ...testedAtPatchRecord,
     }
     signalSheetStore.applyTestedAtBySignalPatch(mergedPatch)
+    if (Object.keys(testStatusPatchRecord).length > 0) {
+      testedAtRealtimeStore.applyPatch(jobEvent.workspace_id, {}, {
+        flush: "microtask",
+        testStatusBySignal: testStatusPatchRecord,
+      })
+    }
     return
   }
 
@@ -172,12 +199,16 @@ function applySignalTestRuntimePatch(
   }
 
   const testedAtPatch = event.tested_at_by_signal
-  if (!testedAtPatch || typeof testedAtPatch !== "object" || Array.isArray(testedAtPatch)) {
+  const testStatusPatch = event.test_status_by_signal
+  if (
+    (!testedAtPatch || typeof testedAtPatch !== "object" || Array.isArray(testedAtPatch))
+    && (!testStatusPatch || typeof testStatusPatch !== "object" || Array.isArray(testStatusPatch))
+  ) {
     return
   }
 
   const normalizedPatch: Record<string, string> = {}
-  Object.entries(testedAtPatch).forEach(([signalId, testedAt]) => {
+  Object.entries(testedAtPatch ?? {}).forEach(([signalId, testedAt]) => {
     const normalizedSignalId = String(signalId ?? "").trim()
     const normalizedTestedAt = String(testedAt ?? "").trim()
     if (!normalizedSignalId || !normalizedTestedAt) {
@@ -186,11 +217,24 @@ function applySignalTestRuntimePatch(
     normalizedPatch[normalizedSignalId] = normalizedTestedAt
   })
 
-  if (Object.keys(normalizedPatch).length === 0) {
+  const normalizedStatusPatch: Record<string, string> = {}
+  Object.entries(testStatusPatch ?? {}).forEach(([signalId, status]) => {
+    const normalizedSignalId = String(signalId ?? "").trim()
+    const normalizedStatus = String(status ?? "").trim()
+    if (!normalizedSignalId || !normalizedStatus) {
+      return
+    }
+    normalizedStatusPatch[normalizedSignalId] = normalizedStatus
+  })
+
+  if (Object.keys(normalizedPatch).length === 0 && Object.keys(normalizedStatusPatch).length === 0) {
     return
   }
 
-  stores.testedAtRealtimeStore.applyPatch(event.workspace_id, normalizedPatch, { flush: "microtask" })
+  stores.testedAtRealtimeStore.applyPatch(event.workspace_id, normalizedPatch, {
+    flush: "microtask",
+    testStatusBySignal: normalizedStatusPatch,
+  })
 
   const jobId = String(event.job_id ?? "").trim()
   if (!jobId) {

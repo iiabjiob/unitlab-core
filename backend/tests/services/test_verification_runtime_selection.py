@@ -102,6 +102,14 @@ class _FakeClientControlService:
         self.calls.append("gi")
         return SimpleNamespace()
 
+    def refresh_reporting(self):
+        self.calls.append("refresh")
+        return self.snapshot()
+
+    def wait_for_external_report(self, *, timeout_ms: int):
+        self.calls.append(f"wait:{timeout_ms}")
+        return self.refresh_reporting()
+
     def snapshot(self):
         self.calls.append("snapshot")
         return SimpleNamespace(last_report=self._build_report())
@@ -374,6 +382,238 @@ def test_mms_runtime_adapter_surfaces_report_from_control_service() -> None:
     assert reserved.runtime_status == Iec61850RuntimeStatus.RESERVED
     assert enabled.runtime_status == Iec61850RuntimeStatus.ENABLED
     assert report.endpoint_id == endpoint.id
+
+
+def test_mms_runtime_wait_for_report_polls_control_service_before_snapshot() -> None:
+    class _RefreshDrivenClientControlService(_FakeClientControlService):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self.report: Iec61850ReportEvent | None = None
+
+        def _build_report_with_sequence(self, sequence: int, reason: Iec61850ReportReason) -> Iec61850ReportEvent:
+            report = self._build_report()
+            return Iec61850ReportEvent(
+                id=f"{self.session_id}:report-{sequence}",
+                endpoint_id=report.endpoint_id,
+                received_at=report.received_at,
+                report_control=report.report_control,
+                rpt_id=report.rpt_id,
+                data_set_ref=report.data_set_ref,
+                conf_rev=report.conf_rev,
+                sequence_number=sequence,
+                time_of_entry=report.time_of_entry,
+                entry_id=f"entry-{sequence}",
+                buffer_overflow=report.buffer_overflow,
+                reason=reason,
+                values=tuple(
+                    Iec61850ReportEventValue(
+                        data_set_index=value.data_set_index,
+                        reference=value.reference,
+                        data_reference=value.data_reference,
+                        value=value.value,
+                        reason_code=reason,
+                        timestamp=value.timestamp,
+                    )
+                    for value in report.values
+                ),
+            )
+
+        def send_general_interrogation(self):
+            self.calls.append("gi")
+            self.report = self._build_report_with_sequence(1, Iec61850ReportReason.GENERAL_INTERROGATION)
+            return SimpleNamespace()
+
+        def refresh_reporting(self):
+            self.calls.append("refresh")
+            self.report = self._build_report_with_sequence(2, Iec61850ReportReason.DATA_CHANGE)
+            return self.snapshot()
+
+        def wait_for_external_report(self, *, timeout_ms: int):
+            self.calls.append(f"wait:{timeout_ms}")
+            self.report = self._build_report_with_sequence(2, Iec61850ReportReason.DATA_CHANGE)
+            return self.snapshot()
+
+        def snapshot(self):
+            self.calls.append("snapshot")
+            return SimpleNamespace(last_report=self.report)
+
+    catalog = build_mms_endpoint_catalog((
+        Iec61850MmsEndpointCatalogEntry(
+            ied_name="IED-A",
+            access_point_name="P1",
+            host="10.10.10.250",
+            port=12447,
+        ),
+    ))
+    selection = resolve_verification_runtime(
+        execution_context=VerificationExecutionContextSchema(
+            project_id=1,
+            signal_list_revision_id=2,
+            planner_version="test",
+            runtime_version="mms",
+            policy_version="v1",
+        ),
+        endpoint_catalog=catalog,
+        mms_control_service_factory=_RefreshDrivenClientControlService,
+    )
+    endpoint = selection.endpoint_for_device(SimpleNamespace(ied_name="IED-A", access_point_name="P1"))
+    candidate = _candidate()
+    session = selection.adapter.connect(
+        session_id="run-refresh:mms:IED-A/P1@10.10.10.250:12447",
+        endpoint=endpoint,
+        candidates=(candidate,),
+    )
+    reference = to_report_control_ref(candidate)
+
+    session.read_report_control(reference)
+    session.reserve_report_control(reference, "unitlab")
+    session.enable_report_control(reference, "unitlab")
+    initial = session.send_general_interrogation(reference, "unitlab")
+    report = session.wait_for_report(
+        reference,
+        "unitlab",
+        after_sequence_number=initial.sequence_number,
+        after_event_id=initial.id,
+        timeout_ms=100,
+    )
+
+    assert report.sequence_number == 2
+    assert report.reason == Iec61850ReportReason.DATA_CHANGE
+
+
+def test_mms_runtime_wait_for_report_accepts_new_event_id_with_repeated_sequence() -> None:
+    class _RepeatedSequenceClientControlService(_FakeClientControlService):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self.report: Iec61850ReportEvent | None = None
+
+        def _build_report_with_id(self, event_id: str, reason: Iec61850ReportReason) -> Iec61850ReportEvent:
+            report = self._build_report()
+            return Iec61850ReportEvent(
+                id=f"{self.session_id}:{event_id}",
+                endpoint_id=report.endpoint_id,
+                received_at=report.received_at,
+                report_control=report.report_control,
+                rpt_id=report.rpt_id,
+                data_set_ref=report.data_set_ref,
+                conf_rev=report.conf_rev,
+                sequence_number=4,
+                time_of_entry=report.time_of_entry,
+                entry_id=f"entry-{event_id}",
+                buffer_overflow=report.buffer_overflow,
+                reason=reason,
+                values=tuple(
+                    Iec61850ReportEventValue(
+                        data_set_index=value.data_set_index,
+                        reference=value.reference,
+                        data_reference=value.data_reference,
+                        value=value.value,
+                        reason_code=reason,
+                        timestamp=value.timestamp,
+                    )
+                    for value in report.values
+                ),
+            )
+
+        def send_general_interrogation(self):
+            self.report = self._build_report_with_id("external-report-4", Iec61850ReportReason.GENERAL_INTERROGATION)
+            return SimpleNamespace()
+
+        def wait_for_external_report(self, *, timeout_ms: int):  # noqa: ARG002
+            self.report = self._build_report_with_id("external-report-5", Iec61850ReportReason.DATA_CHANGE)
+            return self.snapshot()
+
+        def snapshot(self):
+            return SimpleNamespace(last_report=self.report)
+
+    catalog = build_mms_endpoint_catalog((
+        Iec61850MmsEndpointCatalogEntry(
+            ied_name="IED-A",
+            access_point_name="P1",
+            host="10.10.10.250",
+            port=12447,
+        ),
+    ))
+    selection = resolve_verification_runtime(
+        execution_context=VerificationExecutionContextSchema(
+            project_id=1,
+            signal_list_revision_id=2,
+            planner_version="test",
+            runtime_version="mms",
+            policy_version="v1",
+        ),
+        endpoint_catalog=catalog,
+        mms_control_service_factory=_RepeatedSequenceClientControlService,
+    )
+    endpoint = selection.endpoint_for_device(SimpleNamespace(ied_name="IED-A", access_point_name="P1"))
+    candidate = _candidate()
+    session = selection.adapter.connect(
+        session_id="run-repeat:mms:IED-A/P1@10.10.10.250:12447",
+        endpoint=endpoint,
+        candidates=(candidate,),
+    )
+    reference = to_report_control_ref(candidate)
+
+    session.read_report_control(reference)
+    session.reserve_report_control(reference, "unitlab")
+    session.enable_report_control(reference, "unitlab")
+    initial = session.send_general_interrogation(reference, "unitlab")
+    report = session.wait_for_report(
+        reference,
+        "unitlab",
+        after_sequence_number=initial.sequence_number,
+        after_event_id=initial.id,
+        timeout_ms=100,
+    )
+
+    assert report.id.endswith("external-report-5")
+    assert report.sequence_number == initial.sequence_number
+    assert report.reason == Iec61850ReportReason.DATA_CHANGE
+
+
+def test_mms_runtime_wait_for_report_uses_single_blocking_control_poll() -> None:
+    created_services: list[_FakeClientControlService] = []
+
+    def _factory(**kwargs):
+        service = _FakeClientControlService(**kwargs)
+        created_services.append(service)
+        return service
+
+    catalog = build_mms_endpoint_catalog((
+        Iec61850MmsEndpointCatalogEntry(
+            ied_name="IED-A",
+            access_point_name="P1",
+            host="10.10.10.250",
+            port=12447,
+        ),
+    ))
+    selection = resolve_verification_runtime(
+        execution_context=VerificationExecutionContextSchema(
+            project_id=1,
+            signal_list_revision_id=2,
+            planner_version="test",
+            runtime_version="mms",
+            policy_version="v1",
+        ),
+        endpoint_catalog=catalog,
+        mms_control_service_factory=_factory,
+    )
+    endpoint = selection.endpoint_for_device(SimpleNamespace(ied_name="IED-A", access_point_name="P1"))
+    candidate = _candidate()
+    session = selection.adapter.connect(
+        session_id="run-single-wait:mms:IED-A/P1@10.10.10.250:12447",
+        endpoint=endpoint,
+        candidates=(candidate,),
+    )
+    reference = to_report_control_ref(candidate)
+
+    session.read_report_control(reference)
+    session.reserve_report_control(reference, "unitlab")
+    session.enable_report_control(reference, "unitlab")
+    session.wait_for_report(reference, "unitlab", timeout_ms=1000)
+
+    subscription_service = created_services[-1]
+    assert sum(1 for call in subscription_service.calls if call.startswith("wait:")) == 1
 
 
 def test_mms_runtime_adapter_returns_discovery_summary_diagnostic() -> None:

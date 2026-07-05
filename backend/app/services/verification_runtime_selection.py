@@ -7,6 +7,7 @@ import re
 import time
 from typing import Callable, Literal
 
+from app.core.logger import get_logger
 from app.schemas.verification_schema import VerificationExecutionContextSchema
 from app.services.iec61850.client_control import Iec61850ClientControlService
 from app.services.iec61850.mms_adapter import Iec61850MmsEndpointCatalog
@@ -31,6 +32,7 @@ from app.services.iec61850.report_runtime import (
 )
 
 
+logger = get_logger("service.verification_runtime_selection")
 VerificationRuntimeMode = Literal["simulator", "mms"]
 VerificationRuntimeTransportSource = Literal["simulator", "explicit_request", "settings_catalog", "loaded_scd", "validation_override", "signal_list_fallback", "unavailable"]
 VerificationRuntimeModelSource = Literal["simulator", "loaded_scd", "discovery_fallback"]
@@ -202,9 +204,35 @@ class _ClientControlMmsSession:
         candidate = self._candidate_for_reference(reference)
         control_service = self._subscription_service_for_candidate(candidate)
         deadline = time.monotonic() + (max(1, int(timeout_ms)) / 1000)
+        poll_attempted = False
         while True:
+            if not poll_attempted:
+                poll_attempted = True
+                remaining_ms = max(1, int((deadline - time.monotonic()) * 1000))
+                wait_for_external_report = getattr(control_service, "wait_for_external_report", None)
+                if callable(wait_for_external_report):
+                    wait_for_external_report(timeout_ms=remaining_ms)
+                else:
+                    refresh_reporting = getattr(control_service, "refresh_reporting", None)
+                    if callable(refresh_reporting):
+                        refresh_reporting()
+            else:
+                time.sleep(0.05)
             snapshot = control_service.snapshot()
             report = snapshot.last_report
+            if report is not None:
+                logger.debug(
+                    "IEC 61850 MMS wait report snapshot | session=%s endpoint=%s candidate=%s report_id=%s seq=%s reason=%s values=%s after_seq=%s after_event=%s",
+                    self._session_id,
+                    self._endpoint.id,
+                    candidate.id,
+                    report.id,
+                    report.sequence_number,
+                    report.reason.value,
+                    len(report.values),
+                    after_sequence_number,
+                    after_event_id,
+                )
             if report is not None and self._is_new_report(
                 report,
                 after_sequence_number=after_sequence_number,
@@ -405,8 +433,8 @@ class _ClientControlMmsSession:
         after_sequence_number: int | None,
         after_event_id: str | None,
     ) -> bool:
-        if after_event_id and report.id == after_event_id:
-            return False
+        if after_event_id:
+            return report.id != after_event_id
         if after_sequence_number is not None and report.sequence_number is not None:
             return report.sequence_number > after_sequence_number
         return True

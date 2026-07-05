@@ -4,7 +4,9 @@ import { ref } from "vue"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 
 const testedAtByWorkspaceId = new Map<number, Map<number, string>>()
+const testStatusByWorkspaceId = new Map<number, Map<number, string>>()
 const pendingPatchByWorkspaceId = new Map<number, Map<number, string>>()
+const pendingStatusPatchByWorkspaceId = new Map<number, Map<number, string>>()
 
 const TESTED_AT_REALTIME_MAX_CACHE_ENTRIES = 20_000
 
@@ -30,6 +32,15 @@ export const useTestedAtRealtimeStore = defineStore("testedAtRealtimeStore", () 
     if (!map) {
       map = new Map<number, string>()
       testedAtByWorkspaceId.set(workspaceId, map)
+    }
+    return map
+  }
+
+  function getWorkspaceStatusMap(workspaceId: number): Map<number, string> {
+    let map = testStatusByWorkspaceId.get(workspaceId)
+    if (!map) {
+      map = new Map<number, string>()
+      testStatusByWorkspaceId.set(workspaceId, map)
     }
     return map
   }
@@ -77,7 +88,7 @@ export const useTestedAtRealtimeStore = defineStore("testedAtRealtimeStore", () 
   }
 
   function flushPendingPatches() {
-    if (pendingPatchByWorkspaceId.size === 0) {
+    if (pendingPatchByWorkspaceId.size === 0 && pendingStatusPatchByWorkspaceId.size === 0) {
       return
     }
 
@@ -97,6 +108,19 @@ export const useTestedAtRealtimeStore = defineStore("testedAtRealtimeStore", () 
 
     pendingPatchByWorkspaceId.clear()
 
+    pendingStatusPatchByWorkspaceId.forEach((patchMap, workspaceId) => {
+      const targetMap = getWorkspaceStatusMap(workspaceId)
+      patchMap.forEach((status, signalId) => {
+        targetMap.set(signalId, status)
+        if (activeWorkspaceId !== null && workspaceId === activeWorkspaceId) {
+          touchedActiveSignalIds.push(signalId)
+        }
+      })
+      patchMap.clear()
+    })
+
+    pendingStatusPatchByWorkspaceId.clear()
+
     if (touchedActiveSignalIds.length === 0) {
       return
     }
@@ -108,12 +132,19 @@ export const useTestedAtRealtimeStore = defineStore("testedAtRealtimeStore", () 
     if (activeMap && activeMap.size > TESTED_AT_REALTIME_MAX_CACHE_ENTRIES) {
       activeMap.clear()
     }
+    const activeStatusMap = testStatusByWorkspaceId.get(activeWorkspaceId!)
+    if (activeStatusMap && activeStatusMap.size > TESTED_AT_REALTIME_MAX_CACHE_ENTRIES) {
+      activeStatusMap.clear()
+    }
   }
 
   function applyPatch(
     workspaceIdRaw: number | null | undefined,
     testedAtBySignal: Record<number, string> | Record<string, string>,
-    options?: { flush?: "raf" | "microtask" },
+    options?: {
+      flush?: "raf" | "microtask"
+      testStatusBySignal?: Record<number, string> | Record<string, string>
+    },
   ) {
     const workspaceId = normalizeWorkspaceId(workspaceIdRaw)
     if (workspaceId === null) {
@@ -121,33 +152,79 @@ export const useTestedAtRealtimeStore = defineStore("testedAtRealtimeStore", () 
     }
 
     const entries = Object.entries(testedAtBySignal ?? {})
-    if (entries.length === 0) {
+    const statusEntries = Object.entries(options?.testStatusBySignal ?? {})
+    if (entries.length === 0 && statusEntries.length === 0) {
       return
     }
 
-    let pendingMap = pendingPatchByWorkspaceId.get(workspaceId)
-    if (!pendingMap) {
-      pendingMap = new Map<number, string>()
-      pendingPatchByWorkspaceId.set(workspaceId, pendingMap)
+    let patched = false
+
+    if (entries.length > 0) {
+      let pendingMap = pendingPatchByWorkspaceId.get(workspaceId)
+      if (!pendingMap) {
+        pendingMap = new Map<number, string>()
+        pendingPatchByWorkspaceId.set(workspaceId, pendingMap)
+      }
+
+      entries.forEach(([rawSignalId, testedAtValue]) => {
+        const signalId = Number(rawSignalId)
+        if (!Number.isFinite(signalId) || signalId <= 0) {
+          return
+        }
+        const testedAtIso = String(testedAtValue ?? "").trim()
+        if (!testedAtIso) {
+          return
+        }
+        pendingMap.set(signalId, testedAtIso)
+        patched = true
+      })
     }
 
-    entries.forEach(([rawSignalId, testedAtValue]) => {
-      const signalId = Number(rawSignalId)
-      if (!Number.isFinite(signalId) || signalId <= 0) {
-        return
+    if (statusEntries.length > 0) {
+      let pendingStatusMap = pendingStatusPatchByWorkspaceId.get(workspaceId)
+      if (!pendingStatusMap) {
+        pendingStatusMap = new Map<number, string>()
+        pendingStatusPatchByWorkspaceId.set(workspaceId, pendingStatusMap)
       }
-      const testedAtIso = String(testedAtValue ?? "").trim()
-      if (!testedAtIso) {
-        return
-      }
-      pendingMap.set(signalId, testedAtIso)
-    })
 
-    if (pendingMap.size === 0) {
+      statusEntries.forEach(([rawSignalId, statusValue]) => {
+        const signalId = Number(rawSignalId)
+        if (!Number.isFinite(signalId) || signalId <= 0) {
+          return
+        }
+        const status = String(statusValue ?? "").trim()
+        if (!status) {
+          return
+        }
+        pendingStatusMap.set(signalId, status)
+        patched = true
+      })
+    }
+
+    if (!patched) {
       return
     }
 
     scheduleFlush(options?.flush ?? "raf")
+  }
+
+  function getTestStatus(signalIdRaw: number | null | undefined, workspaceIdRaw?: number | null): string | null {
+    const signalId = Number(signalIdRaw)
+    if (!Number.isFinite(signalId) || signalId <= 0) {
+      return null
+    }
+
+    const workspaceId = normalizeWorkspaceId(workspaceIdRaw ?? workspaceStore.activeWorkspaceId)
+    if (workspaceId === null) {
+      return null
+    }
+
+    const map = testStatusByWorkspaceId.get(workspaceId)
+    if (!map) {
+      return null
+    }
+
+    return map.get(signalId) ?? null
   }
 
   function getTestedAt(signalIdRaw: number | null | undefined, workspaceIdRaw?: number | null): string | null {
@@ -176,7 +253,9 @@ export const useTestedAtRealtimeStore = defineStore("testedAtRealtimeStore", () 
     }
 
     testedAtByWorkspaceId.delete(workspaceId)
+    testStatusByWorkspaceId.delete(workspaceId)
     pendingPatchByWorkspaceId.delete(workspaceId)
+    pendingStatusPatchByWorkspaceId.delete(workspaceId)
 
     const activeWorkspaceId = normalizeWorkspaceId(workspaceStore.activeWorkspaceId)
     if (activeWorkspaceId !== null && activeWorkspaceId === workspaceId) {
@@ -187,7 +266,9 @@ export const useTestedAtRealtimeStore = defineStore("testedAtRealtimeStore", () 
 
   function clearAll() {
     testedAtByWorkspaceId.clear()
+    testStatusByWorkspaceId.clear()
     pendingPatchByWorkspaceId.clear()
+    pendingStatusPatchByWorkspaceId.clear()
     activeWorkspacePatchedSignalIds.value = []
     activeWorkspaceRevision.value += 1
 
@@ -203,6 +284,7 @@ export const useTestedAtRealtimeStore = defineStore("testedAtRealtimeStore", () 
     activeWorkspacePatchedSignalIds,
     applyPatch,
     getTestedAt,
+    getTestStatus,
     clearWorkspace,
     clearAll,
   }

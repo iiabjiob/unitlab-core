@@ -241,6 +241,72 @@ def test_backend_runtime_service_owns_simulator_session_flow() -> None:
     ]
 
 
+def test_report_observation_matches_do_level_st_report_to_stval_signal() -> None:
+    candidate = Iec61850ReportControlCandidate(
+        id="KINTE15BCU01CTRL2:LLN0$BR$brcbST01",
+        ied_name="KINTE15BCU01",
+        access_point_name="AP1",
+        logical_device_inst="CTRL2",
+        logical_node_name="LLN0",
+        report_control_name="brcbST01",
+        report_kind=Iec61850ReportKind.BUFFERED,
+        rpt_id="KINTE15BCU01CTRL2/LLN0.brcbST01",
+        data_set_ref="KINTE15BCU01CTRL2/LLN0$LLN0BRptStDs",
+        conf_rev="1",
+        indexed=True,
+        buffer_time_ms=100,
+        integrity_period_ms=1000,
+        trigger_options=Iec61850RuntimeTriggerOptions(data_change=True, general_interrogation=True),
+        optional_fields=Iec61850OptionalFields(data_reference=True, reason_code=True),
+        signals=(Iec61850DataSetMember(reference="KINTE15BCU01CTRL2/SlotHGGIO12/Ind3/stVal[ST]", fc="ST"),),
+    )
+    event = Iec61850ReportEvent(
+        id="event-ind3",
+        endpoint_id="mms:KINTE15BCU01/AP1@172.16.40.128:12447",
+        received_at="2026-07-05T10:00:00.100Z",
+        report_control=to_report_control_ref(candidate),
+        rpt_id=candidate.rpt_id,
+        data_set_ref=candidate.data_set_ref,
+        conf_rev=candidate.conf_rev,
+        sequence_number=7,
+        time_of_entry="2026-07-05T10:00:00.100Z",
+        entry_id="entry-ind3",
+        buffer_overflow=False,
+        reason=Iec61850ReportReason.DATA_CHANGE,
+        values=(
+            Iec61850ReportEventValue(
+                data_set_index=0,
+                reference="KINTE15BCU01CTRL2/SlotHGGIO12$ST$Ind3",
+                data_reference="KINTE15BCU01CTRL2/SlotHGGIO12$ST$Ind3",
+                value=True,
+                reason_code=Iec61850ReportReason.DATA_CHANGE,
+                timestamp="2026-07-05T10:00:00.100Z",
+            ),
+        ),
+    )
+
+    result = map_report_event_to_signal_observations(
+        candidate=candidate,
+        matched_signals=(
+            Iec61850ReportSubscriptionPlanSignal(
+                selected_signal=Iec61850SelectedSignal(
+                    id="33398",
+                    address="KINTE15BCU01CTRL2/SlotHGGIO12/Ind3/stVal[ST]",
+                ),
+                model_reference="KINTE15BCU01CTRL2/SlotHGGIO12/Ind3/stVal[ST]",
+                ied_name="KINTE15BCU01",
+                match_kind="exact",
+            ),
+        ),
+        event=event,
+    )
+
+    assert len(result.observations) == 1
+    assert result.observations[0].selected_signal_id == "33398"
+    assert result.observations[0].value is True
+    assert result.diagnostics == ()
+
+
 def test_backend_runtime_service_accepts_read_result_from_session() -> None:
     candidate = _candidate()
     endpoint = _endpoint()

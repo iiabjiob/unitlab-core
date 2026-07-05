@@ -192,6 +192,118 @@
       @confirm="confirmDeleteSelected"
     />
 
+    <UiModal
+      :open="testRunReportOpen"
+      title="Test run result report"
+      max-width="6xl"
+      desktop-height="82vh"
+      :content-scroll="true"
+      @close="closeTestRunReport"
+    >
+      <div v-if="testRunReport" class="signals-page__test-report">
+        <header class="signals-page__test-report-header">
+          <div>
+            <p class="signals-page__test-report-title">{{ testRunReport.title }}</p>
+            <p class="signals-page__test-report-subtitle">{{ testRunReport.subtitle }}</p>
+          </div>
+          <div class="signals-page__test-report-counts">
+            <span v-for="count in testRunReport.counts" :key="count.key" class="signals-page__test-report-count">
+              {{ count.label }} {{ count.value }}
+            </span>
+          </div>
+        </header>
+
+        <div v-if="testRunReport.warning || testRunReport.error" class="signals-page__test-report-notes">
+          <div v-if="testRunReport.warning">{{ testRunReport.warning }}</div>
+          <div v-if="testRunReport.error">{{ testRunReport.error }}</div>
+        </div>
+
+        <section class="signals-page__test-report-list" aria-label="Test run signal results">
+          <article
+            v-for="item in testRunReport.items"
+            :key="item.signalId"
+            class="signals-page__test-report-item"
+          >
+            <header class="signals-page__test-report-item-header">
+              <div class="signals-page__test-report-item-title">
+                <span>{{ item.signalName }}</span>
+                <code>{{ item.signalId }}</code>
+              </div>
+              <span
+                class="signals-page__test-status"
+                :class="`signals-page__test-status--${item.statusTone}`"
+                :title="item.statusTitle"
+              >
+                {{ item.statusLabel }}
+              </span>
+            </header>
+
+            <div v-if="item.rawRowText" class="signals-page__test-report-raw-row" aria-label="Original signal-list row">
+              <code>{{ item.rawRowText }}</code>
+            </div>
+
+            <dl class="signals-page__test-report-grid">
+              <div>
+                <dt>Peripheral command</dt>
+                <dd>{{ item.commandSummary }}</dd>
+              </div>
+              <div>
+                <dt>Tested at</dt>
+                <dd>{{ item.testedAtLabel }}</dd>
+              </div>
+              <div>
+                <dt>Capture started</dt>
+                <dd>{{ item.captureStartedAtLabel }}</dd>
+              </div>
+              <div>
+                <dt>Window / timeout</dt>
+                <dd>{{ item.captureWindowLabel }}</dd>
+              </div>
+              <div>
+                <dt>Expected IEC 61850</dt>
+                <dd><code>{{ item.expectedPath }}</code></dd>
+              </div>
+              <div>
+                <dt>Observed IEC 61850</dt>
+                <dd><code>{{ item.actualPath }}</code></dd>
+              </div>
+              <div>
+                <dt>Expected value</dt>
+                <dd>{{ item.expectedValue }}</dd>
+              </div>
+              <div>
+                <dt>Observed value</dt>
+                <dd>{{ item.actualValue }}</dd>
+              </div>
+              <div>
+                <dt>Report reason</dt>
+                <dd>{{ item.reportReason }}</dd>
+              </div>
+              <div>
+                <dt>Observed at</dt>
+                <dd>{{ item.observedAtLabel }}</dd>
+              </div>
+              <div>
+                <dt>Latency</dt>
+                <dd>{{ item.latencyLabel }}</dd>
+              </div>
+              <div>
+                <dt>Report / dataset</dt>
+                <dd>{{ item.reportSummary }}</dd>
+              </div>
+            </dl>
+
+            <div v-if="item.diagnostics.length" class="signals-page__test-report-diagnostics">
+              <span v-for="diagnostic in item.diagnostics" :key="diagnostic">{{ diagnostic }}</span>
+            </div>
+          </article>
+        </section>
+      </div>
+      <template #footer>
+        <UiButton type="button" variant="secondary" size="sm" @click="closeTestRunReport">Close</UiButton>
+      </template>
+    </UiModal>
+
   </div>
 </template>
 
@@ -247,6 +359,7 @@ import { useAffinoDataGridTheme } from "@/components/ui/affinoDataGridTheme"
 import "@/components/ui/affinoDataGridNative.css"
 import ConfirmModal from "@/components/ui/ConfirmModal.vue"
 import UiButton from "@/components/ui/UiButton.vue"
+import UiModal from "@/components/ui/UiModal.vue"
 import { useChannelStore } from "@/stores/channelStore"
 import { useDeviceStore } from "@/stores/deviceStore"
 import { useExternalIedStore, type ExternalIedStatus } from "@/stores/externalIedStore"
@@ -318,6 +431,8 @@ const deallocatingSelected = ref(false)
 const testRunInProgress = ref(false)
 const testRunIntervalMs = ref(1000)
 const testRunToggleMode = ref<"single" | "double">("single")
+const testRunReportOpen = ref(false)
+const testRunReport = ref<TestRunResultReport | null>(null)
 const activeAoControlSignalId = ref<number | null>(null)
 const activeAoControlDraftValue = ref("")
 const activeAoSubmittingSignalId = ref<number | null>(null)
@@ -339,12 +454,43 @@ type RowSelectionSnapshot = NonNullable<DataGridProps<GridRow>["rowSelectionStat
 type DataGridStateUpdate = NonNullable<DataGridProps<Record<string, unknown>>["state"]>
 type GridCellInteractiveContext = DataGridAppCellRendererContext<GridRow>["interactive"]
 
+type TestRunResultReport = {
+  title: string
+  subtitle: string
+  warning: string
+  error: string
+  counts: Array<{ key: string; label: string; value: number }>
+  items: TestRunResultReportItem[]
+}
+
+type TestRunResultReportItem = {
+  signalId: number
+  signalName: string
+  statusLabel: string
+  statusTone: string
+  statusTitle: string
+  rawRowText: string
+  commandSummary: string
+  testedAtLabel: string
+  captureStartedAtLabel: string
+  captureWindowLabel: string
+  expectedPath: string
+  actualPath: string
+  expectedValue: string
+  actualValue: string
+  reportReason: string
+  observedAtLabel: string
+  latencyLabel: string
+  reportSummary: string
+  diagnostics: string[]
+}
+
 const DataGrid = defineDataGridComponent<GridRow>()
 const SIGNAL_GRID_ROW_SELECTION = { enabled: true, columnWidth: 44 } satisfies NonNullable<DataGridProps<GridRow>["rowSelection"]>
 
 const SIGNALS_GRID_LEGACY_STORAGE_KEY_PREFIX = "unitlab.signals-grid"
 const REMOVED_SIGNAL_GRID_COLUMN_KEYS = new Set(["allocation_status", "allocation_health", "iec61850_address"])
-const SIGNAL_GRID_PATCH_COLUMNS = ["internal_signal_type", "channel_select", "tested_at"] as const
+const SIGNAL_GRID_PATCH_COLUMNS = ["internal_signal_type", "channel_select", "test_status", "tested_at"] as const
 const signalAllocationProjectionCache = createSignalAllocationProjectionCache()
 const signalAllocationProjectionVersion = ref(0)
 const signalRuntimeStateCache = createSignalRuntimeStateCache()
@@ -468,18 +614,26 @@ function bumpSignalRuntimeStateVersion() {
 }
 
 function patchSignalRuntimeStateFromStore(signalIds: readonly number[]) {
-  const testedAtBySignal: Record<number, string> = {}
+  const patches: Array<{ signalId: number; state: { testedAt?: string; status?: string } }> = []
   signalIds.forEach((rawSignalId) => {
     const signalId = Number(rawSignalId)
     if (!Number.isFinite(signalId) || signalId <= 0) {
       return
     }
     const testedAt = String(testedAtRealtimeStore.getTestedAt(signalId, workspaceStore.activeWorkspaceId) ?? "").trim()
+    const status = String(testedAtRealtimeStore.getTestStatus(signalId, workspaceStore.activeWorkspaceId) ?? "").trim()
+    const state: { testedAt?: string; status?: string } = {}
     if (testedAt) {
-      testedAtBySignal[signalId] = testedAt
+      state.testedAt = testedAt
+    }
+    if (status) {
+      state.status = status
+    }
+    if (Object.keys(state).length > 0) {
+      patches.push({ signalId, state })
     }
   })
-  const result = signalRuntimeStateCache.patchTestedAtBySignal(testedAtBySignal)
+  const result = signalRuntimeStateCache.patchStates(patches)
   if (result.changed > 0) {
     bumpSignalRuntimeStateVersion()
   }
@@ -542,6 +696,15 @@ const allocationProjectionRowsCount = computed(() => signalAllocationProjectionR
 function getSignalRuntimeTestedAt(signalId: number | null | undefined): string | null {
   void signalRuntimeStateVersion.value
   return signalRuntimeStateCache.getTestedAt(signalId)
+}
+
+function getSignalRuntimeTestStatus(signalId: number | null | undefined): string | null {
+  void signalRuntimeStateVersion.value
+  const normalizedSignalId = Number(signalId)
+  if (!Number.isFinite(normalizedSignalId) || normalizedSignalId <= 0) {
+    return null
+  }
+  return signalRuntimeStateCache.getState(normalizedSignalId)?.status ?? null
 }
 
 const sourceHeaders = computed(() => {
@@ -854,7 +1017,7 @@ function buildSignalRowsPatchedAllocationRow(patch: SignalRowsPatchedRowPatch): 
 
 function applySignalRowsPatchedRuntimeRows(patches: readonly SignalRowsPatchedRowPatch[]): number[] {
   const signalIds: number[] = []
-  const testedAtBySignal: Record<number, string> = {}
+  const runtimePatches: Array<{ signalId: number; state: { testedAt?: string; status?: string } }> = []
   const columns = new Set<string>()
   const missingSignalIds: number[] = []
 
@@ -871,14 +1034,24 @@ function applySignalRowsPatchedRuntimeRows(patches: readonly SignalRowsPatchedRo
     signalIds.push(signalId)
     resolveSignalRowsPatchedColumns(patch).forEach(column => columns.add(column))
 
-    const testedAt = resolveSignalRowsPatchedChanges(patch).tested_at
+    const changes = resolveSignalRowsPatchedChanges(patch)
+    const state: { testedAt?: string; status?: string } = {}
+    const testedAt = changes.tested_at
     if (testedAt !== undefined && testedAt !== null) {
-      testedAtBySignal[signalId] = String(testedAt)
+      state.testedAt = String(testedAt)
       columns.add("tested_at")
+    }
+    const testStatus = (changes as Record<string, unknown>).test_status
+    if (testStatus !== undefined && testStatus !== null) {
+      state.status = String(testStatus)
+      columns.add("test_status")
+    }
+    if (Object.keys(state).length > 0) {
+      runtimePatches.push({ signalId, state })
     }
   })
 
-  const runtimePatchResult = signalRuntimeStateCache.patchTestedAtBySignal(testedAtBySignal)
+  const runtimePatchResult = signalRuntimeStateCache.patchStates(runtimePatches)
   if (runtimePatchResult.changed > 0) {
     bumpSignalRuntimeStateVersion()
   }
@@ -1913,6 +2086,7 @@ function signalGridRuntimeOverlay() {
   return {
     workspaceId: workspaceStore.activeWorkspaceId,
     getTestedAt: getSignalRuntimeTestedAt,
+    getTestStatus: getSignalRuntimeTestStatus,
     getExternalIedStatus: getExternalIedStatusForRow,
   }
 }
@@ -2326,7 +2500,20 @@ async function deallocateSelected() {
 }
 
 function applyCompletedTestRunPatch(job: SignalAllocationJob) {
-  const testedIdsRaw = (job.result as Record<string, unknown> | undefined)?.tested_signal_ids
+  const result = (job.result as Record<string, unknown> | undefined) ?? {}
+  const testedAtPatch = (result.tested_at_patch ?? result.tested_at_by_signal) as Record<string, string> | undefined
+  const testStatusPatch = (result.test_status_patch ?? result.test_status_by_signal) as Record<string, string> | undefined
+  if (
+    (testedAtPatch && typeof testedAtPatch === "object" && !Array.isArray(testedAtPatch))
+    || (testStatusPatch && typeof testStatusPatch === "object" && !Array.isArray(testStatusPatch))
+  ) {
+    testedAtRealtimeStore.applyPatch(job.workspace_id, testedAtPatch ?? {}, {
+      flush: "microtask",
+      testStatusBySignal: testStatusPatch ?? {},
+    })
+  }
+
+  const testedIdsRaw = result.tested_signal_ids
   const testedIds = Array.isArray(testedIdsRaw)
     ? testedIdsRaw.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0)
     : []
@@ -2336,6 +2523,218 @@ function applyCompletedTestRunPatch(job: SignalAllocationJob) {
   void signalSheetStore.markSignalsTested(testedIds, { optimistic: false }).catch(() => {
     return
   })
+}
+
+function closeTestRunReport() {
+  testRunReportOpen.value = false
+}
+
+function buildTestRunReport(job: SignalAllocationJob, queue: Array<GridRow | SignalAllocationRow>): TestRunResultReport {
+  const result = asRecord(job.result) ?? {}
+  const reportBySignal = asRecord(result.test_report_by_signal) ?? {}
+  const statusBySignal = asRecord(result.test_status_by_signal) ?? {}
+  const testedAtBySignal = asRecord(result.tested_at_by_signal) ?? asRecord(result.tested_at_patch) ?? {}
+  const counts = new Map<string, number>()
+  const items = queue.map((row, index) => {
+    const signalId = Number(row.signal_id)
+    const rawReport = asRecord(reportBySignal[String(signalId)]) ?? asRecord(reportBySignal[signalId]) ?? {}
+    const command = asRecord(rawReport.command) ?? {}
+    const verification = asRecord(rawReport.iec61850_verification) ?? asRecord(command.iec61850_verification) ?? {}
+    const evidence = asRecord(verification.evidence) ?? {}
+    const step = asRecord(verification.step) ?? {}
+    const status = normalizeReportText(rawReport.test_status)
+      || normalizeReportText(statusBySignal[String(signalId)])
+      || normalizeReportText(statusBySignal[signalId])
+      || ""
+    const statusMeta = resolveTestStatusMeta(status || (normalizeReportText(row.tested_at) ? "tested" : "not_validated"))
+      ?? { label: "Not validated", tone: "danger", title: "IEC 61850 verification did not pass." }
+    counts.set(statusMeta.label, (counts.get(statusMeta.label) ?? 0) + 1)
+
+    const expectedPath = normalizeReportText(evidence.expected_path)
+      || normalizeReportText(rawReport.iec61850_address)
+      || resolveReportIec61850Address(row)
+      || "-"
+    const actualPath = normalizeReportText(evidence.actual_report_path) || "-"
+    const testedAt = normalizeReportText(rawReport.tested_at)
+      || normalizeReportText(testedAtBySignal[String(signalId)])
+      || normalizeReportText(testedAtBySignal[signalId])
+      || normalizeReportText(row.tested_at)
+    const captureStartedAt = normalizeReportText(step.triggered_at)
+      || normalizeReportText(verification.triggered_at)
+    const observedAt = normalizeReportText(evidence.observed_at)
+    const latencyMs = normalizeReportNumber(evidence.latency_ms)
+    const windowMs = normalizeReportNumber(step.expected_window_ms)
+    const timeoutMs = normalizeReportNumber(verification.timeout_ms)
+    const reportReason = normalizeReportText(evidence.report_reason)
+      || normalizeReportText(evidence.reason_code)
+      || "-"
+    const rptId = normalizeReportText(evidence.rpt_id)
+    const dataset = normalizeReportText(evidence.dataset)
+    const diagnostics = normalizeReportDiagnostics(evidence.diagnostics)
+    const verificationError = normalizeReportText(verification.error)
+    if (verificationError) {
+      diagnostics.push(verificationError)
+    }
+    const expectedValueLabel = formatReportCommandValue(command.expected_feedback_value, command)
+
+    return {
+      signalId,
+      signalName: normalizeReportText(rawReport.signal_name) || normalizeReportText(row.signal_name) || `Signal ${index + 1}`,
+      statusLabel: statusMeta.label,
+      statusTone: statusMeta.tone,
+      statusTitle: statusMeta.title,
+      rawRowText: formatReportRawSignalRow(row),
+      commandSummary: formatReportCommand(command, row),
+      testedAtLabel: formatReportDate(testedAt),
+      captureStartedAtLabel: formatReportDate(captureStartedAt),
+      captureWindowLabel: formatCaptureWindow(windowMs, timeoutMs),
+      expectedPath,
+      actualPath,
+      expectedValue: expectedValueLabel,
+      actualValue: formatReportValue(evidence.signal_value),
+      reportReason,
+      observedAtLabel: formatReportDate(observedAt),
+      latencyLabel: latencyMs === null ? "-" : `${latencyMs} ms`,
+      reportSummary: rptId || dataset ? [rptId, dataset].filter(Boolean).join(" / ") : "-",
+      diagnostics,
+    }
+  })
+  const sortedCounts = Array.from(counts.entries()).map(([label, value]) => ({
+    key: label.toLowerCase().replace(/\s+/g, "_"),
+    label,
+    value,
+  }))
+  return {
+    title: `Test run ${job.job_id}`,
+    subtitle: `${items.length} selected signal(s) · processed ${Number(result.processed ?? 0)} · succeeded ${Number(result.succeeded ?? 0)} · skipped ${Number(result.skipped ?? 0)}`,
+    warning: normalizeReportText(result.verification_prepare_warning),
+    error: normalizeReportText(result.verification_prepare_error),
+    counts: sortedCounts,
+    items,
+  }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null
+}
+
+function normalizeReportText(value: unknown): string {
+  if (typeof value !== "string") {
+    return ""
+  }
+  const normalized = value.trim()
+  return normalized && !["<empty>", "<none>", "none", "null"].includes(normalized.toLowerCase()) ? normalized : ""
+}
+
+function normalizeReportNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") {
+    return null
+  }
+  const normalized = Number(value)
+  return Number.isFinite(normalized) ? normalized : null
+}
+
+function formatReportDate(value: unknown): string {
+  const raw = normalizeReportText(value)
+  return raw ? formatDate(raw) : "-"
+}
+
+function formatReportValue(value: unknown): string {
+  if (value === null || value === undefined || value === "") {
+    return "-"
+  }
+  if (typeof value === "boolean") {
+    return value ? "true" : "false"
+  }
+  if (typeof value === "number" || typeof value === "string") {
+    return String(value)
+  }
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
+}
+
+function formatCaptureWindow(windowMs: number | null, timeoutMs: number | null): string {
+  const windowLabel = windowMs === null ? "window -" : `window ${windowMs} ms`
+  const timeoutLabel = timeoutMs === null ? "timeout -" : `timeout ${timeoutMs} ms`
+  return `${windowLabel} · ${timeoutLabel}`
+}
+
+function formatReportCommandValue(value: unknown, command: Record<string, unknown>): string {
+  const mode = normalizeReportText(command.toggle_mode)
+  if (mode !== "ao_random" && (value === 0 || value === 1)) {
+    return value === 1 ? "true" : "false"
+  }
+  return formatReportValue(value)
+}
+
+function formatReportCommand(command: Record<string, unknown>, row: GridRow | SignalAllocationRow): string {
+  const mode = normalizeReportText(command.toggle_mode) || "-"
+  const expected = formatReportCommandValue(command.expected_feedback_value, command)
+  const target = formatReportCommandValue(command.target_value, command)
+  const unitId = normalizeReportText(row.unit_id)
+  const channel = normalizeReportText(row.channel_label) || (
+    Number.isFinite(Number(row.channel_index)) ? `CH${Number(row.channel_index) + 1}` : ""
+  )
+  const channelPart = [unitId, channel].filter(Boolean).join(" / ")
+  return `${channelPart || "Peripheral"} · ${mode} · target ${target} · expected ${expected}`
+}
+
+function formatReportRawSignalRow(row: GridRow | SignalAllocationRow): string {
+  const rowRecord = row as unknown as Record<string, unknown>
+  const sourceValues = sourceHeaders.value.map((header, index) => {
+    const directValue = rowRecord[signalGridSourceColumnKey(index)]
+    if (directValue !== undefined && directValue !== null) {
+      return formatReportRawCellValue(directValue)
+    }
+    const sourceRow = extractSourceRowFromSignalMetadata((row as SignalAllocationRow).signal_metadata)
+    return formatReportRawCellValue(sourceRow[header])
+  })
+  return sourceValues.filter(value => value.trim().length > 0).join(" | ")
+}
+
+function formatReportRawCellValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return ""
+  }
+  if (typeof value === "string") {
+    return value.trim()
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value)
+  }
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
+}
+
+function resolveReportIec61850Address(row: GridRow | SignalAllocationRow): string {
+  const rowRecord = row as unknown as Record<string, unknown>
+  const directValue = normalizeReportText(rowRecord.iec61850_address)
+    || normalizeReportText(rowRecord.mms_reference)
+  if (directValue) {
+    return directValue
+  }
+  return normalizeReportText(resolveOnline61850SignalReference(row as SignalAllocationRow))
+}
+
+function normalizeReportDiagnostics(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value.map((item) => {
+    const diagnostic = asRecord(item)
+    if (!diagnostic) {
+      return formatReportValue(item)
+    }
+    const code = normalizeReportText(diagnostic.code)
+    const message = normalizeReportText(diagnostic.message)
+    return [code, message].filter(Boolean).join(": ")
+  }).filter((item) => item && item !== "-")
 }
 
 function setTestRunToggleMode(mode: "single" | "double") {
@@ -2412,6 +2811,8 @@ async function startTestRunJob(options?: { resumeFromCursor?: boolean; resumeJob
     )
 
     applyCompletedTestRunPatch(completedJob)
+    testRunReport.value = buildTestRunReport(completedJob, queue)
+    testRunReportOpen.value = true
     const result = completedJob.result as Record<string, unknown> | undefined
     if (result?.verification_enabled) {
       const observed = Number(result.verification_observed ?? 0)
@@ -3059,6 +3460,68 @@ function renderTestedAtCell(context: DataGridAppCellRendererContext<GridRow>) {
   return h("span", { class: "signals-page__grid-cell" }, formatDate(raw))
 }
 
+function resolveTestStatusMeta(rawStatus: string | null | undefined): { label: string; tone: string; title: string } | null {
+  const status = String(rawStatus ?? "").trim().toLowerCase()
+  if (!status) {
+    return null
+  }
+  if (status === "verified" || status === "observed") {
+    return { label: "Verified", tone: "success", title: "IEC 61850 report observed within the verification window." }
+  }
+  if (status === "late") {
+    return { label: "Late match", tone: "warning", title: "Expected IEC 61850 address arrived after the allowed verification window." }
+  }
+  if (status === "missing" || status === "timeout") {
+    return { label: "Missing", tone: "danger", title: "No IEC 61850 report with the expected address arrived before timeout." }
+  }
+  if (status === "unexpected") {
+    return { label: "Unexpected", tone: "danger", title: "A report arrived, but it did not contain the expected IEC 61850 address." }
+  }
+  if (status === "inverted") {
+    return { label: "Inverted", tone: "danger", title: "Expected IEC 61850 address arrived with the opposite boolean value." }
+  }
+  if (status === "value_mismatch") {
+    return { label: "Value mismatch", tone: "danger", title: "Expected IEC 61850 address arrived with a different value." }
+  }
+  if (status === "invalid" || status === "out_of_window" || status === "stale" || status === "not_validated") {
+    return { label: status === "not_validated" ? "Not validated" : formatTestStatusLabel(status), tone: "danger", title: "IEC 61850 verification did not pass." }
+  }
+  if (status === "tested") {
+    return { label: "Tested", tone: "neutral", title: "Signal command was executed." }
+  }
+  if (status === "offline_unit") {
+    return { label: "Skipped", tone: "muted", title: "Allocated peripheral unit was offline." }
+  }
+  return { label: formatTestStatusLabel(status), tone: "neutral", title: "Latest test result." }
+}
+
+function formatTestStatusLabel(status: string): string {
+  return status.replace(/_/g, " ")
+}
+
+function renderTestStatusCell(context: DataGridAppCellRendererContext<GridRow>) {
+  const status = String(context.row?.test_status ?? "").trim()
+  const isIec61850Row = Boolean(
+    String(context.row?.iec61850_address ?? "").trim()
+    || String(context.row?.external_ied_ip ?? "").trim(),
+  )
+  const fallbackStatus = String(context.row?.tested_at ?? "").trim()
+    ? (isIec61850Row ? "not_validated" : "tested")
+    : ""
+  const meta = resolveTestStatusMeta(status || fallbackStatus)
+  if (!meta) {
+    return h("span", { class: "signals-page__grid-cell" }, "-")
+  }
+  return h(
+    "span",
+    {
+      class: ["signals-page__test-status", `signals-page__test-status--${meta.tone}`],
+      title: meta.title,
+    },
+    meta.label,
+  )
+}
+
 const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
   const controlCellRenderVersion = `${activeAoControlSignalId.value ?? "idle"}:${activeAoSubmittingSignalId.value ?? "idle"}`
   const sourceColumns: DataGridAppColumnInput<GridRow>[] = sourceHeaders.value.map((header, index) => ({
@@ -3111,6 +3574,18 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
           },
         })
       },
+    },
+    {
+      key: "test_status",
+      label: "Test Result",
+      minWidth: 112,
+      initialState: { width: 132, pin: "right" },
+      presentation: {
+        align: "left",
+        headerAlign: "left",
+      },
+      capabilities: { editable: false, sortable: false },
+      cellRenderer: renderTestStatusCell,
     },
     {
       key: "tested_at",
@@ -3317,7 +3792,7 @@ watch(
     patchSignalRuntimeStateFromStore(signalIds)
     signalGridPatchIngress.applyRuntimeSignals(signalIds, {
       reason: "signal-tested-at-realtime-patch",
-      columns: ["tested_at"],
+      columns: ["test_status", "tested_at"],
     })
   },
   { flush: "post" },
@@ -3572,6 +4047,202 @@ onBeforeUnmount(() => {
   font-size: var(--text-xs);
 }
 
+.signals-page__test-status {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: var(--text-xs);
+  height: 1.35rem;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0 0.5rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signals-page__test-status--success {
+  background: color-mix(in srgb, var(--color-emerald-500) 14%, transparent);
+  border-color: color-mix(in srgb, var(--color-emerald-500) 42%, transparent);
+  color: var(--color-emerald-700);
+}
+
+.signals-page__test-status--warning {
+  background: color-mix(in srgb, var(--color-amber-400) 18%, transparent);
+  border-color: color-mix(in srgb, var(--color-amber-500) 46%, transparent);
+  color: var(--color-amber-800);
+}
+
+.signals-page__test-status--danger {
+  background: color-mix(in srgb, var(--color-rose-500) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-rose-500) 42%, transparent);
+  color: var(--color-rose-700);
+}
+
+.signals-page__test-status--neutral,
+.signals-page__test-status--muted {
+  background: color-mix(in srgb, var(--color-neutral-500) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-neutral-500) 28%, transparent);
+  color: var(--color-neutral-700);
+}
+
+.signals-page__test-report {
+  color: var(--color-neutral-800);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-height: 0;
+}
+
+.signals-page__test-report-header {
+  align-items: flex-start;
+  border-bottom: 1px solid var(--color-neutral-200);
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding-bottom: 1rem;
+}
+
+.signals-page__test-report-title {
+  color: var(--color-neutral-900);
+  font-size: var(--text-base);
+  font-weight: 600;
+  margin: 0;
+}
+
+.signals-page__test-report-subtitle {
+  color: var(--color-neutral-500);
+  font-size: var(--text-sm);
+  margin: 0.25rem 0 0;
+}
+
+.signals-page__test-report-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.signals-page__test-report-count {
+  background: color-mix(in srgb, var(--color-neutral-500) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-neutral-500) 22%, transparent);
+  border-radius: 999px;
+  color: var(--color-neutral-700);
+  font-size: var(--text-xs);
+  padding: 0.25rem 0.5rem;
+}
+
+.signals-page__test-report-notes {
+  background: color-mix(in srgb, var(--color-amber-400) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-amber-500) 36%, transparent);
+  border-radius: var(--radius-md);
+  color: var(--color-amber-900);
+  display: grid;
+  gap: 0.25rem;
+  font-size: var(--text-sm);
+  padding: 0.75rem;
+}
+
+.signals-page__test-report-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.signals-page__test-report-item {
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.875rem;
+}
+
+.signals-page__test-report-item-header {
+  align-items: center;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.signals-page__test-report-item-title {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.signals-page__test-report-item-title span {
+  color: var(--color-neutral-900);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.signals-page__test-report-item-title code,
+.signals-page__test-report-grid code {
+  color: inherit;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.signals-page__test-report-raw-row {
+  background: color-mix(in srgb, var(--color-neutral-500) 7%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-neutral-500) 18%, transparent);
+  border-radius: var(--radius-sm);
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.5rem 0.625rem;
+}
+
+.signals-page__test-report-raw-row code {
+  color: var(--color-neutral-800);
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  min-width: max-content;
+  white-space: pre;
+}
+
+.signals-page__test-report-grid {
+  display: grid;
+  gap: 0.625rem 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.signals-page__test-report-grid div {
+  min-width: 0;
+}
+
+.signals-page__test-report-grid dt {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  margin-bottom: 0.15rem;
+}
+
+.signals-page__test-report-grid dd {
+  color: var(--color-neutral-800);
+  font-size: var(--text-sm);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.signals-page__test-report-diagnostics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.signals-page__test-report-diagnostics span {
+  background: color-mix(in srgb, var(--color-rose-500) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-rose-500) 28%, transparent);
+  border-radius: 999px;
+  color: var(--color-rose-700);
+  font-size: var(--text-xs);
+  padding: 0.2rem 0.45rem;
+}
+
 :global(.dark .signals-page__empty) {
   color: var(--color-neutral-400);
 }
@@ -3632,9 +4303,100 @@ onBeforeUnmount(() => {
   color: var(--color-neutral-100);
 }
 
+:global(.dark .signals-page__test-status--success) {
+  background: color-mix(in srgb, var(--color-emerald-500) 18%, transparent);
+  border-color: color-mix(in srgb, var(--color-emerald-400) 46%, transparent);
+  color: var(--color-emerald-200);
+}
+
+:global(.dark .signals-page__test-status--warning) {
+  background: color-mix(in srgb, var(--color-amber-400) 16%, transparent);
+  border-color: color-mix(in srgb, var(--color-amber-300) 42%, transparent);
+  color: var(--color-amber-200);
+}
+
+:global(.dark .signals-page__test-status--danger) {
+  background: color-mix(in srgb, var(--color-rose-500) 18%, transparent);
+  border-color: color-mix(in srgb, var(--color-rose-400) 44%, transparent);
+  color: var(--color-rose-200);
+}
+
+:global(.dark .signals-page__test-status--neutral),
+:global(.dark .signals-page__test-status--muted) {
+  background: color-mix(in srgb, var(--color-neutral-500) 14%, transparent);
+  border-color: color-mix(in srgb, var(--color-neutral-400) 30%, transparent);
+  color: var(--color-neutral-200);
+}
+
+:global(.dark .signals-page__test-report) {
+  color: var(--color-neutral-200);
+}
+
+:global(.dark .signals-page__test-report-header),
+:global(.dark .signals-page__test-report-item) {
+  border-color: var(--color-neutral-800);
+}
+
+:global(.dark .signals-page__test-report-title),
+:global(.dark .signals-page__test-report-item-title span) {
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .signals-page__test-report-subtitle),
+:global(.dark .signals-page__test-report-grid dt) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .signals-page__test-report-count) {
+  background: color-mix(in srgb, var(--color-neutral-500) 14%, transparent);
+  border-color: color-mix(in srgb, var(--color-neutral-400) 28%, transparent);
+  color: var(--color-neutral-200);
+}
+
+:global(.dark .signals-page__test-report-raw-row) {
+  background: color-mix(in srgb, var(--color-neutral-500) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-neutral-400) 24%, transparent);
+}
+
+:global(.dark .signals-page__test-report-raw-row code) {
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .signals-page__test-report-notes) {
+  background: color-mix(in srgb, var(--color-amber-400) 14%, transparent);
+  border-color: color-mix(in srgb, var(--color-amber-300) 34%, transparent);
+  color: var(--color-amber-100);
+}
+
+:global(.dark .signals-page__test-report-grid dd) {
+  color: var(--color-neutral-200);
+}
+
+:global(.dark .signals-page__test-report-diagnostics span) {
+  background: color-mix(in srgb, var(--color-rose-500) 16%, transparent);
+  border-color: color-mix(in srgb, var(--color-rose-400) 34%, transparent);
+  color: var(--color-rose-100);
+}
+
 @keyframes signals-page-pulse {
   50% {
     opacity: 0.5;
+  }
+}
+
+@media (max-width: 767px) {
+  .signals-page__test-report-header,
+  .signals-page__test-report-item-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .signals-page__test-report-counts {
+    justify-content: flex-start;
+  }
+
+  .signals-page__test-report-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

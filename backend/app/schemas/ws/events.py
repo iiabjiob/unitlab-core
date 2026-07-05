@@ -355,6 +355,7 @@ class SignalTestRuntimePatchEvent(BaseModel):
     workspace_id: int
     patch_type: Literal["tested_at"] = "tested_at"
     tested_at_by_signal: Dict[int, str] = Field(default_factory=dict)
+    test_status_by_signal: Dict[int, str] = Field(default_factory=dict)
     emitted_at: datetime
 
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import UTC, datetime
 from threading import Event, Lock
+from types import SimpleNamespace
 import time
 
 import pytest
@@ -23,7 +24,7 @@ from app.services.iec61850.report_runtime import (
     Iec61850RuntimeTriggerOptions,
 )
 from app.services.verification_planner import VerificationTargetSource, build_verification_subscription_plan
-from app.services.verification_runtime_orchestrator import VerificationRuntimeOrchestrator
+from app.services.verification_runtime_orchestrator import VerificationRuntimeOrchestrator, _observation_diagnostics_to_evidence_diagnostics
 
 
 def _build_multi_ied_plan():
@@ -157,6 +158,39 @@ def _build_same_endpoint_multi_report_plan():
         source_row_id="signal-102",
     )
     return build_verification_subscription_plan([first_candidate, second_candidate])
+
+
+def test_observation_diagnostics_filter_unrelated_selected_signals_for_capture_evidence() -> None:
+    diagnostics = (
+        SimpleNamespace(
+            severity="info",
+            code="SIGNAL_NOT_INCLUDED_IN_REPORT_EVENT",
+            message='Selected signal "kint_251" was not included in this report event.',
+            signal_id="251",
+            address="kint_251",
+            data_reference="LD0/XCBR1.Pos.stVal[ST]",
+            reference=None,
+        ),
+        SimpleNamespace(
+            severity="info",
+            code="SIGNAL_NOT_INCLUDED_IN_REPORT_EVENT",
+            message='Selected signal "kint_252" was not included in this report event.',
+            signal_id="252",
+            address="kint_252",
+            data_reference="LD0/XCBR2.Pos.stVal[ST]",
+            reference=None,
+        ),
+    )
+
+    filtered = _observation_diagnostics_to_evidence_diagnostics(
+        diagnostics,
+        signal_id=251,
+        include_unrelated=False,
+    )
+
+    assert len(filtered) == 1
+    assert filtered[0].details is not None
+    assert filtered[0].details["signal_id"] == "251"
 
 
 def _custom_endpoint_for_device(device) -> Iec61850DeviceEndpoint:
@@ -402,6 +436,63 @@ class _GiDelayedReportSession(_GiNoReportSession):
 class _GiDelayedReportAdapter:
     def __init__(self) -> None:
         self.session = _GiDelayedReportSession()
+        self.connect_count = 0
+
+    def connect(self, **kwargs):  # noqa: ANN001
+        self.connect_count += 1
+        return self.session
+
+
+class _UnrelatedThenTargetReportSession(_PartialRptEnaFailureSession):
+    def __init__(self) -> None:
+        super().__init__()
+        self.wait_count = 0
+
+    def enable_report_control(self, reference, client_id):  # noqa: ANN001
+        self.enable_count += 1
+        return _state_from_reference(reference, Iec61850RuntimeStatus.ENABLED, enabled=True, reserved_by=client_id, owner=client_id)
+
+    def wait_for_report(self, reference, client_id, *, after_sequence_number=None, after_event_id=None, timeout_ms=5000):  # noqa: ANN001, ARG002
+        self.wait_count += 1
+        sequence = int(after_sequence_number or 1) + 1
+        if self.wait_count == 1:
+            data_reference = "LD0/XCBR2.Pos.stVal[ST]"
+            value = False
+            event_id = "unrelated-report"
+        else:
+            data_reference = "LD0/XCBR1.Pos.stVal[ST]"
+            value = True
+            event_id = "target-report"
+        received_at = f"2026-06-23T12:00:00.{self.wait_count:03d}Z"
+        return Iec61850ReportEvent(
+            id=f"{reference.report_control_name}:{event_id}",
+            endpoint_id="mms:IED-A/P1",
+            received_at=received_at,
+            report_control=reference,
+            rpt_id=f"IED-A/LLN0.{reference.report_control_name}",
+            data_set_ref="IED-A/LLN0.dsA",
+            conf_rev=None,
+            sequence_number=sequence,
+            time_of_entry=received_at,
+            entry_id=f"entry-{event_id}",
+            buffer_overflow=False,
+            reason=Iec61850ReportReason.DATA_CHANGE,
+            values=(
+                Iec61850ReportEventValue(
+                    data_set_index=0,
+                    reference=data_reference,
+                    data_reference=data_reference,
+                    value=value,
+                    reason_code=Iec61850ReportReason.DATA_CHANGE,
+                    timestamp=received_at,
+                ),
+            ),
+        )
+
+
+class _UnrelatedThenTargetReportAdapter:
+    def __init__(self) -> None:
+        self.session = _UnrelatedThenTargetReportSession()
         self.connect_count = 0
 
     def connect(self, **kwargs):  # noqa: ANN001
@@ -1121,3 +1212,42 @@ async def test_runtime_orchestrator_captures_triggered_signal_report_after_initi
     assert capture.evidence.report_reason == "data-change"
     assert capture.evidence.source_report_sequence_number == 2
     assert capture.step.source_generation == 1
+
+
+@pytest.mark.anyio
+async def test_runtime_orchestrator_waits_past_unrelated_report_for_triggered_signal() -> None:
+    plan = _build_same_endpoint_multi_report_plan()
+    adapter = _UnrelatedThenTargetReportAdapter()
+    orchestrator = VerificationRuntimeOrchestrator(
+        now=lambda: datetime(2026, 6, 23, 12, 0, tzinfo=UTC),
+        mms_reachability_probe=lambda endpoint: (True, None),
+    )
+
+    started = orchestrator.start(
+        workspace_id=7,
+        test_run_id="run-capture-unrelated",
+        verification_targets=plan.targets,
+        subscription_plan=plan,
+        execution_context=VerificationExecutionContextSchema(
+            project_id=1,
+            signal_list_revision_id=2,
+            planner_version="test",
+            runtime_version="mms",
+            policy_version="v1",
+        ),
+        adapter=adapter,
+        endpoint_for_device=_mms_endpoint_for_device,
+    )
+
+    capture = orchestrator.capture_triggered_signal(
+        started.orchestration_id,
+        signal_id=101,
+        triggered_at=datetime(2026, 6, 23, 12, 0, tzinfo=UTC),
+        test_run_id="job-1",
+        timeout_ms=1000,
+    )
+
+    assert capture.step.verdict_state == "pass"
+    assert capture.evidence.evidence_status == "observed"
+    assert capture.evidence.actual_report_path == "LD0/XCBR1.Pos.stVal[ST]"
+    assert adapter.session.wait_count == 2

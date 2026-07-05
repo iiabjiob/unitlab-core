@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 import socket
 from threading import RLock, Thread
+import time
 from typing import Any, Callable, Sequence
 from uuid import uuid4
 
@@ -704,56 +705,128 @@ class VerificationRuntimeOrchestrator:
                     group.group_id,
                 )
                 source_generation = session_state.connection_generation
-                event = handle.runtime_service.wait_for_report(
-                    session_id=session_state.session_id,
-                    candidate=runtime_report.candidate,
-                    client_id=handle.client_id,
-                    after_sequence_number=subscription_state.last_sequence_number,
-                    after_event_id=subscription_state.last_report_id,
-                    timeout_ms=timeout_ms or int(target.timeout_ms),
+                logger.info(
+                    "IEC 61850 verification capture waiting | workspace=%s test_run=%s signal_id=%s expected=%s group=%s endpoint=%s report=%s after_seq=%s after_event=%s timeout_ms=%s",
+                    handle.workspace_id,
+                    test_run_id or handle.test_run_id,
+                    int(signal_id),
+                    target.expected_feedback_path or target.signal_path,
+                    group.group_id,
+                    session_state.endpoint_id,
+                    runtime_report.candidate.report_control_name,
+                    subscription_state.last_sequence_number,
+                    subscription_state.last_report_id,
+                    int(timeout_ms or target.timeout_ms),
                 )
-                observation_result = map_report_event_to_signal_observations(
-                    candidate=runtime_report.candidate,
-                    matched_signals=runtime_report.matched_signals,
-                    event=event,
-                )
-                diagnostics.extend(_observation_diagnostics_to_evidence_diagnostics(observation_result.diagnostics))
-                captured_report = _CapturedRuntimeReport(
-                    candidate_id=runtime_report.candidate.id,
-                    endpoint_id=event.endpoint_id,
-                    ied_name=runtime_report.candidate.ied_name,
-                    access_point_name=runtime_report.candidate.access_point_name,
-                    report_control_name=runtime_report.candidate.report_control_name,
-                    data_set_ref=runtime_report.candidate.data_set_ref,
-                    event=event,
-                    diagnostics=tuple(observation_result.diagnostics),
-                    error_code=None,
-                    error_message=None,
-                )
-                observation = next(
-                    (
-                        item
-                        for item in observation_result.observations
-                        if str(item.selected_signal_id) == str(int(signal_id))
-                    ),
-                    None,
-                )
-                if observation is not None:
-                    observation_bundle = (
-                        captured_report,
-                        observation.model_reference,
-                        observation.value,
-                        observation.timestamp,
+                deadline = time.monotonic() + (max(1, int(timeout_ms or target.timeout_ms)) / 1000)
+                last_event_diagnostics: tuple[Any, ...] = ()
+                while True:
+                    remaining_ms = max(1, int((deadline - time.monotonic()) * 1000))
+                    event = handle.runtime_service.wait_for_report(
+                        session_id=session_state.session_id,
+                        candidate=runtime_report.candidate,
+                        client_id=handle.client_id,
+                        after_sequence_number=subscription_state.last_sequence_number,
+                        after_event_id=subscription_state.last_report_id,
+                        timeout_ms=remaining_ms,
                     )
-                subscription_state.last_report_at = _parse_timestamp(event.received_at)
-                subscription_state.gi_requested = True
-                subscription_state.last_report_value_count = len(event.values)
-                subscription_state.last_report_values = _report_event_values_payload(event)
-                subscription_state.last_sequence_number = event.sequence_number
-                subscription_state.last_report_id = event.id
-                subscription_state.stale_signal_count = 0 if observation is not None else 1
-                subscription_state.report_health = "healthy" if observation is not None else "degraded"
-                subscription_state.diagnostic_code = None if observation is not None else "SIGNAL_NOT_INCLUDED_IN_REPORT_EVENT"
+                    observation_result = map_report_event_to_signal_observations(
+                        candidate=runtime_report.candidate,
+                        matched_signals=runtime_report.matched_signals,
+                        event=event,
+                    )
+                    logger.info(
+                        "IEC 61850 verification report received | workspace=%s test_run=%s signal_id=%s event_id=%s seq=%s reason=%s values=%s matched=%s diagnostics=%s refs=%s",
+                        handle.workspace_id,
+                        test_run_id or handle.test_run_id,
+                        int(signal_id),
+                        event.id,
+                        event.sequence_number,
+                        event.reason.value,
+                        len(event.values),
+                        len(observation_result.observations),
+                        [diagnostic.code for diagnostic in observation_result.diagnostics],
+                        [
+                            value.data_reference or value.reference
+                            for value in event.values[:8]
+                        ],
+                    )
+                    last_event_diagnostics = tuple(observation_result.diagnostics)
+                    captured_report = _CapturedRuntimeReport(
+                        candidate_id=runtime_report.candidate.id,
+                        endpoint_id=event.endpoint_id,
+                        ied_name=runtime_report.candidate.ied_name,
+                        access_point_name=runtime_report.candidate.access_point_name,
+                        report_control_name=runtime_report.candidate.report_control_name,
+                        data_set_ref=runtime_report.candidate.data_set_ref,
+                        event=event,
+                        diagnostics=last_event_diagnostics,
+                        error_code=None,
+                        error_message=None,
+                    )
+                    observation = next(
+                        (
+                            item
+                            for item in observation_result.observations
+                            if str(item.selected_signal_id) == str(int(signal_id))
+                        ),
+                        None,
+                    )
+                    subscription_state.last_report_at = _parse_timestamp(event.received_at)
+                    subscription_state.gi_requested = True
+                    subscription_state.last_report_value_count = len(event.values)
+                    subscription_state.last_report_values = _report_event_values_payload(event)
+                    subscription_state.last_sequence_number = event.sequence_number
+                    subscription_state.last_report_id = event.id
+                    subscription_state.stale_signal_count = 0 if observation is not None else 1
+                    subscription_state.report_health = "healthy" if observation is not None else "degraded"
+                    subscription_state.diagnostic_code = None if observation is not None else "SIGNAL_NOT_INCLUDED_IN_REPORT_EVENT"
+                    if observation is not None:
+                        logger.info(
+                            "IEC 61850 verification signal matched | workspace=%s test_run=%s signal_id=%s expected=%s actual=%s value=%s event_id=%s seq=%s",
+                            handle.workspace_id,
+                            test_run_id or handle.test_run_id,
+                            int(signal_id),
+                            target.expected_feedback_path or target.signal_path,
+                            observation.model_reference,
+                            observation.value,
+                            event.id,
+                            event.sequence_number,
+                        )
+                        diagnostics.extend(
+                            _observation_diagnostics_to_evidence_diagnostics(
+                                last_event_diagnostics,
+                                signal_id=signal_id,
+                                include_unrelated=False,
+                            )
+                        )
+                        observation_bundle = (
+                            captured_report,
+                            observation.model_reference,
+                            observation.value,
+                            observation.timestamp,
+                        )
+                        break
+                    if time.monotonic() >= deadline:
+                        logger.info(
+                            "IEC 61850 verification capture timeout after reports | workspace=%s test_run=%s signal_id=%s expected=%s last_event_id=%s last_seq=%s diagnostics=%s",
+                            handle.workspace_id,
+                            test_run_id or handle.test_run_id,
+                            int(signal_id),
+                            target.expected_feedback_path or target.signal_path,
+                            event.id,
+                            event.sequence_number,
+                            [diagnostic.code for diagnostic in last_event_diagnostics],
+                        )
+                        diagnostics.extend(
+                            _observation_diagnostics_to_evidence_diagnostics(
+                                last_event_diagnostics,
+                                signal_id=signal_id,
+                                include_unrelated=False,
+                            )
+                        )
+                        break
+                    time.sleep(0.01)
             except Iec61850ReportRuntimeError as exc:
                 diagnostics.append(
                     VerificationEvidenceDiagnosticSchema(
@@ -774,6 +847,18 @@ class VerificationRuntimeOrchestrator:
             runtime_result=_CapturedRuntimeResult(diagnostics=tuple(diagnostics)),
             test_run_id=test_run_id or handle.test_run_id,
             source_generation=source_generation,
+        )
+        logger.info(
+            "IEC 61850 verification capture result | workspace=%s test_run=%s signal_id=%s status=%s reason=%s actual=%s observed_at=%s latency_ms=%s diagnostics=%s",
+            handle.workspace_id,
+            test_run_id or handle.test_run_id,
+            int(signal_id),
+            evidence.evidence_status,
+            evidence.reason_code,
+            evidence.actual_report_path,
+            evidence.observed_at.isoformat() if evidence.observed_at is not None else None,
+            evidence.latency_ms,
+            [diagnostic.code for diagnostic in diagnostics],
         )
         if diagnostics:
             evidence = evidence.model_copy(update={"diagnostics": [*evidence.diagnostics, *diagnostics]})
@@ -1237,9 +1322,21 @@ def _session_failure_to_evidence_diagnostic(
 
 def _observation_diagnostics_to_evidence_diagnostics(
     diagnostics: Sequence[Any],
+    *,
+    signal_id: int | None = None,
+    include_unrelated: bool = True,
 ) -> list[VerificationEvidenceDiagnosticSchema]:
-    return [
-        VerificationEvidenceDiagnosticSchema(
+    result: list[VerificationEvidenceDiagnosticSchema] = []
+    for diagnostic in diagnostics:
+        diagnostic_signal_id = getattr(diagnostic, "signal_id", None)
+        if (
+            signal_id is not None
+            and not include_unrelated
+            and diagnostic_signal_id is not None
+            and str(diagnostic_signal_id) != str(signal_id)
+        ):
+            continue
+        result.append(VerificationEvidenceDiagnosticSchema(
             code=str(getattr(diagnostic, "code", "report_observation_diagnostic")),
             message=str(getattr(diagnostic, "message", "Report observation diagnostic")),
             severity=str(getattr(diagnostic, "severity", "info") or "info"),
@@ -1254,9 +1351,8 @@ def _observation_diagnostics_to_evidence_diagnostics(
                 if value is not None
             }
             or None,
-        )
-        for diagnostic in diagnostics
-    ]
+        ))
+    return result
 
 
 def _resolve_subscription_id_for_runtime(*, session_id: str, report) -> str:

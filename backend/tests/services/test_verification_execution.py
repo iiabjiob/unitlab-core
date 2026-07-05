@@ -7,7 +7,7 @@ import pytest
 
 from app.schemas.verification_schema import VerificationExecutionContextSchema
 from app.services.iec61850.report_runtime import Iec61850DeviceEndpoint, Iec61850RuntimeMode
-from app.services.verification_execution import build_runtime_subscription_plan, execute_simulated_verification_run
+from app.services.verification_execution import _first_non_empty_report_text, build_runtime_subscription_plan, execute_simulated_verification_run
 from app.services.verification_planner import VerificationTargetSource, build_verification_subscription_plan
 
 
@@ -63,6 +63,11 @@ def _build_plan():
             )
         ]
     )
+
+
+def test_report_identifier_normalization_ignores_native_empty_placeholder() -> None:
+    assert _first_non_empty_report_text("<empty>", "brcbST01", "fallback") == "brcbST01"
+    assert _first_non_empty_report_text("<none>", "fallback") == "fallback"
 
 
 def test_runtime_subscription_plan_keeps_transport_endpoint_out_of_ied_name() -> None:

@@ -211,6 +211,7 @@ class Iec61850ClientControlService:
         self._external_live_discovery: dict | None = None
         self._pending_external_report_entries: list[dict[str, str]] = []
         self._current_external_report_values: dict[str, Iec61850ReportEventValue] = {}
+        self._external_report_event_counter = 0
         self._lock = RLock()
 
     @property
@@ -456,6 +457,12 @@ class Iec61850ClientControlService:
         with self._lock:
             if self._endpoint.mode == Iec61850RuntimeMode.MMS:
                 return self._run("external-report-refresh", self._refresh_external_mms_reports)
+            return self.snapshot()
+
+    def wait_for_external_report(self, *, timeout_ms: int) -> Iec61850ClientControlSnapshot:
+        with self._lock:
+            if self._endpoint.mode == Iec61850RuntimeMode.MMS:
+                return self._run("external-report-wait", lambda: self._refresh_external_mms_reports(timeout_ms=timeout_ms))
             return self.snapshot()
 
     def disable_report_control(self) -> Iec61850ClientControlSnapshot:
@@ -782,11 +789,11 @@ class Iec61850ClientControlService:
         )
         self._drain_external_mms_process_stdout(timeout_seconds=1.0)
 
-    def _refresh_external_mms_reports(self) -> None:
+    def _refresh_external_mms_reports(self, *, timeout_ms: int = 250) -> None:
         self._ensure_external_mms_client_started()
         if self._last_state is None or not self._last_state.enabled:
             return
-        self._poll_external_mms_reports(timeout_ms=250, attempts=1)
+        self._poll_external_mms_reports(timeout_ms=max(1, int(timeout_ms)), attempts=1)
 
     def _poll_external_mms_reports_after_gi(self) -> None:
         attempts = 1 if self._last_report is not None else _EXTERNAL_MMS_CLIENT_GI_POLL_ATTEMPTS
@@ -1363,8 +1370,7 @@ class Iec61850ClientControlService:
 
     def _external_report_event(self, fields: dict[str, str]) -> Iec61850ReportEvent:
         now = _utc_now().isoformat().replace("+00:00", "Z")
-        sequence_number = _parse_int_or_none(fields.get("asyncReports") or fields.get("count"))
-        reason = Iec61850ReportReason.GENERAL_INTERROGATION
+        native_sequence_number = _parse_int_or_none(fields.get("asyncReports") or fields.get("count"))
         values = tuple(_external_report_values(self._candidate, self._pending_external_report_entries, now))
         for value in values:
             self._current_external_report_values[value.data_reference or value.reference] = value
@@ -1379,17 +1385,23 @@ class Iec61850ClientControlService:
             self._pending_external_report_entries.clear()
             return self._last_report
         self._pending_external_report_entries.clear()
+        self._external_report_event_counter += 1
+        event_sequence_number = self._external_report_event_counter
+        reason = _external_report_event_reason(values)
         return Iec61850ReportEvent(
-            id=f"{self._session_id}:external-report:{sequence_number or 0}",
+            id=f"{self._session_id}:external-report:{event_sequence_number}",
             endpoint_id=self._endpoint.id,
             received_at=now,
             report_control=to_report_control_ref(self._candidate),
             rpt_id=self._candidate.rpt_id,
             data_set_ref=self._candidate.data_set_ref,
             conf_rev=self._candidate.conf_rev,
-            sequence_number=sequence_number,
+            sequence_number=event_sequence_number,
             time_of_entry=now,
-            entry_id=f"{self._endpoint.id}:{report_control_key(to_report_control_ref(self._candidate))}:{sequence_number or 0}",
+            entry_id=(
+                f"{self._endpoint.id}:{report_control_key(to_report_control_ref(self._candidate))}:"
+                f"{native_sequence_number or 0}:{event_sequence_number}"
+            ),
             buffer_overflow=False,
             reason=reason,
             values=values,
@@ -2118,6 +2130,19 @@ def _external_report_reason(value: str | None) -> Iec61850ReportReason:
     return Iec61850ReportReason.GENERAL_INTERROGATION
 
 
+def _external_report_event_reason(values: Sequence[Iec61850ReportEventValue]) -> Iec61850ReportReason:
+    if not values:
+        return Iec61850ReportReason.GENERAL_INTERROGATION
+    reasons = {value.reason_code for value in values}
+    if len(reasons) == 1:
+        return next(iter(reasons))
+    if Iec61850ReportReason.GENERAL_INTERROGATION in reasons:
+        return Iec61850ReportReason.GENERAL_INTERROGATION
+    if Iec61850ReportReason.DATA_CHANGE in reasons:
+        return Iec61850ReportReason.DATA_CHANGE
+    return Iec61850ReportReason.DATA_UPDATE
+
+
 def _external_report_values(
     candidate: Iec61850ReportControlCandidate,
     entries: Sequence[dict[str, str]],
@@ -2147,25 +2172,45 @@ def _match_external_report_reference(candidate: Iec61850ReportControlCandidate, 
     if data_reference is None:
         return None, None
     for index, signal in enumerate(candidate.signals):
-        prefix = _signal_mms_prefix(candidate.ied_name, candidate.logical_device_inst, signal.reference)
-        if prefix is not None and (data_reference == prefix or data_reference.startswith(prefix + "$")):
-            return signal.reference, index
+        for prefix in _signal_mms_prefixes(candidate.ied_name, candidate.logical_device_inst, signal.reference):
+            if data_reference == prefix or data_reference.startswith(prefix + "$"):
+                return signal.reference, index
     return None, None
 
 
 def _signal_mms_prefix(ied_name: str, logical_device_inst: str, reference: str) -> str | None:
-    if "." not in reference or "[" not in reference or not reference.endswith("]"):
-        return None
-    if "/" in reference:
-        logical_device, rest = reference.split("/", 1)
-    else:
-        logical_device = logical_device_inst
-        rest = reference
-    logical_node, object_and_fc = rest.split(".", 1)
-    object_path, fc = object_and_fc.rsplit("[", 1)
+    prefixes = _signal_mms_prefixes(ied_name, logical_device_inst, reference)
+    return prefixes[0] if prefixes else None
+
+
+def _signal_mms_prefixes(ied_name: str, logical_device_inst: str, reference: str) -> list[str]:
+    if "[" not in reference or not reference.endswith("]"):
+        return []
+    without_fc, fc = reference.rsplit("[", 1)
     fc = fc[:-1]
+    if "/" in without_fc:
+        logical_device, rest = without_fc.split("/", 1)
+        if "/" in rest:
+            parts = [part for part in rest.split("/") if part]
+            if len(parts) < 2:
+                return []
+            logical_node, *data_parts = parts
+            object_path = ".".join(data_parts)
+        elif "." in rest:
+            logical_node, object_path = rest.split(".", 1)
+        else:
+            return []
+    else:
+        if "." not in without_fc:
+            return []
+        logical_device = logical_device_inst
+        logical_node, object_path = without_fc.split(".", 1)
     object_mms = object_path.replace(".", "$")
-    return f"{ied_name}{logical_device}/{logical_node}${fc}${object_mms}"
+    domain = logical_device if logical_device.startswith(ied_name) else f"{ied_name}{logical_device}"
+    prefixes = [f"{domain}/{logical_node}${fc}${object_mms}"]
+    if fc.upper() == "ST" and object_mms.endswith("$stVal"):
+        prefixes.append(f"{domain}/{logical_node}${fc}${object_mms.removesuffix('$stVal')}")
+    return prefixes
 
 
 def _report_signal_states(
@@ -2179,19 +2224,27 @@ def _report_signal_states(
 
     states: list[dict] = []
     for signal_index, signal in enumerate(candidate.signals):
-        prefix = _signal_mms_prefix(candidate.ied_name, candidate.logical_device_inst, signal.reference)
-        if prefix is None:
+        prefixes = _signal_mms_prefixes(candidate.ied_name, candidate.logical_device_inst, signal.reference)
+        if not prefixes:
             continue
 
         signal_values = [
             value
             for value in values
             if value.data_reference is not None
-            and (value.data_reference == prefix or value.data_reference.startswith(prefix + "$"))
+            and any(value.data_reference == prefix or value.data_reference.startswith(prefix + "$") for prefix in prefixes)
         ]
         if not signal_values:
             continue
 
+        prefix = next(
+            (
+                item
+                for item in prefixes
+                if any(value.data_reference == item or value.data_reference.startswith(item + "$") for value in signal_values if value.data_reference is not None)
+            ),
+            prefixes[0],
+        )
         primary = _select_signal_primary_value(prefix, signal_values)
         quality = _select_signal_leaf_value(prefix, signal_values, "$q")
         source_timestamp = _select_signal_leaf_value(prefix, signal_values, "$t")

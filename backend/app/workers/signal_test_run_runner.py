@@ -189,6 +189,58 @@ def _first_row_metadata_string(payload: dict[str, Any], *keys: str) -> str | Non
     return None
 
 
+def _build_signal_test_report_entry(
+    *,
+    signal_id: int,
+    order_index: int,
+    row: SignalAllocationRowSchema | None,
+    test_status: str,
+    result_state: str,
+    command_payload: dict[str, Any] | None,
+    tested_at: datetime | None = None,
+    skip_reason: str | None = None,
+) -> dict[str, Any]:
+    metadata = row.signal_metadata if row is not None and isinstance(row.signal_metadata, dict) else {}
+    verification = metadata.get("verification") if isinstance(metadata.get("verification"), dict) else {}
+    entry: dict[str, Any] = {
+        "signal_id": signal_id,
+        "order_index": order_index,
+        "test_status": test_status,
+        "result_state": result_state,
+        "tested_at": tested_at.isoformat() if tested_at is not None else None,
+        "skip_reason": skip_reason,
+    }
+    if row is not None:
+        entry.update(
+            {
+                "row_id": row.row_id,
+                "signal_key": row.signal_key,
+                "signal_name": row.signal_name,
+                "signal_direction": row.signal_direction,
+                "allocation_id": row.allocation_id,
+                "channel_id": row.channel_id,
+                "channel_label": row.channel_label,
+                "channel_index": row.channel_index,
+                "channel_type": row.channel_type,
+                "device_id": row.device_id,
+                "unit_id": row.unit_id,
+                "unit_online": row.unit_online,
+                "iec61850_address": _first_row_metadata_string(
+                    verification,
+                    "iec61850_address",
+                    "iec61850",
+                    "mms_reference",
+                ),
+            }
+        )
+    if command_payload is not None:
+        entry["command"] = command_payload
+        verification_payload = command_payload.get("iec61850_verification")
+        if isinstance(verification_payload, dict):
+            entry["iec61850_verification"] = verification_payload
+    return entry
+
+
 async def _ensure_group(redis) -> None:
     await ensure_stream_consumer_group(
         redis,
@@ -247,14 +299,16 @@ async def _publish_test_runtime_patch(
     workspace_id: int,
     job_id: str,
     tested_at_by_signal: dict[int, str],
+    test_status_by_signal: dict[int, str] | None = None,
 ) -> None:
-    if not tested_at_by_signal:
+    if not tested_at_by_signal and not test_status_by_signal:
         return
     await WsEventPublisher.publish(
         SignalTestRuntimePatchEvent(
             job_id=job_id,
             workspace_id=workspace_id,
             tested_at_by_signal=dict(tested_at_by_signal),
+            test_status_by_signal=dict(test_status_by_signal or {}),
             emitted_at=datetime.now(timezone.utc),
         )
     )
@@ -293,6 +347,56 @@ def _verification_prepare_runtime_summary(runtime_snapshot) -> dict[str, Any]:
         "gi_requested_count": sum(1 for item in subscriptions if item.gi_requested),
         "last_report_value_count": sum(max(0, int(item.last_report_value_count or 0)) for item in subscriptions),
     }
+
+
+def _normalize_verification_value(value: Any) -> Any:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int) and value in {0, 1}:
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "on"}:
+            return True
+        if normalized in {"false", "0", "off"}:
+            return False
+    return value
+
+
+def _verification_diagnostic_codes(evidence: Any) -> set[str]:
+    return {
+        str(getattr(diagnostic, "code", "") or "").strip()
+        for diagnostic in (getattr(evidence, "diagnostics", ()) or ())
+        if str(getattr(diagnostic, "code", "") or "").strip()
+    }
+
+
+def _derive_test_status_from_verification(
+    evidence: Any,
+    *,
+    expected_value: Any | None,
+) -> str:
+    evidence_status = str(getattr(evidence, "evidence_status", "") or "").strip().lower()
+    actual_value = getattr(evidence, "signal_value", None)
+    if evidence_status in {"observed", "late"}:
+        if expected_value is not None and actual_value is not None:
+            expected_normalized = _normalize_verification_value(expected_value)
+            actual_normalized = _normalize_verification_value(actual_value)
+            if expected_normalized != actual_normalized:
+                return "inverted" if isinstance(expected_normalized, bool) and isinstance(actual_normalized, bool) else "value_mismatch"
+        return "verified" if evidence_status == "observed" else "late"
+
+    if evidence_status == "timeout":
+        diagnostics = _verification_diagnostic_codes(evidence)
+        if "SIGNAL_NOT_INCLUDED_IN_REPORT_EVENT" in diagnostics:
+            return "unexpected"
+        return "missing"
+
+    if evidence_status == "out_of_window":
+        return "late"
+    if evidence_status in {"invalid", "stale"}:
+        return evidence_status
+    return "not_validated"
 
 
 def _verification_runtime_ready(runtime_snapshot) -> bool:
@@ -461,6 +565,8 @@ async def _handle_test_run(
 
     succeeded_signal_ids: list[int] = []
     tested_at_by_signal: dict[int, str] = {}
+    test_status_by_signal: dict[int, str] = {}
+    test_report_by_signal: dict[int, dict[str, Any]] = {}
     skipped = 0
     skip_reasons = {
         "missing_row": 0,
@@ -485,6 +591,7 @@ async def _handle_test_run(
     job_id = str(payload.get("job_id") or "")
     pending_tested_at_by_signal: dict[int, str] = {}
     tested_at_patch_since_emit: dict[int, str] = {}
+    test_status_patch_since_emit: dict[int, str] = {}
 
     def set_verification_prepare_step(
         *,
@@ -750,16 +857,29 @@ async def _handle_test_run(
                 await publish_verification_prepare_progress(message="IEC 61850 unavailable; starting test without verification.")
 
     async def attach_and_publish_tested_at_patch(result_payload: dict[str, Any]) -> None:
-        if not tested_at_patch_since_emit:
+        if not tested_at_patch_since_emit and not test_status_patch_since_emit:
             return
         patch = dict(tested_at_patch_since_emit)
-        result_payload["tested_at_patch"] = patch
+        status_patch = dict(test_status_patch_since_emit)
+        if patch:
+            result_payload["tested_at_patch"] = patch
+        if status_patch:
+            result_payload["test_status_patch"] = status_patch
+        logger.info(
+            "Signal test runtime patch publishing | workspace=%s job=%s tested=%s statuses=%s",
+            workspace_id,
+            job_id,
+            patch,
+            status_patch,
+        )
         await _publish_test_runtime_patch(
             workspace_id=workspace_id,
             job_id=job_id,
             tested_at_by_signal=patch,
+            test_status_by_signal=status_patch,
         )
         tested_at_patch_since_emit.clear()
+        test_status_patch_since_emit.clear()
 
     async def flush_tested_at_batch() -> None:
         if not pending_tested_at_by_signal:
@@ -853,7 +973,7 @@ async def _handle_test_run(
             diagnostics=evidence.diagnostics,
         )
 
-    def verification_result_payload() -> dict[str, Any]:
+    def verification_result_payload(*, include_report: bool = False) -> dict[str, Any]:
         payload = {
             "verification_enabled": verification_requested_signal_count > 0,
             "verification_available": verification_orchestrator is not None and verification_local_orchestration_id is not None,
@@ -863,7 +983,10 @@ async def _handle_test_run(
             "verification_requested_signal_count": verification_requested_signal_count,
             "verification_observed": verification_observed,
             "verification_failed": verification_failed,
+            "test_status_by_signal": dict(test_status_by_signal),
         }
+        if include_report:
+            payload["test_report_by_signal"] = dict(test_report_by_signal)
         if verification_prepare_error:
             payload["verification_prepare_error"] = verification_prepare_error
         if verification_prepare_warning:
@@ -1037,7 +1160,7 @@ async def _handle_test_run(
                 "cursor_reason": cursor_reason,
                 "resume_job_id": resume_cursor_job_id or None,
                 "evidence_count": evidence_count,
-                **verification_result_payload(),
+                **verification_result_payload(include_report=True),
             }
             await flush_verification_evidence_set()
             close_verification_orchestration()
@@ -1047,9 +1170,25 @@ async def _handle_test_run(
         row, skip_reason = await resolve_current_signal_row(signal_id)
         success = False
         command_payload: dict[str, Any] | None = None
+        test_status = "pending"
+        verification_expected_value: Any | None = None
         if skip_reason is not None:
             skipped += 1
             skip_reasons[skip_reason] += 1
+            test_status = skip_reason
+            skip_command_payload = {
+                "toggle_mode": toggle_mode,
+                "signal_interval_ms": signal_interval_ms,
+            }
+            test_report_by_signal[signal_id] = _build_signal_test_report_entry(
+                signal_id=signal_id,
+                order_index=progress_done_global,
+                row=row,
+                test_status=test_status,
+                result_state=skip_reason,
+                command_payload=skip_command_payload,
+                skip_reason=skip_reason,
+            )
             await record_step_evidence(
                 order_index=progress_done_global,
                 signal_id=signal_id,
@@ -1057,10 +1196,7 @@ async def _handle_test_run(
                 row=row,
                 reason=skip_reason,
                 result_state=skip_reason,
-                command_payload={
-                    "toggle_mode": toggle_mode,
-                    "signal_interval_ms": signal_interval_ms,
-                },
+                command_payload=skip_command_payload,
             )
         elif row is not None:
             unit_id = str(row.unit_id)
@@ -1073,6 +1209,7 @@ async def _handle_test_run(
                 command_payload = {
                     "toggle_mode": "ao_random",
                     "signal_interval_ms": signal_interval_ms,
+                    "expected_feedback_value": random_value,
                     "commands": [
                         {
                             "kind": "ao_set",
@@ -1096,6 +1233,7 @@ async def _handle_test_run(
                     value=random_value,
                     correlation_id=ao_correlation_id,
                 )
+                verification_expected_value = random_value
                 await enqueue_request_state(
                     unit_id=unit_id,
                     mode=State.REQ_SINGLE_FLOAT,
@@ -1169,8 +1307,10 @@ async def _handle_test_run(
                     "signal_interval_ms": signal_interval_ms,
                     "initial_value": current_value,
                     "target_value": toggled_value,
+                    "expected_feedback_value": current_value if toggle_mode == "double" else toggled_value,
                     "commands": commands_payload,
                 }
+                verification_expected_value = command_payload["expected_feedback_value"]
                 await enqueue_request_state(
                     unit_id=unit_id,
                     mode=State.REQ_SINGLE_BIT,
@@ -1187,11 +1327,12 @@ async def _handle_test_run(
             ):
                 if command_payload is None:
                     command_payload = {}
+                verification_triggered_at = datetime.now(timezone.utc)
                 try:
                     verification_capture = verification_orchestrator.capture_triggered_signal(
                         verification_local_orchestration_id,
                         signal_id=signal_id,
-                        triggered_at=datetime.now(timezone.utc),
+                        triggered_at=verification_triggered_at,
                         test_run_id=job_id,
                         timeout_ms=verification_timeout_ms,
                     )
@@ -1200,11 +1341,19 @@ async def _handle_test_run(
                         "source": "worker_runtime_orchestration",
                         "requested_online_orchestration_id": verification_orchestration_id,
                         "local_orchestration_id": verification_local_orchestration_id,
+                        "triggered_at": verification_triggered_at.isoformat(),
+                        "timeout_ms": verification_timeout_ms,
                         "evidence": verification_capture.evidence.model_dump(mode="json"),
                         "step": verification_capture.step.model_dump(mode="json"),
+                        "expected_value": verification_expected_value,
                     }
+                    test_status = _derive_test_status_from_verification(
+                        verification_capture.evidence,
+                        expected_value=verification_expected_value,
+                    )
                 except Exception as exc:  # noqa: BLE001
                     verification_failed += 1
+                    test_status = "not_validated"
                     verification_diagnostics.append(
                         VerificationEvidenceDiagnosticSchema(
                             code="IEC61850_SIGNAL_VERIFICATION_FAILED",
@@ -1217,36 +1366,61 @@ async def _handle_test_run(
                         "source": "worker_runtime_orchestration",
                         "requested_online_orchestration_id": verification_orchestration_id,
                         "local_orchestration_id": verification_local_orchestration_id,
+                        "triggered_at": verification_triggered_at.isoformat(),
+                        "timeout_ms": verification_timeout_ms,
                         "status": "not_validated",
                         "error": str(exc),
                     }
 
         if success:
+            if test_status == "pending":
+                test_status = "tested"
             succeeded_signal_ids.append(signal_id)
             tested_at_dt = datetime.now(timezone.utc)
             tested_at = tested_at_dt.isoformat()
             tested_at_by_signal[signal_id] = tested_at
+            test_status_by_signal[signal_id] = test_status
             pending_tested_at_by_signal[signal_id] = tested_at
             tested_at_patch_since_emit[signal_id] = tested_at
+            test_status_patch_since_emit[signal_id] = test_status
+            result_state = f"commands_enqueued_report_{test_status}" if verification_capture is not None else "commands_enqueued"
+            test_report_by_signal[signal_id] = _build_signal_test_report_entry(
+                signal_id=signal_id,
+                order_index=progress_done_global,
+                row=row,
+                test_status=test_status,
+                result_state=result_state,
+                command_payload=command_payload,
+                tested_at=tested_at_dt,
+            )
             await record_step_evidence(
                 order_index=progress_done_global,
                 signal_id=signal_id,
                 status="succeeded",
                 row=row,
-                result_state="commands_enqueued_report_observed" if verification_orchestrator is not None else "commands_enqueued",
+                result_state=result_state,
                 command_payload=command_payload,
                 tested_at=tested_at_dt,
             )
             if len(pending_tested_at_by_signal) >= tested_at_batch_size:
                 await flush_tested_at_batch()
         elif row is not None and command_payload:
+            failure_state = "iec61850_report_not_observed" if verification_orchestrator is not None else "command_failed"
+            test_report_by_signal[signal_id] = _build_signal_test_report_entry(
+                signal_id=signal_id,
+                order_index=progress_done_global,
+                row=row,
+                test_status=test_status,
+                result_state=failure_state,
+                command_payload=command_payload,
+            )
             await record_step_evidence(
                 order_index=progress_done_global,
                 signal_id=signal_id,
                 status="failed",
                 row=row,
-                reason="iec61850_report_not_observed" if verification_orchestrator is not None else "command_failed",
-                result_state="iec61850_report_not_observed" if verification_orchestrator is not None else "command_failed",
+                reason=failure_state,
+                result_state=failure_state,
                 command_payload=command_payload,
             )
 
@@ -1320,7 +1494,7 @@ async def _handle_test_run(
                         "attempt_id": execution_attempt_id,
                         "attempt_no": execution_attempt_no,
                         "evidence_count": evidence_count,
-                        **verification_result_payload(),
+                        **verification_result_payload(include_report=True),
                     }
                     await flush_verification_evidence_set()
                     close_verification_orchestration()
@@ -1349,7 +1523,7 @@ async def _handle_test_run(
         "attempt_id": execution_attempt_id,
         "attempt_no": execution_attempt_no,
         "evidence_count": evidence_count,
-        **verification_result_payload(),
+        **verification_result_payload(include_report=True),
     }
     result_payload["progress_cursor"] = {
         "phase": "completed",

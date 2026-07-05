@@ -2018,6 +2018,111 @@ def test_external_mms_report_entries_keep_native_reason() -> None:
     assert snapshot.ui_state["report"]["signal_states"][0]["value"] is False
 
 
+def test_external_mms_report_entry_matches_do_level_st_to_stval_signal() -> None:
+    candidate = client_control_module.Iec61850ReportControlCandidate(
+        id="KINTE15BCU01CTRL2:LLN0$BR$brcbST01",
+        ied_name="KINTE15BCU01",
+        access_point_name="AP1",
+        logical_device_inst="CTRL2",
+        logical_node_name="LLN0",
+        report_control_name="brcbST01",
+        report_kind=client_control_module.Iec61850ReportKind.BUFFERED,
+        rpt_id="KINTE15BCU01CTRL2/LLN0.brcbST01",
+        data_set_ref="KINTE15BCU01CTRL2/LLN0$LLN0BRptStDs",
+        conf_rev=None,
+        indexed=True,
+        buffer_time_ms=None,
+        integrity_period_ms=None,
+        trigger_options=client_control_module.Iec61850RuntimeTriggerOptions(),
+        optional_fields=client_control_module.Iec61850OptionalFields(),
+        signals=(
+            client_control_module.Iec61850DataSetMember(
+                reference="KINTE15BCU01CTRL2/SlotHGGIO12/Ind3/stVal[ST]",
+                fc="ST",
+            ),
+        ),
+    )
+    service = Iec61850ClientControlService(candidate=candidate)
+    service._last_state = service._external_state(Iec61850RuntimeStatus.ENABLED, enabled=True)  # noqa: SLF001
+
+    service._apply_external_mms_client_line(  # noqa: SLF001
+        "native-wire-client: report-entry index=0 "
+        "reference=KINTE15BCU01CTRL2/SlotHGGIO12$ST$Ind3 "
+        "dataRef=KINTE15BCU01CTRL2/SlotHGGIO12$ST$Ind3 "
+        "value=true kind=bool reason=data-change datasetMatch=false discoveredMatch=true"
+    )
+    service._finalize_pending_external_report_entries()  # noqa: SLF001
+    snapshot = service.snapshot()
+
+    assert snapshot.last_report is not None
+    assert snapshot.ui_state["report"]["values"][0]["matched"] is True
+    assert snapshot.ui_state["report"]["values"][0]["reference"] == "KINTE15BCU01CTRL2/SlotHGGIO12/Ind3/stVal[ST]"
+    assert snapshot.ui_state["report"]["signal_states"][0]["value"] is True
+    assert snapshot.ui_state["report"]["signal_states"][0]["reason"] == "data-change"
+
+
+def test_external_mms_report_events_use_local_sequence_when_native_count_repeats() -> None:
+    candidate = client_control_module.Iec61850ReportControlCandidate(
+        id="KINTE15BCU01CTRL2:LLN0$BR$brcbST01",
+        ied_name="KINTE15BCU01",
+        access_point_name="AP1",
+        logical_device_inst="CTRL2",
+        logical_node_name="LLN0",
+        report_control_name="brcbST01",
+        report_kind=client_control_module.Iec61850ReportKind.BUFFERED,
+        rpt_id="KINTE15BCU01CTRL2/LLN0.brcbST01",
+        data_set_ref="KINTE15BCU01CTRL2/LLN0$LLN0BRptStDs",
+        conf_rev=None,
+        indexed=True,
+        buffer_time_ms=None,
+        integrity_period_ms=None,
+        trigger_options=client_control_module.Iec61850RuntimeTriggerOptions(),
+        optional_fields=client_control_module.Iec61850OptionalFields(),
+        signals=(
+            client_control_module.Iec61850DataSetMember(
+                reference="KINTE15BCU01CTRL2/SlotHGGIO12/Ind3/stVal[ST]",
+                fc="ST",
+            ),
+        ),
+    )
+    service = Iec61850ClientControlService(candidate=candidate)
+    service._last_state = service._external_state(Iec61850RuntimeStatus.ENABLED, enabled=True)  # noqa: SLF001
+
+    service._apply_external_mms_client_line(  # noqa: SLF001
+        "native-wire-client: report-entry index=0 "
+        "reference=KINTE15BCU01CTRL2/SlotHGGIO12$ST$Ind3 "
+        "dataRef=KINTE15BCU01CTRL2/SlotHGGIO12$ST$Ind3 "
+        "value=false kind=bool reason=general-interrogation datasetMatch=false discoveredMatch=true"
+    )
+    service._apply_external_mms_client_line(  # noqa: SLF001
+        "native-wire-client: subscription-summary phase=gi rcb=KINTE15BCU01CTRL2/LLN0$BR$brcbST01 "
+        "rptEna=true giRequested=true lastReportReceived=true asyncReports=29 "
+        "lastReportValues=1 lastReportDataRefs=1 lastReportMatchedDataRefs=0 lastReportReasons=1 "
+        "lastReportDatasetMismatches=1"
+    )
+    first_report = service.snapshot().last_report
+
+    service._apply_external_mms_client_line(  # noqa: SLF001
+        "native-wire-client: report-entry index=0 "
+        "reference=KINTE15BCU01CTRL2/SlotHGGIO12$ST$Ind3 "
+        "dataRef=KINTE15BCU01CTRL2/SlotHGGIO12$ST$Ind3 "
+        "value=true kind=bool reason=data-change datasetMatch=false discoveredMatch=true"
+    )
+    service._apply_external_mms_client_line(  # noqa: SLF001
+        "native-wire-client: subscription-summary phase=report rcb=KINTE15BCU01CTRL2/LLN0$BR$brcbST01 "
+        "rptEna=true giRequested=true lastReportReceived=true asyncReports=29 "
+        "lastReportValues=1 lastReportDataRefs=1 lastReportMatchedDataRefs=0 lastReportReasons=1 "
+        "lastReportDatasetMismatches=1"
+    )
+    second_report = service.snapshot().last_report
+
+    assert first_report is not None
+    assert second_report is not None
+    assert second_report.id != first_report.id
+    assert second_report.sequence_number == first_report.sequence_number + 1
+    assert second_report.reason == client_control_module.Iec61850ReportReason.DATA_CHANGE
+
+
 def test_external_mms_target_connects_and_reports_from_scd_without_discover(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     scl_path = tmp_path / "target.scd"
     scl_path.write_text(
