@@ -1597,6 +1597,12 @@ function updateEdgeEndpoint(edgeId: string, endpoint: "source" | "target", draft
         return {
           ...edge,
           [endpoint]: toEdgeEndpoint(draft),
+          metadata: {
+            ...edge.metadata,
+            [endpoint === "source" ? "startBinding" : "endBinding"]: draft.portId
+              ? resolvePortBinding(draft.portId)
+              : null,
+          },
         }
       }),
     }
@@ -1607,6 +1613,18 @@ function toEdgeEndpoint(draft: DraftEndpoint) {
   return draft.portId
     ? { kind: "port" as const, portId: draft.portId }
     : { kind: "point" as const, point: draft.point }
+}
+
+function resolvePortBinding(portId: string) {
+  const port = diagram.scene.value.entities.portsById.get(portId)
+  if (port?.metadata?.ownerType !== "node") {
+    return null
+  }
+  const ownerId = Number(port.metadata.ownerId)
+  const boundPortId = typeof port.metadata.portId === "string" ? port.metadata.portId : ""
+  return Number.isFinite(ownerId) && boundPortId
+    ? { ownerType: "node" as const, ownerId, portId: boundPortId }
+    : null
 }
 
 function snapDraftEndpoint(point: { x: number; y: number }): DraftEndpoint {
