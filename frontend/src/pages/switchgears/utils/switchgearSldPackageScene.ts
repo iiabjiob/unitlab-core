@@ -304,8 +304,8 @@ function serializeEdge(
   edge: DiagramEdge,
   portsById: ReadonlyMap<string, DiagramPort>,
 ): LegacyDiagramEdge {
-  const start = resolveSerializedEndpoint(edge.source, portsById)
-  const end = resolveSerializedEndpoint(edge.target, portsById)
+  const start = resolveSerializedEndpoint(edge.source, portsById, asPortBinding(edge.metadata?.startBinding))
+  const end = resolveSerializedEndpoint(edge.target, portsById, asPortBinding(edge.metadata?.endBinding))
   return {
     id: edge.id,
     x1: Math.round(start.point.x),
@@ -314,27 +314,38 @@ function serializeEdge(
     y2: Math.round(end.point.y),
     kind: edge.metadata?.edgeKind === "arrow" ? "arrow" : "line",
     weight: edge.metadata?.edgeWeight === "bold" ? "bold" : "normal",
-    startBinding: start.binding,
-    endBinding: end.binding,
+    startBinding: start.binding ?? asPortBinding(edge.metadata?.startBinding),
+    endBinding: end.binding ?? asPortBinding(edge.metadata?.endBinding),
   }
 }
 
 function resolveSerializedEndpoint(
   endpoint: DiagramEdge["source"],
   portsById: ReadonlyMap<string, DiagramPort>,
+  fallbackBinding?: DiagramPortBinding | null,
 ): { point: DiagramPoint; binding: DiagramPortBinding | null } {
   if (endpoint.kind === "point") {
-    return { point: endpoint.point, binding: null }
+    return { point: endpoint.point, binding: fallbackBinding ?? null }
   }
   if (endpoint.kind === "port") {
     const port = portsById.get(endpoint.portId)
-    const binding = port ? toBindingFromPort(port) : null
+    const binding = port ? toBindingFromPort(port) : fallbackBinding ?? null
     return {
       point: port ? { x: port.x, y: port.y } : { x: 0, y: 0 },
       binding,
     }
   }
   return { point: { x: 0, y: 0 }, binding: null }
+}
+
+function asPortBinding(value: unknown): DiagramPortBinding | null {
+  if (!value || typeof value !== "object") {
+    return null
+  }
+  const candidate = value as Partial<DiagramPortBinding>
+  return candidate.ownerType === "node" && Number.isFinite(Number(candidate.ownerId)) && typeof candidate.portId === "string"
+    ? { ownerType: "node", ownerId: Number(candidate.ownerId), portId: candidate.portId }
+    : null
 }
 
 function toBindingFromPort(port: DiagramPort): DiagramPortBinding | null {

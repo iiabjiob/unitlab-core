@@ -138,4 +138,31 @@ describe("switchgearSldPackageScene", () => {
     })
     expect(serialized.viewState).toEqual({ x: -1040, y: -520, zoom: 2 })
   })
+
+  it("keeps a binding when its port is temporarily missing", () => {
+    const model = buildSwitchgearSldPackageSceneModel([], {
+      edges: [{
+        id: "edge-missing-port",
+        x1: 120,
+        y1: 160,
+        x2: 240,
+        y2: 160,
+        kind: "line",
+        startBinding: { ownerType: "node", ownerId: 7, portId: "right" },
+      }],
+    })
+
+    const serialized = serializeSwitchgearSldPackageScene({
+      ...model.scene,
+      ports: [],
+      edges: model.scene.edges ?? [],
+      nodes: model.scene.nodes ?? [],
+      shapes: model.scene.shapes ?? [],
+      texts: model.scene.texts ?? [],
+      viewport: { x: 0, y: 0, width: 800, height: 600, zoom: 1 },
+      selection: { ids: [], primaryId: null },
+    })
+
+    expect(serialized.edges?.[0]?.startBinding).toEqual({ ownerType: "node", ownerId: 7, portId: "right" })
+  })
 })
