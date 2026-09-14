@@ -301,6 +301,9 @@ const snapPreviewPoint = computed(() => {
   return null
 })
 const minimapModel = computed(() => {
+  if (pointer.state.value.active || draggedEdge.value || labelDrag.value) {
+    return null
+  }
   const current = viewport.viewport.value
   const zoom = current.zoom > 0 ? current.zoom : 1
   if (current.width <= 0 || current.height <= 0) {
