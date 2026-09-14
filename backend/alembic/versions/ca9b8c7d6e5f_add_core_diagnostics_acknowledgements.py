@@ -1,7 +1,7 @@
 """add append-only core diagnostics acknowledgement audit records
 
 Revision ID: ca9b8c7d6e5f
-Revises: c9a8b7d6e5f4
+Revises: c9a8b7d6e5f4, d3e4f5a6b7c8
 Create Date: 2026-09-14 15:30:00.000000
 """
 
@@ -14,7 +14,7 @@ import sqlalchemy as sa
 
 
 revision: str = "ca9b8c7d6e5f"
-down_revision: Union[str, None] = "c9a8b7d6e5f4"
+down_revision: Union[tuple[str, str], None] = ("c9a8b7d6e5f4", "d3e4f5a6b7c8")
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
