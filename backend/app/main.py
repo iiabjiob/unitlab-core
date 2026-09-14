@@ -23,6 +23,7 @@ from app.ws.router import router as ws_router
 from app.infrastructure.db.health import wait_for_database as check_database_connection
 
 from app.infrastructure.redis.manager import RedisManager
+from app.infrastructure.db.database import AsyncSessionLocal
 
 from app.ws.pubsub_listener import forward_ws_events_from_pubsub
 from app.services.sequence_event_forwarder import forward_sequence_events
@@ -31,6 +32,7 @@ from app.services.core_network_event_forwarder import forward_core_network_event
 from app.services.core_ntp_event_forwarder import forward_core_ntp_events
 from app.services.core_diag_event_forwarder import forward_core_diag_events
 from app.services.core_provision_event_forwarder import forward_core_provision_events
+from app.services.hardware_command_intent import reconcile_orphaned_manual_hardware_command_intents
 
 from app.core.config import get_settings
 from app.core.logger import get_logger
@@ -55,6 +57,18 @@ async def lifespan(app: FastAPI):
 
     # Start infrastructure services
     await RedisManager.start()
+
+    # Manual intents have no job id; fail closed for commands orphaned by an API restart.
+    async with AsyncSessionLocal() as recovery_session:
+        reconciled_manual_intents = await reconcile_orphaned_manual_hardware_command_intents(
+            recovery_session
+        )
+        if reconciled_manual_intents:
+            await recovery_session.commit()
+            logger.warning(
+                "⚠️ Reconciled %s orphaned manual hardware intents during startup",
+                reconciled_manual_intents,
+            )
 
     # Background tasks
     logger.info("🔗 Registering background tasks...")

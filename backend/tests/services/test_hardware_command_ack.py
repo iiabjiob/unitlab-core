@@ -14,6 +14,7 @@ from app.services.hardware_command_intent import (
     mark_hardware_command_intent_completed,
     mark_hardware_command_intent_delivery_failure,
     record_hardware_command_intent,
+    reconcile_orphaned_manual_hardware_command_intents,
     reconcile_unfinished_hardware_command_intents,
     requires_physical_recovery,
 )
@@ -202,6 +203,29 @@ async def test_interrupted_pulse_requires_physical_recovery() -> None:
 
     assert reconciled == 1
     assert intent.status == "recovery_required"
+
+
+@pytest.mark.anyio
+async def test_orphaned_manual_intents_fail_closed_at_startup() -> None:
+    manual = SimpleNamespace(owner_kind="manual", action="do_set", status="queued")
+    pulse = SimpleNamespace(owner_kind="manual", action="do_pulse", status="created")
+    completed = SimpleNamespace(owner_kind="manual", action="do_set", status="completed")
+    db = AsyncMock()
+    db.execute.return_value = SimpleNamespace(
+        scalars=lambda: SimpleNamespace(all=lambda: [manual, pulse])
+    )
+
+    reconciled = await reconcile_orphaned_manual_hardware_command_intents(db)
+
+    assert reconciled == 2
+    assert manual.status == "unknown"
+    assert pulse.status == "recovery_required"
+    assert completed.status == "completed"
+    statement = db.execute.await_args.args[0]
+    compiled = str(statement.compile(compile_kwargs={"literal_binds": True}))
+    assert "created" in compiled
+    assert "queued" in compiled
+    db.flush.assert_awaited_once()
 
 
 def test_pulse_and_restore_require_physical_recovery() -> None:

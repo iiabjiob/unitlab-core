@@ -928,6 +928,13 @@ PostgreSQL остаётся release check.
 может быть затёрт поздним финализатором. Добавлена SQL regression; concurrency
 и restart rehearsal на PostgreSQL остаются release checks.
 
+**Статус slice G106 (2026-09-14): manual restart reconciliation.** При startup
+API теперь выполняется fail-closed sweep manual intents без `job_id`: оставшиеся
+`created/queued` команды переводятся в `unknown`, а pulse/restore — в
+`recovery_required`. Terminal `completed` intents не затрагиваются; добавлена
+service regression. Multi-replica deployment и реальный kill/restart rehearsal
+остаются release checks.
+
 **Статус slice G68 (2026-09-14): offline downgrade для live signal sheet.**
 Migration `9a1b2c3d4e6f` теперь генерирует детерминированный downgrade SQL для
 `signal_allocations`, `signal_sheet_presets` и `signal_sheets`, не вызывая

@@ -64,6 +64,24 @@ async def reconcile_unfinished_hardware_command_intents(
     return len(intents)
 
 
+async def reconcile_orphaned_manual_hardware_command_intents(
+    db: AsyncSession,
+) -> int:
+    """Fail closed for manual commands left in-flight by an API restart."""
+    result = await db.execute(
+        select(HardwareCommandIntent).where(
+            HardwareCommandIntent.owner_kind == "manual",
+            HardwareCommandIntent.status.in_(("created", "queued")),
+        )
+    )
+    intents = list(result.scalars().all())
+    for intent in intents:
+        intent.status = "recovery_required" if requires_physical_recovery(intent.action) else "unknown"
+    if intents:
+        await db.flush()
+    return len(intents)
+
+
 async def record_hardware_command_intent(
     db: AsyncSession,
     *,
