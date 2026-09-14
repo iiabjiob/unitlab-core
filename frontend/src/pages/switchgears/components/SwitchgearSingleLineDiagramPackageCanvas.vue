@@ -459,25 +459,6 @@ watch(() => props.initialStoredState, (next) => {
   }
 })
 
-watch(() => {
-  const current = viewport.viewport.value
-  return [current.x, current.y, current.zoom]
-}, () => {
-  const current = viewport.viewport.value
-  const baseState = lastStoredState.value ?? { workspaceId: props.workspaceId }
-  const nextState: StoredDiagramState = {
-    ...baseState,
-    viewState: {
-      x: Math.round(-(current.x * current.zoom)),
-      y: Math.round(-(current.y * current.zoom)),
-      zoom: current.zoom,
-    },
-  }
-  hasLocalStateChanges = true
-  lastStoredState.value = nextState
-  schedulePersistedState(nextState)
-})
-
 watch(() => props.fitRequestKey, (next, previous) => {
   if (next == null || next === previous) {
     return
@@ -547,6 +528,7 @@ function syncRouteSelection() {
   const node = diagram.scene.value.entities.nodesById.get(nodeId)
   if (node) {
     selection.setSelection([nodeId], nodeId)
+    void nextTick(() => centerViewportAtWorldPoint(node.x + node.width / 2, node.y + node.height / 2))
   }
 }
 
@@ -1836,16 +1818,13 @@ function resolveSelectionPreviewTransform(id: string) {
   return `translate(${delta.x} ${delta.y})`
 }
 
-function resolveHandlePreviewPoint(handle: { id: string; point: { x: number; y: number } }) {
+function resolveHandlePreviewTransform(handleId: string) {
   const delta = selectionPreviewDelta.value
-  const ownerId = handle.id.split(":")[0] ?? ""
+  const ownerId = handleId.split(":")[0] ?? ""
   if (!delta || (ownerId !== "__selection__" && !selection.isSelected(ownerId))) {
-    return handle.point
+    return undefined
   }
-  return {
-    x: handle.point.x + delta.x,
-    y: handle.point.y + delta.y,
-  }
+  return `translate(${delta.x} ${delta.y})`
 }
 
 function resolveNodeFill(id: string) {
@@ -2173,8 +2152,9 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
         <circle
           v-for="handle in visible.projection.value.activeHandles"
           :key="handle.id"
-          :cx="resolveHandlePreviewPoint(handle).x"
-          :cy="resolveHandlePreviewPoint(handle).y"
+          :cx="handle.point.x"
+          :cy="handle.point.y"
+          :transform="resolveHandlePreviewTransform(handle.id)"
           r="4"
           fill="var(--color-blue-500)"
           stroke="var(--color-white)"
