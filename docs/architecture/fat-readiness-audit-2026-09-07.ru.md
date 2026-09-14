@@ -121,6 +121,12 @@
 
 **Приёмка:** reload браузера не меняет revision ID; параллельное редактирование не меняет план уже запущенного теста; отчёт воспроизводится по сохранённой ревизии.
 
+**Статус slice C1 (2026-09-14): частично закрыт.** Добавлены durable-таблицы
+`signal_list_revisions` и `signal_list_revision_items`, серверный content hash и
+endpoint создания активной ревизии. Frontend-счётчик больше не является новым
+durable revision ID в этом endpoint. Immutable plan test-run, обязательная передача
+revision в enqueue и перевод worker на snapshot остаются открытыми.
+
 ## GAP-06 — Синхронное ожидание IEC 61850 блокирует event loop worker
 
 **P1 · runtime/performance · подтверждено кодом; длительности не измерены.**

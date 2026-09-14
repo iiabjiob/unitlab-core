@@ -40,6 +40,8 @@ from app.schemas.signal_sheet_schema import (
     SignalSheetSchema,
     SignalSheetImportPreviewResponseSchema,
     SignalSheetImportPreviewSheetSchema,
+    SignalListRevisionCreateSchema,
+    SignalListRevisionSchema,
 )
 from app.schemas.verification_schema import VerificationSubscriptionPlanSchema
 from app.services.signal_job_service import (
@@ -56,6 +58,7 @@ from app.services.verification_planner import (
     build_verification_subscription_plan,
     build_verification_target_sources,
 )
+from app.services.signal_revision_service import SignalRevisionService
 
 router = APIRouter(prefix="/api/v1", tags=["Signal Sheet"])
 settings = get_settings()
@@ -76,6 +79,44 @@ def get_write_service(
     signals_repo: SignalsRepository = Depends(get_signals_repo),
 ) -> SignalSheetWriteService:
     return SignalSheetWriteService(db=db, repo=repo, signals_repo=signals_repo)
+
+
+@router.post(
+    "/workspaces/{workspace_id}/signal-list-revisions",
+    response_model=SignalListRevisionSchema,
+    status_code=201,
+)
+async def create_signal_list_revision(
+    workspace_id: int,
+    payload: SignalListRevisionCreateSchema,
+    repo: SignalSheetRepository = Depends(get_repo),
+    signals_repo: SignalsRepository = Depends(get_signals_repo),
+    db: AsyncSession = Depends(get_db),
+):
+    if not await repo.ensure_workspace(workspace_id):
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    signals = (
+        await signals_repo.list_by_ids(workspace_id, payload.signal_ids)
+        if payload.signal_ids
+        else await signals_repo.list(workspace_id)
+    )
+    if payload.signal_ids:
+        signals_by_id = {signal.id: signal for signal in signals}
+        signals = [signals_by_id[signal_id] for signal_id in payload.signal_ids if signal_id in signals_by_id]
+    rows = await repo.list_allocation_rows_by_signal_ids(workspace_id, [signal.id for signal in signals])
+    rows_by_id = {row.signal_id: row for row in rows}
+    ordered_rows = [rows_by_id[signal.id] for signal in signals if signal.id in rows_by_id]
+    sheet = await repo.get_sheet(workspace_id)
+    revision = await SignalRevisionService(db).create_active_revision(
+        workspace_id=workspace_id,
+        rows=ordered_rows,
+        created_by=payload.created_by,
+        source_hash=sheet.source_hash if sheet is not None else None,
+    )
+    await db.commit()
+    await db.refresh(revision)
+    return revision
 
 
 @router.get("/workspaces/{workspace_id}/signal-sheet", response_model=SignalSheetSchema)

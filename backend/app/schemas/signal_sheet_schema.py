@@ -151,6 +151,25 @@ class SignalAllocationMarkTestedSchema(BaseModel):
     signal_ids: list[int] = Field(default_factory=list)
 
 
+class SignalListRevisionCreateSchema(BaseModel):
+    signal_ids: list[int] = Field(default_factory=list)
+    created_by: str | None = Field(default=None, max_length=128)
+
+
+class SignalListRevisionSchema(BaseModel):
+    id: int
+    workspace_id: int
+    revision_no: int
+    status: str
+    rows_count: int
+    content_hash: str
+    created_by: str | None = None
+    created_at: datetime
+    activated_at: datetime | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class SignalTestRunJobSchema(BaseModel):
     signal_ids: list[int] = Field(default_factory=list)
     signal_interval_ms: int = Field(default=1000, ge=100, le=10000)
