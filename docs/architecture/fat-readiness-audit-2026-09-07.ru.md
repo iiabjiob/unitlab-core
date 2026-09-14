@@ -164,8 +164,8 @@ intent и ACK barrier ещё не выполнены.
 
 **Статус slice E3 (2026-09-14): частично закрыт.** Добавлена PostgreSQL-таблица
 `hardware_command_intents`. FAT DO/AO intent сохраняется и коммитится до outbound
-publish, после успешной постановки получает `queued`; ошибка публикации оставляет
-долговечный `created` для диагностики/recovery. Manual/sequence paths, delivery
+publish, после успешной постановки получает `queued`; неоднозначная ошибка
+публикации оставляет `unknown` для диагностики/recovery. Manual/sequence paths, delivery
 deadline, ACK barrier и execution/FAT verdict ещё не реализованы.
 
 **Статус slice E4 (2026-09-14): частично закрыт.** RESP с найденным
@@ -203,7 +203,7 @@ command intent и step evidence; её ACK остаётся самостояте�
 оставляет intent в состоянии `recovery_required`; отсутствие подтверждённого
 финального readback также оставляет restore intent в `recovery_required`; перед этим выполняется одна
 bounded повторная попытка с тем же `command_id`, а ошибка обычной DO/AO команды
-остаётся `publish_failed`. Это сохраняет явный recovery сигнал даже при rollback
+остаётся `unknown`. Это сохраняет явный recovery сигнал даже при rollback
 основной транзакции; автоматический restore/readback recovery ещё не реализован.
 
 **Статус slice F4 (2026-09-14): частично закрыт.** Канал с незакрытым
