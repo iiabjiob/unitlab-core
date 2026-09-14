@@ -1519,6 +1519,12 @@ async def _handle_test_run(
                     timeout_ms=readback_timeout_ms,
                 )
                 if not readback_ok:
+                    await mark_hardware_command_intent_delivery_failure(
+                        repo.db,
+                        command_id=set_command_id,
+                        status="recovery_required",
+                    )
+                    await repo.db.commit()
                     test_status = "blocked"
 
                 if toggle_mode == "double":
