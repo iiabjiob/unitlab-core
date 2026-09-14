@@ -59,6 +59,10 @@ FastAPI subscribes to `ws:events` and forwards every payload to connected WebSoc
 - Job lifecycle (`queued` → `running` → `succeeded`/`failed`) is published to WebSocket channel as `signal_allocation_job` events.
 - Frontend waits for terminal job events and then refreshes allocations once.
 
+### Direct hardware control
+
+The Hardware tab can send manual DO/AO commands to an online registered device without a signal list or channel allocation. The backend still validates the workspace, device identity, channel id/index, channel type, device presence, command admission lease, acknowledgement, and readback. Sequence and signal test-run execution continue to require allocated channels.
+
 Supported operations:
 
 - `auto_allocate` — allocate selected signals in background.
