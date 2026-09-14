@@ -493,6 +493,8 @@ Recovery lookup для физического канала теперь не о�
 sequence hardware step больше не падает из-за обращения к несуществующему `lease`.
 Manual multi-channel scope теперь отклоняет дубли каналов до atomic lease, поэтому
 persisted `channel_ids` не расходится с фактически защищённым набором.
+Manual DO/AO теперь также проверяет heartbeat status устройства перед получением
+lease; отсутствующий или не-`online` status не допускает аппаратную публикацию.
 Успешная публикация manual intent теперь также фиксируется как `queued` до
 освобождения lease; это устраняет ложный `unknown` при restart reconciliation.
 Core diagnostics toast теперь имеет локальное acknowledgement: оператор может

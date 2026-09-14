@@ -20,8 +20,18 @@ def test_manual_ao_passes_single_channel_as_channel_ids(monkeypatch) -> None:
     async def enqueue_manual(ws, **kwargs):
         captured.update(kwargs)
 
+    async def online_status(key: str):
+        return "online"
+
+    redis = SimpleNamespace(get=online_status)
+
     monkeypatch.setattr(manual_command_admission, "_channel", channel)
     monkeypatch.setattr(manual_command_admission, "_enqueue_manual", enqueue_manual)
+    monkeypatch.setattr(
+        manual_command_admission,
+        "RedisManager",
+        SimpleNamespace(get_instance=lambda: redis),
+    )
 
     message = SetAoCommandMessage(
         action=WSAction.SET_AO_COMMAND,
@@ -36,6 +46,19 @@ def test_manual_ao_passes_single_channel_as_channel_ids(monkeypatch) -> None:
     assert captured["channel_ids"] == [17]
     assert captured["device_id"] == 23
     assert captured["action"] == "ao_set"
+
+
+def test_manual_device_status_must_be_online(monkeypatch) -> None:
+    async def status(key: str):
+        return "offline"
+
+    monkeypatch.setattr(
+        manual_command_admission,
+        "RedisManager",
+        SimpleNamespace(get_instance=lambda: SimpleNamespace(get=status)),
+    )
+
+    assert run_async(manual_command_admission._device_is_online("unit-1")) is False
 
 
 def test_manual_command_marks_intent_queued_after_publish(monkeypatch) -> None:

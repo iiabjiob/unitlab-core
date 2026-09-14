@@ -77,6 +77,13 @@ async def _channels(workspace_id: int, channel_ids: list[int], unit_id: str, ind
     return ordered
 
 
+async def _device_is_online(unit_id: str) -> bool:
+    status = await RedisManager.get_instance().get(f"device:{unit_id}:status")
+    if isinstance(status, bytes):
+        status = status.decode("utf-8", errors="ignore")
+    return str(status or "").strip().lower() == "online"
+
+
 async def _enqueue_manual(
     ws: WebSocket,
     *,
@@ -147,6 +154,9 @@ async def handle_manual_do(ws: WebSocket, msg: SetDoCommandMessage) -> None:
         if channels is None:
             await _result(ws, command_id=None, delivery="rejected", reason="channel_scope_invalid")
             return
+        if not await _device_is_online(msg.unit_id):
+            await _result(ws, command_id=None, delivery="rejected", reason="device_offline")
+            return
         await _enqueue_manual(
             ws,
             workspace_id=msg.workspace_id,
@@ -173,6 +183,9 @@ async def handle_manual_do(ws: WebSocket, msg: SetDoCommandMessage) -> None:
     if channel is None:
         await _result(ws, command_id=None, delivery="rejected", reason="channel_scope_invalid")
         return
+    if not await _device_is_online(msg.unit_id):
+        await _result(ws, command_id=None, delivery="rejected", reason="device_offline")
+        return
     await _enqueue_manual(
         ws,
         workspace_id=msg.workspace_id,
@@ -197,6 +210,9 @@ async def handle_manual_ao(ws: WebSocket, msg: SetAoCommandMessage) -> None:
     channel = await _channel(msg.workspace_id, msg.channel_id, msg.unit_id, msg.ch, "ao")
     if channel is None:
         await _result(ws, command_id=None, delivery="rejected", reason="channel_scope_invalid")
+        return
+    if not await _device_is_online(msg.unit_id):
+        await _result(ws, command_id=None, delivery="rejected", reason="device_offline")
         return
     await _enqueue_manual(
         ws,
