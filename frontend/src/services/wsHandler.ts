@@ -636,11 +636,8 @@ export function handleWsEvent(event: WSEvent) {
     }
     case WSChannel.HARDWARE_COMMAND_RESULT: {
       const result = channelEvent as HardwareCommandResultEvent
-      const command = result.command_id ? ` ${result.command_id}` : ""
       if (result.delivery === "rejected") {
-        toastStore.error(`Hardware command${command} rejected${result.reason ? `: ${result.reason}` : ""}`)
-      } else {
-        toastStore.info(`Hardware command${command} queued`)
+        toastStore.error(`Hardware command rejected${result.reason ? `: ${result.reason}` : ""}`)
       }
       break
     }
