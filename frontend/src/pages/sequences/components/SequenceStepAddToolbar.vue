@@ -67,6 +67,14 @@ function add(type: SequenceStepType) {
     return
   }
 
+  if (type === SequenceStepType.DO_LATCH || type === SequenceStepType.DO_PULSE) {
+    emit("add", {
+      sequence_step_type: type,
+      payload: { value: 1 },
+    })
+    return
+  }
+
   emit("add", { sequence_step_type: type })
 }
 
