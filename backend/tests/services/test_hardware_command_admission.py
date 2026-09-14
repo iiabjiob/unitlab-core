@@ -35,8 +35,16 @@ class _FakeRedis:
             epochs = []
             for lease_key, epoch_key in zip(lease_keys, epoch_keys):
                 self.epochs[epoch_key] = self.epochs.get(epoch_key, 0) + 1
-                epochs.append(self.epochs[epoch_key])
-                self.values[lease_key] = json.dumps({"lease_id": lease_id, "owner_kind": owner_kind, "owner_id": owner_id})
+                epoch = self.epochs[epoch_key]
+                epochs.append(epoch)
+                self.values[lease_key] = json.dumps(
+                    {
+                        "lease_id": lease_id,
+                        "owner_kind": owner_kind,
+                        "owner_id": owner_id,
+                        "fencing_epoch": epoch,
+                    }
+                )
             return epochs
         key, lease_id = args
         value = self.values.get(key)
@@ -99,3 +107,14 @@ async def test_multi_channel_lease_is_atomic() -> None:
     assert second is None
     assert await admission.release(first[0]) is True
     assert await admission.release(first[1]) is True
+
+
+@pytest.mark.anyio
+async def test_multi_channel_lease_fence_is_current() -> None:
+    redis = _FakeRedis()
+    admission = HardwareCommandAdmission(redis)
+
+    leases = await admission.acquire_many(channel_ids=[12, 13], owner_kind="manual", owner_id="session-1")
+
+    assert leases is not None
+    assert all(await admission.is_current(lease) for lease in leases)
