@@ -121,6 +121,8 @@ def test_manual_command_marks_intent_queued_after_publish(monkeypatch) -> None:
         return {kwargs["command_ids"][0]: "acknowledged"}
 
     monkeypatch.setattr(manual_command_admission, "wait_for_hardware_command_acks", wait_for_acks)
+    monkeypatch.setattr(manual_command_admission, "enqueue_request_state", _done)
+    monkeypatch.setattr(manual_command_admission, "_wait_for_manual_readback", lambda *args, **kwargs: _done_true())
     monkeypatch.setattr(manual_command_admission, "_result", result)
 
     run_async(
@@ -131,7 +133,7 @@ def test_manual_command_marks_intent_queued_after_publish(monkeypatch) -> None:
             unit_id="unit-1",
             device_id=23,
             action="ao_set",
-            payload={"value": 12.5},
+            payload={"ch": 2, "value": 12.5},
             sender=sender,
         )
     )
@@ -263,8 +265,12 @@ def test_manual_command_marks_recovery_when_acknowledged_readback_fails(monkeypa
     assert captured["reason"] == "hardware_readback_timeout"
 
 
-async def _done():
+async def _done(*args, **kwargs):
     return None
+
+
+async def _done_true():
+    return True
 
 
 def test_manual_channels_reject_duplicate_scope_before_database_query(monkeypatch) -> None:

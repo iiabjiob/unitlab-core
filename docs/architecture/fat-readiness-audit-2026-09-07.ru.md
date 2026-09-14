@@ -412,11 +412,17 @@ timeout; неподтверждённая команда остаётся в dur
 device ACK latency и disconnect recovery остаются стендовыми проверками.
 
 **Статус slice G44 (2026-09-14): manual DO/AO readback barrier.** После
-положительного ACK single-channel manual DO/AO запрашивает соответствующий
-state snapshot и ждёт совпадение значения; отсутствие/mismatch переводит intent
-в `recovery_required`. Pair/all и pulse paths не получили неподтверждённую
-интерпретацию и остаются отдельным runtime gap. Проверен negative readback
-scenario focused-тестом.
+положительного ACK manual DO/AO запрашивает соответствующие state snapshots и
+ждёт совпадение значений; отсутствие/mismatch переводит intent в
+`recovery_required`. Это покрывает single, pair и all paths; pulse остаётся
+отдельным gap из-за необходимости согласовать момент проверки итогового
+состояния. Проверен negative readback scenario focused-тестом.
+
+**Статус slice G45 (2026-09-14): multi-channel manual readback.** Manual
+`do_pair` и `do_all` теперь также запрашивают и проверяют readback для каждого
+resolved channel из command scope после общего ACK; mismatch переводит общий
+intent в `recovery_required`. Pulse намеренно не включён до согласования его
+финального состояния. Focused regression suite остаётся зелёным.
 
 ## GAP-12 — Повторные diagnostics-тосты и неоднозначность сетевой ошибки
 

@@ -192,38 +192,62 @@ async def _enqueue_manual(
                 execution_reason = "device_negative_ack"
             elif execution == "timeout":
                 execution_reason = "hardware_ack_timeout"
-            elif execution == "acknowledged" and action in {"do_set", "ao_set"}:
-                channel_index = payload.get("ch")
-                expected_value = payload.get("value")
-                if channel_index is None or expected_value is None:
-                    execution_reason = "readback_scope_missing"
-                else:
-                    readback_mode = State.REQ_SINGLE_FLOAT if action == "ao_set" else State.REQ_SINGLE_BIT
+            elif execution == "acknowledged":
+                readback_targets: list[tuple[int, float | int]] = []
+                if action in {"do_set", "ao_set"}:
+                    channel_index = payload.get("ch")
+                    expected_value = payload.get("value")
+                    if channel_index is not None and expected_value is not None:
+                        readback_targets.append(
+                            (
+                                int(channel_index),
+                                float(expected_value) if action == "ao_set" else int(expected_value),
+                            )
+                        )
+                elif action == "do_all" and payload.get("bitmask") is not None:
+                    bitmask = int(payload["bitmask"])
+                    readback_targets.extend(
+                        (index, 1 if bitmask & (1 << index) else 0)
+                        for index in range(len(payload.get("channel_ids") or []))
+                    )
+                elif action == "do_pair" and payload.get("state2b") is not None:
+                    state2b = int(payload["state2b"]) & 0b11
+                    pair_indexes = (payload.get("chA"), payload.get("chB"))
+                    pair_targets = (state2b & 0b01, (state2b >> 1) & 0b01)
+                    readback_targets.extend(
+                        (int(index), int(target))
+                        for index, target in zip(pair_indexes, pair_targets)
+                        if index is not None
+                    )
+
+                readback_ok = bool(readback_targets)
+                for target_index, target_value in readback_targets:
                     try:
                         await enqueue_request_state(
                             unit_id=unit_id,
-                            mode=readback_mode,
-                            ch=int(channel_index),
-                            correlation_id=f"manual:{command_id}:readback",
+                            mode=State.REQ_SINGLE_FLOAT if action == "ao_set" else State.REQ_SINGLE_BIT,
+                            ch=target_index,
+                            correlation_id=f"manual:{command_id}:readback:{target_index}",
                         )
-                        readback_ok = await _wait_for_manual_readback(
+                        target_ok = await _wait_for_manual_readback(
                             redis,
                             action=action,
                             unit_id=unit_id,
-                            channel_index=int(channel_index),
-                            expected_value=float(expected_value) if action == "ao_set" else int(expected_value),
+                            channel_index=target_index,
+                            expected_value=target_value,
                             timeout_ms=MANUAL_READBACK_TIMEOUT_MS,
                         )
                     except Exception:  # noqa: BLE001
-                        readback_ok = False
-                    if not readback_ok:
-                        execution_reason = "hardware_readback_timeout"
-                        await mark_hardware_command_intent_delivery_failure(
-                            session,
-                            command_id=command_id,
-                            status="recovery_required",
-                        )
-                        await session.commit()
+                        target_ok = False
+                    readback_ok = readback_ok and target_ok
+                if not readback_ok:
+                    execution_reason = "hardware_readback_timeout" if readback_targets else "readback_scope_missing"
+                    await mark_hardware_command_intent_delivery_failure(
+                        session,
+                        command_id=command_id,
+                        status="recovery_required",
+                    )
+                    await session.commit()
     except asyncio.CancelledError:
         async with AsyncSessionLocal() as session:
             await mark_hardware_command_intent_delivery_failure(
