@@ -217,12 +217,20 @@ ln -sfn "$target_release" "$CURRENT_LINK"
 
 compose_file="$CURRENT_LINK/$COMPOSE_FILE_NAME"
 load_release_env "$CURRENT_LINK"
+
+if [[ -z "$IMAGES_ARCHIVE" ]]; then
+  echo "[unitlab] Pulling images"
+  docker compose --project-name "$COMPOSE_PROJECT_NAME" --project-directory "$CURRENT_LINK" -f "$compose_file" pull
+fi
+
+echo "[unitlab] Applying database migrations before starting application services"
+docker compose --project-name "$COMPOSE_PROJECT_NAME" --project-directory "$CURRENT_LINK" -f "$compose_file" up --force-recreate migrations
+
 if [[ -n "$IMAGES_ARCHIVE" ]]; then
   echo "[unitlab] Starting stack from loaded images"
   docker compose --project-name "$COMPOSE_PROJECT_NAME" --project-directory "$CURRENT_LINK" -f "$compose_file" up -d --remove-orphans
 else
-  echo "[unitlab] Pulling images and starting stack"
-  docker compose --project-name "$COMPOSE_PROJECT_NAME" --project-directory "$CURRENT_LINK" -f "$compose_file" pull
+  echo "[unitlab] Starting stack"
   docker compose --project-name "$COMPOSE_PROJECT_NAME" --project-directory "$CURRENT_LINK" -f "$compose_file" up -d --remove-orphans
 fi
 

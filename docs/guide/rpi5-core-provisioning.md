@@ -259,12 +259,18 @@ Retry note: if deploy fails due transient network/pull errors, rerunning the sam
 `deploy-rpi.sh` behavior:
 
 1. Validate compose in target release
-2. Load images (offline mode only)
+2. Load images (offline mode only) or pull registry images
 3. Switch `current` symlink atomically
-4. Run `docker compose up -d --remove-orphans`
-5. Run runtime verify
-6. If verify fails → rollback to previous release
-7. If verify succeeds → cleanup old releases (keep current + previous)
+4. Run the one-shot `migrations` service to completion
+5. Run `docker compose up -d --remove-orphans`
+
+`scripts/deploy-rpi.sh` runs the one-shot `migrations` service to completion
+before this stack start. This is required when a release adds tables used by
+the API startup recovery sweep; starting only `backend` manually can bypass
+that deployment gate and must be followed by `docker compose up migrations`.
+6. Run runtime verify
+7. If verify fails → rollback to previous release
+8. If verify succeeds → cleanup old releases (keep current + previous)
 
 Notes:
 
