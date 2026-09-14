@@ -589,6 +589,12 @@ graph до новой diagnostics audit schema.
 проверки данных. Проверены `py_compile` и `alembic upgrade fe12ac34e5b7 --sql`;
 полный offline graph ещё требует проверки следующих legacy migrations.
 
+**Статус slice G38 (2026-09-14): offline-safe signal sheet migration.**
+`9a1b2c3d4e6f` получил PostgreSQL offline-ветку для создания signal sheet/preset и
+live allocation tables и удаления прежних snapshot tables без `inspect` на
+`MockConnection`; online idempotent path сохранён. Проверка полного offline graph
+продолжается по следующему legacy шагу.
+
 **Статус slice G37 (2026-09-14): offline-safe legacy cleanup.** Migration
 `8d3f6a21c4b5` больше не вызывает `inspect(MockConnection)` при генерации SQL:
 в offline режиме legacy tables удаляются через `DROP TABLE IF EXISTS ... CASCADE`,

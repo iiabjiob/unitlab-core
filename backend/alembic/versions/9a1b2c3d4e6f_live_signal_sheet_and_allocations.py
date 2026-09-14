@@ -7,7 +7,7 @@ Create Date: 2026-02-13 21:05:00.000000
 
 from typing import Sequence, Union
 
-from alembic import op
+from alembic import context, op
 import sqlalchemy as sa
 
 
@@ -31,6 +31,47 @@ def _has_index(inspector: sa.Inspector, table_name: str, index_name: str) -> boo
 
 def upgrade() -> None:
     bind = op.get_bind()
+    if context.is_offline_mode():
+        op.execute(
+            "CREATE TABLE IF NOT EXISTS signal_sheets ("
+            "id BIGSERIAL PRIMARY KEY, workspace_id BIGINT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, "
+            "source_filename VARCHAR(255), source_hash VARCHAR(64), rows_count INTEGER NOT NULL DEFAULT 0, "
+            "schema_version INTEGER NOT NULL DEFAULT 2, data JSONB NOT NULL DEFAULT '{}'::jsonb, import_meta JSONB, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), "
+            "CONSTRAINT uq_signal_sheets_workspace UNIQUE (workspace_id))"
+        )
+        op.execute("CREATE INDEX IF NOT EXISTS ix_signal_sheets_workspace ON signal_sheets (workspace_id)")
+        op.execute(
+            "CREATE INDEX IF NOT EXISTS ix_signal_sheets_workspace_updated "
+            "ON signal_sheets (workspace_id, updated_at)"
+        )
+        op.execute(
+            "CREATE TABLE IF NOT EXISTS signal_sheet_presets ("
+            "id BIGSERIAL PRIMARY KEY, workspace_id BIGINT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, "
+            "name VARCHAR(120) NOT NULL, import_meta JSONB NOT NULL DEFAULT '{}'::jsonb, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), "
+            "CONSTRAINT uq_signal_sheet_presets_workspace_name UNIQUE (workspace_id, name))"
+        )
+        op.execute(
+            "CREATE INDEX IF NOT EXISTS ix_signal_sheet_presets_workspace "
+            "ON signal_sheet_presets (workspace_id)"
+        )
+        op.execute(
+            "CREATE TABLE IF NOT EXISTS signal_allocations ("
+            "id BIGSERIAL PRIMARY KEY, workspace_id BIGINT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, "
+            "signal_id BIGINT NOT NULL REFERENCES signals(id) ON DELETE CASCADE, "
+            "channel_id BIGINT NOT NULL REFERENCES channels(id) ON DELETE CASCADE, allocation_meta JSONB, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), "
+            "CONSTRAINT uq_signal_allocations_signal UNIQUE (workspace_id, signal_id), "
+            "CONSTRAINT uq_signal_allocations_channel UNIQUE (workspace_id, channel_id))"
+        )
+        op.execute("CREATE INDEX IF NOT EXISTS ix_signal_allocations_workspace ON signal_allocations (workspace_id)")
+        op.execute("CREATE INDEX IF NOT EXISTS ix_signal_allocations_channel ON signal_allocations (channel_id)")
+        op.execute("DROP TABLE IF EXISTS signal_snapshot_allocations CASCADE")
+        op.execute("DROP TABLE IF EXISTS signal_snapshots CASCADE")
+        op.execute("DROP TYPE IF EXISTS signal_snapshot_status_enum")
+        return
+
     inspector = sa.inspect(bind)
 
     if not _has_table(inspector, "signal_sheets"):
