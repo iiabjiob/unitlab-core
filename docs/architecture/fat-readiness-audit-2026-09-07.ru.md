@@ -790,6 +790,12 @@ rehearsal и отдельного решения по retention legacy evidence.
 реальном подключении к базе. Это позволяет продолжить генерацию downgrade SQL
 до намеренно необратимой legacy boundary `8d3f6a21c4b5`.
 
+**Статус slice G70 (2026-09-14): rollback boundary rehearsal.** Offline downgrade
+с `ca9b8c7d6e5f` до `8d3f6a21c4b5` успешно генерирует SQL через все текущие
+durable/runtime migrations. Попытка идти до `base` останавливается только на
+явном guard migration `8d3f6a21c4b5`; это release-blocker для rollback без
+backup/restore, а не ошибка генерации промежуточных downgrade-ветвей.
+
 **Статус slice G38 (2026-09-14): offline-safe signal sheet migration.**
 `9a1b2c3d4e6f` получил PostgreSQL offline-ветку для создания signal sheet/preset и
 live allocation tables и удаления прежних snapshot tables без `inspect` на
