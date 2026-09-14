@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Sequence, Union
 
-from alembic import op
+from alembic import context, op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import ENUM, JSONB
 
@@ -158,14 +158,38 @@ def upgrade() -> None:
         unique=False,
     )
 
-    rows = bind.execute(
-        sa.text(
-            "SELECT id, sequence_id, allocation_snapshot, created_at "
-            "FROM test_runs ORDER BY id"
+    if context.is_offline_mode():
+        op.execute(
+            "INSERT INTO test_run_sequences (test_run_id, sequence_id) "
+            "SELECT id, sequence_id FROM test_runs "
+            "WHERE sequence_id IS NOT NULL"
         )
-    ).mappings().all()
+        op.execute(
+            "INSERT INTO test_run_allocations "
+            "(test_run_id, notes, created_at, updated_at) "
+            "SELECT id, NULL, created_at, created_at FROM test_runs"
+        )
+        op.execute(
+            "INSERT INTO test_run_allocation_entries "
+            "(allocation_id, channel_id, signal_key, signal_metadata) "
+            "SELECT allocation.id, (entry->>'channel_id')::bigint, "
+            "entry->>'signal_key', entry->'signal_metadata' "
+            "FROM test_runs run "
+            "JOIN test_run_allocations allocation ON allocation.test_run_id = run.id "
+            "CROSS JOIN LATERAL jsonb_array_elements("
+            "CASE WHEN jsonb_typeof(run.allocation_snapshot) = 'array' "
+            "THEN run.allocation_snapshot ELSE '[]'::jsonb END) entry "
+            "WHERE jsonb_typeof(entry->'channel_id') IN ('number', 'string')"
+        )
+    else:
+        rows = bind.execute(
+            sa.text(
+                "SELECT id, sequence_id, allocation_snapshot, created_at "
+                "FROM test_runs ORDER BY id"
+            )
+        ).mappings().all()
 
-    if rows:
+    if not context.is_offline_mode() and rows:
         sequence_rows = [
             {"test_run_id": row["id"], "sequence_id": row["sequence_id"]}
             for row in rows
@@ -275,14 +299,37 @@ def downgrade() -> None:
     )
 
     bind = op.get_bind()
+    offline = context.is_offline_mode()
 
-    sequence_rows = bind.execute(
+    if offline:
+        op.execute(
+            "UPDATE test_runs run SET sequence_id = sequences.sequence_id "
+            "FROM (SELECT DISTINCT ON (test_run_id) test_run_id, sequence_id "
+            "FROM test_run_sequences ORDER BY test_run_id, id) sequences "
+            "WHERE run.id = sequences.test_run_id"
+        )
+        op.execute(
+            "UPDATE test_runs run SET allocation_snapshot = source.payload "
+            "FROM (SELECT allocation.test_run_id, "
+            "COALESCE(jsonb_agg(jsonb_build_object("
+            "'channel_id', entry.channel_id, 'signal_key', entry.signal_key, "
+            "'signal_metadata', entry.signal_metadata) ORDER BY entry.id) "
+            "FILTER (WHERE entry.id IS NOT NULL), '[]'::jsonb) payload "
+            "FROM test_run_allocations allocation "
+            "LEFT JOIN test_run_allocation_entries entry "
+            "ON entry.allocation_id = allocation.id "
+            "GROUP BY allocation.test_run_id) source "
+            "WHERE run.id = source.test_run_id"
+        )
+
+    if not offline:
+        sequence_rows = bind.execute(
         sa.text(
             "SELECT test_run_id, sequence_id FROM test_run_sequences ORDER BY id"
         )
-    ).mappings().all()
+        ).mappings().all()
     first_sequence_per_run: dict[int, int] = {}
-    for row in sequence_rows:
+    for row in sequence_rows if not offline else []:
         run_id = row["test_run_id"]
         if run_id not in first_sequence_per_run:
             first_sequence_per_run[run_id] = row["sequence_id"]
@@ -298,7 +345,7 @@ def downgrade() -> None:
     missing_sequences = bind.execute(
         sa.text("SELECT COUNT(*) FROM test_runs WHERE sequence_id IS NULL")
     ).scalar_one()
-    if missing_sequences:
+    if not offline and missing_sequences:
         raise RuntimeError("Cannot downgrade: some test runs are missing sequence assignments")
 
     op.alter_column(
@@ -315,7 +362,7 @@ def downgrade() -> None:
             "LEFT JOIN test_run_allocation_entries entry ON entry.allocation_id = tra.id "
             "ORDER BY tra.test_run_id, entry.id"
         )
-    ).mappings().all()
+    ).mappings().all() if not offline else []
     payloads: dict[int, list[dict[str, object]]] = defaultdict(list)
     for row in allocation_rows:
         channel_id = row["channel_id"]
@@ -328,7 +375,7 @@ def downgrade() -> None:
             payload["signal_metadata"] = row["signal_metadata"]
         payloads[row["test_run_id"]].append(payload)
 
-    run_ids = bind.execute(sa.text("SELECT id FROM test_runs")).scalars().all()
+    run_ids = bind.execute(sa.text("SELECT id FROM test_runs")).scalars().all() if not offline else []
     for run_id in run_ids:
         bind.execute(
             sa.text("UPDATE test_runs SET allocation_snapshot = :payload WHERE id = :run_id"),
@@ -357,7 +404,7 @@ def downgrade() -> None:
     null_snapshots = bind.execute(
         sa.text("SELECT COUNT(*) FROM test_runs WHERE signal_snapshot_id IS NULL")
     ).scalar_one()
-    if null_snapshots:
+    if not offline and null_snapshots:
         raise RuntimeError(
             "Cannot downgrade: channel-mode test runs without signal snapshots exist",
         )
@@ -369,4 +416,5 @@ def downgrade() -> None:
         nullable=False,
     )
 
-    test_run_mode_enum.drop(bind, checkfirst=True)
+    if not offline:
+        test_run_mode_enum.drop(bind, checkfirst=True)
