@@ -510,6 +510,7 @@ function submitAoValue() {
 
 .device-channel-item .device-channel-item__ao-button {
   height: 1.25rem;
+  flex: 0 0 auto;
   flex-shrink: 0;
   padding-right: 0.375rem;
   padding-left: 0.375rem;
@@ -734,7 +735,34 @@ function submitAoValue() {
   }
 
   .device-channel-item__ao-inline {
-    align-content: center;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 0.25rem;
+  }
+
+  .device-channel-item__ao-field {
+    min-width: 0;
+    grid-column: 1;
+  }
+
+  .device-channel-item__ao-input {
+    width: 4rem;
+    min-width: 4rem;
+    flex-basis: 4rem;
+  }
+
+  .device-channel-item__ao-button {
+    grid-column: 2;
+  }
+
+  .device-channel-item__ao-actual {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .device-channel-item__ao-status {
+    grid-column: 2;
+    grid-row: 2;
   }
 }
 </style>
