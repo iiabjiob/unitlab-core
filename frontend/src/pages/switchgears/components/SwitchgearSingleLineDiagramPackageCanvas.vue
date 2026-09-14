@@ -1307,6 +1307,23 @@ function onStageKeydown(event: KeyboardEvent) {
   if (shouldIgnoreStageKeydown()) {
     return
   }
+  if (!event.metaKey && !event.ctrlKey && !event.altKey) {
+    if (event.key.toLowerCase() === "v") {
+      event.preventDefault()
+      setTool("select")
+      return
+    }
+    if (event.key.toLowerCase() === "h") {
+      event.preventDefault()
+      setTool("pan")
+      return
+    }
+    if (event.key.toLowerCase() === "l") {
+      event.preventDefault()
+      setTool("line")
+      return
+    }
+  }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "c") {
     event.preventDefault()
     if (!textEditor.activeEditor.value) {
@@ -1380,8 +1397,7 @@ function onStageKeydown(event: KeyboardEvent) {
       return
     }
     if (activeTool.value === "line") {
-      draftLine.value = null
-      activeTool.value = "select"
+      setTool("select")
       return
     }
     draftLine.value = null
