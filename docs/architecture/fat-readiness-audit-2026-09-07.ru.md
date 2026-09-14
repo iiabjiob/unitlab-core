@@ -902,6 +902,13 @@ blocked/recovery-required semantics. Negative double-toggle regression фикс�
 провал RESTORE readback; delivery ACK и hardware bench validation остаются
 отдельными release checks.
 
+**Статус slice G102 (2026-09-14): manual ACK/readback tracking alignment.**
+Manual DO/AO/pair/all/pulse paths уже ждут durable ACK и свежий channel readback;
+при timeout/negative ACK или отсутствии readback intent переводится в
+`unknown`/`recovery_required`. Обновлён tracking, чтобы прежняя формулировка
+G12 не утверждала отсутствие этого server-side barrier; реальный device ACK,
+physical timing и browser/WS observation остаются release checks.
+
 **Статус slice G68 (2026-09-14): offline downgrade для live signal sheet.**
 Migration `9a1b2c3d4e6f` теперь генерирует детерминированный downgrade SQL для
 `signal_allocations`, `signal_sheet_presets` и `signal_sheets`, не вызывая
