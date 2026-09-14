@@ -498,6 +498,13 @@ Vitest прогон прошёл `43` test files и `219` тестов; performa
 production build. Runtime hardware, target-browser и Pi evidence остаются
 вне локального окружения.
 
+**Статус slice G22 (2026-09-14): verdict/evidence barrier усилен.** После
+положительного hardware ACK, но `late`, `missing`, `not_validated` или
+`value_mismatch` IEC-verdict, step evidence теперь получает `failed`; статус
+`succeeded` сохраняется только для command/test statuses `tested` и `verified`.
+Счётчик `succeeded` по-прежнему означает доставленные команды и не меняет
+optional IEC policy, поэтому различие delivery и FAT verdict остаётся явным.
+
 ## Дополнительный связанный риск — AO-сценарий
 
 При следующем аппаратном slice отдельно проверить AO-ветку [signal_test_run_runner.py](../../backend/app/workers/signal_test_run_runner.py): она выбирает случайное значение 0–24. Это подтверждено кодом, но электрические единицы/допустимые диапазоны конкретного оборудования здесь не установлены. Не переносить такой сценарий автоматически в доверенный test plan: сначала определить тип/диапазон канала, затем сохранить детерминированную последовательность значений в ревизии плана и проверить readback. Основная цель текущей очереди — сухой контакт; расширение AO оформить отдельным scope.

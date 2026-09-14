@@ -508,6 +508,11 @@ def _derive_test_status_from_verification(
     return "not_validated"
 
 
+def _step_evidence_status(test_status: str) -> str:
+    """Separate command delivery success from the final FAT verdict."""
+    return "succeeded" if test_status in {"tested", "verified"} else "failed"
+
+
 def _verification_runtime_ready(runtime_snapshot) -> bool:
     subscriptions = list(getattr(runtime_snapshot, "subscription_snapshots", ()) or ())
     if not subscriptions:
@@ -1742,7 +1747,7 @@ async def _handle_test_run(
             await record_step_evidence(
                 order_index=progress_done_global,
                 signal_id=signal_id,
-                status="succeeded",
+                status=_step_evidence_status(test_status),
                 row=row,
                 result_state=result_state,
                 command_payload=command_payload,

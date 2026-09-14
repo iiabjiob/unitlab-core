@@ -280,6 +280,14 @@ def test_signal_test_status_derives_operator_verification_statuses() -> None:
     ) == "inverted"
 
 
+def test_step_evidence_status_does_not_hide_verdict_failure_after_ack() -> None:
+    assert signal_test_run_runner._step_evidence_status("tested") == "succeeded"
+    assert signal_test_run_runner._step_evidence_status("verified") == "succeeded"
+    assert signal_test_run_runner._step_evidence_status("late") == "failed"
+    assert signal_test_run_runner._step_evidence_status("not_validated") == "failed"
+    assert signal_test_run_runner._step_evidence_status("value_mismatch") == "failed"
+
+
 def test_signal_rows_patched_event_serializes_grid_patch_contract() -> None:
     event = SignalRowsPatchedEvent(
         workspace_id=7,
