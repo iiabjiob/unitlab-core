@@ -775,6 +775,15 @@ offline graph снова сгенерирован до единственног�
 wrapper корректно завершился явным `SKIP`, поскольку `pyiec61850` отсутствует.
 Это не заменяет online migration/rollback и внешний IEC wrapper/hardware gate.
 
+**Статус slice G68 (2026-09-14): offline downgrade для live signal sheet.**
+Migration `9a1b2c3d4e6f` теперь генерирует детерминированный downgrade SQL для
+`signal_allocations`, `signal_sheet_presets` и `signal_sheets`, не вызывая
+`inspect` на offline connection. Полный downgrade до `base` намеренно остаётся
+заблокированным на migration `8d3f6a21c4b5`: она удаляет legacy test-run
+таблицы, а восстановление данных без backup невозможно. Это зафиксированная
+граница rollback, а не скрытый no-op; production rollback требует backup/restore
+rehearsal и отдельного решения по retention legacy evidence.
+
 **Статус slice G38 (2026-09-14): offline-safe signal sheet migration.**
 `9a1b2c3d4e6f` получил PostgreSQL offline-ветку для создания signal sheet/preset и
 live allocation tables и удаления прежних snapshot tables без `inspect` на

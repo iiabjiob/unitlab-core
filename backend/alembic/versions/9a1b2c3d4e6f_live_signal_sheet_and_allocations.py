@@ -161,6 +161,12 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     bind = op.get_bind()
+    if context.is_offline_mode():
+        op.execute("DROP TABLE IF EXISTS signal_allocations CASCADE")
+        op.execute("DROP TABLE IF EXISTS signal_sheet_presets CASCADE")
+        op.execute("DROP TABLE IF EXISTS signal_sheets CASCADE")
+        return
+
     inspector = sa.inspect(bind)
 
     if _has_table(inspector, "signal_allocations"):
