@@ -1283,15 +1283,19 @@ async def _handle_test_run(
         is_ao = channel_type.startswith("ao")
         if not is_do and not is_ao:
             return row, "incompatible_channel_mode"
-        current_rows = await repo.list_allocation_rows_by_signal_ids(workspace_id, [signal_id])
-        current = next((item for item in current_rows if int(item.signal_id) == int(signal_id)), None)
+        if hasattr(repo, "get_execution_binding"):
+            current = await repo.get_execution_binding(workspace_id, signal_id)
+        else:
+            current_rows = await repo.list_allocation_rows_by_signal_ids(workspace_id, [signal_id])
+            current = next((item for item in current_rows if int(item.signal_id) == int(signal_id)), None)
         if current is None or current.unit_online is not True:
             return row, "offline_unit"
         if (
-            current.channel_id != row.channel_id
-            or current.device_id != row.device_id
-            or current.channel_index != row.channel_index
-            or current.unit_id != row.unit_id
+            int(current.channel_id) != int(row.channel_id)
+            or row.device_id is None
+            or int(current.device_id) != int(row.device_id)
+            or int(current.channel_index) != int(row.channel_index)
+            or str(current.unit_id) != str(row.unit_id)
         ):
             return row, "binding_changed"
         return row, None

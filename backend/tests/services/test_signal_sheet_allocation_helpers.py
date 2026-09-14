@@ -350,3 +350,32 @@ def test_auto_allocate_returns_skipped_reason_when_no_channel_available(monkeypa
     assert result.unassigned_signal_ids == [1]
     assert result.changed_signal_ids == []
     assert result.skipped_items[0].code == "no_channel_available"
+def test_execution_binding_reads_only_current_hardware_facts(monkeypatch) -> None:
+    allocation = SignalAllocation(id=10, workspace_id=1, signal_id=7, channel_id=20)
+    allocation.channel = Channel(
+        id=20,
+        device_id=2,
+        channel_index=3,
+        channel_type="do",
+        device=Device(id=2, unit_id="unit-a"),
+    )
+
+    class FakeDb:
+        async def scalar(self, statement):
+            return allocation
+
+    class FakePresenceService:
+        async def get_presence(self, unit_id: str):
+            assert unit_id == "unit-a"
+            return SimpleNamespace(online=True)
+
+    monkeypatch.setattr(signal_sheet_repository, "DevicePresenceService", lambda: FakePresenceService())
+    binding = run_async(SignalSheetRepository(FakeDb()).get_execution_binding(1, 7))
+
+    assert binding is not None
+    assert binding.allocation_id == 10
+    assert binding.channel_id == 20
+    assert binding.device_id == 2
+    assert binding.channel_index == 3
+    assert binding.unit_id == "unit-a"
+    assert binding.unit_online is True

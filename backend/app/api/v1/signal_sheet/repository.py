@@ -53,6 +53,16 @@ class SignalSheetAutoAllocateResult:
     rejected: list[SignalAllocationRejectedItemSchema] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class SignalExecutionBinding:
+    allocation_id: int
+    channel_id: int
+    device_id: int
+    channel_index: int
+    unit_id: str
+    unit_online: bool
+
+
 def _build_allocation_health(
     *,
     signal: Signal,
@@ -433,6 +443,39 @@ class SignalSheetRepository:
         signals.sort(key=lambda signal: signal.id)
         allocations_by_signal = await self._allocations_by_signal_ids(workspace_id, normalized_signal_ids)
         return await self._build_allocation_rows(signals, allocations_by_signal)
+
+    async def get_execution_binding(
+        self,
+        workspace_id: int,
+        signal_id: int,
+    ) -> SignalExecutionBinding | None:
+        """Load only mutable safety facts needed immediately before hardware I/O."""
+        stmt = (
+            select(SignalAllocation)
+            .join(Signal, SignalAllocation.signal_id == Signal.id)
+            .where(
+                SignalAllocation.workspace_id == workspace_id,
+                SignalAllocation.signal_id == int(signal_id),
+                Signal.workspace_id == workspace_id,
+                Signal.deleted_at.is_(None),
+                Signal.is_active.is_(True),
+            )
+            .options(selectinload(SignalAllocation.channel).selectinload(Channel.device))
+        )
+        allocation = await self.db.scalar(stmt)
+        channel = allocation.channel if allocation is not None else None
+        device = channel.device if channel is not None else None
+        if allocation is None or channel is None or device is None or not device.unit_id:
+            return None
+        presence = await DevicePresenceService().get_presence(device.unit_id)
+        return SignalExecutionBinding(
+            allocation_id=int(allocation.id),
+            channel_id=int(channel.id),
+            device_id=int(device.id),
+            channel_index=int(channel.channel_index),
+            unit_id=str(device.unit_id),
+            unit_online=presence.online,
+        )
 
     async def _build_allocation_rows(
         self,

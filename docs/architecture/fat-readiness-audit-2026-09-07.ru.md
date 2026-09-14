@@ -429,6 +429,12 @@ deterministic 20k/5k unit baseline для frontend projection, targeted patch qu
 selection и channel-owner lookup. Backend query-count/latency measurement ещё не
 снят, поэтому GAP-13 не считается закрытым.
 
+**Статус slice G9 (2026-09-14): частично закрыт.** Перед hardware I/O worker
+использует лёгкий `get_execution_binding`: allocation/channel/device и свежий
+presence, без построения полного `SignalAllocationRowSchema` на каждый сигнал.
+Проверки revision snapshot и текущего mutable binding сохранены. Полный query
+count/p95 measurement на production PostgreSQL и batch preparation ещё не сняты.
+
 ## GAP-14 — Нет подтверждённого performance/soak baseline целевого FAT-пути
 
 **P1 для критериев релиза; P2 для последующих оптимизаций · validation/performance.**
