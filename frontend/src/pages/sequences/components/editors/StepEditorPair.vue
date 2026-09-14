@@ -123,9 +123,6 @@ const stateOptions = [
 					{{ option.label }}
 				</UiButton>
 			</div>
-			<p class="sequence-step-form__hint sequence-step-form__hint--spaced">
-				Both outputs must be allocated on the same DO unit.
-			</p>
 		</div>
 	</div>
 </template>
