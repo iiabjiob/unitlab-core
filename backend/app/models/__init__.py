@@ -4,7 +4,7 @@ from .switchgear import Switchgear, SwitchgearChannelBinding  # noqa: F401
 from .sequence import Sequence, SequenceStep  # noqa: F401
 from .sequence_run import SequenceRun, SequenceRunStep  # noqa: F401
 from .signal import Signal  # noqa: F401
-from .signal_revision import SignalListRevision, SignalListRevisionItem  # noqa: F401
+from .signal_revision import SignalListRevision, SignalListRevisionItem, SignalTestRunPlan, SignalTestRunPlanItem  # noqa: F401
 from .signal_sheet import SignalAllocation, SignalAllocationEvent, SignalSheet, SignalSheetPreset, SignalTestRunStepEvidence  # noqa: F401
 from .verification_evidence import SignalVerificationEvidence, SignalVerificationEvidenceSet  # noqa: F401
 from .verification_run import SignalVerificationRun  # noqa: F401
@@ -28,6 +28,8 @@ __all__ = [
     "Signal",
     "SignalListRevision",
     "SignalListRevisionItem",
+    "SignalTestRunPlan",
+    "SignalTestRunPlanItem",
     "SignalSheet",
     "SignalSheetPreset",
     "SignalAllocation",

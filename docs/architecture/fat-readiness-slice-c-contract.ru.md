@@ -1,6 +1,6 @@
 # Слайз C — контракт durable revision и immutable test plan
 
-Статус: подэтап C1 реализован, C2 (immutable test plan и перевод worker) открыт.
+Статус: подэтапы C1/C2 реализованы, D (перевод worker на plan snapshot) открыт.
 Дата: 2026-09-14.
 
 ## Цель
@@ -108,9 +108,13 @@ Retest по умолчанию принимает исходный `test_run_id`
 
 `POST /api/v1/workspaces/{workspace_id}/signal-list-revisions`
 
-Ревизия строится сервером из текущих сигналов и allocation projection. Это ещё не
-делает test-run неизменяемым: существующий enqueue/worker пока не требует эту
-ревизию и продолжает использовать текущий runtime path.
+Ревизия строится сервером из текущих сигналов и allocation projection. При
+создании test-run backend закрепляет revision ID (для legacy `null/0` создаётся
+серверная ревизия) и сохраняет `signal_test_run_plans` вместе с plan items до
+публикации job в очередь.
+
+Worker пока не читает plan items и продолжает использовать текущий runtime path;
+до завершения D нельзя считать GAP-05 закрытым.
 
 ## Порядок реализации после согласования
 

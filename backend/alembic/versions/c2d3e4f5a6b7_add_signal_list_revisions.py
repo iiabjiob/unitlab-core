@@ -43,9 +43,28 @@ def upgrade() -> None:
         sa.UniqueConstraint("revision_id", "order_index", name="uq_signal_list_revision_items_order"),
     )
     op.create_index("ix_signal_list_revision_items_revision", "signal_list_revision_items", ["revision_id", "order_index"])
+    op.create_table(
+        "signal_test_run_plans",
+        sa.Column("job_id", sa.String(64), primary_key=True),
+        sa.Column("workspace_id", BIGINT_PK, sa.ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("revision_id", BIGINT_PK, sa.ForeignKey("signal_list_revisions.id", ondelete="RESTRICT"), nullable=False),
+        sa.Column("content_hash", sa.String(64), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+    )
+    op.create_table(
+        "signal_test_run_plan_items",
+        sa.Column("id", BIGINT_PK, primary_key=True, autoincrement=True),
+        sa.Column("job_id", sa.String(64), sa.ForeignKey("signal_test_run_plans.job_id", ondelete="CASCADE"), nullable=False),
+        sa.Column("revision_item_id", BIGINT_PK, sa.ForeignKey("signal_list_revision_items.id", ondelete="RESTRICT"), nullable=False),
+        sa.Column("order_index", sa.Integer(), nullable=False),
+        sa.Column("snapshot", sa.JSON(), nullable=False, server_default=sa.text("'{}'")),
+        sa.UniqueConstraint("job_id", "order_index", name="uq_signal_test_run_plan_items_order"),
+    )
 
 
 def downgrade() -> None:
+    op.drop_table("signal_test_run_plan_items")
+    op.drop_table("signal_test_run_plans")
     op.drop_index("ix_signal_list_revision_items_revision", table_name="signal_list_revision_items")
     op.drop_table("signal_list_revision_items")
     op.drop_index("ix_signal_list_revisions_workspace_status", table_name="signal_list_revisions")

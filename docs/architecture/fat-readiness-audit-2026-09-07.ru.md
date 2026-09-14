@@ -127,6 +127,11 @@ endpoint создания активной ревизии. Frontend-счётчи
 durable revision ID в этом endpoint. Immutable plan test-run, обязательная передача
 revision в enqueue и перевод worker на snapshot остаются открытыми.
 
+**Статус slice C2 (2026-09-14): частично закрыт.** При enqueue test-run backend
+закрепляет revision ID, для legacy `null/0` создаёт серверную ревизию и сохраняет
+`signal_test_run_plans`/items до публикации job. Worker ещё не исполняет этот
+snapshot и продолжает перечитывать текущий allocation context.
+
 ## GAP-06 — Синхронное ожидание IEC 61850 блокирует event loop worker
 
 **P1 · runtime/performance · подтверждено кодом; длительности не измерены.**

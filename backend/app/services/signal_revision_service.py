@@ -8,7 +8,7 @@ from typing import Sequence
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.signal_revision import SignalListRevision, SignalListRevisionItem
+from app.models.signal_revision import SignalListRevision, SignalListRevisionItem, SignalTestRunPlan, SignalTestRunPlanItem
 from app.schemas.signal_sheet_schema import SignalAllocationRowSchema
 
 
@@ -56,3 +56,45 @@ class SignalRevisionService:
         self.db.add(revision)
         await self.db.flush()
         return revision
+
+    async def create_test_run_plan(
+        self,
+        *,
+        job_id: str,
+        workspace_id: int,
+        revision_id: int,
+        signal_ids: Sequence[int],
+    ) -> SignalTestRunPlan:
+        revision = await self.db.scalar(
+            select(SignalListRevision).where(
+                SignalListRevision.id == revision_id,
+                SignalListRevision.workspace_id == workspace_id,
+                SignalListRevision.status == "active",
+            )
+        )
+        if revision is None:
+            raise ValueError("Active signal-list revision not found")
+
+        requested = {int(signal_id) for signal_id in signal_ids if int(signal_id) > 0}
+        items = [item for item in sorted(revision.items, key=lambda item: item.order_index) if not requested or item.live_signal_id in requested]
+        if requested and {item.live_signal_id for item in items} != requested:
+            raise ValueError("Signal selection is not contained in the requested revision")
+        snapshots = [dict(item.snapshot) for item in items]
+        content_hash = hashlib.sha256(_canonical_json(snapshots).encode("utf-8")).hexdigest()
+        plan = SignalTestRunPlan(
+            job_id=str(job_id),
+            workspace_id=workspace_id,
+            revision_id=revision_id,
+            content_hash=content_hash,
+        )
+        plan.items = [
+            SignalTestRunPlanItem(
+                revision_item_id=item.id,
+                order_index=index,
+                snapshot=snapshot,
+            )
+            for index, (item, snapshot) in enumerate(zip(items, snapshots, strict=True))
+        ]
+        self.db.add(plan)
+        await self.db.flush()
+        return plan

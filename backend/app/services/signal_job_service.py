@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import Any, Awaitable, Callable, Literal
 from uuid import uuid4
 
 from app.core.config import get_settings
@@ -68,9 +68,11 @@ async def create_signal_job(
     operation: SignalJobOperation,
     payload: dict[str, Any],
     initial_result: dict[str, Any] | None = None,
+    job_id: str | None = None,
+    before_enqueue: Callable[[], Awaitable[None]] | None = None,
 ) -> dict[str, Any]:
     redis = RedisManager.get_instance()
-    job_id = uuid4().hex
+    job_id = str(job_id or uuid4().hex)
     now_iso = _now_iso()
     lock_key = _test_run_lock_key(workspace_id) if operation == "test_run" else None
 
@@ -176,6 +178,8 @@ async def create_signal_job(
         "created_at": now_iso,
     }
     try:
+        if before_enqueue is not None:
+            await before_enqueue()
         if operation == "test_run":
             await enqueue_signal_test_run_job(envelope)
         else:

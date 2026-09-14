@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from uuid import uuid4
 from datetime import datetime, timezone
 from typing import Any
 
@@ -614,7 +615,31 @@ async def enqueue_signal_test_run_job(
             detail=f"Too many signals for test run (max {settings.signal_test_run_max_signals})",
         )
 
+    requested_signal_ids = [int(signal_id) for signal_id in payload.signal_ids if int(signal_id) > 0]
+    revision_service = SignalRevisionService(db)
+    revision_id = payload.verification_signal_list_revision_id if (payload.verification_signal_list_revision_id or 0) > 0 else None
+    if revision_id is None:
+        sheet = await repo.get_sheet(workspace_id)
+        rows = await repo.list_allocation_rows_by_signal_ids(workspace_id, requested_signal_ids)
+        revision = await revision_service.create_active_revision(
+            workspace_id=workspace_id,
+            rows=rows,
+            source_hash=sheet.source_hash if sheet is not None else None,
+        )
+        revision_id = revision.id
+        await db.flush()
+    job_id = uuid4().hex
+
+    async def persist_immutable_plan() -> None:
+        await revision_service.create_test_run_plan(
+            job_id=job_id,
+            workspace_id=workspace_id,
+            revision_id=int(revision_id),
+            signal_ids=requested_signal_ids,
+        )
+        await db.commit()
     initial_result: dict[str, Any] = {}
+    initial_result["signal_list_revision_id"] = revision_id
     try:
         signals = await signals_repo.list_by_ids(workspace_id, payload.signal_ids)
         signals_by_id = {signal.id: signal for signal in signals}
@@ -645,8 +670,10 @@ async def enqueue_signal_test_run_job(
         job_state = await create_signal_job(
             workspace_id=workspace_id,
             operation="test_run",
-            payload=payload.model_dump(),
+            payload={**payload.model_dump(), "verification_signal_list_revision_id": revision_id},
             initial_result=initial_result,
+            job_id=job_id,
+            before_enqueue=persist_immutable_plan,
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc

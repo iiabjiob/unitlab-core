@@ -53,3 +53,30 @@ class SignalListRevisionItem(Base):
     snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, server_default="{}")
 
     revision: Mapped[SignalListRevision] = relationship("SignalListRevision", back_populates="items")
+
+
+class SignalTestRunPlan(Base):
+    __tablename__ = "signal_test_run_plans"
+
+    job_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(BIGINT_PK, ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    revision_id: Mapped[int] = mapped_column(BIGINT_PK, ForeignKey("signal_list_revisions.id", ondelete="RESTRICT"), nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    items: Mapped[list["SignalTestRunPlanItem"]] = relationship(
+        "SignalTestRunPlanItem", back_populates="plan", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+
+class SignalTestRunPlanItem(Base):
+    __tablename__ = "signal_test_run_plan_items"
+    __table_args__ = (UniqueConstraint("job_id", "order_index", name="uq_signal_test_run_plan_items_order"),)
+
+    id: Mapped[int] = mapped_column(BIGINT_PK, primary_key=True, autoincrement=True)
+    job_id: Mapped[str] = mapped_column(String(64), ForeignKey("signal_test_run_plans.job_id", ondelete="CASCADE"), nullable=False)
+    revision_item_id: Mapped[int] = mapped_column(BIGINT_PK, ForeignKey("signal_list_revision_items.id", ondelete="RESTRICT"), nullable=False)
+    order_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, server_default="{}")
+
+    plan: Mapped[SignalTestRunPlan] = relationship("SignalTestRunPlan", back_populates="items")
