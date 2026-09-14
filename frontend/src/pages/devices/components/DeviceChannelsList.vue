@@ -109,7 +109,9 @@ function onSetAo({ channel, value }: { channel: Channel; value: number }) {
 
 <style scoped>
 .device-channels-list {
+  box-sizing: border-box;
   display: flex;
+  min-width: 0;
   height: 100%;
   min-height: 0;
   flex-direction: column;
@@ -142,9 +144,12 @@ function onSetAo({ channel, value }: { channel: Channel; value: number }) {
 }
 
 .device-channels-list__items {
+  box-sizing: border-box;
   flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
   margin-top: 1.25rem;
+  overflow-x: hidden;
   overflow-y: auto;
   padding-right: 0.25rem;
 }
