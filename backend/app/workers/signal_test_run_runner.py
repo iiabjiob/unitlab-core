@@ -2202,15 +2202,26 @@ async def _process_entries(redis, entries) -> None:
                 try:
                     if await has_processed_job_marker(session, worker_name=WORKER_NAME, job_id=job_id):
                         logger.warning(
-                            "⚠️ Replayed already-processed signal test job %s; recovering terminal state only",
+                            "⚠️ Replayed processed signal test job %s without terminal result; failing closed",
                             job_id,
+                        )
+                        reconciled_intents = await reconcile_unfinished_hardware_command_intents(
+                            session,
+                            job_id=job_id,
                         )
                         recovered_state = await update_signal_job(
                             job_id,
-                            status="succeeded",
-                            message="Completed (recovered from replay)",
+                            status="failed",
+                            message="Execution completed but terminal result was lost; explicit recovery required",
                             progress_done=progress_total,
                             progress_total=progress_total,
+                            error="processed_marker_without_terminal_result",
+                            result={
+                                "recovery_policy": "fail_closed_on_processed_marker",
+                                "recovery_reason": "processed_marker_without_terminal_result",
+                                "recovery_required": True,
+                                "reconciled_hardware_intents": reconciled_intents,
+                            },
                         )
                         if recovered_state:
                             await WsEventPublisher.publish(build_signal_job_event(recovered_state))

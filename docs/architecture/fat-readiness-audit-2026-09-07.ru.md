@@ -821,6 +821,12 @@ verification failures, неполная обработка или delivery count
 означает delivery count, а step evidence и optional IEC verdict остаются
 разделёнными.
 
+**Статус slice G75 (2026-09-14): processed-marker recovery fail-closed.** Replay
+с уже записанным processed marker, но без terminal result, больше не получает
+ложный `succeeded`. Worker reconciles незавершённые intents и сохраняет job как
+`failed` с явным `processed_marker_without_terminal_result` и
+`recovery_required=true`; потерянный terminal result требует явного recovery.
+
 **Статус slice G38 (2026-09-14): offline-safe signal sheet migration.**
 `9a1b2c3d4e6f` получил PostgreSQL offline-ветку для создания signal sheet/preset и
 live allocation tables и удаления прежних snapshot tables без `inspect` на
