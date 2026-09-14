@@ -29,7 +29,9 @@ docker compose -f docker-compose.prod.yml \
 ```
 
 Каталог должен содержать `ca.crt`, `server.crt` и `server.key`; секреты и ключи
-не добавляются в репозиторий.
+не добавляются в репозиторий. TLS overlay слушает только `8883`; унаследованный
+mapping `1883` из production compose остаётся без listener в TLS-конфигурации и
+не должен использоваться для подключения.
 
 ## Activation
 
