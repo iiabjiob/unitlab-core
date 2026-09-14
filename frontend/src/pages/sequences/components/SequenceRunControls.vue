@@ -230,7 +230,6 @@ async function startInstruction() {
   actionLoading.value = "start"
   try {
     await sequenceStore.startSequence(props.sequence.id)
-    toastStore.success("Instruction started")
   } catch (err) {
     toastStore.error(toUserFacingErrorMessage(err, "Failed to start instruction"))
   } finally {
