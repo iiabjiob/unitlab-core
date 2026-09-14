@@ -922,6 +922,12 @@ PostgreSQL остаётся release check.
 и crash reconciliation сохраняют границу между завершённым воздействием и
 оборванной командой. Реальный restart/kill rehearsal остаётся release check.
 
+**Статус slice G105 (2026-09-14): fenced terminal transition.** Переход в
+`completed` теперь разрешён только для intent со статусами `queued` и
+`execution_status=acknowledged`; конкурентный `unknown`/`recovery_required` не
+может быть затёрт поздним финализатором. Добавлена SQL regression; concurrency
+и restart rehearsal на PostgreSQL остаются release checks.
+
 **Статус slice G68 (2026-09-14): offline downgrade для live signal sheet.**
 Migration `9a1b2c3d4e6f` теперь генерирует детерминированный downgrade SQL для
 `signal_allocations`, `signal_sheet_presets` и `signal_sheets`, не вызывая

@@ -150,7 +150,11 @@ async def mark_hardware_command_intent_completed(
 ) -> None:
     await db.execute(
         update(HardwareCommandIntent)
-        .where(HardwareCommandIntent.command_id == command_id)
+        .where(
+            HardwareCommandIntent.command_id == command_id,
+            HardwareCommandIntent.status == "queued",
+            HardwareCommandIntent.execution_status == "acknowledged",
+        )
         .values(status="completed")
     )
     await db.flush()

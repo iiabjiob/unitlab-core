@@ -185,7 +185,10 @@ async def test_completed_intent_status_is_persisted_as_terminal() -> None:
     await mark_hardware_command_intent_completed(db, command_id="cmd-completed")
 
     statement = db.execute.await_args.args[0]
-    assert "completed" in str(statement.compile(compile_kwargs={"literal_binds": True}))
+    compiled = str(statement.compile(compile_kwargs={"literal_binds": True}))
+    assert "completed" in compiled
+    assert "queued" in compiled
+    assert "acknowledged" in compiled
     db.flush.assert_awaited_once()
 
 
