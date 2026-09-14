@@ -142,7 +142,7 @@ async def _enqueue_manual(
             await mark_hardware_command_intent_delivery_failure(
                 session,
                 command_id=command_id,
-                status="recovery_required" if action == "restore" else "publish_failed",
+                status="recovery_required" if action == "restore" else "unknown",
             )
             await session.commit()
         await _result(ws, command_id=command_id, delivery="rejected", reason="publish_failed")

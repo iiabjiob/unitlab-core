@@ -472,7 +472,7 @@ class SignalSheetRepository:
         recovery_expression = exists().where(
                     HardwareCommandIntent.channel_id == SignalAllocation.channel_id,
                     or_(
-                        HardwareCommandIntent.status.in_(("unknown", "recovery_required")),
+                        HardwareCommandIntent.status.in_(("unknown", "recovery_required", "publish_failed")),
                         and_(
                             HardwareCommandIntent.status.in_(("created", "queued")),
                             HardwareCommandIntent.execution_status.in_(("unknown", "timeout")),

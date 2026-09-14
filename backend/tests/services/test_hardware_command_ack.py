@@ -168,6 +168,18 @@ async def test_pending_queued_command_is_part_of_recovery_lookup() -> None:
 
 
 @pytest.mark.anyio
+async def test_legacy_publish_failed_command_is_part_of_recovery_lookup() -> None:
+    db = AsyncMock()
+    db.execute.return_value = SimpleNamespace(scalar=lambda: True)
+
+    blocked = await has_hardware_recovery_required(db, workspace_id=7, channel_id=101)
+
+    assert blocked is True
+    statement = db.execute.await_args.args[0]
+    assert "publish_failed" in str(statement.compile(compile_kwargs={"literal_binds": True}))
+
+
+@pytest.mark.anyio
 async def test_restore_delivery_retries_once_with_same_command_id() -> None:
     db = AsyncMock()
     attempts: list[str] = []

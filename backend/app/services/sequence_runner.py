@@ -1077,7 +1077,7 @@ class SequenceRunner:
                             await mark_hardware_command_intent_delivery_failure(
                                 session,
                                 command_id=command_id,
-                                status="publish_failed",
+                                status="unknown",
                             )
                             await session.commit()
                             raise

@@ -160,7 +160,7 @@ async def _deliver_durable_command(
             await mark_hardware_command_intent_delivery_failure(
                 db,
                 command_id=command_id,
-                status="recovery_required" if action == "restore" else "publish_failed",
+                status="recovery_required" if action == "restore" else "unknown",
             )
             await db.commit()
             if attempt_no + 1 == delivery_attempts:
