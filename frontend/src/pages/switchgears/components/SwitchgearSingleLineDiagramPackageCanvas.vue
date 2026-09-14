@@ -441,7 +441,7 @@ syncRouteSelection()
 
 onMounted(() => {
   void nextTick(() => {
-    requestAnimationFrame(ensureSceneVisible)
+    requestAnimationFrame(() => requestAnimationFrame(ensureSceneVisible))
   })
 })
 
@@ -457,25 +457,6 @@ watch(() => props.initialStoredState, (next) => {
   if (!hasLocalStateChanges) {
     lastStoredState.value = next
   }
-})
-
-watch(() => {
-  const current = viewport.viewport.value
-  return [current.x, current.y, current.zoom]
-}, () => {
-  const current = viewport.viewport.value
-  const baseState = lastStoredState.value ?? { workspaceId: props.workspaceId }
-  const nextState: StoredDiagramState = {
-    ...baseState,
-    viewState: {
-      x: Math.round(-(current.x * current.zoom)),
-      y: Math.round(-(current.y * current.zoom)),
-      zoom: current.zoom,
-    },
-  }
-  hasLocalStateChanges = true
-  lastStoredState.value = nextState
-  schedulePersistedState(nextState)
 })
 
 watch(() => props.fitRequestKey, (next, previous) => {
@@ -572,7 +553,7 @@ function fitScene() {
 }
 
 function ensureSceneVisible() {
-  const visibleIds = new Set(diagram.engine.queryVisible(diagram.scene.value.viewport))
+  const visibleIds = new Set(diagram.engine.queryVisibleBruteForce(diagram.scene.value.viewport))
   const hasVisibleSwitchgear = [...visibleIds].some(id => diagram.scene.value.entities.nodesById.has(id))
   if (!hasVisibleSwitchgear) {
     fitScene()
