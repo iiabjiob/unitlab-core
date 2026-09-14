@@ -87,6 +87,8 @@ E11 подключает `DO_PAIR` sequence к multi-channel lease, одному
 одному ACK barrier; `DO_BITMASK` остаётся отдельным случаем без resolved channel-set.
 E12 подключает manual pair/all к `channel_ids` и тому же atomic multi-channel
 lease; intent хранит primary channel и полный набор затронутых каналов.
+E13 подключает sequence `DO_BITMASK` к resolved channel-set устройства и тому же
+multi-channel lease, intent и ACK barrier.
 
 ## Состояния delivery и verdict
 

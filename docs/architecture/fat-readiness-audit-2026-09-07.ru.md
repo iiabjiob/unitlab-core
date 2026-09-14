@@ -231,6 +231,11 @@ ACK и command payload остаётся следующим шагом.
 набор каналов в command intent. Workspace/channel scope проверяется до публикации;
 multi-command ACK/verdict UI и sequence `DO_BITMASK` остаются открытыми.
 
+**Статус slice E13 (2026-09-14): частично закрыт.** Sequence `DO_BITMASK` теперь
+получает resolved channel-set устройства и проходит multi-channel lease, durable
+intent и ACK barrier. Требуются runtime-проверки device channel inventory и
+полноценный multi-command verdict UI.
+
 ## GAP-06 — Синхронное ожидание IEC 61850 блокирует event loop worker
 
 **P1 · runtime/performance · подтверждено кодом; длительности не измерены.**

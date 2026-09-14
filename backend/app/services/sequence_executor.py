@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
@@ -28,6 +28,7 @@ class ChannelInfo:
 class DeviceInfo:
     id: int
     unit_id: str
+    channel_ids: List[int] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -447,12 +448,20 @@ class SequenceExecutor:
             if not ctx.target_device:
                 raise SequenceNotApplicableError("DO_BITMASK step requires device context")
             bitmask = int(payload.get("bitmask", 0))
-            if command_admission is not None:
-                raise SequenceNotApplicableError("DO_BITMASK requires atomic multi-channel admission")
-            await enqueue_do_command(
+            if not ctx.target_device.channel_ids:
+                raise SequenceNotApplicableError("DO_BITMASK requires resolved device channels")
+            await send_hardware(
+                action="do_all",
+                channel_id=list(ctx.target_device.channel_ids),
+                device_id=ctx.target_device.id,
                 unit_id=ctx.target_device.unit_id,
-                mode=Cmd.SET_ALL_BIT,
-                bitmask=bitmask,
+                command_payload={"channel_ids": list(ctx.target_device.channel_ids), "bitmask": bitmask},
+                sender=lambda command_id: enqueue_do_command(
+                    unit_id=ctx.target_device.unit_id,
+                    mode=Cmd.SET_ALL_BIT,
+                    bitmask=bitmask,
+                    **({"command_id": command_id} if command_id else {}),
+                ),
             )
             return
 

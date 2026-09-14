@@ -35,7 +35,7 @@ from app.services.sequence_executor import (
     SequenceCancellationRequested,
     SequenceExecutionResult,
     SequenceExecutor,
-    HardwareCommandAdmission,
+    HardwareCommandAdmission as HardwareCommandAdmissionFn,
     SequenceExecutorHooks,
     StepCompletedEvent,
     StepContext,
@@ -804,7 +804,11 @@ class SequenceRunner:
                     "Devices not found: " + ", ".join(map(str, missing_devices))
                 )
             for device in devices.values():
-                device_cache[device.id] = DeviceInfo(id=device.id, unit_id=device.unit_id)
+                device_cache[device.id] = DeviceInfo(
+                    id=device.id,
+                    unit_id=device.unit_id,
+                    channel_ids=[int(channel.id) for channel in (device.channels or [])],
+                )
 
         return {
             device_id: device_cache[device_id]
@@ -1325,7 +1329,7 @@ class SequenceRunner:
         active_step: ResolvedSequenceStep,
         execution_path: tuple[str, ...],
         resolved_sequences: dict[int, ResolvedSequenceDefinition],
-        command_admission: HardwareCommandAdmission,
+        command_admission: HardwareCommandAdmissionFn,
         loop_state: Optional[ExecutionLoopState] = None,
     ) -> None:
         await self._probe_cancellation_from_db(run_id, cancel_event)
