@@ -589,6 +589,11 @@ graph до новой diagnostics audit schema.
 проверки данных. Проверены `py_compile` и `alembic upgrade fe12ac34e5b7 --sql`;
 полный offline graph ещё требует проверки следующих legacy migrations.
 
+**Статус slice G39 (2026-09-14): offline-safe processed jobs migration.**
+`c9a8b7d6e5f4` получил явные PostgreSQL offline DDL-ветки для idempotency table
+и индекса; online-проверка существующих объектов сохранена. Полный offline graph
+ещё проверяется по цепочке.
+
 **Статус slice G38 (2026-09-14): offline-safe signal sheet migration.**
 `9a1b2c3d4e6f` получил PostgreSQL offline-ветку для создания signal sheet/preset и
 live allocation tables и удаления прежних snapshot tables без `inspect` на

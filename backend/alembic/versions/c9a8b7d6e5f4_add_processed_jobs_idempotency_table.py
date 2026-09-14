@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Sequence, Union
 
-from alembic import op
+from alembic import context, op
 import sqlalchemy as sa
 
 
@@ -21,6 +21,19 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     bind = op.get_bind()
+    if context.is_offline_mode():
+        op.execute(
+            "CREATE TABLE IF NOT EXISTS processed_jobs ("
+            "worker_name VARCHAR(128) NOT NULL, job_id VARCHAR(128) NOT NULL, "
+            "stream_name VARCHAR(255) NOT NULL, entry_id VARCHAR(255), "
+            "processed_at TIMESTAMPTZ NOT NULL DEFAULT now(), "
+            "CONSTRAINT pk_processed_jobs PRIMARY KEY (worker_name, job_id))"
+        )
+        op.execute(
+            "CREATE INDEX IF NOT EXISTS ix_processed_jobs_processed_at "
+            "ON processed_jobs (processed_at)"
+        )
+        return
     inspector = sa.inspect(bind)
 
     if not inspector.has_table("processed_jobs"):
@@ -51,6 +64,9 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     bind = op.get_bind()
+    if context.is_offline_mode():
+        op.execute("DROP TABLE IF EXISTS processed_jobs CASCADE")
+        return
     inspector = sa.inspect(bind)
     if not inspector.has_table("processed_jobs"):
         return
