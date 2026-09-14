@@ -1067,7 +1067,7 @@ class SequenceRunner:
                             unit_id=unit_id,
                             action=action,
                             payload={**command_payload, "channel_ids": channel_ids},
-                            fencing_epoch=lease.fencing_epoch,
+                            fencing_epoch=leases[0].fencing_epoch,
                         )
                         await session.commit()
                         try:
