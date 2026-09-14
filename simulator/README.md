@@ -7,6 +7,8 @@ This package spins up a fleet of virtual UnitLab devices that speak the same MQT
 
 The simulator is completely CLI-driven (`python -m simulator`) and relies on a single YAML file for defaults. All knobs can be overridden via command-line flags so you can script experiments or CI runs.
 
+The virtual devices respond to backend scan requests, publish fresh state snapshots for readback, and expose the current DI/DO/AO diagnostic frames used by the device and test-run flows.
+
 ---
 
 ## Prerequisites
