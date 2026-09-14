@@ -222,11 +222,14 @@ onBeforeUnmount(() => {
   .device-editor__channels-column {
     min-height: 0;
     flex: 0 0 auto;
+    align-self: stretch;
+    height: 100%;
     overflow: hidden;
   }
 
   .device-editor__channels-panel {
     min-height: 0;
+    flex: 1 1 0;
     height: 100%;
     overflow: hidden;
   }

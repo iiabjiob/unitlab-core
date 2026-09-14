@@ -220,6 +220,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .resizable-panel {
+  box-sizing: border-box;
   display: flex;
   position: relative;
   min-width: 0;
