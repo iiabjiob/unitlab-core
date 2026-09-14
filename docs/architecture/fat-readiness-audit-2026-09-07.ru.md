@@ -194,6 +194,11 @@ command intent и step evidence; её ACK остаётся самостояте�
 команды — `publish_failed`. Это сохраняет явный recovery сигнал даже при rollback
 основной транзакции; автоматический restore/readback recovery ещё не реализован.
 
+**Статус slice F4 (2026-09-14): частично закрыт.** Канал с незакрытым
+`recovery_required` теперь блокируется для новых FAT-шагов в том же workspace.
+Это предотвращает повторное воздействие до явного recovery; снятие блокировки
+после физического readback и общий recovery worker ещё не реализованы.
+
 **Статус slice E6 (2026-09-14): частично закрыт.** Timeout теперь сохраняется
 в intent как terminal execution state. Поздний или дублированный RESP не может
 переписать `acknowledged`, `negative_ack` или `timeout`; отдельный diagnostic event

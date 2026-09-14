@@ -7,7 +7,10 @@ import pytest
 
 from app.models.hardware_command import HardwareCommandIntent
 from app.services.hardware_command_ack import record_hardware_command_ack, wait_for_hardware_command_acks
-from app.services.hardware_command_intent import mark_hardware_command_intent_delivery_failure
+from app.services.hardware_command_intent import (
+    has_hardware_recovery_required,
+    mark_hardware_command_intent_delivery_failure,
+)
 
 
 @pytest.mark.anyio
@@ -117,3 +120,14 @@ async def test_delivery_failure_status_is_persisted() -> None:
 
     db.execute.assert_awaited_once()
     db.flush.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_recovery_required_lookup_returns_channel_block() -> None:
+    db = AsyncMock()
+    db.execute.return_value = SimpleNamespace(scalar=lambda: True)
+
+    blocked = await has_hardware_recovery_required(db, workspace_id=7, channel_id=101)
+
+    assert blocked is True
+    db.execute.assert_awaited_once()

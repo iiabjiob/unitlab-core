@@ -1,9 +1,27 @@
 from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import update
+from sqlalchemy import exists, select, update
 
 from app.models.hardware_command import HardwareCommandIntent
+
+
+async def has_hardware_recovery_required(
+    db: AsyncSession,
+    *,
+    workspace_id: int,
+    channel_id: int,
+) -> bool:
+    result = await db.execute(
+        select(
+            exists().where(
+                HardwareCommandIntent.workspace_id == workspace_id,
+                HardwareCommandIntent.channel_id == channel_id,
+                HardwareCommandIntent.status == "recovery_required",
+            )
+        )
+    )
+    return bool(result.scalar())
 
 
 async def record_hardware_command_intent(

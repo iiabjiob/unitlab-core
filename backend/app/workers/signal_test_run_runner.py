@@ -31,6 +31,7 @@ from app.schemas.verification_schema import (
 from app.services.command_queue_service import enqueue_ao_command, enqueue_do_command, enqueue_request_state
 from app.services.hardware_command_admission import HardwareChannelLease, HardwareCommandAdmission
 from app.services.hardware_command_intent import (
+    has_hardware_recovery_required,
     mark_hardware_command_intent_delivery_failure,
     mark_hardware_command_intent_queued,
     record_hardware_command_intent,
@@ -653,6 +654,7 @@ async def _handle_test_run(
         "offline_unit": 0,
         "binding_changed": 0,
         "channel_lease_busy": 0,
+        "recovery_required": 0,
     }
     evidence_count = 0
     verification_failed = 0
@@ -1187,6 +1189,12 @@ async def _handle_test_run(
             return None, "missing_row"
         if not row.unit_id or not isinstance(row.channel_index, int):
             return row, "invalid_binding"
+        if row.channel_id is not None and await has_hardware_recovery_required(
+            repo.db,
+            workspace_id=workspace_id,
+            channel_id=int(row.channel_id),
+        ):
+            return row, "recovery_required"
         channel_type = str(row.channel_type or "").strip().lower()
         is_do = channel_type.startswith("do")
         is_ao = channel_type.startswith("ao")
