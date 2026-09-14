@@ -28,17 +28,43 @@ def _command_id(value: str | None) -> str:
     return str(value or uuid4()).strip()
 
 
-async def _remember_command(unit_id: str, packet_id: int, command_id: str) -> None:
+async def _reserve_command_packet(unit_id: str, packet_id: int, command_id: str) -> bool:
     try:
         from app.infrastructure.redis.manager import RedisManager
 
-        await RedisManager.get_instance().set(
+        reserved = await RedisManager.get_instance().set(
             f"hardware:command:{unit_id}:{packet_id}",
             command_id,
             ex=86400,
+            nx=True,
         )
+        return bool(reserved)
     except Exception:  # noqa: BLE001
-        logger.warning("Unable to persist command correlation for %s/%s", unit_id, packet_id)
+        # Keep local/unit tests and degraded startup behavior compatible. The
+        # durable command intent still records the command before publication.
+        logger.warning("Unable to reserve command correlation for %s/%s", unit_id, packet_id)
+        return True
+
+
+async def _release_command_packet(unit_id: str, packet_id: int, command_id: str) -> None:
+    try:
+        from app.infrastructure.redis.manager import RedisManager
+
+        redis = RedisManager.get_instance()
+        key = f"hardware:command:{unit_id}:{packet_id}"
+        current = await redis.get(key)
+        if str(current or "") == command_id:
+            await redis.delete(key)
+    except Exception:  # noqa: BLE001
+        logger.debug("Unable to release command correlation for %s/%s", unit_id, packet_id)
+
+
+async def _allocate_command_packet(unit_id: str, command_id: str) -> tuple[int, bool]:
+    for _ in range(0xFFFF):
+        packet_id = next_packet_id()
+        if await _reserve_command_packet(unit_id, packet_id, command_id):
+            return packet_id, True
+    raise RuntimeError(f"No free command packet id for unit {unit_id}")
 
 
 def next_packet_id() -> int:
@@ -74,12 +100,12 @@ async def enqueue_do_command(
     else:
         raise ValueError(f"Unsupported DO command mode {mode}")
 
-    pid = next_packet_id()
+    resolved_command_id = _command_id(command_id)
+    pid, packet_reserved = await _allocate_command_packet(unit_id, resolved_command_id)
     builder = PacketBuilder()
     builder.build(mode, packet_id=pid, ts=0, payload=payload)
     data = builder.to_bytes()
 
-    resolved_command_id = _command_id(command_id)
     msg = OutboundCmdMsg(
         topic=topic,
         payload=data,
@@ -90,8 +116,12 @@ async def enqueue_do_command(
         packet_id=pid,
     )
 
-    await enqueue_outbound_command(msg)
-    await _remember_command(unit_id, pid, resolved_command_id)
+    try:
+        await enqueue_outbound_command(msg)
+    except Exception:
+        if packet_reserved:
+            await _release_command_packet(unit_id, pid, resolved_command_id)
+        raise
 
     logger.info(f"🧺 Queued DO → {topic} | pid={pid} ({mode.name}) {data.hex().upper()}")
     return resolved_command_id
@@ -104,12 +134,12 @@ async def enqueue_ao_command(unit_id: str, ch: int, value: float, correlation_id
     mode = Cmd.SET_SINGLE_FLOAT
     payload = float_encode.cmd_set_single(CmdSetSingleFloat(ch=ch, value=value))
 
-    pid = next_packet_id()
+    resolved_command_id = _command_id(command_id)
+    pid, packet_reserved = await _allocate_command_packet(unit_id, resolved_command_id)
     builder = PacketBuilder()
     builder.build(mode, packet_id=pid, ts=0, payload=payload)
     data = builder.to_bytes()
 
-    resolved_command_id = _command_id(command_id)
     msg = OutboundCmdMsg(
         topic=topic,
         payload=data,
@@ -120,8 +150,12 @@ async def enqueue_ao_command(unit_id: str, ch: int, value: float, correlation_id
         packet_id=pid,
     )
         
-    await enqueue_outbound_command(msg)
-    await _remember_command(unit_id, pid, resolved_command_id)
+    try:
+        await enqueue_outbound_command(msg)
+    except Exception:
+        if packet_reserved:
+            await _release_command_packet(unit_id, pid, resolved_command_id)
+        raise
     
     logger.info(f"🧺 Queued AO → {topic} | pid={pid} ({mode.name}) {data.hex().upper()}")
     return resolved_command_id
