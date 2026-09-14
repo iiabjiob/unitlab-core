@@ -283,6 +283,24 @@ async def test_bit_readback_wait_accepts_expected_channel_value() -> None:
 
 
 @pytest.mark.anyio
+async def test_bit_readback_rejects_old_packet_value() -> None:
+    class Redis:
+        async def get(self, key: str):
+            if key.endswith(":last_state_packet_id"):
+                return "40"
+            return "4"
+
+    assert await _wait_for_bit_readback(
+        Redis(),
+        unit_id="UNIT-1",
+        channel_index=2,
+        expected_value=1,
+        timeout_ms=100,
+        packet_id=41,
+    ) is False
+
+
+@pytest.mark.anyio
 async def test_float_readback_wait_accepts_small_measurement_tolerance() -> None:
     class Redis:
         async def hget(self, key: str, field: str):

@@ -431,6 +431,13 @@ request packet ID, а manual readback принимает совпавшее зн
 Redis snapshot для manual path; malformed/missing marker остаётся failure.
 Проверены stale-packet negative test и state-service regression.
 
+**Статус slice G47 (2026-09-14): свежесть FAT readback.** Тот же packet-id
+barrier подключён к post-command DO/AO readback в FAT worker: SET и RESTORE
+теперь принимают значение только после state response с packet ID конкретного
+request. Существующие doubles без packet ID сохраняют compatibility, а runtime
+путь с реальным устройством требует marker. Проверены worker readback и ACK
+focused suites.
+
 ## GAP-12 — Повторные diagnostics-тосты и неоднозначность сетевой ошибки
 
 **P1 · operator UX/host diagnostics · механизм подтверждён, production-причина не установлена.**

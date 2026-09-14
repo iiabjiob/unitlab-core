@@ -96,10 +96,17 @@ async def _wait_for_bit_readback(
     channel_index: int,
     expected_value: int,
     timeout_ms: int,
+    packet_id: int | None = None,
 ) -> bool:
     deadline = time.monotonic() + max(100, timeout_ms) / 1000
     mask = 1 << int(channel_index)
     while True:
+        fresh = True
+        if packet_id is not None:
+            try:
+                fresh = int(await redis.get(f"device:{unit_id}:last_state_packet_id")) == int(packet_id)
+            except (TypeError, ValueError):
+                fresh = False
         raw_bitmask = await redis.get(f"device:{unit_id}:bitmask")
         try:
             if raw_bitmask is None:
@@ -113,7 +120,7 @@ async def _wait_for_bit_readback(
             await asyncio.sleep(0.05)
             continue
         actual_value = 1 if bitmask & mask else 0
-        if actual_value == int(expected_value):
+        if fresh and actual_value == int(expected_value):
             return True
         if time.monotonic() >= deadline:
             return False
@@ -127,15 +134,22 @@ async def _wait_for_float_readback(
     channel_index: int,
     expected_value: float,
     timeout_ms: int,
+    packet_id: int | None = None,
 ) -> bool:
     deadline = time.monotonic() + max(100, timeout_ms) / 1000
     while True:
+        fresh = True
+        if packet_id is not None:
+            try:
+                fresh = int(await redis.get(f"device:{unit_id}:last_state_packet_id")) == int(packet_id)
+            except (TypeError, ValueError):
+                fresh = False
         raw_value = await redis.hget(f"device:{unit_id}:ao", str(int(channel_index)))
         try:
             actual_value = float(raw_value)
         except (TypeError, ValueError):
             actual_value = None
-        if actual_value is not None and abs(actual_value - float(expected_value)) <= 0.01:
+        if fresh and actual_value is not None and abs(actual_value - float(expected_value)) <= 0.01:
             return True
         if time.monotonic() >= deadline:
             return False
@@ -1482,7 +1496,7 @@ async def _handle_test_run(
                 command_ids.append(ao_command_id)
                 verification_expected_value = random_value
                 ao_readback_ok = False
-                await enqueue_request_state(
+                set_readback_packet_id = await enqueue_request_state(
                     unit_id=unit_id,
                     mode=State.REQ_SINGLE_FLOAT,
                     ch=channel_index,
@@ -1494,6 +1508,7 @@ async def _handle_test_run(
                     channel_index=channel_index,
                     expected_value=random_value,
                     timeout_ms=min(2000, max(250, verification_timeout_ms)),
+                    packet_id=set_readback_packet_id,
                 )
                 if not ao_readback_ok:
                     await mark_hardware_command_intent_delivery_failure(
@@ -1546,7 +1561,7 @@ async def _handle_test_run(
                     bitmask = bitmask & ~(1 << channel_index)
 
                 set_readback_correlation_id = f"test-run:{signal_id}:readback:set:{toggled_value}"
-                await enqueue_request_state(
+                set_readback_packet_id = await enqueue_request_state(
                     unit_id=unit_id,
                     mode=State.REQ_SINGLE_BIT,
                     ch=channel_index,
@@ -1558,6 +1573,7 @@ async def _handle_test_run(
                     channel_index=channel_index,
                     expected_value=toggled_value,
                     timeout_ms=readback_timeout_ms,
+                    packet_id=set_readback_packet_id,
                 )
                 if not readback_ok:
                     unit_state_unknown.add(unit_id)
@@ -1611,7 +1627,7 @@ async def _handle_test_run(
                         bitmask = bitmask & ~(1 << channel_index)
 
                     restore_readback_correlation_id = f"test-run:{signal_id}:readback:restore:{current_value}"
-                    await enqueue_request_state(
+                    restore_readback_packet_id = await enqueue_request_state(
                         unit_id=unit_id,
                         mode=State.REQ_SINGLE_BIT,
                         ch=channel_index,
@@ -1623,6 +1639,7 @@ async def _handle_test_run(
                         channel_index=channel_index,
                         expected_value=current_value,
                         timeout_ms=readback_timeout_ms,
+                        packet_id=restore_readback_packet_id,
                     )
                     if not readback_ok:
                         unit_state_unknown.add(unit_id)
