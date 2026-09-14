@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Iterable, Sequence
 
-from sqlalchemy import Select, delete, select
+from sqlalchemy import Select, and_, delete, exists, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -17,6 +17,7 @@ from app.models.signal_sheet import (
     SignalSheetPreset,
     SignalTestRunStepEvidence,
 )
+from app.models.hardware_command import HardwareCommandIntent
 from app.models.workspace import Workspace
 from app.schemas.signal_import_schema import SignalImportMetaSchema
 from app.schemas.signal_sheet_schema import (
@@ -61,6 +62,7 @@ class SignalExecutionBinding:
     channel_index: int
     unit_id: str
     unit_online: bool
+    recovery_required: bool = False
 
 
 def _build_allocation_health(
@@ -450,8 +452,39 @@ class SignalSheetRepository:
         signal_id: int,
     ) -> SignalExecutionBinding | None:
         """Load only mutable safety facts needed immediately before hardware I/O."""
+        return await self._get_execution_binding(workspace_id, signal_id, include_recovery=False)
+
+    async def get_execution_binding_with_recovery(
+        self,
+        workspace_id: int,
+        signal_id: int,
+    ) -> SignalExecutionBinding | None:
+        """Load binding, fresh presence, and cross-workspace recovery in one DB round-trip."""
+        return await self._get_execution_binding(workspace_id, signal_id, include_recovery=True)
+
+    async def _get_execution_binding(
+        self,
+        workspace_id: int,
+        signal_id: int,
+        *,
+        include_recovery: bool,
+    ) -> SignalExecutionBinding | None:
+        recovery_expression = exists().where(
+                    HardwareCommandIntent.channel_id == SignalAllocation.channel_id,
+                    or_(
+                        HardwareCommandIntent.status.in_(("unknown", "recovery_required")),
+                        and_(
+                            HardwareCommandIntent.status.in_(("created", "queued")),
+                            HardwareCommandIntent.execution_status.in_(("unknown", "timeout")),
+                        ),
+                    ),
+                ).correlate(SignalAllocation).label("recovery_required")
+        if include_recovery:
+            stmt = select(SignalAllocation, recovery_expression)
+        else:
+            stmt = select(SignalAllocation)
         stmt = (
-            select(SignalAllocation)
+            stmt
             .join(Signal, SignalAllocation.signal_id == Signal.id)
             .where(
                 SignalAllocation.workspace_id == workspace_id,
@@ -462,7 +495,14 @@ class SignalSheetRepository:
             )
             .options(selectinload(SignalAllocation.channel).selectinload(Channel.device))
         )
-        allocation = await self.db.scalar(stmt)
+        if include_recovery:
+            result = await self.db.execute(stmt)
+            selected = result.first()
+            allocation = selected[0] if selected is not None else None
+            recovery_required = bool(selected[1]) if selected is not None else False
+        else:
+            allocation = await self.db.scalar(stmt)
+            recovery_required = False
         channel = allocation.channel if allocation is not None else None
         device = channel.device if channel is not None else None
         if allocation is None or channel is None or device is None or not device.unit_id:
@@ -475,6 +515,7 @@ class SignalSheetRepository:
             channel_index=int(channel.channel_index),
             unit_id=str(device.unit_id),
             unit_online=presence.online,
+            recovery_required=recovery_required,
         )
 
     async def _build_allocation_rows(

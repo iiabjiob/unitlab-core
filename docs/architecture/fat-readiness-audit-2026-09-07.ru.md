@@ -442,6 +442,13 @@ presence, без построения полного `SignalAllocationRowSchema`
 Проверки revision snapshot и текущего mutable binding сохранены. Полный query
 count/p95 measurement на production PostgreSQL и batch preparation ещё не сняты.
 
+**Статус slice G16 (2026-09-14): частично закрыт.** Recovery-barrier теперь
+возвращается вместе с execution binding в одном SQL-результате, поэтому worker
+не делает отдельный recovery-query перед каждым binding-query. Свежий Redis
+presence и повторная lease/admission-проверка сохранены. Структурный тест
+подтверждает единый DB round-trip; production query-count/p95 и batch preparation
+по-прежнему требуют PostgreSQL benchmark.
+
 **Статус slice G15 (2026-09-14): частично закрыт.** Legacy worker fixtures
 синхронизированы с immutable-plan, hardware admission, ACK и readback-контрактом;
 worker regression file проходит `13 passed`, полный `backend/tests` — `404

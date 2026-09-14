@@ -1284,12 +1284,6 @@ async def _handle_test_run(
             return None, "missing_row"
         if not row.unit_id or not isinstance(row.channel_index, int):
             return row, "invalid_binding"
-        if row.channel_id is not None and await has_hardware_recovery_required(
-            repo.db,
-            workspace_id=workspace_id,
-            channel_id=int(row.channel_id),
-        ):
-            return row, "recovery_required"
         channel_type = str(row.channel_type or "").strip().lower()
         is_do = channel_type.startswith("do")
         is_ao = channel_type.startswith("ao")
@@ -1299,7 +1293,17 @@ async def _handle_test_run(
             return row, "ao_profile_required"
         if is_do and str(row.unit_id) in unit_state_unknown:
             return row, "initial_state_unknown"
-        if hasattr(repo, "get_execution_binding"):
+        if hasattr(repo, "get_execution_binding_with_recovery"):
+            current = await repo.get_execution_binding_with_recovery(workspace_id, signal_id)
+            if current is not None and current.recovery_required:
+                return row, "recovery_required"
+        elif hasattr(repo, "get_execution_binding"):
+            if row.channel_id is not None and await has_hardware_recovery_required(
+                repo.db,
+                workspace_id=workspace_id,
+                channel_id=int(row.channel_id),
+            ):
+                return row, "recovery_required"
             current = await repo.get_execution_binding(workspace_id, signal_id)
         else:
             current_rows = await repo.list_allocation_rows_by_signal_ids(workspace_id, [signal_id])

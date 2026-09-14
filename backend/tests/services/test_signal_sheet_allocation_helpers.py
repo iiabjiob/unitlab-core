@@ -379,3 +379,30 @@ def test_execution_binding_reads_only_current_hardware_facts(monkeypatch) -> Non
     assert binding.channel_index == 3
     assert binding.unit_id == "unit-a"
     assert binding.unit_online is True
+
+
+def test_execution_binding_with_recovery_uses_single_db_result(monkeypatch) -> None:
+    allocation = SignalAllocation(id=10, workspace_id=1, signal_id=7, channel_id=20)
+    allocation.channel = Channel(
+        id=20,
+        device_id=2,
+        channel_index=3,
+        channel_type="do",
+        device=Device(id=2, unit_id="unit-a"),
+    )
+
+    class FakeDb:
+        async def execute(self, statement):
+            assert "recovery_required" in str(statement)
+            return SimpleNamespace(first=lambda: (allocation, True))
+
+    class FakePresenceService:
+        async def get_presence(self, unit_id: str):
+            assert unit_id == "unit-a"
+            return SimpleNamespace(online=True)
+
+    monkeypatch.setattr(signal_sheet_repository, "DevicePresenceService", lambda: FakePresenceService())
+    binding = run_async(SignalSheetRepository(FakeDb()).get_execution_binding_with_recovery(1, 7))
+
+    assert binding is not None
+    assert binding.recovery_required is True
