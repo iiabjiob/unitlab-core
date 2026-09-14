@@ -10,6 +10,7 @@ from app.services.hardware_command_ack import record_hardware_command_ack, wait_
 from app.services.hardware_command_intent import (
     has_hardware_recovery_required,
     mark_hardware_command_intent_delivery_failure,
+    reconcile_unfinished_hardware_command_intents,
 )
 from app.workers.signal_test_run_runner import _deliver_durable_command
 
@@ -176,3 +177,46 @@ async def test_regular_delivery_does_not_retry_after_publish_failure() -> None:
     assert attempts == ["cmd-do"]
     assert db.rollback.await_count == 1
     assert db.commit.await_count == 1
+
+
+@pytest.mark.anyio
+async def test_reconcile_unfinished_intents_marks_restore_for_recovery() -> None:
+    restore = HardwareCommandIntent(
+        command_id="cmd-restore",
+        workspace_id=7,
+        job_id="job-1",
+        attempt_id="attempt-1",
+        owner_kind="fat",
+        owner_id="job-1",
+        channel_id=101,
+        unit_id="UNIT-1",
+        action="restore",
+        payload={},
+        status="queued",
+    )
+    regular = HardwareCommandIntent(
+        command_id="cmd-do",
+        workspace_id=7,
+        job_id="job-1",
+        attempt_id="attempt-1",
+        owner_kind="fat",
+        owner_id="job-1",
+        channel_id=102,
+        unit_id="UNIT-1",
+        action="do_set",
+        payload={},
+        status="created",
+    )
+    db = AsyncMock()
+    db.execute.return_value = SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [restore, regular]))
+
+    count = await reconcile_unfinished_hardware_command_intents(
+        db,
+        job_id="job-1",
+        attempt_id="attempt-1",
+    )
+
+    assert count == 2
+    assert restore.status == "recovery_required"
+    assert regular.status == "unknown"
+    db.flush.assert_awaited_once()

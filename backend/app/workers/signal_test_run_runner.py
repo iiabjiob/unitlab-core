@@ -34,6 +34,7 @@ from app.services.hardware_command_intent import (
     has_hardware_recovery_required,
     mark_hardware_command_intent_delivery_failure,
     mark_hardware_command_intent_queued,
+    reconcile_unfinished_hardware_command_intents,
     record_hardware_command_intent,
 )
 from app.services.hardware_command_ack import wait_for_hardware_command_acks
@@ -1829,6 +1830,13 @@ async def _process_entries(redis, entries) -> None:
                     )
                 )
                 if has_prior_execution_evidence:
+                    async with AsyncSessionLocal() as recovery_session:
+                        reconciled_intents = await reconcile_unfinished_hardware_command_intents(
+                            recovery_session,
+                            job_id=job_id,
+                            attempt_id=previous_attempt_id,
+                        )
+                        await recovery_session.commit()
                     recovery_result: dict[str, Any] = {
                         "recovery_policy": "fail_on_replay_after_started_attempt",
                         "recovery_reason": "replayed_pending_entry_after_started_attempt",
@@ -1836,6 +1844,7 @@ async def _process_entries(redis, entries) -> None:
                         "resume_hint": "Start a new test run with resume_from_cursor=true and resume_job_id=<failed_job_id>.",
                         "attempt_id": previous_attempt_id,
                         "attempt_no": previous_attempt_no,
+                        "reconciled_hardware_intents": reconciled_intents,
                     }
                     if isinstance(existing_cursor, dict):
                         recovery_result["progress_cursor"] = existing_cursor

@@ -330,6 +330,14 @@ Redis работает без RDB/AOF, на tmpfs. Теряются очеред
 
 **Приёмка:** kill worker/Redis до отправки, после отправки, после ACK и до коммита; ни потеря доказательств без явного unknown, ни повторное воздействие не маскируются успехом.
 
+**Статус slice G1 (2026-09-14): частично закрыт.** При replay ранее начатого
+test-run worker перед явным отказом replay теперь reconciles persisted intents со
+статусами `created/queued`: обычные команды получают `unknown`, restore —
+`recovery_required`; число reconciled intents попадает в recovery result. Оба
+состояния блокируют дальнейший FAT-шаг по каналу. Kill-сценарии на реальном
+Redis/PostgreSQL и durable evidence до/после commit ещё требуют стендовой
+проверки.
+
 ## GAP-10 — Нет доказанной общей исключительности физического выхода
 
 **P0 · allocation/command ownership · подтверждён разрыв границ.**

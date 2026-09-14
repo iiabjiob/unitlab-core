@@ -17,11 +17,33 @@ async def has_hardware_recovery_required(
             exists().where(
                 HardwareCommandIntent.workspace_id == workspace_id,
                 HardwareCommandIntent.channel_id == channel_id,
-                HardwareCommandIntent.status == "recovery_required",
+                HardwareCommandIntent.status.in_(("unknown", "recovery_required")),
             )
         )
     )
     return bool(result.scalar())
+
+
+async def reconcile_unfinished_hardware_command_intents(
+    db: AsyncSession,
+    *,
+    job_id: str,
+    attempt_id: str | None = None,
+) -> int:
+    """Make commands from an interrupted attempt explicit before replay is failed."""
+    filters = [
+        HardwareCommandIntent.job_id == job_id,
+        HardwareCommandIntent.status.in_(("created", "queued")),
+    ]
+    if attempt_id:
+        filters.append(HardwareCommandIntent.attempt_id == attempt_id)
+    result = await db.execute(select(HardwareCommandIntent).where(*filters))
+    intents = list(result.scalars().all())
+    for intent in intents:
+        intent.status = "recovery_required" if intent.action == "restore" else "unknown"
+    if intents:
+        await db.flush()
+    return len(intents)
 
 
 async def record_hardware_command_intent(
