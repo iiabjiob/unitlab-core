@@ -462,11 +462,9 @@ pointer.setTool("select")
 syncRouteSelection()
 
 onMounted(() => {
-  if (!props.initialStoredState?.viewState) {
-    void nextTick(() => {
-      requestAnimationFrame(() => fitScene())
-    })
-  }
+  void nextTick(() => {
+    requestAnimationFrame(ensureSceneVisible)
+  })
 })
 
 watch(() => route.params.id, () => {
@@ -575,6 +573,14 @@ function fitScene() {
   closeContextMenu()
   diagram.engine.fitScene(96)
   focusStage()
+}
+
+function ensureSceneVisible() {
+  const visibleIds = new Set(diagram.engine.queryVisible(diagram.scene.value.viewport))
+  const hasVisibleSwitchgear = [...visibleIds].some(id => diagram.scene.value.entities.nodesById.has(id))
+  if (!hasVisibleSwitchgear) {
+    fitScene()
+  }
 }
 
 function toggleSnapEnabled() {
