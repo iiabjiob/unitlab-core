@@ -424,6 +424,14 @@ resolved channel из command scope после общего ACK; mismatch пер
 intent в `recovery_required`. Pulse намеренно не включён до согласования его
 финального состояния. Focused regression suite остаётся зелёным.
 
+**Статус slice G50 (2026-09-14): manual pulse readback.** Manual pulse теперь
+после ACK подтверждает target value, выдерживает ограниченный `pulse_ms` и
+запрашивает отдельный свежий readback ожидаемого возврата в `0`; failure или
+cancellation переводит intent в `recovery_required`. Длительность ограничена
+протокольным `u16`, невалидное значение отклоняется до publish. Проверены
+focused readback/ACK tests; реальное firmware pulse timing остаётся стендовой
+проверкой.
+
 **Статус slice G46 (2026-09-14): свежесть manual readback.** State responses
 теперь сохраняют `last_state_packet_id`, `enqueue_request_state` возвращает
 request packet ID, а manual readback принимает совпавшее значение только после

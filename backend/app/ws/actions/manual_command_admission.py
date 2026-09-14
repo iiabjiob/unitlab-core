@@ -226,6 +226,11 @@ async def _enqueue_manual(
                         for index, target in zip(pair_indexes, pair_targets)
                         if index is not None
                     )
+                elif action == "do_pulse":
+                    channel_index = payload.get("ch")
+                    expected_value = payload.get("value")
+                    if channel_index is not None and expected_value is not None:
+                        readback_targets.append((int(channel_index), int(expected_value)))
 
                 readback_ok = bool(readback_targets)
                 for target_index, target_value in readback_targets:
@@ -248,6 +253,27 @@ async def _enqueue_manual(
                     except Exception:  # noqa: BLE001
                         target_ok = False
                     readback_ok = readback_ok and target_ok
+                if readback_ok and action == "do_pulse":
+                    try:
+                        pulse_ms = max(0, min(65535, int(payload.get("pulse_ms") or 0)))
+                        await asyncio.sleep(pulse_ms / 1000)
+                        revert_packet_id = await enqueue_request_state(
+                            unit_id=unit_id,
+                            mode=State.REQ_SINGLE_BIT,
+                            ch=int(payload["ch"]),
+                            correlation_id=f"manual:{command_id}:pulse-revert",
+                        )
+                        readback_ok = await _wait_for_manual_readback(
+                            redis,
+                            action=action,
+                            unit_id=unit_id,
+                            channel_index=int(payload["ch"]),
+                            expected_value=0,
+                            timeout_ms=MANUAL_READBACK_TIMEOUT_MS,
+                            packet_id=revert_packet_id,
+                        )
+                    except Exception:  # noqa: BLE001
+                        readback_ok = False
                 if not readback_ok:
                     execution_reason = "hardware_readback_timeout" if readback_targets else "readback_scope_missing"
                     await mark_hardware_command_intent_delivery_failure(
@@ -261,7 +287,7 @@ async def _enqueue_manual(
             await mark_hardware_command_intent_delivery_failure(
                 session,
                 command_id=command_id,
-                status="recovery_required" if action == "restore" else "unknown",
+                status="recovery_required" if action in {"restore", "do_pulse"} else "unknown",
             )
             await session.commit()
         raise
@@ -270,7 +296,7 @@ async def _enqueue_manual(
             await mark_hardware_command_intent_delivery_failure(
                 session,
                 command_id=command_id,
-                status="recovery_required" if action == "restore" else "unknown",
+                status="recovery_required" if action in {"restore", "do_pulse"} else "unknown",
             )
             await session.commit()
         await _result(ws, command_id=command_id, delivery="rejected", reason="publish_failed")
@@ -324,6 +350,9 @@ async def handle_manual_do(ws: WebSocket, msg: SetDoCommandMessage) -> None:
     if msg.channel_id is None or msg.ch is None:
         await _result(ws, command_id=None, delivery="rejected", reason="channel_id_required")
         return
+    if msg.mode.name == "SET_PULSE_BIT" and not 0 <= msg.pulse_ms <= 65535:
+        await _result(ws, command_id=None, delivery="rejected", reason="pulse_duration_invalid")
+        return
     channel = await _channel(msg.workspace_id, msg.channel_id, msg.unit_id, msg.ch, "do")
     if channel is None:
         await _result(ws, command_id=None, delivery="rejected", reason="channel_scope_invalid")
@@ -337,7 +366,7 @@ async def handle_manual_do(ws: WebSocket, msg: SetDoCommandMessage) -> None:
         channel_ids=[channel.id],
         unit_id=msg.unit_id,
         device_id=channel.device_id,
-        action="do_set",
+        action="do_pulse" if msg.mode.name == "SET_PULSE_BIT" else "do_set",
         payload=msg.model_dump(mode="json"),
         sender=lambda command_id: enqueue_do_command(
             unit_id=msg.unit_id,
