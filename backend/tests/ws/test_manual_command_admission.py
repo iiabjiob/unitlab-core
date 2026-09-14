@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from types import SimpleNamespace
 
 from app.schemas.ws.messages import SetAoCommandMessage, WSAction
@@ -21,7 +22,7 @@ def test_manual_ao_passes_single_channel_as_channel_ids(monkeypatch) -> None:
         captured.update(kwargs)
 
     async def online_status(key: str):
-        return "online"
+        return "online" if key.endswith(":status") else str(int(time.time() * 1000))
 
     redis = SimpleNamespace(get=online_status)
 
@@ -50,7 +51,20 @@ def test_manual_ao_passes_single_channel_as_channel_ids(monkeypatch) -> None:
 
 def test_manual_device_status_must_be_online(monkeypatch) -> None:
     async def status(key: str):
-        return "offline"
+        return "offline" if key.endswith(":status") else str(int(time.time() * 1000))
+
+    monkeypatch.setattr(
+        manual_command_admission,
+        "RedisManager",
+        SimpleNamespace(get_instance=lambda: SimpleNamespace(get=status)),
+    )
+
+    assert run_async(manual_command_admission._device_is_online("unit-1")) is False
+
+
+def test_manual_device_with_stale_last_seen_is_not_online(monkeypatch) -> None:
+    async def status(key: str):
+        return "online" if key.endswith(":status") else "1"
 
     monkeypatch.setattr(
         manual_command_admission,

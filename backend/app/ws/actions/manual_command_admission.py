@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import time
 from fastapi import WebSocket
 from sqlalchemy import exists, select
 
+from app.core.config import get_settings
+from app.core.utils import to_int
 from app.infrastructure.db.database import AsyncSessionLocal
 from app.infrastructure.redis.manager import RedisManager
 from app.models.channel import Channel
@@ -18,6 +21,8 @@ from app.services.hardware_command_intent import (
 from app.schemas.ws.messages import SetAoCommandMessage, SetDoCommandMessage
 from app.schemas.ws.events import HardwareCommandResultEvent
 from uuid import uuid4
+
+settings = get_settings()
 
 
 async def _result(ws: WebSocket, *, command_id: str | None, delivery: str, reason: str | None = None) -> None:
@@ -78,10 +83,17 @@ async def _channels(workspace_id: int, channel_ids: list[int], unit_id: str, ind
 
 
 async def _device_is_online(unit_id: str) -> bool:
-    status = await RedisManager.get_instance().get(f"device:{unit_id}:status")
+    redis = RedisManager.get_instance()
+    status = await redis.get(f"device:{unit_id}:status")
     if isinstance(status, bytes):
         status = status.decode("utf-8", errors="ignore")
-    return str(status or "").strip().lower() == "online"
+    if str(status or "").strip().lower() != "online":
+        return False
+    last_seen = to_int(await redis.get(f"device:{unit_id}:last_seen"))
+    if last_seen is None:
+        return False
+    age_ms = int(time.time() * 1000) - last_seen
+    return 0 <= age_ms <= max(int(settings.heartbeat_ttl or 30), 1) * 1000
 
 
 async def _enqueue_manual(
