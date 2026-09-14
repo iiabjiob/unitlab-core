@@ -728,6 +728,7 @@ async def _handle_test_run(
         "invalid_binding": 0,
         "incompatible_channel_mode": 0,
         "offline_unit": 0,
+        "initial_state_unknown": 0,
         "binding_changed": 0,
         "channel_lease_busy": 0,
         "recovery_required": 0,
