@@ -24,6 +24,8 @@ class SetDoCommandMessage(BaseModel):
         - SET_PULSE_BIT
     """
     action: Literal[WSAction.SET_DO_COMMAND]
+    workspace_id: int
+    channel_id: int | None = None
     unit_id: str
     mode: Cmd
     ch: Optional[int] = None
@@ -39,6 +41,8 @@ class SetAoCommandMessage(BaseModel):
     Manage analog outputs (AO).
     """
     action: Literal[WSAction.SET_AO_COMMAND]
+    workspace_id: int
+    channel_id: int
     unit_id: str
     ch: int
     value: float

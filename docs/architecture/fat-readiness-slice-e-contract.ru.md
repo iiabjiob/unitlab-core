@@ -76,6 +76,11 @@ Manual WS не должен сам выбирать correlation или обхо�
 соединение/lease отсутствуют, оператор получает структурированный `rejected`,
 а не optimistic success.
 
+E8 подключает manual single-channel DO/AO к admission с обязательными
+`workspace_id` и `channel_id`. Bulk/pair DO пока явно отклоняются с
+`single_channel_admission_required`, пока не появится атомарный multi-channel
+lease.
+
 ## Состояния delivery и verdict
 
 Это независимые поля:

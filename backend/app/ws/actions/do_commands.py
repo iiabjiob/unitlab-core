@@ -1,21 +1,7 @@
 # ws/actions/do_commands.py
-import uuid
 from fastapi import WebSocket
-from app.services.command_queue_service import enqueue_do_command
 from app.schemas.ws.messages import SetDoCommandMessage
+from .manual_command_admission import handle_manual_do
 
 async def handle_set_do_command(ws: WebSocket, msg: SetDoCommandMessage):
-    # Push DO command into outbound queue
-    await enqueue_do_command(
-        unit_id=msg.unit_id,
-        mode=msg.mode,
-        ch=msg.ch,
-        value=msg.value,
-        bitmask=msg.bitmask,
-        chA=msg.chA,
-        chB=msg.chB,
-        state2b=msg.state2b,
-        pulse_ms=msg.pulse_ms,
-        correlation_id=str(uuid.uuid4()),
-    )
-
+    await handle_manual_do(ws, msg)

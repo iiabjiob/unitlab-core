@@ -45,6 +45,8 @@ export interface RequestStateMessage {
 // ---------------------------------------------------------------------
 export interface SetDoCommandMessage {
   action: WSAction.SET_DO_COMMAND
+  workspace_id: number
+  channel_id?: number
   unit_id: string
   mode: CmdMode
 
@@ -66,6 +68,8 @@ export interface SetDoCommandMessage {
 
 export interface SetAoCommandMessage {
   action: WSAction.SET_AO_COMMAND
+  workspace_id: number
+  channel_id: number
   unit_id: string
   ch: number
   value: number

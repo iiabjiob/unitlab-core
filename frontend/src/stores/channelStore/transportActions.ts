@@ -8,6 +8,7 @@ import {
   type SetAoCommandMessage,
 } from "@/types/ws/messages"
 import { CHANNEL_TYPES, type Channel, type DoChannel } from "@/types/channel"
+import { useWorkspaceStore } from "@/stores/workspaceStore"
 
 const AO_STATE_REFRESH_FALLBACK_MS = 100
 const DO_BULK_STATE_RECONCILE_MS = 120
@@ -61,8 +62,15 @@ export function createChannelTransportActions(params: Params) {
     }
 
     const ws = useWebSocketStore()
+    const workspaceId = useWorkspaceStore().activeWorkspaceId
+    if (!workspaceId) {
+      params.logger.error("DO command rejected: no active workspace")
+      return
+    }
     const msg: SetDoCommandMessage = {
       action: WSAction.SET_DO_COMMAND,
+      workspace_id: workspaceId,
+      channel_id: params.findDoChannel(device.id, chIndex)?.id,
       unit_id: device.unit_id,
       mode: CmdMode.SET_SINGLE_BIT,
       ch: chIndex,
@@ -106,9 +114,15 @@ export function createChannelTransportActions(params: Params) {
     ) as DoChannel[]
 
     const ws = useWebSocketStore()
+    const workspaceId = useWorkspaceStore().activeWorkspaceId
+    if (!workspaceId) {
+      params.logger.error("DO ALL command rejected: no active workspace")
+      return
+    }
     const maskSummary = params.formatSummary(params.summarizeMaskTargets(doChannels, mask))
     const accepted = ws.send({
       action: WSAction.SET_DO_COMMAND,
+      workspace_id: workspaceId,
       unit_id: unitId,
       mode: CmdMode.SET_ALL_BIT,
       bitmask: mask,
@@ -172,9 +186,16 @@ export function createChannelTransportActions(params: Params) {
     }
 
     const ws = useWebSocketStore()
+    const workspaceId = useWorkspaceStore().activeWorkspaceId
+    if (!workspaceId) {
+      const error = `DO pair command rejected: no active workspace`
+      params.logger.error(error)
+      return { ok: false, error }
+    }
     const commandIssuedAt = Date.now()
     const accepted = ws.send({
       action: WSAction.SET_DO_COMMAND,
+      workspace_id: workspaceId,
       unit_id: device.unit_id,
       mode: CmdMode.SET_PAIR_BIT,
       chA,
@@ -218,8 +239,16 @@ export function createChannelTransportActions(params: Params) {
     }
 
     const ws = useWebSocketStore()
+    const workspaceId = useWorkspaceStore().activeWorkspaceId
+    const channel = params.channelsByDevice(device.id).find(item => item.index === chIndex)
+    if (!workspaceId || !channel) {
+      params.logger.error(`AO command rejected: missing workspace/channel (${device.unit_id}, ch=${chIndex})`)
+      return
+    }
     const accepted = ws.send({
       action: WSAction.SET_AO_COMMAND,
+      workspace_id: workspaceId,
+      channel_id: channel.id,
       unit_id: device.unit_id,
       ch: chIndex,
       value,

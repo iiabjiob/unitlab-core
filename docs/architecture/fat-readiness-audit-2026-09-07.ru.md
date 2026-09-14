@@ -204,6 +204,12 @@ command intent и step evidence; её ACK остаётся самостояте�
 переписать `acknowledged`, `negative_ack` или `timeout`; отдельный diagnostic event
 для таких ACK и manual/sequence paths остаются открытыми.
 
+**Статус slice E8 (2026-09-14): частично закрыт.** Manual single-channel DO/AO
+теперь передаёт `workspace_id` и `channel_id`, проходит channel lease и durable
+intent, а результат доставки возвращается как `hardware_command_result`.
+Multi-channel DO pair/all и sequence admission требуют отдельного атомарного
+multi-lease контракта.
+
 ## GAP-06 — Синхронное ожидание IEC 61850 блокирует event loop worker
 
 **P1 · runtime/performance · подтверждено кодом; длительности не измерены.**
