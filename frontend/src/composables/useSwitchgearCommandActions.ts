@@ -278,7 +278,6 @@ export function useSwitchgearCommandActions(
         acting.value = null
         commandWatchdog = null
       }, 3000)
-      toastStore.success(`${actionLabel(action)} command queued`)
     } catch (error) {
       expectedCommandResponses.value = 0
       pendingPairTargetState.value = null

@@ -3200,7 +3200,6 @@ async function sendControl(row: SignalAllocationRow, state: boolean): Promise<bo
         .catch(() => {
           return
         })
-      toastStore.info("Command sent. Runtime state will update after channel sync.")
       return true
     }
 
