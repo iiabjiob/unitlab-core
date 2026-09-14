@@ -784,6 +784,12 @@ Migration `9a1b2c3d4e6f` теперь генерирует детерминир�
 граница rollback, а не скрытый no-op; production rollback требует backup/restore
 rehearsal и отдельного решения по retention legacy evidence.
 
+**Статус slice G69 (2026-09-14): offline downgrade guard cleanup.** Migration
+`fe12ac34e5b7` больше не вызывает online-only `scalar_one()` проверки в offline
+режиме; проверки отсутствующих sequence/snapshot связей выполняются только при
+реальном подключении к базе. Это позволяет продолжить генерацию downgrade SQL
+до намеренно необратимой legacy boundary `8d3f6a21c4b5`.
+
 **Статус slice G38 (2026-09-14): offline-safe signal sheet migration.**
 `9a1b2c3d4e6f` получил PostgreSQL offline-ветку для создания signal sheet/preset и
 live allocation tables и удаления прежних snapshot tables без `inspect` на

@@ -342,11 +342,12 @@ def downgrade() -> None:
             {"sequence_id": sequence_id, "run_id": run_id},
         )
 
-    missing_sequences = bind.execute(
-        sa.text("SELECT COUNT(*) FROM test_runs WHERE sequence_id IS NULL")
-    ).scalar_one()
-    if not offline and missing_sequences:
-        raise RuntimeError("Cannot downgrade: some test runs are missing sequence assignments")
+    if not offline:
+        missing_sequences = bind.execute(
+            sa.text("SELECT COUNT(*) FROM test_runs WHERE sequence_id IS NULL")
+        ).scalar_one()
+        if missing_sequences:
+            raise RuntimeError("Cannot downgrade: some test runs are missing sequence assignments")
 
     op.alter_column(
         "test_runs",
@@ -401,13 +402,14 @@ def downgrade() -> None:
     op.drop_constraint("ck_test_runs_mode_snapshot", "test_runs", type_="check")
     op.drop_column("test_runs", "mode")
 
-    null_snapshots = bind.execute(
-        sa.text("SELECT COUNT(*) FROM test_runs WHERE signal_snapshot_id IS NULL")
-    ).scalar_one()
-    if not offline and null_snapshots:
-        raise RuntimeError(
-            "Cannot downgrade: channel-mode test runs without signal snapshots exist",
-        )
+    if not offline:
+        null_snapshots = bind.execute(
+            sa.text("SELECT COUNT(*) FROM test_runs WHERE signal_snapshot_id IS NULL")
+        ).scalar_one()
+        if null_snapshots:
+            raise RuntimeError(
+                "Cannot downgrade: channel-mode test runs without signal snapshots exist",
+            )
 
     op.alter_column(
         "test_runs",
