@@ -1,4 +1,16 @@
 from app.services.core_diag_event_forwarder import _incident_id
+from app.services.core_diagnostics_incident import acknowledge_incident, is_incident_acknowledged
+
+
+class _Redis:
+    def __init__(self) -> None:
+        self.values: dict[str, str] = {}
+
+    async def set(self, key: str, value: str, *, ex: int) -> None:
+        self.values[key] = value
+
+    async def get(self, key: str) -> str | None:
+        return self.values.get(key)
 
 
 def _snapshot(*, cpu: float = 86.0, memory: float = 96.0, disk: float = 96.0) -> dict:
@@ -36,3 +48,13 @@ def test_healthy_snapshot_has_no_incident_id() -> None:
             "services": [{"name": "docker", "active": True}],
         }
     ) is None
+
+
+def test_incident_acknowledgement_is_ttl_backed_and_scoped() -> None:
+    import asyncio
+
+    redis = _Redis()
+    assert asyncio.run(acknowledge_incident(redis, hostname="rpi-1", incident_id="core-diag:abc")) is True
+    assert asyncio.run(is_incident_acknowledged(redis, hostname="rpi-1", incident_id="core-diag:abc")) is True
+    assert asyncio.run(is_incident_acknowledged(redis, hostname="rpi-2", incident_id="core-diag:abc")) is False
+    assert next(iter(redis.values)) == "core:diagnostics:ack:rpi-1:core-diag:abc"

@@ -51,6 +51,7 @@ export interface CoreDiagnosticsSnapshot {
   updated_at: string
   request_id?: string
   incident_id?: string
+  incident_acknowledged?: boolean
 }
 
 export interface CoreDiagnosticsStateResponse {

@@ -9,6 +9,7 @@ class WSAction(str, Enum):
     SET_AO_COMMAND  = "set_ao_command"
     GET_STATES      = "get_states"
     SCAN_DEVICES    = "scan_devices"
+    ACK_CORE_DIAGNOSTICS = "ack_core_diagnostics"
 
 # ---------------------------------------------------------------------
 # Output control (DO / AO)
@@ -75,6 +76,12 @@ class ScanDevicesMessage(BaseModel):
     action: Literal[WSAction.SCAN_DEVICES]
 
 
+class AcknowledgeCoreDiagnosticsMessage(BaseModel):
+    action: Literal[WSAction.ACK_CORE_DIAGNOSTICS]
+    hostname: str
+    incident_id: str
+
+
 # ---------------------------------------------------------------------
 # Unified union
 # ---------------------------------------------------------------------
@@ -84,4 +91,5 @@ WSMessage = Union[
     SetAoCommandMessage,
     RequestStateMessage,
     ScanDevicesMessage,
+    AcknowledgeCoreDiagnosticsMessage,
 ]

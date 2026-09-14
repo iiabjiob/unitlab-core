@@ -6,6 +6,7 @@ export enum WSAction {
   SET_AO_COMMAND = "set_ao_command",
   GET_STATES     = "get_states",
   SCAN_DEVICES   = "scan_devices",
+  ACK_CORE_DIAGNOSTICS = "ack_core_diagnostics",
 }
 
 export enum ReqStateMode {
@@ -31,6 +32,12 @@ export enum CmdMode {
 // ---------------------------------------------------------------------
 export interface ScanDevicesMessage {
   action: WSAction.SCAN_DEVICES
+}
+
+export interface AcknowledgeCoreDiagnosticsMessage {
+  action: WSAction.ACK_CORE_DIAGNOSTICS
+  hostname: string
+  incident_id: string
 }
 
 export interface RequestStateMessage {
@@ -84,3 +91,4 @@ export type WSMessage =
   | RequestStateMessage
   | SetDoCommandMessage
   | SetAoCommandMessage
+  | AcknowledgeCoreDiagnosticsMessage

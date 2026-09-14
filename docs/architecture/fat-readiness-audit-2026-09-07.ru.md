@@ -542,6 +542,13 @@ forwarder добавляет `incident_id`, рассчитанный по mode �
 использует этот ID как dedup/ack key и сохраняет fallback для старых snapshots.
 Это server-issued identity, но не server-side acknowledgement или audit trail.
 
+**Статус slice G29 (2026-09-14): server-side diagnostics acknowledgement.**
+Добавлен WS action `ack_core_diagnostics` с hostname и incident ID; backend хранит
+acknowledgement в Redis с TTL 7 дней, а последующие diagnostics snapshots несут
+`incident_acknowledged`. Frontend отправляет acknowledgement только для server-issued
+ID; старый fallback остаётся local-only. Полный durable audit trail и multi-user
+identity остаются отдельным release gap.
+
 ## Дополнительный связанный риск — AO-сценарий
 
 При следующем аппаратном slice отдельно проверить AO-ветку [signal_test_run_runner.py](../../backend/app/workers/signal_test_run_runner.py): она выбирает случайное значение 0–24. Это подтверждено кодом, но электрические единицы/допустимые диапазоны конкретного оборудования здесь не установлены. Не переносить такой сценарий автоматически в доверенный test plan: сначала определить тип/диапазон канала, затем сохранить детерминированную последовательность значений в ревизии плана и проверить readback. Основная цель текущей очереди — сухой контакт; расширение AO оформить отдельным scope.

@@ -14,6 +14,7 @@ from app.core.events.ws_event_publisher import WsEventPublisher
 from app.core.logger import get_logger
 from app.infrastructure.redis.manager import RedisManager
 from app.schemas.ws.events import CoreDiagnosticsStateEvent
+from app.services.core_diagnostics_incident import is_incident_acknowledged
 
 settings = get_settings()
 logger = get_logger("core.diag.forwarder")
@@ -132,6 +133,11 @@ async def _process_entries(redis, entries) -> None:
                     snapshot.pop("incident_id", None)
                 else:
                     snapshot["incident_id"] = incident_id
+                    snapshot["incident_acknowledged"] = await is_incident_acknowledged(
+                        redis,
+                        hostname=str(snapshot.get("hostname") or "unknown"),
+                        incident_id=incident_id,
+                    )
                 await WsEventPublisher.publish(
                     CoreDiagnosticsStateEvent(
                         snapshot=snapshot,

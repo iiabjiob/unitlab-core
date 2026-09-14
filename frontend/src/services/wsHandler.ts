@@ -16,6 +16,8 @@ import { useExternalIedStore } from '@/stores/externalIedStore'
 import { useToastStore } from '@/stores/toastStore'
 import type { SystemHealthResponse } from '@/types/health'
 import type { CoreDiagnosticsSnapshot } from '@/types/coreDiagnostics'
+import { useWebSocketStore } from '@/stores/websocketStore'
+import { WSAction } from '@/types/ws/messages'
 import router from '@/router'
 import {
   advanceCoreDiagnosticsIncidentDebounce,
@@ -386,6 +388,11 @@ function syncCoreDiagnosticsCriticalAlert(
     return
   }
 
+  if (snapshot.incident_acknowledged === true) {
+    coreDiagnosticsCriticalToastState.acknowledgedSignature = String(snapshot.incident_id ?? "").trim()
+      || buildCoreDiagnosticsIssueSignature(mode, issues)
+  }
+
   const signature = String(snapshot.incident_id ?? "").trim()
     || buildCoreDiagnosticsIssueSignature(mode, issues)
   const debounce = advanceCoreDiagnosticsIncidentDebounce(
@@ -416,6 +423,15 @@ function syncCoreDiagnosticsCriticalAlert(
     actionLabel: "Acknowledge",
     onAction: () => {
       coreDiagnosticsCriticalToastState.acknowledgedSignature = signature
+      const incidentId = String(snapshot.incident_id ?? "").trim()
+      const hostname = String(snapshot.hostname ?? "").trim()
+      if (incidentId && hostname) {
+        useWebSocketStore().send({
+          action: WSAction.ACK_CORE_DIAGNOSTICS,
+          hostname,
+          incident_id: incidentId,
+        }, { queue: "reject" })
+      }
       if (coreDiagnosticsCriticalToastState.id !== null) {
         toastStore.remove(coreDiagnosticsCriticalToastState.id)
         coreDiagnosticsCriticalToastState.id = null
