@@ -842,9 +842,14 @@ head `ca9b8c7d6e5f`; дополнительно backend suite завершилс
 отдельными release checks.
 
 **Статус slice G67 (2026-09-14): current-head validation повторена.** На HEAD
-offline graph снова сгенерирован до единственного `ca9b8c7d6e5f`; optional IEC
+offline graph снова сгенерирован до единственного `ce4f5a6b7c8d`; optional IEC
 wrapper корректно завершился явным `SKIP`, поскольку `pyiec61850` отсутствует.
 Это не заменяет online migration/rollback и внешний IEC wrapper/hardware gate.
+
+**Статус slice G93 (2026-09-14): audit head claim alignment.** После G89/G91
+текущий единственный Alembic head — `ce4f5a6b7c8d`; historical notes G41/G70
+сохранены как снимки соответствующих слайсов и не переинтерпретируются задним
+числом. Это устраняет противоречивое утверждение в release tracking.
 
 **Статус slice G68 (2026-09-14): offline downgrade для live signal sheet.**
 Migration `9a1b2c3d4e6f` теперь генерирует детерминированный downgrade SQL для
