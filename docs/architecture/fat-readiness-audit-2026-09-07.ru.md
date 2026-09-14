@@ -55,7 +55,7 @@
 
 **Приёмка:** старое/неполное наблюдение не даёт PASS; свежий допустимый report даёт PASS только при совпадении значения. Симулятор покрывает негативные случаи; реальный IED нужен для подтверждения временной семантики.
 
-**Статус slice A (2026-09-14): частично закрыт.** Отрицательная задержка больше не нормализуется в ноль: report до trigger получает `stale/report_before_trigger` и не может дать PASS. Остались проверка поколения соединения, source timestamp/качества и монотонной длительности ожидания.
+**Статус slice A (2026-09-14): частично закрыт.** Отрицательная задержка больше не нормализуется в ноль: report до trigger получает `stale/report_before_trigger` и не может дать PASS. Evidence builder использует timestamp выбранного source observation и отклоняет malformed timestamp. Остались проверка поколения соединения, source quality и монотонной длительности ожидания.
 
 ## GAP-02 — Двойной toggle не доказывает оба перехода
 
@@ -413,7 +413,7 @@ Rollout и negative/positive topic tests описаны отдельно; ACL pe
 
 **Приёмка:** десять одинаковых/численно меняющихся snapshots одного инцидента не создают поток новых тостов; настоящая новая неисправность и восстановление видны. Визуально проверить настройки сети, diagnostics и работу во время FAT.
 
-**Статус slice B (2026-09-14): частично закрыт.** Для core diagnostics численные изменения CPU/memory/disk не меняют incident signature; inactive-service alert ограничен обязательными `docker` и `NetworkManager`, а существующий toast обновляется вместо пересоздания и теперь сохраняет актуальные численные значения. Новый incident продвигается в toast после двух одинаковых snapshots, что отсекает одиночные flapping-состояния. Production incident ID, recovery и ручное acknowledgement остаются открытыми.
+**Статус slice B (2026-09-14): частично закрыт.** Для core diagnostics численные изменения CPU/memory/disk не меняют incident signature; inactive-service alert ограничен обязательными `docker` и `NetworkManager`, а существующий toast обновляется вместо пересоздания и теперь сохраняет актуальные численные значения. Новый incident продвигается в toast после двух одинаковых snapshots, что отсекает одиночные flapping-состояния. Local acknowledgement скрывает текущий incident до recovery/новой signature. Production incident ID, server-side acknowledgement и recovery audit остаются открытыми.
 
 ## GAP-13 — Повторная загрузка полного allocation-контекста на каждый сигнал
 
