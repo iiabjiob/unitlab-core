@@ -578,6 +578,12 @@ memory/long-task, MQTT/ACK или сменный soak.
 локального `pyiec61850`; полный tracked backend suite прошёл `405` тестов.
 Optional IEC wrapper по-прежнему запускается отдельным runner-ом из G17.
 
+**Статус slice G55 (2026-09-14): performance harness повторён.** 20 000 строк
+и burst из 5 000 allocation/runtime patches прошли `3/3` теста за `469 ms`
+(Vitest test time; общий run `654 ms`). Это подтверждает только deterministic
+projection/patch contract; browser frame trace, Pi memory/soak и backend
+query/message-rate baseline остаются release-проверками.
+
 **Статус slice G20 (2026-09-14): frontend regression suite повторён.** Полный
 Vitest прогон прошёл `43` test files и `219` тестов; performance harness входит
 в этот результат. Это подтверждает текущие store/transport/projection contracts,
