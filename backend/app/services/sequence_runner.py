@@ -1613,7 +1613,7 @@ class SequenceRunner:
             ctx=self._build_step_context(top_step=top_level_step, active_step=active_step),
             cancel_event=cancel_event,
             cancellation_probe=lambda: self._probe_cancellation_from_db(run_id, cancel_event),
-            command_admission=admit_sequence_command,
+            command_admission=command_admission,
         )
 
         is_nested_progress = (
