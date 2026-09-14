@@ -851,6 +851,13 @@ wrapper корректно завершился явным `SKIP`, поскол�
 сохранены как снимки соответствующих слайсов и не переинтерпретируются задним
 числом. Это устраняет противоречивое утверждение в release tracking.
 
+**Статус slice G94 (2026-09-14): fail-closed intent scope persistence.**
+Запись durable intent теперь отклоняет malformed или неположительный
+multi-channel scope вместо молчаливого сохранения только primary channel; это
+не позволяет association table выдавать неполный safety scope. Добавлена
+negative regression; legacy migration parsing по-прежнему сохраняет только
+валидные legacy ids и требует deployment rehearsal.
+
 **Статус slice G68 (2026-09-14): offline downgrade для live signal sheet.**
 Migration `9a1b2c3d4e6f` теперь генерирует детерминированный downgrade SQL для
 `signal_allocations`, `signal_sheet_presets` и `signal_sheets`, не вызывая

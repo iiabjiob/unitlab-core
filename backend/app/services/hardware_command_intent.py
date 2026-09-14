@@ -95,17 +95,28 @@ async def record_hardware_command_intent(
         fencing_epoch=fencing_epoch,
         status="created",
     )
-    db.add(intent)
-    channel_ids: list[int] = [int(channel_id)]
+    try:
+        primary_channel_id = int(channel_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Hardware intent requires a valid primary channel_id") from exc
+    if primary_channel_id <= 0:
+        raise ValueError("Hardware intent requires a positive primary channel_id")
+    channel_ids: list[int] = [primary_channel_id]
+    has_multi_channel_scope = isinstance(payload, dict) and "channel_ids" in payload
     raw_channel_ids = payload.get("channel_ids") if isinstance(payload, dict) else None
+    if has_multi_channel_scope and not isinstance(raw_channel_ids, list):
+        raise ValueError("Hardware intent channel_ids must be a list")
     if isinstance(raw_channel_ids, list):
         for raw_channel_id in raw_channel_ids:
             try:
                 normalized_channel_id = int(raw_channel_id)
-            except (TypeError, ValueError):
-                continue
+            except (TypeError, ValueError) as exc:
+                raise ValueError("Hardware intent channel_ids contains an invalid channel") from exc
             if normalized_channel_id > 0 and normalized_channel_id not in channel_ids:
                 channel_ids.append(normalized_channel_id)
+            elif normalized_channel_id <= 0:
+                raise ValueError("Hardware intent channel_ids must be positive")
+    db.add(intent)
     for intent_channel_id in channel_ids:
         db.add(
             HardwareCommandIntentChannel(
