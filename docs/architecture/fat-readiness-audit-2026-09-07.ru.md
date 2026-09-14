@@ -889,6 +889,12 @@ Standalone verification теперь передаёт `execution_context.signal_
 теряет revision source при записи вне worker flow. Production crash/transaction
 rehearsal и проверка реального PostgreSQL остаются release checks.
 
+**Статус slice G100 (2026-09-14): double-toggle transition regression.**
+Добавлена worker regression, которая проверяет для исходного `0` отдельные SET
+и RESTORE команды, два последовательных physical-readback barrier и финальное
+ожидаемое значение `0`. IEC 61850 остаётся optional observation; delayed/reordered
+IED reports и автономный hardware safe-state требуют стендовой проверки.
+
 **Статус slice G68 (2026-09-14): offline downgrade для live signal sheet.**
 Migration `9a1b2c3d4e6f` теперь генерирует детерминированный downgrade SQL для
 `signal_allocations`, `signal_sheet_presets` и `signal_sheets`, не вызывая

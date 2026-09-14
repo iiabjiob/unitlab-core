@@ -482,6 +482,63 @@ def test_signal_test_run_resolves_current_binding_per_signal(monkeypatch) -> Non
     assert repo.db.commit_count >= len(repo.evidence)
 
 
+def test_signal_test_run_double_toggle_requires_set_and_restore_readback(monkeypatch) -> None:
+    repo = FakeLiveRowsRepo()
+    commands: list[tuple[str, dict]] = []
+    readbacks: list[dict] = []
+
+    async def publish_noop(event) -> None:
+        return None
+
+    async def sleep_noop(seconds: float) -> None:
+        return None
+
+    async def enqueue_do_noop(**kwargs) -> None:
+        commands.append(("do", dict(kwargs)))
+
+    async def enqueue_state_noop(**kwargs) -> int:
+        commands.append(("state", dict(kwargs)))
+        return len([kind for kind, _ in commands if kind == "state"])
+
+    async def readback(*args, **kwargs) -> bool:
+        del args
+        readbacks.append(dict(kwargs))
+        return True
+
+    async def fresh_bitmask(*args, **kwargs) -> int:
+        del args, kwargs
+        return 0
+
+    monkeypatch.setattr(signal_test_run_runner.RedisManager, "get_instance", lambda: FakeRedis())
+    monkeypatch.setattr(signal_test_run_runner.WsEventPublisher, "publish", publish_noop)
+    monkeypatch.setattr(signal_test_run_runner.asyncio, "sleep", sleep_noop)
+    monkeypatch.setattr(signal_test_run_runner, "enqueue_do_command", enqueue_do_noop)
+    monkeypatch.setattr(signal_test_run_runner, "enqueue_request_state", enqueue_state_noop)
+    monkeypatch.setattr(signal_test_run_runner, "_wait_for_bit_readback", readback)
+    monkeypatch.setattr(signal_test_run_runner, "_wait_for_fresh_bitmask_snapshot", fresh_bitmask)
+
+    job_state = {
+        "job_id": "job-double",
+        "workspace_id": 7,
+        "operation": "test_run",
+        "status": "queued",
+        "created_at": "2026-01-01T12:30:00+00:00",
+    }
+    payload = {
+        "job_id": "job-double",
+        "signal_ids": [1],
+        "signal_interval_ms": 100,
+        "toggle_mode": "double",
+    }
+
+    result = run_async(signal_test_run_runner._handle_test_run(repo, 7, payload, job_state))  # type: ignore[arg-type]
+
+    assert result["succeeded"] == 1, result["test_report_by_signal"][1]
+    assert [item["value"] for kind, item in commands if kind == "do"] == [1, 0]
+    assert [item["expected_value"] for item in readbacks] == [1, 0]
+    assert repo.evidence[0]["command_payload"]["expected_feedback_value"] == 0
+
+
 def test_signal_test_run_requires_iec61850_report_when_verification_enabled(monkeypatch) -> None:
     commands: list[tuple[str, dict]] = []
     persisted_verification: list[dict] = []
