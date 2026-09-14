@@ -8,7 +8,10 @@ from app.schemas.ws.events import DeviceRespEvent
 from app.core.logger import get_logger
 from app.infrastructure.redis.manager import RedisManager
 from app.infrastructure.db.database import AsyncSessionLocal
-from app.services.hardware_command_ack import record_hardware_command_ack
+from app.services.hardware_command_ack import (
+    record_hardware_command_ack,
+    record_hardware_command_ack_diagnostic,
+)
 
 logger = get_logger("mqtt")
 
@@ -39,7 +42,7 @@ async def handle_device_resp(topic: str, payload: bytes, unit_id: str):
         if command_id:
             try:
                 async with AsyncSessionLocal() as session:
-                    await record_hardware_command_ack(
+                    matched = await record_hardware_command_ack(
                         session,
                         command_id=str(command_id).strip(),
                         unit_id=unit_id,
@@ -47,6 +50,18 @@ async def handle_device_resp(topic: str, payload: bytes, unit_id: str):
                         status=status.name,
                         error=error.name,
                     )
+                if not matched:
+                    try:
+                        await record_hardware_command_ack_diagnostic(
+                            command_id=str(command_id).strip(),
+                            unit_id=unit_id,
+                            packet_id=parser.hdr.packet_id,
+                            status=status.name,
+                            error=error.name,
+                            reason="late_duplicate_or_terminal_intent",
+                        )
+                    except Exception:  # noqa: BLE001
+                        logger.exception("Unable to persist ACK diagnostic for %s/%s", unit_id, parser.hdr.packet_id)
             except Exception:  # noqa: BLE001
                 logger.exception("Unable to persist command ACK for %s/%s", unit_id, parser.hdr.packet_id)
 

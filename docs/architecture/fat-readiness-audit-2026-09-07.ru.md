@@ -113,6 +113,13 @@ reservation недоступен, DO/AO enqueue теперь отклоняет�
 не отправляется с неподтверждённой корреляцией packet ID. Это safety-поведение
 проверено command-queue regression и полной backend suite.
 
+**Статус slice G58 (2026-09-14): late/duplicate ACK diagnostics.** RESP, который
+не может изменить intent из-за неизвестного либо уже terminal состояния, теперь
+попадает в отдельный append-only Redis stream с command/unit/packet/status/reason.
+Основной ACK state не перезаписывается; проверены service regression и полная
+backend suite. Долговечный экспорт diagnostics и device-side correlation остаются
+release-проверками.
+
 ## GAP-04 — Восстановление выхода и исходное состояние не гарантированы
 
 **P0 · peripheral safety/test-run · подтверждено кодом; аппаратная защита не проверена.**

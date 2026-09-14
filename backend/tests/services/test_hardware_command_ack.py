@@ -6,7 +6,9 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.models.hardware_command import HardwareCommandIntent
+from app.infrastructure.redis.manager import RedisManager
 from app.services.hardware_command_ack import record_hardware_command_ack, wait_for_hardware_command_acks
+from app.services.hardware_command_ack import record_hardware_command_ack_diagnostic
 from app.services.hardware_command_intent import (
     has_hardware_recovery_required,
     mark_hardware_command_intent_delivery_failure,
@@ -67,6 +69,33 @@ async def test_ack_for_unknown_command_does_not_commit() -> None:
 
     assert matched is False
     db.commit.assert_not_awaited()
+
+
+@pytest.mark.anyio
+async def test_ack_diagnostic_is_appended_for_late_or_duplicate_response(monkeypatch) -> None:
+    class FakeRedis:
+        def __init__(self) -> None:
+            self.calls = []
+
+        async def xadd(self, stream, fields, **kwargs):
+            self.calls.append((stream, fields, kwargs))
+            return "1-0"
+
+    redis = FakeRedis()
+    monkeypatch.setattr(RedisManager, "get_instance", classmethod(lambda cls: redis))
+
+    await record_hardware_command_ack_diagnostic(
+        command_id="cmd-1",
+        unit_id="UNIT-1",
+        packet_id=12,
+        status="OK",
+        error="NONE",
+        reason="late_duplicate_or_terminal_intent",
+    )
+
+    assert redis.calls[0][0] == "hardware:command-ack-diagnostics"
+    assert redis.calls[0][1]["command_id"] == "cmd-1"
+    assert redis.calls[0][1]["reason"] == "late_duplicate_or_terminal_intent"
 
 
 @pytest.mark.anyio

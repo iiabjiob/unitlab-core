@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.hardware_command import HardwareCommandIntent
 
+HARDWARE_COMMAND_ACK_DIAGNOSTIC_STREAM = "hardware:command-ack-diagnostics"
+
 
 async def wait_for_hardware_command_acks(
     db: AsyncSession,
@@ -84,3 +86,32 @@ async def record_hardware_command_ack(
     intent.ack_received_at = datetime.now(timezone.utc)
     await db.commit()
     return True
+
+
+async def record_hardware_command_ack_diagnostic(
+    *,
+    command_id: str,
+    unit_id: str,
+    packet_id: int,
+    status: str,
+    error: str,
+    reason: str,
+) -> None:
+    """Keep an observable trail for ACKs that cannot mutate an intent."""
+    from app.infrastructure.redis.manager import RedisManager
+
+    redis = RedisManager.get_instance()
+    await redis.xadd(
+        HARDWARE_COMMAND_ACK_DIAGNOSTIC_STREAM,
+        {
+            "command_id": str(command_id),
+            "unit_id": str(unit_id),
+            "packet_id": str(int(packet_id)),
+            "status": str(status),
+            "error": str(error),
+            "reason": str(reason),
+            "recorded_at": datetime.now(timezone.utc).isoformat(),
+        },
+        maxlen=10000,
+        approximate=True,
+    )
