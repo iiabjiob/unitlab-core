@@ -1251,18 +1251,20 @@ async def _handle_test_run(
         except Exception:  # noqa: BLE001
             logger.exception("💥 Failed to persist signal test run progress cursor for job %s", job_id)
 
-    unit_bitmasks: dict[str, int] = {}
+    unit_bitmasks: dict[str, int | None] = {}
 
-    async def get_unit_bitmask(unit_id: str) -> int:
+    async def get_unit_bitmask(unit_id: str) -> int | None:
         if unit_id in unit_bitmasks:
             return unit_bitmasks[unit_id]
-        bitmask = 0
         bitmask_raw = await redis.get(f"device:{unit_id}:bitmask")
-        if bitmask_raw is not None:
-            try:
-                bitmask = int(bitmask_raw)
-            except (TypeError, ValueError):
-                bitmask = 0
+        if bitmask_raw is None:
+            unit_bitmasks[unit_id] = None
+            return None
+        try:
+            bitmask = int(bitmask_raw)
+        except (TypeError, ValueError):
+            unit_bitmasks[unit_id] = None
+            return None
         unit_bitmasks[unit_id] = bitmask
         return bitmask
 
@@ -1298,6 +1300,9 @@ async def _handle_test_run(
             or str(current.unit_id) != str(row.unit_id)
         ):
             return row, "binding_changed"
+        if str(row.channel_type or "").strip().lower().startswith("do"):
+            if await get_unit_bitmask(str(row.unit_id)) is None:
+                return row, "initial_state_unknown"
         return row, None
 
     async def apply_control_state() -> bool:
