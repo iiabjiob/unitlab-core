@@ -148,6 +148,7 @@ const flowItems = computed(() => items.filter((item) => item.section === "flow")
           :key="item.type"
           class="sequence-step-add-toolbar__item"
           :disabled="!canReferenceAnotherSequence"
+          :title="canReferenceAnotherSequence ? undefined : 'Add another instruction to enable this step'"
           @select="add(item.type)"
         >
           {{ item.label }}
@@ -177,6 +178,12 @@ const flowItems = computed(() => items.filter((item) => item.section === "flow")
 
 :global(.sequence-step-add-toolbar__item) {
   color: var(--color-neutral-900);
+}
+
+:global(.sequence-step-add-toolbar__item[aria-disabled="true"]) {
+  cursor: not-allowed;
+  opacity: 0.45;
+  pointer-events: none;
 }
 
 :global(.dark .sequence-step-add-toolbar__item) {
