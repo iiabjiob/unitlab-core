@@ -12,7 +12,7 @@ from app.services.hardware_command_intent import (
     mark_hardware_command_intent_delivery_failure,
     reconcile_unfinished_hardware_command_intents,
 )
-from app.workers.signal_test_run_runner import _deliver_durable_command
+from app.workers.signal_test_run_runner import _deliver_durable_command, _wait_for_bit_readback
 
 
 @pytest.mark.anyio
@@ -220,3 +220,19 @@ async def test_reconcile_unfinished_intents_marks_restore_for_recovery() -> None
     assert restore.status == "recovery_required"
     assert regular.status == "unknown"
     db.flush.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_bit_readback_wait_accepts_expected_channel_value() -> None:
+    class Redis:
+        async def get(self, key: str):
+            assert key == "device:UNIT-1:bitmask"
+            return "4"
+
+    assert await _wait_for_bit_readback(
+        Redis(),
+        unit_id="UNIT-1",
+        channel_index=2,
+        expected_value=1,
+        timeout_ms=100,
+    ) is True

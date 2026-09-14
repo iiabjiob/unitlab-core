@@ -89,6 +89,30 @@ def _lease_stats_snapshot() -> dict[str, int]:
     return dict(_lease_stats)
 
 
+async def _wait_for_bit_readback(
+    redis,
+    *,
+    unit_id: str,
+    channel_index: int,
+    expected_value: int,
+    timeout_ms: int,
+) -> bool:
+    deadline = time.monotonic() + max(100, timeout_ms) / 1000
+    mask = 1 << int(channel_index)
+    while True:
+        raw_bitmask = await redis.get(f"device:{unit_id}:bitmask")
+        try:
+            bitmask = int(raw_bitmask or 0)
+        except (TypeError, ValueError):
+            bitmask = 0
+        actual_value = 1 if bitmask & mask else 0
+        if actual_value == int(expected_value):
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        await asyncio.sleep(0.05)
+
+
 async def _deliver_durable_command(
     db,
     *,
@@ -1404,6 +1428,7 @@ async def _handle_test_run(
                 bitmask = await get_unit_bitmask(unit_id)
                 current_value = 1 if (bitmask & (1 << channel_index)) else 0
                 toggled_value = 0 if current_value else 1
+                readback_timeout_ms = min(2000, max(250, verification_timeout_ms))
                 set_correlation_id = f"test-run:{signal_id}:set:{toggled_value}"
                 commands_payload: list[dict[str, Any]] = [
                     {
@@ -1440,6 +1465,23 @@ async def _handle_test_run(
                     bitmask = bitmask | (1 << channel_index)
                 else:
                     bitmask = bitmask & ~(1 << channel_index)
+
+                set_readback_correlation_id = f"test-run:{signal_id}:readback:set:{toggled_value}"
+                await enqueue_request_state(
+                    unit_id=unit_id,
+                    mode=State.REQ_SINGLE_BIT,
+                    ch=channel_index,
+                    correlation_id=set_readback_correlation_id,
+                )
+                readback_ok = await _wait_for_bit_readback(
+                    redis,
+                    unit_id=unit_id,
+                    channel_index=channel_index,
+                    expected_value=toggled_value,
+                    timeout_ms=readback_timeout_ms,
+                )
+                if not readback_ok:
+                    test_status = "blocked"
 
                 if toggle_mode == "double":
                     await asyncio.sleep(signal_interval_seconds)
@@ -1479,6 +1521,29 @@ async def _handle_test_run(
                         bitmask = bitmask | (1 << channel_index)
                     else:
                         bitmask = bitmask & ~(1 << channel_index)
+
+                    restore_readback_correlation_id = f"test-run:{signal_id}:readback:restore:{current_value}"
+                    await enqueue_request_state(
+                        unit_id=unit_id,
+                        mode=State.REQ_SINGLE_BIT,
+                        ch=channel_index,
+                        correlation_id=restore_readback_correlation_id,
+                    )
+                    readback_ok = await _wait_for_bit_readback(
+                        redis,
+                        unit_id=unit_id,
+                        channel_index=channel_index,
+                        expected_value=current_value,
+                        timeout_ms=readback_timeout_ms,
+                    )
+                    if not readback_ok:
+                        await mark_hardware_command_intent_delivery_failure(
+                            repo.db,
+                            command_id=restore_command_id,
+                            status="recovery_required",
+                        )
+                        await repo.db.commit()
+                        test_status = "blocked"
 
                 unit_bitmasks[unit_id] = bitmask
                 state_correlation_id = f"test-run:{signal_id}:state"
