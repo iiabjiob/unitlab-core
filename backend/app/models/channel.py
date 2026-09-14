@@ -25,7 +25,7 @@ class Channel(Base):
 
     id: Mapped[int] = mapped_column(BIGINT_PK, primary_key=True, autoincrement=True)
     device_id: Mapped[int] = mapped_column(
-        ForeignKey("devices.id", ondelete="CASCADE"), nullable=False, index=True
+        ForeignKey("devices.id", ondelete="CASCADE"), nullable=False
     )
     channel_index: Mapped[int] = mapped_column(Integer, nullable=False)
     channel_type: Mapped[str] = mapped_column(String, nullable=False)

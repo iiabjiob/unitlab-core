@@ -122,6 +122,8 @@ The app layer owns:
 - Persistence of import metadata, generated diagram state, and manual overrides.
 - Explicit creation/update of UnitLab switchgear entities if the operator confirms it.
 
+Current UnitLab integration mounts the package-based SLD editor as the sole Switchgear diagram editor. The former in-app legacy editor has been removed from the Switchgear flow.
+
 ### Backend
 
 Backend persistence is needed once generated SLDs must survive workspace reloads across browsers/users.

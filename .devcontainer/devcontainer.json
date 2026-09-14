@@ -18,13 +18,11 @@
     }
   },
 
-  // "features": {
-  //   "ghcr.io/devcontainers/features/docker-outside-of-docker:1.10.0": {
-  //     "version": "latest",
-  //     "installDockerBuildx": true,
-  //     "installDockerComposeSwitch": true
-  //   }
-  // },
+  "features": {
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {
+      "moby": false
+    }
+  },
 
   "shutdownAction": "stopCompose"
 }

@@ -47,7 +47,7 @@ Current file responsibilities:
 
 ## Debug Visualization
 
-`frontend/src/pages/debug61850/Iec61850DebugPage.vue` visualizes the normalized SCL model through the existing Affino Treeview panel and property panel.
+The former UnitLab debug page has been removed. A standalone read-only inspector now lives in `packages/iec61850-debug`; the production normalized SCL model remains owned by the backend/runtime and shared SCD core.
 
 The tree now shows:
 
@@ -57,15 +57,15 @@ The tree now shows:
 - DataSets and their signal members;
 - ReportControls and the resolved report signal set.
 
-This view is inspection-only. Loading an SCD file in the debug page does not create report subscriptions, enable reports, reserve RCBs, or persist runtime evidence.
+The standalone inspector is inspection-only. Loading an SCD file does not create report subscriptions, enable reports, reserve RCBs, or persist runtime evidence.
 
-Large SCD files are read, hashed, parsed, and converted to a bounded debug document in `frontend/src/pages/debug61850/iec61850DebugWorker.ts` so file text decoding, XML scanning, SCL normalization, and debug tree construction do not block the Vue main thread. The page receives summary data, full diagnostic counts, capped diagnostic rows, and capped tree rows; the core parser still preserves the full parsed signal inventory for production pipelines.
+The standalone inspector currently reads XML locally and exposes bounded structural counts and diagnostics. Full SCL normalization and production signal inventory remain outside the debug UI.
 
 ## Runtime Boundary
 
 This slice does not subscribe to devices, open MMS sessions, write backend state, or mutate hardware-facing runtime state. It only normalizes SCD metadata so the later backend/runtime slice can validate report subscriptions against an explicit device and DataSet structure.
 
-The future runtime owner must remain backend-side. The frontend debug view may visualize this model, but it must not become the source of truth for report enablement, received report ordering, acknowledgements, stale state, or evidence persistence.
+The runtime owner remains backend-side. The standalone debug package must not become the source of truth for report enablement, received report ordering, acknowledgements, stale state, or evidence persistence.
 
 The report runtime roadmap is tracked in `docs/architecture/iec61850-report-runtime-plan.md`. The first implementation slice is simulator-only and defines portable report manager contracts in `frontend/src/modules/iec61850-report-core`; it does not connect to real devices.
 
