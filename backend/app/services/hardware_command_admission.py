@@ -51,6 +51,61 @@ class HardwareCommandAdmission:
             expires_at=expires_at,
         )
 
+    async def acquire_many(
+        self,
+        *,
+        channel_ids: list[int],
+        owner_kind: str,
+        owner_id: str,
+    ) -> list[HardwareChannelLease] | None:
+        normalized = list(dict.fromkeys(int(channel_id) for channel_id in channel_ids))
+        if not normalized or any(channel_id <= 0 for channel_id in normalized):
+            raise ValueError("channel_ids must contain positive ids")
+        if not owner_kind.strip() or not owner_id.strip():
+            raise ValueError("owner_kind and owner_id are required")
+        lease_id = uuid4().hex
+        now = datetime.now(UTC)
+        expires_at = now + timedelta(seconds=self.ttl_seconds)
+        lease_keys = [self._key(channel_id) for channel_id in normalized]
+        epoch_keys = [f"hardware:channel-epoch:{channel_id}" for channel_id in normalized]
+        script = """
+        local count = tonumber(ARGV[5])
+        for i = 1, count do
+          if redis.call('EXISTS', KEYS[i]) == 1 then return {} end
+        end
+        local epochs = {}
+        for i = 1, count do
+          local epoch = redis.call('INCR', KEYS[count + i])
+          local payload = cjson.encode({lease_id=ARGV[3], owner_kind=ARGV[1], owner_id=ARGV[2], fencing_epoch=epoch})
+          redis.call('SET', KEYS[i], payload, 'EX', ARGV[4])
+          epochs[i] = epoch
+        end
+        return epochs
+        """
+        raw_epochs = await self.redis.eval(
+            script,
+            len(lease_keys) + len(epoch_keys),
+            *(lease_keys + epoch_keys),
+            owner_kind.strip(),
+            owner_id.strip(),
+            lease_id,
+            self.ttl_seconds,
+            len(normalized),
+        )
+        if not raw_epochs or len(raw_epochs) != len(normalized):
+            return None
+        return [
+            HardwareChannelLease(
+                channel_id=channel_id,
+                owner_kind=owner_kind.strip(),
+                owner_id=owner_id.strip(),
+                fencing_epoch=int(epoch),
+                lease_id=lease_id,
+                expires_at=expires_at,
+            )
+            for channel_id, epoch in zip(normalized, raw_epochs)
+        ]
+
     async def release(self, lease: HardwareChannelLease) -> bool:
         script = """
         local current = redis.call('GET', KEYS[1])

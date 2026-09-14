@@ -22,7 +22,20 @@ class _FakeRedis:
         self.values[key] = value
         return True
 
-    async def eval(self, _script: str, _count: int, key: str, lease_id: str):
+    async def eval(self, _script: str, _count: int, *args):
+        if _count > 1:
+            lease_keys = list(args[: _count // 2])
+            epoch_keys = list(args[_count // 2 : _count])
+            owner_kind, owner_id, lease_id, _ttl, _size = args[_count:]
+            if any(key in self.values for key in lease_keys):
+                return []
+            epochs = []
+            for lease_key, epoch_key in zip(lease_keys, epoch_keys):
+                self.epochs[epoch_key] = self.epochs.get(epoch_key, 0) + 1
+                epochs.append(self.epochs[epoch_key])
+                self.values[lease_key] = json.dumps({"lease_id": lease_id, "owner_kind": owner_kind, "owner_id": owner_id})
+            return epochs
+        key, lease_id = args
         value = self.values.get(key)
         if value and lease_id in value:
             del self.values[key]
@@ -55,3 +68,18 @@ async def test_release_cannot_remove_another_owner() -> None:
 
     assert await admission.release(first) is False
     assert admission._key(12) in redis.values
+
+
+@pytest.mark.anyio
+async def test_multi_channel_lease_is_atomic() -> None:
+    redis = _FakeRedis()
+    admission = HardwareCommandAdmission(redis)
+
+    first = await admission.acquire_many(channel_ids=[12, 13], owner_kind="sequence", owner_id="run-1")
+    second = await admission.acquire_many(channel_ids=[13, 14], owner_kind="manual", owner_id="session-2")
+
+    assert first is not None
+    assert [lease.channel_id for lease in first] == [12, 13]
+    assert second is None
+    assert await admission.release(first[0]) is True
+    assert await admission.release(first[1]) is True

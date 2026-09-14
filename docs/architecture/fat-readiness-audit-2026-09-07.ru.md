@@ -215,6 +215,11 @@ steps теперь используют общий hardware lease, durable inten
 `DO_PAIR`/`DO_BITMASK` явно блокируются до реализации атомарного multi-channel
 lease; recovery и финальный verdict barrier остаются открытыми.
 
+**Статус slice E10 (2026-09-14): частично закрыт.** Admission теперь умеет
+атомарно захватывать несколько channel IDs одним lease identity и fencing epoch;
+при конфликте не захватывается ни один канал. Подключение pair/all к intent,
+ACK и command payload остаётся следующим шагом.
+
 ## GAP-06 — Синхронное ожидание IEC 61850 блокирует event loop worker
 
 **P1 · runtime/performance · подтверждено кодом; длительности не измерены.**
