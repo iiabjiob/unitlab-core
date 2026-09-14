@@ -1,0 +1,23 @@
+# Backend may consume device telemetry/registration and publish commands/state
+# requests. The single backend identity is provisioned outside the repository.
+user unitlab-backend
+topic read +/s
+topic read +/h
+topic read +/hd
+topic read +/r
+topic read +/reg
+topic write +/c
+topic write +/q
+topic write scan
+topic write +/i
+
+# Each device identity is its stable unit_id. `%u` is replaced by the
+# authenticated username, preventing cross-device command and telemetry access.
+pattern read %u/c
+pattern read %u/q
+pattern write %u/s
+pattern write %u/h
+pattern write %u/hd
+pattern write %u/r
+pattern write %u/reg
+pattern write %u/i

@@ -397,6 +397,12 @@ broker data volume. Текущий production compose намеренно не п
 Rollout и negative/positive topic tests описаны отдельно; ACL per-device и TLS
 остаются последующими deployment/hardware checks.
 
+**Статус slice G42 (2026-09-14): opt-in MQTT ACL.** Secure profile теперь
+подключает tracked ACL: backend identity получает только device telemetry/registration
+read и command/request write, а device identity с username=`unit_id` ограничена
+собственным topic namespace через `%u`. Anonymous production profile не изменён;
+нужны provisioning credentials, broker integration test и TLS rollout на стенде.
+
 ## GAP-12 — Повторные diagnostics-тосты и неоднозначность сетевой ошибки
 
 **P1 · operator UX/host diagnostics · механизм подтверждён, production-причина не установлена.**
