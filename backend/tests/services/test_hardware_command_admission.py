@@ -22,6 +22,9 @@ class _FakeRedis:
         self.values[key] = value
         return True
 
+    async def get(self, key: str):
+        return self.values.get(key)
+
     async def eval(self, _script: str, _count: int, *args):
         if _count > 1:
             lease_keys = list(args[: _count // 2])
@@ -68,6 +71,19 @@ async def test_release_cannot_remove_another_owner() -> None:
 
     assert await admission.release(first) is False
     assert admission._key(12) in redis.values
+
+
+@pytest.mark.anyio
+async def test_lease_fence_rejects_stale_owner() -> None:
+    redis = _FakeRedis()
+    admission = HardwareCommandAdmission(redis)
+    first = await admission.acquire(channel_id=12, owner_kind="fat", owner_id="run-1")
+    assert first is not None
+    assert await admission.is_current(first) is True
+    redis.values[admission._key(12)] = json.dumps(
+        {"lease_id": "other", "owner_kind": "manual", "owner_id": "session-2", "fencing_epoch": 2}
+    )
+    assert await admission.is_current(first) is False
 
 
 @pytest.mark.anyio

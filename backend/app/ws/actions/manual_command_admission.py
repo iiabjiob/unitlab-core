@@ -186,6 +186,9 @@ async def _enqueue_manual(
                 fencing_epoch=leases[0].fencing_epoch,
             )
             await session.commit()
+            is_current = getattr(admission, "is_current", None)
+            if is_current is not None and not await is_current(leases[0]):
+                raise RuntimeError("Hardware channel lease lost before command publish")
             await sender(command_id)
             await mark_hardware_command_intent_queued(session, command_id=command_id)
             await session.commit()

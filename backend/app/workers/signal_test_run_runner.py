@@ -722,6 +722,10 @@ async def _handle_test_run(
         payload: dict[str, Any],
         command_sender,
     ) -> str:
+        if channel_lease is not None:
+            is_current = getattr(hardware_admission, "is_current", None)
+            if is_current is not None and not await is_current(channel_lease):
+                raise RuntimeError("Hardware channel lease lost before command intent")
         command_id = uuid4().hex
         await record_hardware_command_intent(
             repo.db,
@@ -740,6 +744,10 @@ async def _handle_test_run(
         )
         # The intent must survive a worker crash before the outbound stream publish.
         await repo.db.commit()
+        if channel_lease is not None:
+            is_current = getattr(hardware_admission, "is_current", None)
+            if is_current is not None and not await is_current(channel_lease):
+                raise RuntimeError("Hardware channel lease lost before command publish")
         await _deliver_durable_command(
             repo.db,
             command_id=command_id,

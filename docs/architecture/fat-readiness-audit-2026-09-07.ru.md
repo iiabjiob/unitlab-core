@@ -377,6 +377,13 @@ backend regression suite; реальный kill worker/Redis и deployment recov
 
 Уникальность allocation и поиск конфликтов ограничены workspace. Ручной WS-путь передаёт команду в queue напрямую. Workspace/job lease не эквивалентен исключительному владению физическим каналом между всеми путями управления.
 
+**Статус slice G53 (2026-09-14): fencing check перед hardware publish.** Manual,
+sequence и FAT paths используют общий channel lease и перед публикацией команды
+проверяют его `lease_id`, owner и `fencing_epoch`; потерявший lease владелец
+получает отказ, а durable intent не маскируется успешной доставкой. Это снижает
+окно stale-owner command, но не заменяет атомарный broker/device-side fencing и
+стендовый тест истечения lease во время publish.
+
 **Порядок исправления:**
 1. Перечислить всех отправителей: manual, sequence, FAT, recovery; отделить повторно используемую привязку от активного владения.
 2. Определить единый backend admission и атомарное получение владения нужными каналами.

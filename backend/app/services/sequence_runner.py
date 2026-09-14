@@ -1071,6 +1071,11 @@ class SequenceRunner:
                             fencing_epoch=leases[0].fencing_epoch,
                         )
                         await session.commit()
+                        is_current = getattr(hardware_admission, "is_current", None)
+                        if is_current is not None and any(
+                            not await is_current(lease) for lease in leases
+                        ):
+                            raise SequenceNotApplicableError("Hardware channel lease lost")
                         try:
                             await sender(command_id)
                         except Exception:

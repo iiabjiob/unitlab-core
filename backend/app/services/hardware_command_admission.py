@@ -106,6 +106,24 @@ class HardwareCommandAdmission:
             for channel_id, epoch in zip(normalized, raw_epochs)
         ]
 
+    async def is_current(self, lease: HardwareChannelLease) -> bool:
+        """Return whether this owner still holds the channel lease fence."""
+        raw = await self.redis.get(self._key(lease.channel_id))
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8", errors="replace")
+        if not raw:
+            return False
+        try:
+            current = json.loads(raw)
+        except (TypeError, ValueError):
+            return False
+        return (
+            str(current.get("lease_id") or "") == lease.lease_id
+            and str(current.get("owner_kind") or "") == lease.owner_kind
+            and str(current.get("owner_id") or "") == lease.owner_id
+            and int(current.get("fencing_epoch") or 0) == lease.fencing_epoch
+        )
+
     async def release(self, lease: HardwareChannelLease) -> bool:
         script = """
         local current = redis.call('GET', KEYS[1])
