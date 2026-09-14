@@ -1215,6 +1215,42 @@ async def test_runtime_orchestrator_captures_triggered_signal_report_after_initi
 
 
 @pytest.mark.anyio
+async def test_runtime_orchestrator_rejects_non_causal_triggered_report_reason() -> None:
+    plan = _build_same_endpoint_multi_report_plan()
+    orchestrator = VerificationRuntimeOrchestrator(
+        now=lambda: datetime(2026, 6, 23, 12, 0, tzinfo=UTC),
+        mms_reachability_probe=lambda _endpoint: (True, None),
+    )
+    started = orchestrator.start(
+        workspace_id=7,
+        test_run_id="run-capture-gi",
+        verification_targets=plan.targets,
+        subscription_plan=plan,
+        execution_context=VerificationExecutionContextSchema(
+            project_id=1,
+            signal_list_revision_id=2,
+            planner_version="test",
+            runtime_version="mms",
+            policy_version="v1",
+        ),
+        adapter=_GiDelayedReportAdapter(),
+        endpoint_for_device=_mms_endpoint_for_device,
+    )
+
+    capture = orchestrator.capture_triggered_signal(
+        started.orchestration_id,
+        signal_id=101,
+        triggered_at=datetime(2026, 6, 23, 12, 0, tzinfo=UTC),
+        test_run_id="job-gi",
+        timeout_ms=1000,
+    )
+
+    assert capture.evidence.evidence_status == "invalid"
+    assert capture.evidence.reason_code == "non_causal_report_reason"
+    assert capture.step.verdict_state != "pass"
+
+
+@pytest.mark.anyio
 async def test_runtime_orchestrator_honors_cooperative_capture_cancellation() -> None:
     plan = _build_same_endpoint_multi_report_plan()
     orchestrator = VerificationRuntimeOrchestrator(now=lambda: datetime(2026, 6, 23, 12, 0, tzinfo=UTC))

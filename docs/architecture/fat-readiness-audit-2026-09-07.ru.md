@@ -70,6 +70,11 @@ Initial-GI simulator/planning flow явно остаётся non-causal режи
 подменяет post-trigger capture. Проверены 59 verification/runtime regression
 тестов и полный backend suite.
 
+**Статус slice G63 (2026-09-14): triggered-path regression.** Runtime orchestrator
+теперь покрыт отдельным тестом, который подаёт `general-interrogation` во время
+triggered capture и проверяет `invalid/non_causal_report_reason` без PASS. Это
+подтверждает barrier именно на post-trigger пути, а не только в execution helper.
+
 ## GAP-02 — Двойной toggle не доказывает оба перехода
 
 **P0 · test-run · подтверждено порядком операций.**
