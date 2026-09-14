@@ -64,6 +64,18 @@ async def handle_device_resp(topic: str, payload: bytes, unit_id: str):
                         logger.exception("Unable to persist ACK diagnostic for %s/%s", unit_id, parser.hdr.packet_id)
             except Exception:  # noqa: BLE001
                 logger.exception("Unable to persist command ACK for %s/%s", unit_id, parser.hdr.packet_id)
+        else:
+            try:
+                await record_hardware_command_ack_diagnostic(
+                    command_id="",
+                    unit_id=unit_id,
+                    packet_id=parser.hdr.packet_id,
+                    status=status.name,
+                    error=error.name,
+                    reason="missing_command_correlation",
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception("Unable to persist uncorrelated ACK diagnostic for %s/%s", unit_id, parser.hdr.packet_id)
 
         # Build WS event
         event = DeviceRespEvent(

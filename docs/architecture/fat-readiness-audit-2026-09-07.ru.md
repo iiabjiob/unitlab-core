@@ -120,6 +120,11 @@ reservation недоступен, DO/AO enqueue теперь отклоняет�
 backend suite. Долговечный экспорт diagnostics и device-side correlation остаются
 release-проверками.
 
+**Статус slice G59 (2026-09-14): uncorrelated RESP diagnostics.** RESP без
+найденного Redis correlation key также записывается в тот же diagnostic stream с
+причиной `missing_command_correlation`; операторский WS event при этом сохраняет
+прежний контракт. Проверены syntax check и полная backend regression suite.
+
 ## GAP-04 — Восстановление выхода и исходное состояние не гарантированы
 
 **P0 · peripheral safety/test-run · подтверждено кодом; аппаратная защита не проверена.**
