@@ -1,6 +1,6 @@
 # Слайз C — контракт durable revision и immutable test plan
 
-Статус: подэтапы C1/C2 реализованы, D (перевод worker на plan snapshot) открыт.
+Статус: подэтапы C1/C2 и D1 реализованы, D2 (recovery/retest semantics) открыт.
 Дата: 2026-09-14.
 
 ## Цель
@@ -113,8 +113,10 @@ Retest по умолчанию принимает исходный `test_run_id`
 серверная ревизия) и сохраняет `signal_test_run_plans` вместе с plan items до
 публикации job в очередь.
 
-Worker пока не читает plan items и продолжает использовать текущий runtime path;
-до завершения D нельзя считать GAP-05 закрытым.
+Worker D1 читает binding и порядок из plan items. Перед воздействием он отдельно
+сверяет только свежую доступность и неизменность physical binding; при rebind
+строка блокируется как `binding_changed`, текущая allocation не подставляется.
+Recovery/retest semantics и legacy jobs без plan остаются открытыми.
 
 ## Порядок реализации после согласования
 

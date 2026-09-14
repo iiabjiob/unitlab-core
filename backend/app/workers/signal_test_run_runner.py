@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
+from sqlalchemy import select
+
 from app.api.v1.signal_sheet import SignalSheetRepository
 from app.core.config import get_settings
 from app.core.events.ws_event_publisher import WsEventPublisher
@@ -17,6 +19,7 @@ from app.core.logger import get_logger
 from app.infrastructure.db.database import AsyncSessionLocal
 from app.infrastructure.protocol.modes import Cmd, State
 from app.infrastructure.redis.manager import RedisManager
+from app.models.signal_revision import SignalTestRunPlan
 from app.infrastructure.redis.stream_bus import parse_signal_allocation_job_entry
 from app.schemas.ws.events import SignalTestRuntimePatchEvent, build_signal_job_event
 from app.schemas.signal_sheet_schema import SignalAllocationRowSchema
@@ -122,19 +125,36 @@ async def _schedule_external_ied_discovery_for_verification_run(
 
 
 async def _resolve_mapped_verification_signal_ids(
-    repo: SignalSheetRepository,
-    workspace_id: int,
+    rows: list[SignalAllocationRowSchema],
     signal_ids: list[int],
 ) -> list[int]:
     if not signal_ids:
         return []
-    rows = await repo.list_allocation_rows_by_signal_ids(workspace_id, signal_ids)
     mapped_by_signal_id = {
         int(row.signal_id)
         for row in rows
         if _row_has_iec61850_verification_mapping(row)
     }
     return [signal_id for signal_id in signal_ids if signal_id in mapped_by_signal_id]
+
+
+async def _load_immutable_plan_rows(
+    repo: SignalSheetRepository,
+    workspace_id: int,
+    job_id: str,
+) -> list[SignalAllocationRowSchema]:
+    plan = await repo.db.scalar(
+        select(SignalTestRunPlan).where(
+            SignalTestRunPlan.job_id == job_id,
+            SignalTestRunPlan.workspace_id == workspace_id,
+        )
+    )
+    if plan is None:
+        raise RuntimeError("Immutable test-run plan is missing")
+    return [
+        SignalAllocationRowSchema.model_validate(item.snapshot)
+        for item in sorted(plan.items, key=lambda item: item.order_index)
+    ]
 
 
 def _row_has_iec61850_verification_mapping(row: SignalAllocationRowSchema) -> bool:
@@ -152,13 +172,11 @@ class PeripheralPreflightResult:
 
 
 async def _collect_peripheral_preflight(
-    repo: SignalSheetRepository,
-    workspace_id: int,
+    rows: list[SignalAllocationRowSchema],
     signal_ids: list[int],
 ) -> PeripheralPreflightResult:
     if not signal_ids:
         return PeripheralPreflightResult(executable_signal_ids=[], notes=[])
-    rows = await repo.list_allocation_rows_by_signal_ids(workspace_id, signal_ids)
     rows_by_signal_id = {int(row.signal_id): row for row in rows}
     executable_signal_ids: list[int] = []
     notes: list[str] = []
@@ -492,6 +510,15 @@ async def _handle_test_run(
             requested_ids.append(signal_id)
             seen.add(signal_id)
 
+    job_id = str(payload.get("job_id") or "").strip()
+    plan_rows = await _load_immutable_plan_rows(repo, workspace_id, job_id)
+    plan_rows_by_signal_id = {int(row.signal_id): row for row in plan_rows}
+    requested_set = set(requested_ids)
+    if not requested_set.issubset(plan_rows_by_signal_id):
+        missing_from_plan = sorted(requested_set - set(plan_rows_by_signal_id))
+        raise RuntimeError(f"Test-run selection is not contained in immutable plan: {missing_from_plan}")
+    requested_ids = [int(row.signal_id) for row in plan_rows if int(row.signal_id) in requested_set]
+
     signal_interval_ms = int(signal_interval_ms_raw) if signal_interval_ms_raw is not None else 1000
     signal_interval_ms = max(100, min(10000, signal_interval_ms))
     toggle_mode = str(toggle_mode_raw or "single").strip().lower()
@@ -573,6 +600,7 @@ async def _handle_test_run(
         "invalid_binding": 0,
         "incompatible_channel_mode": 0,
         "offline_unit": 0,
+        "binding_changed": 0,
     }
     evidence_count = 0
     verification_failed = 0
@@ -588,7 +616,6 @@ async def _handle_test_run(
     verification_orchestrator: VerificationRuntimeOrchestrator | None = None
     verification_local_orchestration_id: str | None = None
 
-    job_id = str(payload.get("job_id") or "")
     pending_tested_at_by_signal: dict[int, str] = {}
     tested_at_patch_since_emit: dict[int, str] = {}
     test_status_patch_since_emit: dict[int, str] = {}
@@ -738,7 +765,7 @@ async def _handle_test_run(
             await asyncio.sleep(0.25)
 
     if verification_enabled and job_id and requested_ids:
-        verification_signal_ids = await _resolve_mapped_verification_signal_ids(repo, workspace_id, original_requested_ids)
+        verification_signal_ids = await _resolve_mapped_verification_signal_ids(plan_rows, original_requested_ids)
         verification_signal_id_set = set(verification_signal_ids)
         verification_requested_signal_count = len(verification_signal_ids)
 
@@ -748,7 +775,7 @@ async def _handle_test_run(
         set_verification_prepare_step(step_id="general_interrogation", label="General interrogation", status="pending")
         set_verification_prepare_step(step_id="start_test", label="Start test", status="pending")
         await publish_verification_prepare_progress(message="Checking UnitLab peripheral device.")
-        peripheral_preflight = await _collect_peripheral_preflight(repo, workspace_id, requested_ids)
+        peripheral_preflight = await _collect_peripheral_preflight(plan_rows, requested_ids)
         if peripheral_preflight.notes:
             verification_prepare_warning = "; ".join(peripheral_preflight.notes[:3])
             if len(peripheral_preflight.notes) > 3:
@@ -1102,9 +1129,8 @@ async def _handle_test_run(
         unit_bitmasks[unit_id] = bitmask
         return bitmask
 
-    async def resolve_current_signal_row(signal_id: int):
-        rows = await repo.list_allocation_rows_by_signal_ids(workspace_id, [signal_id])
-        row = next((item for item in rows if int(item.signal_id) == int(signal_id)), None)
+    async def resolve_plan_signal_row(signal_id: int):
+        row = plan_rows_by_signal_id.get(int(signal_id))
         if row is None:
             return None, "missing_row"
         if not row.unit_id or not isinstance(row.channel_index, int):
@@ -1114,8 +1140,17 @@ async def _handle_test_run(
         is_ao = channel_type.startswith("ao")
         if not is_do and not is_ao:
             return row, "incompatible_channel_mode"
-        if row.unit_online is False:
+        current_rows = await repo.list_allocation_rows_by_signal_ids(workspace_id, [signal_id])
+        current = next((item for item in current_rows if int(item.signal_id) == int(signal_id)), None)
+        if current is None or current.unit_online is not True:
             return row, "offline_unit"
+        if (
+            current.channel_id != row.channel_id
+            or current.device_id != row.device_id
+            or current.channel_index != row.channel_index
+            or current.unit_id != row.unit_id
+        ):
+            return row, "binding_changed"
         return row, None
 
     async def apply_control_state() -> bool:
@@ -1167,7 +1202,7 @@ async def _handle_test_run(
             await attach_and_publish_tested_at_patch(result_payload)
             return result_payload
 
-        row, skip_reason = await resolve_current_signal_row(signal_id)
+        row, skip_reason = await resolve_plan_signal_row(signal_id)
         success = False
         command_payload: dict[str, Any] | None = None
         test_status = "pending"

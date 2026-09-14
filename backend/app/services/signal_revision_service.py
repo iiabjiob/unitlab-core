@@ -29,7 +29,7 @@ class SignalRevisionService:
         source_hash: str | None = None,
     ) -> SignalListRevision:
         ordered_rows = list(rows)
-        snapshots = [row.model_dump(mode="json", exclude={"row_id"}) for row in ordered_rows]
+        snapshots = [row.model_dump(mode="json") for row in ordered_rows]
         content_hash = hashlib.sha256(_canonical_json(snapshots).encode("utf-8")).hexdigest()
         current_no = await self.db.scalar(
             select(func.max(SignalListRevision.revision_no)).where(SignalListRevision.workspace_id == workspace_id)

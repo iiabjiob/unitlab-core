@@ -132,6 +132,12 @@ revision в enqueue и перевод worker на snapshot остаются от
 `signal_test_run_plans`/items до публикации job. Worker ещё не исполняет этот
 snapshot и продолжает перечитывать текущий allocation context.
 
+**Статус slice D1 (2026-09-14): частично закрыт.** Worker теперь загружает
+порядок и binding из immutable plan. Перед каждым воздействием обновляется только
+fresh safety truth: доступность устройства и неизменность физической привязки.
+При rebind шаг получает `binding_changed` и не переключает новый канал. Recovery,
+retest lineage и legacy jobs без plan требуют отдельного подэтапа.
+
 ## GAP-06 — Синхронное ожидание IEC 61850 блокирует event loop worker
 
 **P1 · runtime/performance · подтверждено кодом; длительности не измерены.**
