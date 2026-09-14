@@ -796,6 +796,12 @@ durable/runtime migrations. Попытка идти до `base` останавл
 явном guard migration `8d3f6a21c4b5`; это release-blocker для rollback без
 backup/restore, а не ошибка генерации промежуточных downgrade-ветвей.
 
+**Статус slice G71 (2026-09-14): single-row execution binding load.** Связи
+`SignalAllocation → Channel → Device` в непосредственном safety lookup теперь
+загружаются одним joined eager load вместо цепочки select-in запросов. Свежая
+проверка presence и recovery barrier сохранены; production PostgreSQL query-count
+и p95 всё ещё требуют отдельного benchmark на целевом deployment.
+
 **Статус slice G38 (2026-09-14): offline-safe signal sheet migration.**
 `9a1b2c3d4e6f` получил PostgreSQL offline-ветку для создания signal sheet/preset и
 live allocation tables и удаления прежних snapshot tables без `inspect` на

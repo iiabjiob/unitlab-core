@@ -6,7 +6,7 @@ from typing import Any, Awaitable, Callable, Iterable, Sequence
 
 from sqlalchemy import Select, and_, delete, exists, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectinload
 
 from app.models.channel import Channel
 from app.models.signal import Signal
@@ -493,7 +493,10 @@ class SignalSheetRepository:
                 Signal.deleted_at.is_(None),
                 Signal.is_active.is_(True),
             )
-            .options(selectinload(SignalAllocation.channel).selectinload(Channel.device))
+            # This is a single-row, pre-I/O safety lookup.  Both relationships are
+            # many-to-one, so joined loading avoids the extra select-in round trips
+            # while keeping the mutable binding query immediately before hardware I/O.
+            .options(joinedload(SignalAllocation.channel).joinedload(Channel.device))
         )
         if include_recovery:
             result = await self.db.execute(stmt)
