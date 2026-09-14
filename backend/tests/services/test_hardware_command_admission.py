@@ -117,4 +117,5 @@ async def test_multi_channel_lease_fence_is_current() -> None:
     leases = await admission.acquire_many(channel_ids=[12, 13], owner_kind="manual", owner_id="session-1")
 
     assert leases is not None
-    assert all(await admission.is_current(lease) for lease in leases)
+    current = [await admission.is_current(lease) for lease in leases]
+    assert current == [True, True]
