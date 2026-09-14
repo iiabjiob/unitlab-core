@@ -460,17 +460,18 @@ function submitAoValue() {
 }
 
 .device-channel-item__ao-inline {
-  display: grid;
+  display: flex;
   width: 100%;
   min-width: 0;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.5rem;
 }
 
 .device-channel-item__ao-field {
   display: flex;
-  min-width: 0;
+  min-width: 8rem;
+  flex: 1 1 10rem;
   align-items: center;
   gap: 0.375rem;
   color: var(--color-neutral-500);
@@ -733,25 +734,7 @@ function submitAoValue() {
   }
 
   .device-channel-item__ao-inline {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
-  .device-channel-item__ao-field {
-    grid-column: 1;
-  }
-
-  .device-channel-item__ao-button {
-    grid-column: 2;
-  }
-
-  .device-channel-item__ao-actual {
-    grid-column: 1;
-    grid-row: 2;
-  }
-
-  .device-channel-item__ao-status {
-    grid-column: 2;
-    grid-row: 2;
+    align-content: center;
   }
 }
 </style>

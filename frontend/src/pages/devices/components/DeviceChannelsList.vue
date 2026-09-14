@@ -145,12 +145,11 @@ function onSetAo({ channel, value }: { channel: Channel; value: number }) {
 
 .device-channels-list__items {
   box-sizing: border-box;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-width: 0;
   min-height: 0;
   margin-top: 1.25rem;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: auto;
   padding-right: 0.25rem;
 }
 
@@ -158,6 +157,10 @@ function onSetAo({ channel, value }: { channel: Channel; value: number }) {
   display: flex;
   flex-direction: column;
   gap: 0.375rem;
+}
+
+.device-channels-list__items--analog > * {
+  flex: 0 0 auto;
 }
 
 .device-channels-list__items--digital {
