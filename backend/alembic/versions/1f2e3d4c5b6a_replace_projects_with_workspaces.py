@@ -10,7 +10,7 @@ from typing import Sequence, Union
 import re
 from uuid import uuid4
 
-from alembic import op
+from alembic import context, op
 import sqlalchemy as sa
 
 
@@ -100,6 +100,42 @@ def upgrade() -> None:
         ["sequence_id"],
         unique=False,
     )
+
+    if context.is_offline_mode():
+        op.execute(
+            """
+            INSERT INTO workspaces (id, uuid, name, slug, created_at, updated_at)
+            SELECT id,
+                   COALESCE(uuid, '00000000-0000-4000-8000-' || LPAD(id::text, 12, '0')),
+                   name,
+                   COALESCE(NULLIF(TRIM(BOTH '-' FROM REGEXP_REPLACE(LOWER(name), '[^a-z0-9]+', '-', 'g')), ''), 'workspace') || '-' || id::text,
+                   created_at,
+                   updated_at
+            FROM projects
+            ORDER BY id
+            """
+        )
+        op.execute(
+            """
+            INSERT INTO workspace_switchgears (workspace_id, switchgear_id)
+            SELECT project_id, id FROM switchgears
+            """
+        )
+        op.execute(
+            """
+            INSERT INTO workspace_sequences (workspace_id, sequence_id)
+            SELECT project_id, id FROM sequences
+            """
+        )
+        op.drop_constraint("fk_switchgears_project_id", "switchgears", type_="foreignkey")
+        op.drop_index("ix_switchgears_project_name", table_name="switchgears")
+        op.drop_column("switchgears", "project_id")
+        op.drop_constraint("fk_sequences_project_id", "sequences", type_="foreignkey")
+        op.drop_index("ix_sequences_project_name", table_name="sequences")
+        op.drop_column("sequences", "project_id")
+        op.drop_index("ix_projects_name", table_name="projects")
+        op.drop_table("projects")
+        return
 
     bind = op.get_bind()
     projects = bind.execute(

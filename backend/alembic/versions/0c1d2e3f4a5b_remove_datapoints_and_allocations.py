@@ -5,7 +5,7 @@ Revises: d7e8f9a0b1c2
 Create Date: 2026-01-10 12:00:00.000000
 """
 
-from alembic import op
+from alembic import context, op
 import sqlalchemy as sa
 
 
@@ -16,6 +16,11 @@ depends_on = None
 
 
 def upgrade() -> None:
+    if context.is_offline_mode():
+        op.execute("DROP TABLE IF EXISTS allocations")
+        op.execute("DROP TABLE IF EXISTS datapoints")
+        return
+
     bind = op.get_bind()
     inspector = sa.inspect(bind)
 

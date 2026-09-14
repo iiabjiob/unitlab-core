@@ -5,7 +5,7 @@ Revises: c1d2e3f4g5h6
 Create Date: 2026-01-08 13:25:00.000000
 """
 
-from alembic import op
+from alembic import context, op
 import sqlalchemy as sa
 
 
@@ -16,6 +16,46 @@ depends_on = None
 
 
 def upgrade() -> None:
+    if context.is_offline_mode():
+        op.execute(
+            """
+            CREATE TABLE IF NOT EXISTS datapoints (
+                id BIGSERIAL PRIMARY KEY,
+                project_id BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                datapoint_code VARCHAR(255) NOT NULL,
+                datapoint_type VARCHAR(50) NOT NULL,
+                name VARCHAR(100) NOT NULL,
+                voltage_level VARCHAR(50),
+                bay VARCHAR(100),
+                ied_name VARCHAR(100),
+                hmi_text TEXT,
+                terminal VARCHAR(100),
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+            """
+        )
+        op.execute("CREATE INDEX IF NOT EXISTS ix_dp_project_type ON datapoints (project_id, datapoint_type)")
+        op.execute("CREATE INDEX IF NOT EXISTS ix_datapoints_project_id ON datapoints (project_id)")
+        op.execute("CREATE UNIQUE INDEX IF NOT EXISTS ix_datapoints_datapoint_code ON datapoints (datapoint_code)")
+        op.execute(
+            """
+            CREATE TABLE IF NOT EXISTS allocations (
+                id BIGSERIAL PRIMARY KEY,
+                project_id BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                datapoint_id BIGINT NOT NULL REFERENCES datapoints(id) ON DELETE CASCADE,
+                channel_id BIGINT REFERENCES channels(id) ON DELETE SET NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                CONSTRAINT uq_allocation_datapoint UNIQUE (datapoint_id),
+                CONSTRAINT uq_allocation_channel UNIQUE (channel_id)
+            )
+            """
+        )
+        op.execute("CREATE INDEX IF NOT EXISTS ix_allocations_project_datapoint ON allocations (project_id, datapoint_id)")
+        op.execute("CREATE INDEX IF NOT EXISTS ix_allocations_project_channel ON allocations (project_id, channel_id)")
+        return
+
     bind = op.get_bind()
     inspector = sa.inspect(bind)
 
@@ -108,6 +148,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    if context.is_offline_mode():
+        op.execute("DROP TABLE IF EXISTS allocations")
+        op.execute("DROP TABLE IF EXISTS datapoints")
+        return
+
     bind = op.get_bind()
     inspector = sa.inspect(bind)
 

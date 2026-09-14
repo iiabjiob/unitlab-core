@@ -567,10 +567,27 @@ identity остаётся незакрытым.
 теперь продолжает единый head без дополнительной ветки.
 
 **Статус slice G33 (2026-09-14): offline-safe legacy migration.** Workspace
- migration `c7d65b9e7d1b` больше не требует Python result lookup во время upgrade:
- default project и backfill связей выполняются детерминированным SQL DML. Это
- устраняет прежний offline failure и позволяет валидировать полный migration
- graph до новой diagnostics audit schema.
+migration `c7d65b9e7d1b` больше не требует Python result lookup во время upgrade:
+default project и backfill связей выполняются детерминированным SQL DML. Это
+устраняет прежний offline failure и позволяет валидировать полный migration
+graph до новой diagnostics audit schema.
+
+**Статус slice G34 (2026-09-14): offline-safe legacy table branch.** Старые
+`d7e8f9a0b1c2` и `0c1d2e3f4a5b` теперь имеют явные offline DDL-ветки вместо
+`inspect(MockConnection)`; восстановление и последующее удаление legacy tables
+генерируются детерминированно, online idempotent path сохранён.
+
+**Статус slice G35 (2026-09-14): offline-safe workspace migration branch.**
+`1f2e3d4c5b6a` теперь переносит project rows, workspace attachments и slug через
+детерминированный SQL в offline режиме; Python mapping loop остаётся для online
+миграции. Полный graph требует дальнейшей проверки последующих legacy steps.
+
+**Статус slice G36 (2026-09-14): offline-safe test-run allocation migration.**
+`fe12ac34e5b7` теперь имеет offline-ветку для переноса sequence/allocation данных
+через PostgreSQL SQL без Python result lookup, включая разбор JSONB snapshot и
+обратную агрегацию при downgrade. Online-ветка сохраняет прежнюю логику и
+проверки данных. Проверены `py_compile` и `alembic upgrade fe12ac34e5b7 --sql`;
+полный offline graph ещё требует проверки следующих legacy migrations.
 
 ## Дополнительный связанный риск — AO-сценарий
 
