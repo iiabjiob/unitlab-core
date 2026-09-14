@@ -106,6 +106,8 @@ async def record_hardware_command_intent(
     raw_channel_ids = payload.get("channel_ids") if isinstance(payload, dict) else None
     if has_multi_channel_scope and not isinstance(raw_channel_ids, list):
         raise ValueError("Hardware intent channel_ids must be a list")
+    if has_multi_channel_scope and not raw_channel_ids:
+        raise ValueError("Hardware intent channel_ids must not be empty")
     if isinstance(raw_channel_ids, list):
         for raw_channel_id in raw_channel_ids:
             try:

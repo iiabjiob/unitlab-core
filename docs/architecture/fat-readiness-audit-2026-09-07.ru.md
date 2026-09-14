@@ -858,6 +858,11 @@ multi-channel scope вместо молчаливого сохранения т�
 negative regression; legacy migration parsing по-прежнему сохраняет только
 валидные legacy ids и требует deployment rehearsal.
 
+**Статус slice G95 (2026-09-14): reject empty intent scope.** Явно переданный
+пустой `channel_ids` теперь отклоняется, а не деградирует в primary-only intent;
+это сохраняет полноту multi-channel safety scope до commit. Добавлена negative
+regression; legacy-data migration rehearsal остаётся deployment check.
+
 **Статус slice G68 (2026-09-14): offline downgrade для live signal sheet.**
 Migration `9a1b2c3d4e6f` теперь генерирует детерминированный downgrade SQL для
 `signal_allocations`, `signal_sheet_presets` и `signal_sheets`, не вызывая

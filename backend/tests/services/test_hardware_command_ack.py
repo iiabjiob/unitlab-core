@@ -294,6 +294,30 @@ async def test_record_intent_rejects_malformed_multi_channel_scope() -> None:
 
 
 @pytest.mark.anyio
+async def test_record_intent_rejects_empty_multi_channel_scope() -> None:
+    db = AsyncMock()
+
+    with pytest.raises(ValueError, match="must not be empty"):
+        await record_hardware_command_intent(
+            db,
+            command_id="cmd-empty",
+            workspace_id=7,
+            job_id="run-1",
+            attempt_id=None,
+            owner_kind="sequence",
+            owner_id="run-1",
+            device_id=3,
+            channel_id=101,
+            unit_id="UNIT-1",
+            action="do_all",
+            payload={"channel_ids": []},
+            fencing_epoch=1,
+        )
+
+    db.flush.assert_not_awaited()
+
+
+@pytest.mark.anyio
 async def test_restore_delivery_retries_once_with_same_command_id() -> None:
     db = AsyncMock()
     attempts: list[str] = []
