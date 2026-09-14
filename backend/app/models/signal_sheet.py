@@ -169,7 +169,11 @@ class SignalTestRunStepEvidence(Base):
         nullable=False,
     )
     job_id: Mapped[str] = mapped_column(String(64), nullable=False)
-    signal_list_revision_id: Mapped[int | None] = mapped_column(BIGINT_PK, nullable=True)
+    signal_list_revision_id: Mapped[int | None] = mapped_column(
+        BIGINT_PK,
+        ForeignKey("signal_list_revisions.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
     attempt_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     attempt_no: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     order_index: Mapped[int] = mapped_column(Integer, nullable=False)

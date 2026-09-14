@@ -853,6 +853,10 @@ evidence test теперь проверяет, что переданный revis
 сохраняется в durable row; отсутствие provenance для legacy/external run остаётся
 явно nullable, а не подменяется текущей active revision.
 
+**Статус slice G80 (2026-09-14): ORM/FK alignment.** Обе evidence-модели теперь
+явно объявляют тот же `signal_list_revisions` `RESTRICT` FK, который создаётся
+migration `cc2e3f4a5b6c`; ORM metadata больше не расходится с production schema.
+
 **Статус slice G38 (2026-09-14): offline-safe signal sheet migration.**
 `9a1b2c3d4e6f` получил PostgreSQL offline-ветку для создания signal sheet/preset и
 live allocation tables и удаления прежних snapshot tables без `inspect` на

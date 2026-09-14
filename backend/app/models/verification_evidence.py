@@ -31,7 +31,11 @@ class SignalVerificationEvidence(Base):
         nullable=False,
     )
     test_run_id: Mapped[str] = mapped_column(String(64), nullable=False)
-    signal_list_revision_id: Mapped[int | None] = mapped_column(BIGINT_PK, nullable=True)
+    signal_list_revision_id: Mapped[int | None] = mapped_column(
+        BIGINT_PK,
+        ForeignKey("signal_list_revisions.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
     evidence_id: Mapped[str] = mapped_column(String(64), nullable=False)
     signal_id: Mapped[int] = mapped_column(BIGINT_PK, nullable=False)
     signal_path: Mapped[str] = mapped_column(String(255), nullable=False)
