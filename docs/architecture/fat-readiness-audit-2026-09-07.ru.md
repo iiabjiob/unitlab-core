@@ -390,6 +390,13 @@ Redis/PostgreSQL и durable evidence до/после commit ещё требую�
 остаётся anonymous в текущем deployment до согласования provisioning firmware,
 password file/ACL и TLS rollout; GAP-11 не считается закрытым.
 
+**Статус slice G10 (2026-09-14): частично закрыт.** Добавлен opt-in secure
+Mosquitto profile с `allow_anonymous false`, внешним password file и persistent
+broker data volume. Текущий production compose намеренно не переключён
+автоматически: до provisioning firmware это могло бы остановить доступ устройств.
+Rollout и negative/positive topic tests описаны отдельно; ACL per-device и TLS
+остаются последующими deployment/hardware checks.
+
 ## GAP-12 — Повторные diagnostics-тосты и неоднозначность сетевой ошибки
 
 **P1 · operator UX/host diagnostics · механизм подтверждён, production-причина не установлена.**
