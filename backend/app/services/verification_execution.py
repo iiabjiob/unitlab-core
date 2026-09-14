@@ -217,6 +217,7 @@ async def execute_verification_run(
             test_run_id=test_run_id,
             source_generation=connection_generation,
             forced_evidence_status=forced_evidence_status,
+            causal_report_required=False,
         )
         evidence_rows.append(evidence)
         step_rows.append(step)
@@ -376,6 +377,7 @@ def _build_step_and_evidence(
     test_run_id: str,
     source_generation: int | None = None,
     forced_evidence_status: str | None = None,
+    causal_report_required: bool = True,
 ) -> tuple[SignalVerificationEvidenceSchema, VerificationStepSchema]:
     report = observation_bundle[0] if observation_bundle is not None else None
     actual_report_path = observation_bundle[1] if observation_bundle is not None else None
@@ -393,6 +395,8 @@ def _build_step_and_evidence(
         actual_report_path=actual_report_path,
         observed_at=observed_at,
         signal_value=signal_value,
+        report_reason=(report.event.reason.value if report is not None and report.event is not None else None),
+        causal_report_required=causal_report_required,
         latency_ms=computed_latency_ms,
         runtime_result=runtime_result,
         window_ms=window_ms,
@@ -517,6 +521,8 @@ def _resolve_evidence_state(
     actual_report_path: str | None,
     observed_at: datetime | None,
     signal_value: Any,
+    report_reason: str | None = None,
+    causal_report_required: bool = True,
     latency_ms: int | None,
     runtime_result,
     window_ms: int,
@@ -528,6 +534,8 @@ def _resolve_evidence_state(
         return "invalid", "unknown", "missing_report_path", "report_observation"
     if signal_value is None:
         return "invalid", "unknown", "missing_signal_value", "report_observation"
+    if causal_report_required and report_reason in {"general-interrogation", "integrity"}:
+        return "invalid", "unknown", "non_causal_report_reason", "report_observation"
     if latency_ms is None:
         return "invalid", "unknown", "missing_latency", "report_observation"
     if latency_ms < 0:
@@ -923,6 +931,7 @@ def _diagnostic_message(code: str, evidence_status: str) -> str:
         "no_confirmation": "No report confirmation arrived before timeout.",
         "missing_report_path": "Report confirmation did not include a path.",
         "missing_signal_value": "Report confirmation did not include the expected signal value.",
+        "non_causal_report_reason": "Report reason cannot prove a response to the current test trigger.",
         "missing_latency": "Report confirmation did not include a latency measurement.",
     }
     if code in messages:

@@ -81,6 +81,7 @@ def test_report_before_trigger_is_not_coerced_to_fresh_zero_latency() -> None:
         actual_report_path="LD0/XCBR1.Pos.stVal[ST]",
         observed_at=observed_at,
         signal_value=True,
+        report_reason="data-change",
         latency_ms=latency_ms,
         runtime_result=SimpleNamespace(diagnostics=()),
         window_ms=500,
@@ -112,6 +113,28 @@ def test_report_with_matched_path_but_missing_value_is_invalid() -> None:
         "invalid",
         "unknown",
         "missing_signal_value",
+        "report_observation",
+    )
+
+
+def test_non_causal_report_reason_cannot_confirm_trigger() -> None:
+    triggered_at = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
+    status, freshness, reason, kind = _resolve_evidence_state(
+        target=_build_plan().targets[0],
+        actual_report_path="LD0/XCBR1.Pos.stVal[ST]",
+        observed_at=triggered_at + timedelta(milliseconds=10),
+        signal_value=True,
+        report_reason="integrity",
+        latency_ms=10,
+        runtime_result=SimpleNamespace(diagnostics=()),
+        window_ms=500,
+        timeout_ms=2_000,
+    )
+
+    assert (status, freshness, reason, kind) == (
+        "invalid",
+        "unknown",
+        "non_causal_report_reason",
         "report_observation",
     )
 

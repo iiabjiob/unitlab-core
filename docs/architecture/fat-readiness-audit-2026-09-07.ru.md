@@ -63,6 +63,13 @@
 Проверено simulator/runtime regression suite; политика качества IED и отдельная
 монотонная длительность ожидания ещё требуют стендового подтверждения.
 
+**Статус slice G62 (2026-09-14): causal report-reason barrier.** В triggered
+capture report reasons `general-interrogation` и `integrity` больше не считаются
+причинно связанным подтверждением; они получают `invalid/non_causal_report_reason`.
+Initial-GI simulator/planning flow явно остаётся non-causal режимом и не
+подменяет post-trigger capture. Проверены 59 verification/runtime regression
+тестов и полный backend suite.
+
 ## GAP-02 — Двойной toggle не доказывает оба перехода
 
 **P0 · test-run · подтверждено порядком операций.**
