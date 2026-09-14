@@ -278,6 +278,21 @@ Notes:
 - It is expected to exit successfully after applying migrations.
 - If you later run cleanup for stopped containers, `unitlab-migrations` can disappear completely; this does not mean the runtime is broken if backend/db are healthy.
 
+### Clean database reset
+
+The project now has one baseline migration, `20260914_initial_schema`.
+For a disposable installation with no data to preserve, reset only the
+compose project volumes and recreate the schema:
+
+```bash
+docker compose down --volumes --remove-orphans
+docker compose up --force-recreate migrations
+docker compose up -d --remove-orphans
+```
+
+This permanently removes the PostgreSQL data volume and must not be used on a
+database containing FAT evidence or reports.
+
 ## 2. Install Docker + Compose Plugin
 
 If Docker is not installed yet:
