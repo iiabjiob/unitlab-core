@@ -17,7 +17,10 @@ import { useToastStore } from '@/stores/toastStore'
 import type { SystemHealthResponse } from '@/types/health'
 import type { CoreDiagnosticsSnapshot } from '@/types/coreDiagnostics'
 import router from '@/router'
-import { buildCoreDiagnosticsIssueSignature } from '@/services/coreDiagnosticsIncident'
+import {
+  advanceCoreDiagnosticsIncidentDebounce,
+  buildCoreDiagnosticsIssueSignature,
+} from '@/services/coreDiagnosticsIncident'
 
 const logger = getLogger('ws')
 const lastTestRunJobEventMetaByJobId = new Map<string, {
@@ -38,6 +41,8 @@ const systemHealthCriticalToastState = {
 const coreDiagnosticsCriticalToastState = {
   id: null as number | null,
   signature: null as string | null,
+  pendingSignature: null as string | null,
+  pendingCount: 0,
 }
 
 import type {
@@ -373,11 +378,23 @@ function syncCoreDiagnosticsCriticalAlert(
   }
 
   if (issues.length === 0) {
+    coreDiagnosticsCriticalToastState.pendingSignature = null
+    coreDiagnosticsCriticalToastState.pendingCount = 0
     syncStickyCriticalToast(toastStore, coreDiagnosticsCriticalToastState, null, "")
     return
   }
 
   const signature = buildCoreDiagnosticsIssueSignature(mode, issues)
+  const debounce = advanceCoreDiagnosticsIncidentDebounce(
+    coreDiagnosticsCriticalToastState.pendingSignature,
+    coreDiagnosticsCriticalToastState.pendingCount,
+    signature,
+  )
+  coreDiagnosticsCriticalToastState.pendingSignature = debounce.signature
+  coreDiagnosticsCriticalToastState.pendingCount = debounce.count
+  if (!debounce.stable) {
+    return
+  }
   if (coreDiagnosticsCriticalToastState.signature === signature && coreDiagnosticsCriticalToastState.id !== null) {
     toastStore.update(coreDiagnosticsCriticalToastState.id, {
       message: `Core diagnostics alert: ${issues.join("; ")}`,

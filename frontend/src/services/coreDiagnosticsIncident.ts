@@ -1,3 +1,17 @@
+export function advanceCoreDiagnosticsIncidentDebounce(
+  previousSignature: string | null,
+  previousCount: number,
+  nextSignature: string,
+  threshold = 2,
+): { signature: string; count: number; stable: boolean } {
+  const count = previousSignature === nextSignature ? previousCount + 1 : 1
+  return {
+    signature: nextSignature,
+    count,
+    stable: count >= Math.max(1, threshold),
+  }
+}
+
 export function buildCoreDiagnosticsIssueSignature(mode: string, issues: string[]): string {
   const stableIssues = issues.map(issue => {
     const normalized = issue.trim().toLowerCase()
