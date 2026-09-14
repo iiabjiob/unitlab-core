@@ -21,6 +21,7 @@ const NUDGE_LARGE_STEP = GRID_STEP * 4
 const DIAGRAM_CLIPBOARD_KIND = "unitlab.switchgear-sld-selection"
 const DEFAULT_TEXT_LABEL = "TEXT"
 const EDGE_PORT_SNAP_RADIUS = 18
+const PERSIST_DEBOUNCE_MS = 160
 const MINIMAP_WIDTH = 180
 const MINIMAP_HEIGHT = 124
 const LABEL_MIN_OFFSET = -220
@@ -126,6 +127,8 @@ const lineWeight = ref<EdgeWeight>("normal")
 const contextMenu = ref<ContextMenuState | null>(null)
 const localClipboardSelection = ref<DiagramClipboardSelection | null>(null)
 const clipboardPasteCount = ref(0)
+let persistTimer: ReturnType<typeof setTimeout> | null = null
+let entityIdSequence = 0
 
 const diagram = useDiagramEngine(props.model.scene)
 const viewport = useDiagramViewport(diagram, { element: stageRef })
@@ -424,7 +427,9 @@ watch(() => textEditor.activeEditor.value, (next) => {
 })
 
 watch(() => props.initialStoredState, (next) => {
-  lastStoredState.value = next
+  if (persistTimer == null) {
+    lastStoredState.value = next
+  }
 })
 
 watch(() => props.fitRequestKey, (next, previous) => {
@@ -439,6 +444,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  flushPersistedState()
   window.removeEventListener("keydown", handleWindowKeydown)
 })
 
@@ -481,10 +487,31 @@ diagram.engine.subscribe((scene) => {
     baseState: lastStoredState.value,
   })
   lastStoredState.value = nextState
-  writeLocalSetting(props.storageKey, nextState, {
-    legacyKeys: [`unitlab.switchgears.sld.${props.workspaceId}`],
-  })
+  schedulePersistedState(nextState)
 })
+
+function schedulePersistedState(state: StoredDiagramState) {
+  if (persistTimer != null) clearTimeout(persistTimer)
+  persistTimer = setTimeout(() => {
+    persistTimer = null
+    writeLocalSetting(props.storageKey, state, { legacyKeys: [`unitlab.switchgears.sld.${props.workspaceId}`] })
+  }, PERSIST_DEBOUNCE_MS)
+}
+
+function flushPersistedState() {
+  if (persistTimer == null || !lastStoredState.value) return
+  clearTimeout(persistTimer)
+  persistTimer = null
+  writeLocalSetting(props.storageKey, lastStoredState.value, { legacyKeys: [`unitlab.switchgears.sld.${props.workspaceId}`] })
+}
+
+function createEntityId(prefix: string) {
+  entityIdSequence += 1
+  const randomPart = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `${Date.now()}-${entityIdSequence}`
+  return `${prefix}:${randomPart}`
+}
 
 function syncRouteSelection() {
   const switchgearId = Number(route.params.id)
@@ -525,9 +552,7 @@ function toggleSnapEnabled() {
     snapEnabled: !snapEnabled.value,
   }
   lastStoredState.value = nextState
-  writeLocalSetting(props.storageKey, nextState, {
-    legacyKeys: [`unitlab.switchgears.sld.${props.workspaceId}`],
-  })
+  schedulePersistedState(nextState)
   focusStage()
 }
 
@@ -894,7 +919,7 @@ async function handlePasteSelection() {
   }
   const offset = COPY_PASTE_OFFSET * (clipboardPasteCount.value + 1)
   const edgeEntries = source.edges.map((edge, index) => ({
-    id: `edge:paste:${Date.now()}:${index}`,
+    id: createEntityId(`edge-paste-${index}`),
     kind: 'edge' as const,
     source: { kind: 'point' as const, point: snapWorldPoint({ x: edge.x1 + offset, y: edge.y1 + offset }) },
     target: { kind: 'point' as const, point: snapWorldPoint({ x: edge.x2 + offset, y: edge.y2 + offset }) },
@@ -910,7 +935,7 @@ async function handlePasteSelection() {
     const dims = STATIC_DIMENSIONS[item.kind][item.size]
     const center = snapWorldPoint({ x: item.x + offset, y: item.y + offset })
     return {
-      id: `shape:paste:${Date.now()}:${index}`,
+      id: createEntityId(`shape-paste-${index}`),
       kind: 'shape' as const,
       x: Math.round(center.x - dims.width / 2),
       y: Math.round(center.y - dims.height / 2),
@@ -920,7 +945,7 @@ async function handlePasteSelection() {
       shape: item.kind,
       metadata: {
         entityType: 'static',
-        staticId: `paste-${item.kind}-${Date.now()}-${index}`,
+        staticId: createEntityId(`static-paste-${item.kind}-${index}`),
         staticKind: item.kind,
         staticSize: item.size,
         rotation: normalizeRotation(item.rotation),
@@ -930,7 +955,7 @@ async function handlePasteSelection() {
   const textEntries = source.textElements.map((item, index) => {
     const point = snapWorldPoint({ x: item.x + offset, y: item.y + offset })
     return {
-      id: `text:paste:${Date.now()}:${index}`,
+      id: createEntityId(`text-paste-${index}`),
       kind: 'text' as const,
       x: point.x,
       y: point.y,
@@ -963,13 +988,14 @@ async function handlePasteSelection() {
 
 function addText() {
   const center = getViewportCenter()
+  const id = createEntityId("text")
   diagram.dispatch({
     type: "pasteClipboard",
     clipboard: {
       nodes: [],
       edges: [],
       texts: [{
-        id: "text:new",
+        id,
         kind: "text",
         x: center.x,
         y: center.y,
@@ -981,7 +1007,7 @@ function addText() {
       }],
       shapes: [],
       ports: [],
-      selection: { ids: ["text:new"], primaryId: "text:new" },
+      selection: { ids: [id], primaryId: id },
       viewport: diagram.scene.value.viewport,
     },
     offset: { x: 0, y: 0 },
@@ -993,7 +1019,8 @@ function addText() {
 function addStatic(kind: DiagramStaticKind) {
   const center = getViewportCenter()
   const dims = STATIC_DIMENSIONS[kind].md
-  const seed = `package-${kind}-${diagram.scene.value.revision}-${Math.round(center.x)}-${Math.round(center.y)}`
+  const seed = createEntityId(`static-${kind}`)
+  const id = createEntityId("shape")
   diagram.dispatch({
     type: "pasteClipboard",
     clipboard: {
@@ -1001,7 +1028,7 @@ function addStatic(kind: DiagramStaticKind) {
       edges: [],
       texts: [],
       shapes: [{
-        id: `shape:${kind}`,
+        id,
         kind: "shape",
         x: center.x - dims.width / 2,
         y: center.y - dims.height / 2,
@@ -1018,7 +1045,7 @@ function addStatic(kind: DiagramStaticKind) {
         },
       }],
       ports: [],
-      selection: { ids: [`shape:${kind}`], primaryId: `shape:${kind}` },
+      selection: { ids: [id], primaryId: id },
       viewport: diagram.scene.value.viewport,
     },
     offset: { x: 0, y: 0 },
@@ -1115,6 +1142,14 @@ function rotateSelectedEdges90() {
   if (selectedEdgeIds.value.length === 0) {
     return
   }
+  const hasBindings = selectedEdgeIds.value.some((id) => {
+    const edge = diagram.scene.value.entities.edgesById.get(id)
+    return Boolean(edge?.metadata?.startBinding || edge?.metadata?.endBinding)
+  })
+  if (hasBindings) {
+    toastStore.info("Unbind selected lines before rotating them")
+    return
+  }
   updateSelectedEdges((edge) => {
     const source = resolveEdgeEndpointPosition(edge.source)
     const target = resolveEdgeEndpointPosition(edge.target)
@@ -1136,8 +1171,6 @@ function rotateSelectedEdges90() {
       target: { kind: "point", point: nextTarget },
       metadata: {
         ...edge.metadata,
-        startBinding: null,
-        endBinding: null,
       },
     }
   })
@@ -1440,6 +1473,20 @@ function onSvgPointerUp(event: PointerEvent) {
   draggedEdge.value = null
 }
 
+function cancelPointerInteraction(event: PointerEvent) {
+  const target = event.currentTarget as Element | null
+  target?.releasePointerCapture?.(event.pointerId)
+  if (draggedEdge.value?.pointerId === event.pointerId) {
+    draggedEdge.value = null
+  }
+  if (labelDrag.value?.pointerId === event.pointerId) {
+    labelDrag.value = null
+  }
+  if (activeTool.value === "line") {
+    draftLine.value = null
+  }
+}
+
 function startEdgeEndpointDrag(event: PointerEvent, edgeId: string, endpoint: "source" | "target") {
   event.stopPropagation()
   const target = event.currentTarget as Element | null
@@ -1521,7 +1568,7 @@ function finishLabelDrag(event: PointerEvent) {
 }
 
 function createLine(start: DraftEndpoint, end: DraftEndpoint) {
-  const seed = `edge-${diagram.scene.value.revision}-${Math.round(start.point.x)}-${Math.round(start.point.y)}`
+  const seed = createEntityId("edge")
   diagram.dispatch({
     type: "createEdge",
     edge: {
@@ -1946,6 +1993,8 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
         @click="onSvgClick"
         @pointermove="onSvgPointerMove"
         @pointerup="onSvgPointerUp"
+        @pointercancel="cancelPointerInteraction"
+        @lostpointercapture="cancelPointerInteraction"
         @contextmenu.prevent="closeContextMenu"
       >
         <defs>
@@ -2078,6 +2127,8 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
           @pointerdown="beginLabelDrag($event, node.id)"
           @pointermove="onLabelPointerMove"
           @pointerup="finishLabelDrag"
+          @pointercancel="cancelPointerInteraction"
+          @lostpointercapture="cancelPointerInteraction"
           @dblclick.stop="openNodeDetail(node.id)"
           @contextmenu.stop.prevent="openNodeContextMenu($event, node.id)"
         >
@@ -2110,6 +2161,8 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
           stroke-width="2"
           @pointerdown="startEdgeEndpointDrag($event, handle.edgeId, handle.endpoint)"
           @pointerup="finishEdgeEndpointDrag"
+          @pointercancel="cancelPointerInteraction"
+          @lostpointercapture="cancelPointerInteraction"
         />
 
         <rect
