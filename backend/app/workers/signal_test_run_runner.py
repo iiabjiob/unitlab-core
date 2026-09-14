@@ -102,9 +102,16 @@ async def _wait_for_bit_readback(
     while True:
         raw_bitmask = await redis.get(f"device:{unit_id}:bitmask")
         try:
-            bitmask = int(raw_bitmask or 0)
+            if raw_bitmask is None:
+                raise ValueError("missing bitmask")
+            bitmask = int(raw_bitmask)
         except (TypeError, ValueError):
-            bitmask = 0
+            bitmask = None
+        if bitmask is None:
+            if time.monotonic() >= deadline:
+                return False
+            await asyncio.sleep(0.05)
+            continue
         actual_value = 1 if bitmask & mask else 0
         if actual_value == int(expected_value):
             return True
