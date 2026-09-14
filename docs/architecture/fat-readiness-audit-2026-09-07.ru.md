@@ -848,6 +848,11 @@ IEC verification evidence теперь сохраняют nullable FK
 при создании. Nullable оставлен для legacy/external runs без plan и не создаёт
 выдуманную историческую revision.
 
+**Статус slice G79 (2026-09-14): revision provenance regression.** Verification
+evidence test теперь проверяет, что переданный revision ID действительно
+сохраняется в durable row; отсутствие provenance для legacy/external run остаётся
+явно nullable, а не подменяется текущей active revision.
+
 **Статус slice G38 (2026-09-14): offline-safe signal sheet migration.**
 `9a1b2c3d4e6f` получил PostgreSQL offline-ветку для создания signal sheet/preset и
 live allocation tables и удаления прежних snapshot tables без `inspect` на

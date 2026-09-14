@@ -163,6 +163,7 @@ async def test_verification_evidence_repository_records_append_only_rows() -> No
     first = await repository.record_signal_verification_evidence(
         workspace_id=9,
         test_run_id="run-7",
+        signal_list_revision_id=42,
         evidence_id="ev-1",
         signal_id=100,
         signal_path="signal-x",
@@ -202,6 +203,7 @@ async def test_verification_evidence_repository_records_append_only_rows() -> No
 
     assert len(session.added) == 2
     assert first.evidence_id == "ev-1"
+    assert first.signal_list_revision_id == 42
     assert first.diagnostics[0]["code"] == "REPORT_RECEIVED"
     assert second.evidence_id == "ev-2"
     assert second.evidence_status == "late"
