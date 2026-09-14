@@ -285,9 +285,7 @@ For a disposable installation with no data to preserve, reset only the
 compose project volumes and recreate the schema:
 
 ```bash
-docker compose down --volumes --remove-orphans
-docker compose up --force-recreate migrations
-docker compose up -d --remove-orphans
+RESET_DATABASE_CONFIRM=YES ./scripts/reset-database.sh
 ```
 
 This permanently removes the PostgreSQL data volume and must not be used on a
