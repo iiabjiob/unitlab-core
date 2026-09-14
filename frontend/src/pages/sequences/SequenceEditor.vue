@@ -289,7 +289,8 @@ const { isDesktop } = useViewport()
 }
 
 :global(.dark .sequence-editor__workspace) {
-  background: var(--color-neutral-800);
+  border: 1px solid var(--color-neutral-800);
+  background: var(--color-neutral-950);
 }
 
 :global(.dark .sequence-editor__steps-card) {
