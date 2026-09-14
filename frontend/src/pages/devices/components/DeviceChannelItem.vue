@@ -391,6 +391,7 @@ function submitAoValue() {
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
   user-select: none;
+  cursor: default;
 }
 
 .device-channel-item--disabled {
@@ -541,6 +542,7 @@ function submitAoValue() {
   border-radius: var(--radius-sm);
   font-size: 0.625rem;
   font-weight: 500;
+  cursor: default;
 }
 
 .device-channel-item__ao-status--valid-error {
