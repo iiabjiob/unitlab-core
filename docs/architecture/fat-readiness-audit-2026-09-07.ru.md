@@ -186,12 +186,15 @@ recovery-политика после процесса, manual/sequence paths и 
 **Статус slice F2 (2026-09-14): частично закрыт.** В double-toggle
 восстановительная команда теперь имеет отдельную роль `restore` в persisted
 command intent и step evidence; её ACK остаётся самостоятельным обязательным
-условием успешного шага. Полный abort/restore/readback recovery при падении
-между командами ещё открыт.
+условием успешного шага. Для restore добавлена одна bounded повторная попытка
+публикации с тем же idempotent `command_id`; если обе попытки не доставлены,
+канал остаётся `recovery_required`. Полный abort/restore/readback recovery при
+падении между командами ещё открыт.
 
 **Статус slice F3 (2026-09-14): частично закрыт.** Ошибка публикации restore
-теперь оставляет intent в состоянии `recovery_required`, а ошибка обычной DO/AO
-команды — `publish_failed`. Это сохраняет явный recovery сигнал даже при rollback
+оставляет intent в состоянии `recovery_required`; перед этим выполняется одна
+bounded повторная попытка с тем же `command_id`, а ошибка обычной DO/AO команды
+остаётся `publish_failed`. Это сохраняет явный recovery сигнал даже при rollback
 основной транзакции; автоматический restore/readback recovery ещё не реализован.
 
 **Статус slice F4 (2026-09-14): частично закрыт.** Канал с незакрытым

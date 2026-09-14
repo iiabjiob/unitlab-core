@@ -88,6 +88,35 @@ def _lease_stats_snapshot() -> dict[str, int]:
     return dict(_lease_stats)
 
 
+async def _deliver_durable_command(
+    db,
+    *,
+    command_id: str,
+    action: str,
+    command_sender,
+) -> None:
+    """Publish a persisted command, retrying idempotent restore delivery once."""
+    delivery_attempts = 2 if action == "restore" else 1
+    for attempt_no in range(delivery_attempts):
+        try:
+            await command_sender(command_id)
+            return
+        except Exception:
+            await db.rollback()
+            await mark_hardware_command_intent_delivery_failure(
+                db,
+                command_id=command_id,
+                status="recovery_required" if action == "restore" else "publish_failed",
+            )
+            await db.commit()
+            if attempt_no + 1 == delivery_attempts:
+                raise
+            logger.warning(
+                "Restore command delivery failed; retrying command_id=%s",
+                command_id,
+            )
+
+
 async def _record_lease_stat(name: str) -> int:
     count = _bump_lease_stat(name)
     try:
@@ -575,17 +604,12 @@ async def _handle_test_run(
         )
         # The intent must survive a worker crash before the outbound stream publish.
         await repo.db.commit()
-        try:
-            await command_sender(command_id)
-        except Exception:
-            await repo.db.rollback()
-            await mark_hardware_command_intent_delivery_failure(
-                repo.db,
-                command_id=command_id,
-                status="recovery_required" if action == "restore" else "publish_failed",
-            )
-            await repo.db.commit()
-            raise
+        await _deliver_durable_command(
+            repo.db,
+            command_id=command_id,
+            action=action,
+            command_sender=command_sender,
+        )
         await mark_hardware_command_intent_queued(repo.db, command_id=command_id)
         await repo.db.commit()
         return command_id

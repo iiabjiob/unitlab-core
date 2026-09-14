@@ -11,6 +11,7 @@ from app.services.hardware_command_intent import (
     has_hardware_recovery_required,
     mark_hardware_command_intent_delivery_failure,
 )
+from app.workers.signal_test_run_runner import _deliver_durable_command
 
 
 @pytest.mark.anyio
@@ -131,3 +132,47 @@ async def test_recovery_required_lookup_returns_channel_block() -> None:
 
     assert blocked is True
     db.execute.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_restore_delivery_retries_once_with_same_command_id() -> None:
+    db = AsyncMock()
+    attempts: list[str] = []
+
+    async def sender(command_id: str) -> None:
+        attempts.append(command_id)
+        if len(attempts) == 1:
+            raise RuntimeError("stream unavailable")
+
+    await _deliver_durable_command(
+        db,
+        command_id="cmd-restore",
+        action="restore",
+        command_sender=sender,
+    )
+
+    assert attempts == ["cmd-restore", "cmd-restore"]
+    assert db.rollback.await_count == 1
+    assert db.commit.await_count == 1
+
+
+@pytest.mark.anyio
+async def test_regular_delivery_does_not_retry_after_publish_failure() -> None:
+    db = AsyncMock()
+    attempts: list[str] = []
+
+    async def sender(command_id: str) -> None:
+        attempts.append(command_id)
+        raise RuntimeError("stream unavailable")
+
+    with pytest.raises(RuntimeError, match="stream unavailable"):
+        await _deliver_durable_command(
+            db,
+            command_id="cmd-do",
+            action="do_set",
+            command_sender=sender,
+        )
+
+    assert attempts == ["cmd-do"]
+    assert db.rollback.await_count == 1
+    assert db.commit.await_count == 1
