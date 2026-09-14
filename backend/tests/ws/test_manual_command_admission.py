@@ -95,3 +95,20 @@ def test_manual_command_marks_intent_queued_after_publish(monkeypatch) -> None:
     )
 
     assert calls.index("publish") < calls.index("queued") < calls.index("release")
+
+
+def test_manual_channels_reject_duplicate_scope_before_database_query(monkeypatch) -> None:
+    async def unexpected_session():
+        raise AssertionError("duplicate scope must be rejected before querying channels")
+
+    monkeypatch.setattr(manual_command_admission, "AsyncSessionLocal", unexpected_session)
+
+    assert run_async(
+        manual_command_admission._channels(
+            7,
+            [17, 17],
+            "unit-1",
+            [0, 1],
+            "do",
+        )
+    ) is None

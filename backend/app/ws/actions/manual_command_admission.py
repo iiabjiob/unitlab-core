@@ -52,6 +52,8 @@ async def _channel(workspace_id: int, channel_id: int, unit_id: str, channel_ind
 
 
 async def _channels(workspace_id: int, channel_ids: list[int], unit_id: str, indexes: list[int], expected_type: str):
+    if not channel_ids or len(set(channel_ids)) != len(channel_ids):
+        return None
     async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(Channel)
