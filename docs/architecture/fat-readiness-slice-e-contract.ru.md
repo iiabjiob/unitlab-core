@@ -97,6 +97,8 @@ E16 добавляет явную `verification_policy` для test-run: `off`, 
 `required`; required блокирует шаги без IEC mapping/подписки, optional не блокирует.
 E18 передаёт `workspace_id` в sequence command/run и проверяет workspace link до
 создания запуска, устраняя неоднозначный выбор workspace для shared sequence.
+E19 удаляет fallback старых sequence commands без workspace scope: такие команды
+отклоняются до hardware execution.
 
 ## Состояния delivery и verdict
 

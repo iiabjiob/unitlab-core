@@ -162,6 +162,8 @@ class SequenceRunner:
         requested_by: Optional[str] = None,
         signal_bindings: Optional[dict[str, int]] = None,
     ) -> SequenceStateSchema:
+        if workspace_id is None or int(workspace_id) <= 0:
+            raise SequenceNotApplicableError("Sequence start requires workspace_id")
         self.invalidate_state(sequence_id)
 
         async with self._lock:
@@ -1024,11 +1026,6 @@ class SequenceRunner:
                     requested_by=requested_by,
                 )
 
-                workspace_id = workspace_id or await session.scalar(
-                    select(WorkspaceSequence.workspace_id)
-                    .where(WorkspaceSequence.sequence_id == sequence_id)
-                    .limit(1)
-                )
                 if workspace_id is None:
                     raise SequenceNotApplicableError("Sequence is not linked to a workspace")
                 hardware_admission = HardwareCommandAdmission(RedisManager.get_instance())

@@ -251,8 +251,10 @@ intent и ACK barrier. Требуются runtime-проверки device channe
 
 **Статус slice E18 (2026-09-14): частично закрыт.** Sequence start command
 теперь несёт `workspace_id`; runner проверяет link sequence к workspace и
-использует этот scope для hardware intent/admission. Старые команды без scope
-сохраняют fallback на единственный найденный link до миграции producer-ов.
+использует этот scope для hardware intent/admission.
+
+**Статус slice E19 (2026-09-14): закрыт.** Sequence start без положительного
+`workspace_id` теперь отклоняется; fallback на случайный workspace удалён.
 
 ## GAP-06 — Синхронное ожидание IEC 61850 блокирует event loop worker
 
