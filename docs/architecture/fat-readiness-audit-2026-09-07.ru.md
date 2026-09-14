@@ -833,6 +833,14 @@ signal IDs, который реально исполняется из immutable 
 не создают ложный incomplete/failed verdict; добавлена regression-проверка
 нормализации входа.
 
+**Статус slice G77 (2026-09-14): single active revision invariant.** Создание
+новой signal-list revision сначала архивирует предыдущие active rows, а новая
+Alembic migration `cb1d2e3f4a5b` оставляет в PostgreSQL/SQLite partial unique
+index не более одной active revision на workspace и архивирует старые дубликаты
+при upgrade. Concurrent conflict теперь остаётся явным DB conflict, а не создаёт
+две active revision; immutable test-run plans продолжают ссылаться на свою
+историческую revision.
+
 **Статус slice G38 (2026-09-14): offline-safe signal sheet migration.**
 `9a1b2c3d4e6f` получил PostgreSQL offline-ветку для создания signal sheet/preset и
 live allocation tables и удаления прежних snapshot tables без `inspect` на

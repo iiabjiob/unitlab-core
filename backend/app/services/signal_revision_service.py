@@ -5,7 +5,7 @@ import json
 from datetime import UTC, datetime
 from typing import Sequence
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.signal_revision import SignalListRevision, SignalListRevisionItem, SignalTestRunPlan, SignalTestRunPlanItem
@@ -30,6 +30,14 @@ class SignalRevisionService:
     ) -> SignalListRevision:
         ordered_rows = list(rows)
         snapshots = [row.model_dump(mode="json") for row in ordered_rows]
+        await self.db.execute(
+            update(SignalListRevision)
+            .where(
+                SignalListRevision.workspace_id == workspace_id,
+                SignalListRevision.status == "active",
+            )
+            .values(status="archived")
+        )
         content_hash = hashlib.sha256(_canonical_json(snapshots).encode("utf-8")).hexdigest()
         current_no = await self.db.scalar(
             select(func.max(SignalListRevision.revision_no)).where(SignalListRevision.workspace_id == workspace_id)
