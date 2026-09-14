@@ -111,9 +111,11 @@ function onSetAo({ channel, value }: { channel: Channel; value: number }) {
 .device-channels-list {
   box-sizing: border-box;
   display: flex;
+  flex: 1 1 0;
   min-width: 0;
   height: 100%;
   min-height: 0;
+  width: 100%;
   flex-direction: column;
   overflow: hidden;
   padding: 1rem;
