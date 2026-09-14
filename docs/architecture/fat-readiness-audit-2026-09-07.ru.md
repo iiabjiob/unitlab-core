@@ -594,6 +594,11 @@ graph до новой diagnostics audit schema.
 и индекса; online-проверка существующих объектов сохранена. Полный offline graph
 ещё проверяется по цепочке.
 
+**Статус slice G40 (2026-09-14): offline-safe diagnostics audit migration.**
+Финальная diagnostics migration `ca9b8c7d6e5f` получила PostgreSQL offline DDL
+для append-only acknowledgement table и обоих индексов; online idempotent
+проверка сохранена. После этого шага повторно проверяется полный graph.
+
 **Статус slice G38 (2026-09-14): offline-safe signal sheet migration.**
 `9a1b2c3d4e6f` получил PostgreSQL offline-ветку для создания signal sheet/preset и
 live allocation tables и удаления прежних snapshot tables без `inspect` на

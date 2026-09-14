@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Sequence, Union
 
-from alembic import op
+from alembic import context, op
 import sqlalchemy as sa
 
 
@@ -23,6 +23,22 @@ BIGINT_PK = sa.BigInteger().with_variant(sa.Integer(), "sqlite")
 
 def upgrade() -> None:
     bind = op.get_bind()
+    if context.is_offline_mode():
+        op.execute(
+            "CREATE TABLE IF NOT EXISTS core_diagnostics_acknowledgements ("
+            "id BIGSERIAL PRIMARY KEY, hostname VARCHAR(255) NOT NULL, "
+            "incident_id VARCHAR(128) NOT NULL, actor VARCHAR(128) NOT NULL, "
+            "acknowledged_at TIMESTAMPTZ NOT NULL DEFAULT now())"
+        )
+        op.execute(
+            "CREATE INDEX IF NOT EXISTS ix_core_diag_ack_incident "
+            "ON core_diagnostics_acknowledgements (hostname, incident_id, acknowledged_at)"
+        )
+        op.execute(
+            "CREATE INDEX IF NOT EXISTS ix_core_diag_ack_time "
+            "ON core_diagnostics_acknowledgements (acknowledged_at)"
+        )
+        return
     inspector = sa.inspect(bind)
     if inspector.has_table("core_diagnostics_acknowledgements"):
         return
@@ -47,6 +63,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    if context.is_offline_mode():
+        op.execute("DROP TABLE IF EXISTS core_diagnostics_acknowledgements CASCADE")
+        return
     op.drop_index("ix_core_diag_ack_time", table_name="core_diagnostics_acknowledgements")
     op.drop_index("ix_core_diag_ack_incident", table_name="core_diagnostics_acknowledgements")
     op.drop_table("core_diagnostics_acknowledgements")
