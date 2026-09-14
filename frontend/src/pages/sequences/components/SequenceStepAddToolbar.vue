@@ -28,6 +28,7 @@ interface MenuDef {
 }
 
 const sequenceStore = useSequenceStore()
+const canReferenceAnotherSequence = computed(() => sequenceStore.sequences.length > 1)
 
 const items: MenuDef[] = [
   { type: SequenceStepType.WAIT, label: "Wait", section: "timing" },
@@ -41,6 +42,13 @@ const items: MenuDef[] = [
 ]
 
 function add(type: SequenceStepType) {
+  if (
+    (type === SequenceStepType.CALL_SEQUENCE || type === SequenceStepType.REPEAT_SEQUENCE)
+    && !canReferenceAnotherSequence.value
+  ) {
+    return
+  }
+
   const fallbackTargetSequenceId = sequenceStore.sequences.find(
     (sequence) => sequence.id !== props.sequenceId,
   )?.id ?? null
@@ -139,6 +147,7 @@ const flowItems = computed(() => items.filter((item) => item.section === "flow")
           v-for="item in flowItems"
           :key="item.type"
           class="sequence-step-add-toolbar__item"
+          :disabled="!canReferenceAnotherSequence"
           @select="add(item.type)"
         >
           {{ item.label }}
