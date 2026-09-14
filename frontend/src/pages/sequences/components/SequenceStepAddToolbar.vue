@@ -10,6 +10,7 @@ import {
   UiMenuSeparator,
 } from "@/components/ui/menu"
 import { useSequenceStore } from "@/stores/sequenceStore"
+import { useSwitchgearStore } from "@/stores/switchgearStore"
 import { SequenceStepType } from "@/types/sequences"
 import type { SequenceStepCreate } from "@/types/sequences"
 
@@ -28,7 +29,9 @@ interface MenuDef {
 }
 
 const sequenceStore = useSequenceStore()
+const switchgearStore = useSwitchgearStore()
 const canReferenceAnotherSequence = computed(() => sequenceStore.sequences.length > 1)
+const hasSwitchgear = computed(() => switchgearStore.switchgears.length > 0)
 
 const items: MenuDef[] = [
   { type: SequenceStepType.WAIT, label: "Wait", section: "timing" },
@@ -46,6 +49,10 @@ function add(type: SequenceStepType) {
     (type === SequenceStepType.CALL_SEQUENCE || type === SequenceStepType.REPEAT_SEQUENCE)
     && !canReferenceAnotherSequence.value
   ) {
+    return
+  }
+
+  if (type === SequenceStepType.DO_PAIR && !hasSwitchgear.value) {
     return
   }
 
@@ -121,6 +128,7 @@ const flowItems = computed(() => items.filter((item) => item.section === "flow")
           v-for="item in digitalItems"
           :key="item.type"
           class="sequence-step-add-toolbar__item"
+          :disabled="item.type === SequenceStepType.DO_PAIR && !hasSwitchgear"
           @select="add(item.type)"
         >
           {{ item.label }}
