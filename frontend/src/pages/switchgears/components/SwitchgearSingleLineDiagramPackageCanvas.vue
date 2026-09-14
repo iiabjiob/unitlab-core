@@ -1567,6 +1567,10 @@ function finishLabelDrag(event: PointerEvent) {
 }
 
 function createLine(start: DraftEndpoint, end: DraftEndpoint) {
+  if (Math.hypot(end.point.x - start.point.x, end.point.y - start.point.y) < 1) {
+    toastStore.info("Line needs two different points")
+    return
+  }
   const seed = createEntityId("edge")
   diagram.dispatch({
     type: "createEdge",
