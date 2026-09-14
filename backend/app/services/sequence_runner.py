@@ -48,6 +48,7 @@ from app.services.hardware_command_admission import HardwareCommandAdmission
 from app.services.hardware_command_intent import (
     mark_hardware_command_intent_delivery_failure,
     mark_hardware_command_intent_queued,
+    reconcile_unfinished_hardware_command_intents,
     record_hardware_command_intent,
 )
 from app.infrastructure.redis.manager import RedisManager
@@ -1285,6 +1286,25 @@ class SequenceRunner:
                 sequence_id,
                 run_id,
             )
+            if run_id is not None:
+                try:
+                    async with AsyncSessionLocal() as recovery_session:
+                        reconciled = await reconcile_unfinished_hardware_command_intents(
+                            recovery_session,
+                            job_id=str(run_id),
+                        )
+                        await recovery_session.commit()
+                    if reconciled:
+                        logger.warning(
+                            "⚠️ Reconciled %s unfinished hardware intents after sequence crash run=%s",
+                            reconciled,
+                            run_id,
+                        )
+                except Exception:  # noqa: BLE001
+                    logger.exception(
+                        "💥 Failed to reconcile hardware intents after sequence crash run=%s",
+                        run_id,
+                    )
             raise
 
     @staticmethod
