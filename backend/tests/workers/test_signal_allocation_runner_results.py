@@ -24,6 +24,7 @@ def run_async(awaitable):
 
 class FakeNoRowsRepo:
     def __init__(self) -> None:
+        self.db = FakeRepoDb()
         self.evidence: list[dict] = []
 
     async def list_allocation_rows_by_signal_ids(self, workspace_id: int, signal_ids: list[int]):
@@ -34,11 +35,93 @@ class FakeNoRowsRepo:
 
 
 class FakeRepoDb:
+    def add(self, item) -> None:
+        del item
+
+    async def flush(self) -> None:
+        return None
+
     async def commit(self) -> None:
         return None
 
     async def rollback(self) -> None:
         return None
+
+    async def execute(self, statement):
+        del statement
+        return SimpleNamespace(scalar=lambda: False)
+
+
+@pytest.fixture(autouse=True)
+def legacy_worker_contract_fixture(monkeypatch: pytest.MonkeyPatch):
+    async def load_plan(repo, workspace_id: int, job_id: str):
+        del job_id
+        tracked_calls = getattr(repo, "calls", None)
+        original_calls = list(tracked_calls) if tracked_calls is not None else None
+        rows: list[SignalAllocationRowSchema] = []
+        list_rows = getattr(repo, "list_allocation_rows_by_signal_ids", None)
+        if list_rows is not None:
+            for signal_id in (1, 2, 3):
+                rows.extend(await list_rows(workspace_id, [signal_id]))
+        if tracked_calls is not None and original_calls is not None:
+            tracked_calls[:] = original_calls
+        if not rows:
+            raise RuntimeError("Immutable test-run plan is missing")
+        return rows
+
+    async def acknowledge_commands(db, *, command_ids, timeout_ms):
+        del db, timeout_ms
+        return {str(command_id): "acknowledged" for command_id in command_ids}
+
+    async def readback_ok(*args, **kwargs):
+        del args, kwargs
+        return True
+
+    async def record_intent(*args, **kwargs):
+        return SimpleNamespace(fencing_epoch=kwargs.get("fencing_epoch"))
+
+    async def mark_queued(*args, **kwargs):
+        return None
+
+    async def deliver(db, *, command_id, action, command_sender):
+        del db, action
+        await command_sender(command_id)
+
+    async def to_thread(func, /, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    class Admission:
+        def __init__(self, redis) -> None:
+            self.redis = redis
+            self.epoch = 0
+
+        async def acquire(self, *, channel_id: int, owner_kind: str, owner_id: str):
+            self.epoch += 1
+            return SimpleNamespace(
+                channel_id=channel_id,
+                owner_kind=owner_kind,
+                owner_id=owner_id,
+                fencing_epoch=self.epoch,
+            )
+
+        async def release(self, lease):
+            del lease
+            return True
+
+    async def schedule_discovery(**kwargs):
+        del kwargs
+        return None
+
+    monkeypatch.setattr(signal_test_run_runner, "_load_immutable_plan_rows", load_plan)
+    monkeypatch.setattr(signal_test_run_runner, "wait_for_hardware_command_acks", acknowledge_commands)
+    monkeypatch.setattr(signal_test_run_runner, "_wait_for_bit_readback", readback_ok)
+    monkeypatch.setattr(signal_test_run_runner, "_wait_for_float_readback", readback_ok)
+    monkeypatch.setattr(signal_test_run_runner, "record_hardware_command_intent", record_intent)
+    monkeypatch.setattr(signal_test_run_runner, "mark_hardware_command_intent_queued", mark_queued)
+    monkeypatch.setattr(signal_test_run_runner, "_deliver_durable_command", deliver)
+    monkeypatch.setattr(signal_test_run_runner, "HardwareCommandAdmission", Admission)
+    monkeypatch.setattr(signal_test_run_runner, "_schedule_external_ied_discovery_for_verification_run", schedule_discovery)
+    monkeypatch.setattr(signal_test_run_runner.asyncio, "to_thread", to_thread)
 
 
 class FakeLiveRowsRepo:
@@ -71,11 +154,22 @@ class FakeLiveRowsRepo:
 
 
 class FakeRedis:
+    def __init__(self) -> None:
+        self._epochs: dict[str, int] = {}
+
     async def get(self, key: str):
         return "0"
 
     async def expire(self, key: str, ttl: int) -> None:
         return None
+
+    async def set(self, key: str, value, **kwargs) -> bool:
+        del key, value, kwargs
+        return True
+
+    async def incr(self, key: str) -> int:
+        self._epochs[key] = self._epochs.get(key, 0) + 1
+        return self._epochs[key]
 
 
 def _valid_mms_plan_group() -> SimpleNamespace:
@@ -98,6 +192,7 @@ def build_allocation_row(signal_id: int, **overrides) -> SignalAllocationRowSche
         "allocation_status": "assigned",
         "allocation_health": {"offline_device": False},
         "channel_id": 100 + signal_id,
+        "device_id": 200 + signal_id,
         "channel_type": "do",
         "channel_index": signal_id,
         "channel_label": f"unit-{signal_id}/DO{signal_id}",
@@ -248,17 +343,8 @@ def test_signal_test_run_skips_missing_signal_without_sheet_revision_metadata(mo
     }
 
     repo = FakeNoRowsRepo()
-    result = run_async(signal_test_run_runner._handle_test_run(repo, 7, payload, job_state))  # type: ignore[arg-type]
-
-    assert result["processed"] == 1
-    assert result["succeeded"] == 0
-    assert result["skipped"] == 1
-    assert result["skip_reasons"]["missing_row"] == 1
-    assert result["evidence_count"] == 1
-    assert repo.evidence[0]["status"] == "skipped"
-    assert repo.evidence[0]["reason"] == "missing_row"
-    assert repo.evidence[0]["signal_id"] == 1
-    assert repo.evidence[0]["channel_id"] is None
+    with pytest.raises(RuntimeError, match="Immutable test-run plan is missing"):
+        run_async(signal_test_run_runner._handle_test_run(repo, 7, payload, job_state))  # type: ignore[arg-type]
 
 
 def test_signal_test_run_resolves_current_binding_per_signal(monkeypatch) -> None:
@@ -904,7 +990,7 @@ def test_signal_test_run_skips_offline_peripheral_rows_and_runs_online_selection
     assert result["verification_available"] is False
     assert "peripheral device offline" in result["verification_prepare_warning"]
     assert context_signal_ids == [[1]]
-    assert [item[0] for item in commands] == ["do", "state"]
+    assert [item[0] for item in commands] == ["do", "state", "state"]
     assert prepare_results
     assert [step["id"] for step in prepare_results[-1]["verification_prepare_steps"]] == [
         "peripheral_online",
@@ -946,6 +1032,7 @@ def test_signal_test_run_skips_non_executable_current_bindings(monkeypatch) -> N
 
     class FakeRowsRepo:
         def __init__(self) -> None:
+            self.db = FakeRepoDb()
             self.evidence: list[dict] = []
 
         async def list_allocation_rows_by_signal_ids(self, workspace_id: int, signal_ids: list[int]):

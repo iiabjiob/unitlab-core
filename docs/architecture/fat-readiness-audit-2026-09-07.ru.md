@@ -442,6 +442,12 @@ presence, без построения полного `SignalAllocationRowSchema`
 Проверки revision snapshot и текущего mutable binding сохранены. Полный query
 count/p95 measurement на production PostgreSQL и batch preparation ещё не сняты.
 
+**Статус slice G15 (2026-09-14): частично закрыт.** Legacy worker fixtures
+синхронизированы с immutable-plan, hardware admission, ACK и readback-контрактом;
+worker regression file проходит `13 passed`, полный `backend/tests` — `404
+passed`. Эти тесты используют deterministic doubles и не заменяют PostgreSQL/
+Redis query-count measurement или стендовый hardware run.
+
 ## GAP-14 — Нет подтверждённого performance/soak baseline целевого FAT-пути
 
 **P1 для критериев релиза; P2 для последующих оптимизаций · validation/performance.**
