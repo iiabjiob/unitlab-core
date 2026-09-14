@@ -379,6 +379,9 @@ function syncCoreDiagnosticsCriticalAlert(
 
   const signature = buildCoreDiagnosticsIssueSignature(mode, issues)
   if (coreDiagnosticsCriticalToastState.signature === signature && coreDiagnosticsCriticalToastState.id !== null) {
+    toastStore.update(coreDiagnosticsCriticalToastState.id, {
+      message: `Core diagnostics alert: ${issues.join("; ")}`,
+    })
     return
   }
   if (coreDiagnosticsCriticalToastState.id !== null) {

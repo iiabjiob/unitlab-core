@@ -386,7 +386,7 @@ Redis/PostgreSQL и durable evidence до/после commit ещё требую�
 
 **Приёмка:** десять одинаковых/численно меняющихся snapshots одного инцидента не создают поток новых тостов; настоящая новая неисправность и восстановление видны. Визуально проверить настройки сети, diagnostics и работу во время FAT.
 
-**Статус slice B (2026-09-14): частично закрыт.** Для core diagnostics численные изменения CPU/memory/disk не меняют incident signature; inactive-service alert ограничен обязательными `docker` и `NetworkManager`, а существующий toast обновляется вместо пересоздания. Production incident ID, hysteresis/debounce, recovery и ручное acknowledgement остаются открытыми.
+**Статус slice B (2026-09-14): частично закрыт.** Для core diagnostics численные изменения CPU/memory/disk не меняют incident signature; inactive-service alert ограничен обязательными `docker` и `NetworkManager`, а существующий toast обновляется вместо пересоздания и теперь сохраняет актуальные численные значения. Production incident ID, hysteresis/debounce, recovery и ручное acknowledgement остаются открытыми.
 
 ## GAP-13 — Повторная загрузка полного allocation-контекста на каждый сигнал
 
