@@ -73,7 +73,7 @@ function setValue(next: number) {
 				<UiButton
 					v-for="option in [0, 1]"
 					:key="option"
-					size="xs"
+					size="sm"
 					:variant="currentValue === option ? 'primary' : 'secondary'"
 					:disabled="disabled"
 					@click="setValue(option)"

@@ -83,7 +83,7 @@ export const useSequenceStepStore = defineStore("sequenceStepStore", () => {
       case SequenceStepType.WAIT:
         return `Wait ${step.payload?.ms ?? 0} ms`
       case SequenceStepType.DO_LATCH:
-        return `DO: latch ${resolve(step.channel_id, step.payload?.signal_key)} = ${step.payload?.value ?? 0}`
+        return `DO: latch ${resolve(step.channel_id, step.payload?.signal_key)} = ${Number(step.payload?.value ?? 0) === 1 ? "On" : "Off"}`
       case SequenceStepType.DO_PULSE: {
         const value = Number(step.payload?.value ?? 0) === 1 ? "On" : "Off"
         return `DO: pulse ${resolve(step.channel_id, step.payload?.signal_key)} = ${value} for ${step.payload?.pulse_ms ?? 0} ms`
