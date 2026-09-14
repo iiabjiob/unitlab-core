@@ -12,10 +12,13 @@ async def has_hardware_recovery_required(
     workspace_id: int,
     channel_id: int,
 ) -> bool:
+    # A physical channel cannot be safely reused by another workspace while any
+    # prior command still requires recovery.  Keep workspace_id in the API for
+    # callers and migrations, but scope the safety lookup by channel globally.
+    del workspace_id
     result = await db.execute(
         select(
             exists().where(
-                HardwareCommandIntent.workspace_id == workspace_id,
                 HardwareCommandIntent.channel_id == channel_id,
                 HardwareCommandIntent.status.in_(("unknown", "recovery_required")),
             )
