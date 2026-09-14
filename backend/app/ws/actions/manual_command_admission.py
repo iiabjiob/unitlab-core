@@ -88,20 +88,32 @@ async def _result(
     )
 
 
-async def _channel(workspace_id: int, channel_id: int, unit_id: str, channel_index: int, expected_type: str):
+async def _channel(
+    workspace_id: int,
+    channel_id: int,
+    unit_id: str,
+    channel_index: int,
+    expected_type: str,
+    *,
+    require_allocation: bool = True,
+):
+    conditions = [
+        Channel.id == channel_id,
+        Channel.channel_index == channel_index,
+        Device.unit_id == unit_id,
+    ]
+    if require_allocation:
+        conditions.append(
+            exists().where(
+                SignalAllocation.workspace_id == workspace_id,
+                SignalAllocation.channel_id == Channel.id,
+            )
+        )
     async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(Channel)
             .join(Device, Device.id == Channel.device_id)
-            .where(
-                Channel.id == channel_id,
-                Channel.channel_index == channel_index,
-                Device.unit_id == unit_id,
-                exists().where(
-                    SignalAllocation.workspace_id == workspace_id,
-                    SignalAllocation.channel_id == Channel.id,
-                ),
-            )
+            .where(*conditions)
         )
         channel = result.scalar_one_or_none()
         if channel is None or not str(channel.channel_type).lower().startswith(expected_type):
@@ -109,20 +121,28 @@ async def _channel(workspace_id: int, channel_id: int, unit_id: str, channel_ind
         return channel
 
 
-async def _channels(workspace_id: int, channel_ids: list[int], unit_id: str, indexes: list[int], expected_type: str):
+async def _channels(
+    workspace_id: int,
+    channel_ids: list[int],
+    unit_id: str,
+    indexes: list[int],
+    expected_type: str,
+    *,
+    require_allocation: bool = True,
+):
     if not channel_ids or len(set(channel_ids)) != len(channel_ids):
         return None
     async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            select(Channel)
-            .join(Device, Device.id == Channel.device_id)
-            .where(Channel.id.in_(channel_ids), Device.unit_id == unit_id)
-            .where(
+        conditions = [Channel.id.in_(channel_ids), Device.unit_id == unit_id]
+        if require_allocation:
+            conditions.append(
                 exists().where(
                     SignalAllocation.workspace_id == workspace_id,
                     SignalAllocation.channel_id == Channel.id,
                 )
             )
+        result = await session.execute(
+            select(Channel).join(Device, Device.id == Channel.device_id).where(*conditions)
         )
         by_id = {int(channel.id): channel for channel in result.scalars().all()}
     if set(by_id) != set(channel_ids) or len(indexes) != len(channel_ids):
@@ -342,7 +362,14 @@ async def handle_manual_do(ws: WebSocket, msg: SetDoCommandMessage) -> None:
         if any(index is None for index in indexes):
             await _result(ws, command_id=None, delivery="rejected", reason="channel_indexes_required")
             return
-        channels = await _channels(msg.workspace_id, msg.channel_ids, msg.unit_id, [int(index) for index in indexes], "do")
+        channels = await _channels(
+            msg.workspace_id,
+            msg.channel_ids,
+            msg.unit_id,
+            [int(index) for index in indexes],
+            "do",
+            require_allocation=False,
+        )
         if channels is None:
             await _result(ws, command_id=None, delivery="rejected", reason="channel_scope_invalid")
             return
@@ -374,7 +401,14 @@ async def handle_manual_do(ws: WebSocket, msg: SetDoCommandMessage) -> None:
     if msg.mode.name == "SET_PULSE_BIT" and not 0 <= msg.pulse_ms <= 65535:
         await _result(ws, command_id=None, delivery="rejected", reason="pulse_duration_invalid")
         return
-    channel = await _channel(msg.workspace_id, msg.channel_id, msg.unit_id, msg.ch, "do")
+    channel = await _channel(
+        msg.workspace_id,
+        msg.channel_id,
+        msg.unit_id,
+        msg.ch,
+        "do",
+        require_allocation=False,
+    )
     if channel is None:
         await _result(ws, command_id=None, delivery="rejected", reason="channel_scope_invalid")
         return
@@ -402,7 +436,14 @@ async def handle_manual_do(ws: WebSocket, msg: SetDoCommandMessage) -> None:
 
 
 async def handle_manual_ao(ws: WebSocket, msg: SetAoCommandMessage) -> None:
-    channel = await _channel(msg.workspace_id, msg.channel_id, msg.unit_id, msg.ch, "ao")
+    channel = await _channel(
+        msg.workspace_id,
+        msg.channel_id,
+        msg.unit_id,
+        msg.ch,
+        "ao",
+        require_allocation=False,
+    )
     if channel is None:
         await _result(ws, command_id=None, delivery="rejected", reason="channel_scope_invalid")
         return
