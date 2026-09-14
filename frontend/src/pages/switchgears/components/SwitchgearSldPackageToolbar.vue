@@ -7,7 +7,6 @@ type EdgeWeight = "normal" | "bold"
 type DiagramStaticSize = "sm" | "md" | "lg"
 
 const props = defineProps<{
-  counts: { nodes: number; edges: number; statics: number; texts: number; broken: number }
   activeTool: PackageTool
   lineKind: EdgeStyle
   lineWeight: EdgeWeight
@@ -19,9 +18,7 @@ const props = defineProps<{
   selectedNodeCount: number
   selectedTextCount: number
   snapEnabled: boolean
-  snapStateLabel: string
   zoomLabel: string
-  selectionLabel: string
   canUndo: boolean
   canRedo: boolean
   canDelete: boolean
@@ -53,13 +50,6 @@ const props = defineProps<{
 
 <template>
   <div class="switchgear-sld-package-canvas__toolbar" role="toolbar" aria-label="Single line diagram editor">
-    <div class="switchgear-sld-package-canvas__status" aria-live="polite">
-      <span>{{ props.counts.nodes }} switchgears</span>
-      <span>{{ props.counts.edges }} lines</span>
-      <span>{{ props.counts.statics }} symbols</span>
-      <span>{{ props.counts.texts }} texts</span>
-      <span v-if="props.counts.broken > 0" class="switchgear-sld-package-canvas__status--warning">{{ props.counts.broken }} broken bindings</span>
-    </div>
     <div class="switchgear-sld-package-canvas__actions">
       <div class="switchgear-sld-package-canvas__tool-tabs" role="group" aria-label="Canvas tool">
         <UiButton size="xs" variant="toolbar" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': props.activeTool === 'select' }" :aria-pressed="props.activeTool === 'select'" title="Select and move objects (V)" aria-label="Select tool" @click="props.actions.setTool('select')">↖</UiButton>
@@ -95,8 +85,6 @@ const props = defineProps<{
         <span class="switchgear-sld-package-canvas__zoom-label">{{ props.zoomLabel }}</span>
         <UiButton size="xs" variant="toolbar" class="switchgear-sld-package-canvas__icon-action" title="Zoom in" aria-label="Zoom in" @click="props.actions.zoom(0.1)">+</UiButton>
       </div>
-      <span class="switchgear-sld-package-canvas__selection">{{ props.snapStateLabel }}</span>
-      <span class="switchgear-sld-package-canvas__selection">{{ props.selectionLabel }}</span>
       <UiButton size="xs" variant="toolbar" :disabled="!props.canUndo" title="Undo last change (Ctrl/Cmd+Z)" aria-label="Undo" @click="props.actions.undo">↶</UiButton>
       <UiButton size="xs" variant="toolbar" :disabled="!props.canRedo" title="Redo last change (Ctrl/Cmd+Shift+Z)" aria-label="Redo" @click="props.actions.redo">↷</UiButton>
       <UiButton size="xs" variant="toolbar" title="Fit all objects in view" aria-label="Fit all objects" @click="props.actions.fit">⌗</UiButton>
@@ -118,7 +106,6 @@ const props = defineProps<{
   min-width: 0;
 }
 
-.switchgear-sld-package-canvas__status,
 .switchgear-sld-package-canvas__actions,
 .switchgear-sld-package-canvas__tool-tabs {
   display: flex;
@@ -130,18 +117,6 @@ const props = defineProps<{
 .switchgear-sld-package-canvas__actions {
   flex: 1 1 32rem;
   min-width: 0;
-}
-
-.switchgear-sld-package-canvas__status span,
-.switchgear-sld-package-canvas__selection {
-  padding: 0.2rem 0.45rem;
-  border: 1px solid var(--color-neutral-200);
-  border-radius: 999px;
-  background: var(--color-white);
-  color: var(--color-neutral-600);
-  font-size: var(--text-xs);
-  font-weight: 500;
-  white-space: nowrap;
 }
 
 .switchgear-sld-package-canvas__tool-tab {
@@ -182,29 +157,11 @@ const props = defineProps<{
 }
 
 @media (max-width: 900px) {
-  .switchgear-sld-package-canvas__status {
-    width: 100%;
-    overflow-x: auto;
-    flex-wrap: nowrap;
-  }
-
   .switchgear-sld-package-canvas__actions {
     flex-basis: 100%;
   }
 }
 
-.switchgear-sld-package-canvas__status--warning {
-  border: 1px solid var(--color-rose-300);
-  border-radius: 999px;
-  background: var(--color-rose-50);
-  color: var(--color-rose-700);
-  padding: 0.25rem 0.5rem;
-  font-size: var(--text-xs);
-  font-weight: 600;
-}
-
-:global(.dark) .switchgear-sld-package-canvas__status span,
-:global(.dark) .switchgear-sld-package-canvas__selection,
 :global(.dark) .switchgear-sld-package-canvas__tool-tab {
   border-color: var(--color-neutral-700);
   background: var(--color-neutral-900);

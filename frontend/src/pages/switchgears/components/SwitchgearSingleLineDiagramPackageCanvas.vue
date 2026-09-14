@@ -161,7 +161,6 @@ const viewportBox = computed(() => {
 })
 const zoomLabel = computed(() => `${Math.round((viewport.viewport.value.zoom > 0 ? viewport.viewport.value.zoom : 1) * 100)}%`)
 const snapEnabled = computed(() => lastStoredState.value?.snapEnabled !== false)
-const snapStateLabel = computed(() => snapEnabled.value ? "Snap on" : "Snap off")
 const toolbarActions = {
   setTool,
   setLineKind: (kind: EdgeStyle) => activeTool.value === "line" ? lineKind.value = kind : setSelectedEdgesKind(kind),
@@ -191,27 +190,6 @@ const toolbarActions = {
   duplicate: duplicateSelection,
   delete: deleteSelection,
 }
-const sceneCounts = computed(() => ({
-  nodes: diagram.scene.value.order.nodeIds.length,
-  edges: diagram.scene.value.order.edgeIds.length,
-  statics: diagram.scene.value.order.shapeIds.length,
-  texts: diagram.scene.value.order.textIds.length,
-  broken: diagram.scene.value.order.edgeIds.filter(id => isBrokenEdge(id)).length,
-}))
-const selectionLabel = computed(() => {
-  const ids = selection.selection.value.ids
-  if (ids.length === 0) {
-    return "No selection"
-  }
-  if (ids.length === 1) {
-    const id = ids[0]
-    if (id.startsWith("switchgear:")) {
-      return resolveNodeLabel(id) ?? id
-    }
-    return id
-  }
-  return `${ids.length} selected`
-})
 const selectedShapeIds = computed(() => selection.selection.value.ids.filter(id => diagram.scene.value.entities.shapesById.has(id)))
 const selectedEdgeIds = computed(() => selection.selection.value.ids.filter(id => diagram.scene.value.entities.edgesById.has(id)))
 const selectedNodeIds = computed(() => selection.selection.value.ids.filter(id => diagram.scene.value.entities.nodesById.has(id)))
@@ -1920,7 +1898,6 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
 <template>
   <section class="switchgear-sld-package-canvas">
     <SwitchgearSldPackageToolbar
-      :counts="sceneCounts"
       :active-tool="activeTool"
       :line-kind="lineKind"
       :line-weight="lineWeight"
@@ -1932,9 +1909,7 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
       :selected-node-count="selectedNodeCount"
       :selected-text-count="selectedTextCount"
       :snap-enabled="snapEnabled"
-      :snap-state-label="snapStateLabel"
       :zoom-label="zoomLabel"
-      :selection-label="selectionLabel"
       :can-undo="canUndo"
       :can-redo="canRedo"
       :can-delete="canDelete"
