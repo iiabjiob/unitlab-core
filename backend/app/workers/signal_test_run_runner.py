@@ -156,6 +156,33 @@ async def _wait_for_float_readback(
         await asyncio.sleep(0.05)
 
 
+async def _wait_for_fresh_bitmask_snapshot(
+    redis,
+    *,
+    unit_id: str,
+    packet_id: int | None,
+    timeout_ms: int,
+) -> int | None:
+    deadline = time.monotonic() + max(100, int(timeout_ms)) / 1000
+    while True:
+        fresh = True
+        if packet_id is not None:
+            try:
+                fresh = int(await redis.get(f"device:{unit_id}:last_state_packet_id")) == int(packet_id)
+            except (TypeError, ValueError):
+                fresh = False
+        raw_bitmask = await redis.get(f"device:{unit_id}:bitmask")
+        try:
+            bitmask = int(raw_bitmask)
+        except (TypeError, ValueError):
+            bitmask = None
+        if fresh and bitmask is not None:
+            return bitmask
+        if time.monotonic() >= deadline:
+            return None
+        await asyncio.sleep(0.05)
+
+
 async def _deliver_durable_command(
     db,
     *,
@@ -1294,13 +1321,19 @@ async def _handle_test_run(
     async def get_unit_bitmask(unit_id: str) -> int | None:
         if unit_id in unit_bitmasks:
             return unit_bitmasks[unit_id]
-        bitmask_raw = await redis.get(f"device:{unit_id}:bitmask")
-        if bitmask_raw is None:
-            unit_bitmasks[unit_id] = None
-            return None
         try:
-            bitmask = int(bitmask_raw)
-        except (TypeError, ValueError):
+            request_packet_id = await enqueue_request_state(
+                unit_id=unit_id,
+                mode=State.REQ_ALL_BIT,
+                correlation_id=f"test-run:{job_id}:initial-state:{unit_id}",
+            )
+            bitmask = await _wait_for_fresh_bitmask_snapshot(
+                redis,
+                unit_id=unit_id,
+                packet_id=request_packet_id,
+                timeout_ms=min(2000, max(250, verification_timeout_ms)),
+            )
+        except Exception:  # noqa: BLE001
             unit_bitmasks[unit_id] = None
             return None
         unit_bitmasks[unit_id] = bitmask

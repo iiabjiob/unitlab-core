@@ -438,6 +438,12 @@ request. Существующие doubles без packet ID сохраняют co
 путь с реальным устройством требует marker. Проверены worker readback и ACK
 focused suites.
 
+**Статус slice G48 (2026-09-14): свежесть исходного FAT состояния.** Перед
+первым DO воздействием worker запрашивает полный bitmask устройства и принимает
+исходное значение только после state response с matching packet ID; отсутствие
+свежего snapshot блокирует воздействие как `initial_state_unknown`. Проверен
+stale initial-packet negative scenario.
+
 ## GAP-12 — Повторные diagnostics-тосты и неоднозначность сетевой ошибки
 
 **P1 · operator UX/host diagnostics · механизм подтверждён, production-причина не установлена.**

@@ -16,6 +16,7 @@ from app.workers.signal_test_run_runner import (
     _deliver_durable_command,
     _wait_for_bit_readback,
     _wait_for_float_readback,
+    _wait_for_fresh_bitmask_snapshot,
 )
 
 
@@ -298,6 +299,22 @@ async def test_bit_readback_rejects_old_packet_value() -> None:
         timeout_ms=100,
         packet_id=41,
     ) is False
+
+
+@pytest.mark.anyio
+async def test_initial_bitmask_snapshot_rejects_old_packet_value() -> None:
+    class Redis:
+        async def get(self, key: str):
+            if key.endswith(":last_state_packet_id"):
+                return "40"
+            return "4"
+
+    assert await _wait_for_fresh_bitmask_snapshot(
+        Redis(),
+        unit_id="UNIT-1",
+        packet_id=41,
+        timeout_ms=100,
+    ) is None
 
 
 @pytest.mark.anyio

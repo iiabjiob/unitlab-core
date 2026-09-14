@@ -728,7 +728,8 @@ def test_signal_test_run_publishes_iec61850_preparation_steps_before_commands(mo
         if isinstance(event.get("result"), dict) and event["result"].get("phase") == "preparing_iec61850"
     ]
     assert result["verification_observed"] == 1
-    assert commands and commands[0][0] == "do"
+    assert [item[0] for item in commands[:2]] == ["state", "do"]
+    assert commands[0][1]["mode"].name == "REQ_ALL_BIT"
     assert prepare_results
     assert prepare_results[-1]["verification_prepare_steps"][-1]["id"] == "start_test"
     assert prepare_results[-1]["verification_prepare_steps"][-1]["status"] == "done"
@@ -932,7 +933,8 @@ def test_signal_test_run_continues_commands_when_iec61850_preparation_is_not_rea
     assert result["verification_requested_signal_count"] == 1
     assert result["verification_observed"] == 0
     assert result["verification_prepare_error"] == "IEC 61850 verification plan is not ready for selected signal_id values: [1]"
-    assert commands and commands[0][0] == "do"
+    assert [item[0] for item in commands[:2]] == ["state", "do"]
+    assert commands[0][1]["mode"].name == "REQ_ALL_BIT"
 
 
 def test_signal_test_run_skips_offline_peripheral_rows_and_runs_online_selection(monkeypatch) -> None:
@@ -1007,7 +1009,8 @@ def test_signal_test_run_skips_offline_peripheral_rows_and_runs_online_selection
     assert result["verification_available"] is False
     assert "peripheral device offline" in result["verification_prepare_warning"]
     assert context_signal_ids == [[1]]
-    assert [item[0] for item in commands] == ["do", "state", "state"]
+    assert [item[0] for item in commands] == ["state", "do", "state", "state"]
+    assert commands[0][1]["mode"].name == "REQ_ALL_BIT"
     assert prepare_results
     assert [step["id"] for step in prepare_results[-1]["verification_prepare_steps"]] == [
         "peripheral_online",
