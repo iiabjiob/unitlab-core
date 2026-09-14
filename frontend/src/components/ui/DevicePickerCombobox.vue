@@ -601,20 +601,20 @@ function setFloatingContentRef(el: Element | ComponentPublicInstance | null) {
 .device-picker-combobox__popover.is-dark,
 :global(.dark .device-picker-combobox),
 :global(.dark .device-picker-combobox__popover){
-  --picker-surface: rgba(9, 12, 20, 0.98);
-  --picker-surface-muted: rgba(20, 26, 38, 0.92);
-  --picker-border: rgba(148, 163, 184, 0.38);
+  --picker-surface: var(--ui-menu-bg, #1f1f1f);
+  --picker-surface-muted: var(--ui-menu-hover-bg, #2b2b2b);
+  --picker-border: var(--ui-menu-border, #333333);
   --picker-border-hover: rgba(129, 140, 248, 0.85);
-  --picker-text: #f3f4f6;
-  --picker-muted: #a5b4cf;
-  --picker-placeholder: #94a3b8;
+  --picker-text: var(--ui-menu-text, #f3f3f3);
+  --picker-muted: var(--ui-menu-muted, #9a9a9a);
+  --picker-placeholder: var(--ui-menu-muted, #9a9a9a);
   --picker-accent: #93c5fd;
   --picker-accent-soft: rgba(147, 197, 253, 0.18);
   --picker-outline: rgba(147, 197, 253, 0.65);
   --picker-shadow: 0 28px 60px rgba(2, 6, 23, 0.75);
   --picker-trigger-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
   --picker-option-border: rgba(255, 255, 255, 0.08);
-  --picker-option-hover: rgba(255, 255, 255, 0.04);
+  --picker-option-hover: var(--ui-menu-hover-bg, #2b2b2b);
   --picker-divider: rgba(255, 255, 255, 0.09);
   --picker-status-online-bg: rgba(34, 197, 94, 0.2);
   --picker-status-online-text: #4ade80;
@@ -628,16 +628,16 @@ function setFloatingContentRef(el: Element | ComponentPublicInstance | null) {
 
 .device-picker-combobox__trigger {
   width: 100%;
-  border-radius: 0.45rem;
+  border-radius: 0.5rem;
   border: 1px solid var(--picker-border);
   background: var(--picker-surface);
-  padding: 0.65rem 0.85rem;
+  padding: 0.45rem 0.9rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 0.75rem;
   text-align: left;
-  font-size: 0.85rem;
+  font-size: 0.92rem;
   line-height: 1.2;
   color: var(--picker-text);
   transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
@@ -712,14 +712,14 @@ function setFloatingContentRef(el: Element | ComponentPublicInstance | null) {
 .device-picker-combobox__popover {
   width: 320px;
   max-height: min(360px, 70vh);
-  border-radius: 0.65rem;
+  border-radius: 0.5rem;
   border: 1px solid var(--picker-border);
   background: var(--picker-surface);
   box-shadow: var(--picker-shadow);
-  padding: 0.75rem;
+  padding: 0.35rem;
   display: flex;
   flex-direction: column;
-  gap: 0.55rem;
+  gap: 0.35rem;
 }
 
 .device-picker-combobox__controls {
@@ -795,18 +795,18 @@ function setFloatingContentRef(el: Element | ComponentPublicInstance | null) {
 }
 
 .device-picker-combobox__option {
-  border-radius: 0.55rem;
+  border-radius: 0.375rem;
   border: 1px solid transparent;
-  padding: 0.55rem 0.65rem;
+  padding: 0.45rem 0.9rem;
   display: flex;
   align-items: center;
   gap: 0.75rem;
   text-align: left;
-  background: var(--picker-surface-muted);
+  background: transparent;
   color: var(--picker-text);
   cursor: pointer;
   transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
-  min-height: 2.5rem;
+  min-height: 0;
 }
 
 .device-picker-combobox__option:hover {
