@@ -404,6 +404,11 @@ Redis/PostgreSQL и durable evidence до/после commit ещё требую�
 
 **Приёмка:** подготовка масштабируется пакетами; смена доступности устройства всё ещё блокирует воздействие. Не вводить server-side grid как лечение backend execution bottleneck.
 
+**Статус slice G2 (2026-09-14): частично закрыт.** Зафиксирован повторяемый
+deterministic 20k/5k unit baseline для frontend projection, targeted patch queue,
+selection и channel-owner lookup. Backend query-count/latency measurement ещё не
+снят, поэтому GAP-13 не считается закрытым.
+
 ## GAP-14 — Нет подтверждённого performance/soak baseline целевого FAT-пути
 
 **P1 для критериев релиза; P2 для последующих оптимизаций · validation/performance.**
@@ -419,6 +424,11 @@ Redis/PostgreSQL и durable evidence до/после commit ещё требую�
 4. Оптимизировать только измеренные hot paths; затем добавить воспроизводимый regression gate и стендовый soak.
 
 **Приёмка:** отчёт содержит конфигурацию, p50/p95/p99, query/message rate, dropped/coalesced counters и рост памяти; отмечены simulator-only результаты. Визуально: scroll, focus, selection, pinned alignment, отсутствие blank viewport и видимость stale-state.
+
+**Статус slice G3 (2026-09-14): частично закрыт.** Baseline-контракт и команда
+прогона зафиксированы в [fat-signal-list-baseline.ru.md](../performance/fat-signal-list-baseline.ru.md);
+focused harness проходит. Browser/Pi trace, memory/long-task/scroll budgets,
+MQTT/ACK и сменный soak остаются обязательными release-проверками.
 
 ## Дополнительный связанный риск — AO-сценарий
 
