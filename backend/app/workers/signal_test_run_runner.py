@@ -497,6 +497,11 @@ async def _handle_test_run(
     resume_from_cursor_raw = payload.get("resume_from_cursor") if isinstance(payload, dict) else None
     resume_job_id_raw = payload.get("resume_job_id") if isinstance(payload, dict) else None
     verification_enabled = bool(payload.get("verification_enabled")) if isinstance(payload, dict) else False
+    verification_policy = str(payload.get("verification_policy") or "").strip().lower() if isinstance(payload, dict) else ""
+    if verification_policy not in {"off", "optional", "required"}:
+        verification_policy = "optional" if verification_enabled else "off"
+    verification_enabled = verification_enabled or verification_policy == "required"
+    verification_required_blocked = False
     verification_runtime_version = str(payload.get("verification_runtime_version") or "simulator").strip().lower()
     verification_orchestration_id = str(payload.get("verification_orchestration_id") or "").strip() or None
     try:
@@ -655,6 +660,7 @@ async def _handle_test_run(
         "binding_changed": 0,
         "channel_lease_busy": 0,
         "recovery_required": 0,
+        "iec61850_required_unavailable": 0,
     }
     evidence_count = 0
     verification_failed = 0
@@ -703,6 +709,7 @@ async def _handle_test_run(
         result_payload: dict[str, Any] = {
             "phase": "preparing_iec61850",
             "verification_enabled": True,
+            "verification_policy": verification_policy,
             "verification_available": verification_orchestrator is not None and verification_local_orchestration_id is not None,
             "verification_requested_signal_count": verification_requested_signal_count,
             "verification_prepare_steps": list(verification_prepare_steps),
@@ -822,6 +829,8 @@ async def _handle_test_run(
         verification_signal_ids = await _resolve_mapped_verification_signal_ids(plan_rows, original_requested_ids)
         verification_signal_id_set = set(verification_signal_ids)
         verification_requested_signal_count = len(verification_signal_ids)
+        if verification_policy == "required" and not verification_signal_ids:
+            verification_required_blocked = True
 
     if verification_enabled and job_id and verification_signal_ids:
         set_verification_prepare_step(step_id="peripheral_online", label="Peripheral online", status="running")
@@ -936,6 +945,8 @@ async def _handle_test_run(
                 set_verification_prepare_step(step_id="general_interrogation", label="General interrogation", status="failed")
                 set_verification_prepare_step(step_id="start_test", label="Start test", status="done")
                 await publish_verification_prepare_progress(message="IEC 61850 unavailable; starting test without verification.")
+                if verification_policy == "required":
+                    verification_required_blocked = True
 
     async def attach_and_publish_tested_at_patch(result_payload: dict[str, Any]) -> None:
         if not tested_at_patch_since_emit and not test_status_patch_since_emit:
@@ -1057,6 +1068,7 @@ async def _handle_test_run(
     def verification_result_payload(*, include_report: bool = False) -> dict[str, Any]:
         payload = {
             "verification_enabled": verification_requested_signal_count > 0,
+            "verification_policy": verification_policy,
             "verification_available": verification_orchestrator is not None and verification_local_orchestration_id is not None,
             "verification_runtime_version": verification_runtime_version,
             "verification_requested_orchestration_id": verification_orchestration_id,
@@ -1263,6 +1275,8 @@ async def _handle_test_run(
             return result_payload
 
         row, skip_reason = await resolve_plan_signal_row(signal_id)
+        if skip_reason is None and verification_required_blocked:
+            skip_reason = "iec61850_required_unavailable"
         channel_lease: HardwareChannelLease | None = None
         if skip_reason is None and row is not None and row.channel_id is not None:
             channel_lease = await hardware_admission.acquire(

@@ -93,6 +93,8 @@ E14 дополнительно проверяет workspace scope manual-ком�
 allocation до получения lease и публикации.
 E15 публикует для manual WS `devices/command-result` с delivery `queued/rejected`,
 чтобы оператор видел результат admission отдельно от device RESP.
+E16 добавляет явную `verification_policy` для test-run: `off`, `optional` или
+`required`; required блокирует шаги без IEC mapping/подписки, optional не блокирует.
 
 ## Состояния delivery и verdict
 

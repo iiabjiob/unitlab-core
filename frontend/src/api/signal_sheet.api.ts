@@ -193,6 +193,7 @@ export const SignalSheetAPI = {
     resume_from_cursor?: boolean
     resume_job_id?: string
     verification_enabled?: boolean
+    verification_policy?: "off" | "optional" | "required"
     verification_runtime_version?: string
     verification_orchestration_id?: string | null
     verification_signal_list_revision_id?: number | null

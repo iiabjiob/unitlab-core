@@ -214,6 +214,11 @@ multi-lease контракта.
 `devices/command-result` с delivery `queued/rejected`; frontend показывает это
 отдельным toast и не смешивает admission result с device RESP.
 
+**Статус slice E16 (2026-09-14): частично закрыт.** Test-run принимает
+`verification_policy=off|optional|required`. В `required` отсутствие mapped
+signal или ошибка IEC preparation блокирует шаг до hardware publish; `optional`
+сохраняет командный тест без IEC confirmation.
+
 **Статус slice E9 (2026-09-14): частично закрыт.** Single-channel AO/DO sequence
 steps теперь используют общий hardware lease, durable intent и ACK barrier.
 `DO_PAIR`/`DO_BITMASK` явно блокируются до реализации атомарного multi-channel

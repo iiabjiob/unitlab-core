@@ -337,6 +337,7 @@ export const useSignalJobStore = defineStore("signalJobStore", () => {
       resumeFromCursor?: boolean
       resumeJobId?: string
       verificationEnabled?: boolean
+      verificationPolicy?: "off" | "optional" | "required"
       verificationRuntimeVersion?: string
       verificationOrchestrationId?: string | null
       verificationSignalListRevisionId?: number | null
@@ -350,6 +351,7 @@ export const useSignalJobStore = defineStore("signalJobStore", () => {
       resume_from_cursor: Boolean(options?.resumeFromCursor),
       ...(options?.resumeJobId ? { resume_job_id: String(options.resumeJobId) } : {}),
       verification_enabled: Boolean(options?.verificationEnabled),
+      verification_policy: options?.verificationPolicy ?? (options?.verificationEnabled ? "optional" : "off"),
       verification_runtime_version: options?.verificationRuntimeVersion ?? "simulator",
       verification_orchestration_id: options?.verificationOrchestrationId ?? null,
       verification_signal_list_revision_id: options?.verificationSignalListRevisionId ?? null,

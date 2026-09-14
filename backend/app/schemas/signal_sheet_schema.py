@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -177,6 +177,7 @@ class SignalTestRunJobSchema(BaseModel):
     resume_from_cursor: bool = False
     resume_job_id: str | None = None
     verification_enabled: bool = False
+    verification_policy: Literal["off", "optional", "required"] = "optional"
     verification_runtime_version: str = "simulator"
     verification_orchestration_id: str | None = None
     verification_signal_list_revision_id: int | None = None
