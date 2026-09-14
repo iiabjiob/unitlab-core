@@ -39,22 +39,6 @@
   width: 16rem;
 }
 
-.sequence-step-form__select {
-  width: 100%;
-  min-height: 2rem;
-  padding: 0.25rem 0.5rem;
-  border: 1px solid var(--color-neutral-300);
-  border-radius: var(--radius-sm);
-  background: var(--color-white);
-  color: var(--color-neutral-900);
-  font-size: var(--text-sm);
-}
-
-.sequence-step-form__select:focus {
-  outline: 2px solid color-mix(in srgb, var(--color-blue-500) 45%, transparent);
-  outline-offset: 1px;
-}
-
 .sequence-step-form__configured-pair {
   display: flex;
   min-height: 2rem;
@@ -104,12 +88,6 @@
 }
 
 :where(.dark) .sequence-step-form__input {
-  border-color: var(--color-neutral-700);
-  background: var(--color-neutral-800);
-  color: var(--color-neutral-100);
-}
-
-:where(.dark) .sequence-step-form__select {
   border-color: var(--color-neutral-700);
   background: var(--color-neutral-800);
   color: var(--color-neutral-100);

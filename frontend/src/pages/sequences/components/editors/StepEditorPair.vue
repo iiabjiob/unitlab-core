@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted } from "vue"
 import UiButton from "@/components/ui/UiButton.vue"
+import UiAffinoListbox from "@/components/ui/UiAffinoListbox.vue"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
 import type { SequenceStep } from "@/types/sequences"
 import type { StepEditorChange } from "./editorTypes"
@@ -32,12 +33,17 @@ const configuredSwitchgears = computed(() => switchgearStore.switchgears.filter(
 	return open !== null && open !== undefined && closed !== null && closed !== undefined && open !== closed
 }))
 
+const switchgearOptions = computed(() => configuredSwitchgears.value.map((switchgear) => ({
+	value: switchgear.id,
+	label: `${switchgear.name} · ${switchgear.switchgear_type}`,
+})))
+
 const state2b = computed(() => Number(props.step.payload?.state2b ?? 0))
 onMounted(() => {
 	void switchgearStore.ensureLoaded().catch(() => undefined)
 })
 
-function updateSwitchgear(value: string) {
+function updateSwitchgear(value: string | number | null) {
 	const id = Number(value)
 	const selected = configuredSwitchgears.value.find((switchgear) => switchgear.id === id)
 	if (!selected) {
@@ -80,21 +86,15 @@ const stateOptions = [
 				<div class="sequence-step-form__label">
 					Switchgear
 				</div>
-				<select
-					class="sequence-step-form__control sequence-step-form__select"
-					:value="switchgearId ?? ''"
+				<UiAffinoListbox
+					class="sequence-step-form__control"
+					:model-value="switchgearId"
+					:options="switchgearOptions"
 					:disabled="disabled || switchgearStore.loading"
-					@change="updateSwitchgear(($event.target as HTMLSelectElement).value)"
-				>
-					<option value="">Select configured switchgear</option>
-					<option
-						v-for="item in configuredSwitchgears"
-						:key="item.id"
-						:value="item.id"
-					>
-						{{ item.name }} · {{ item.switchgear_type }}
-					</option>
-				</select>
+					placeholder="Select configured switchgear"
+					aria-label="Configured switchgear"
+					@update:modelValue="updateSwitchgear"
+				/>
 			</div>
 			<div>
 				<div class="sequence-step-form__label">
