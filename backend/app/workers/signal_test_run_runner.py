@@ -1260,6 +1260,7 @@ async def _handle_test_run(
             logger.exception("💥 Failed to persist signal test run progress cursor for job %s", job_id)
 
     unit_bitmasks: dict[str, int | None] = {}
+    unit_state_unknown: set[str] = set()
 
     async def get_unit_bitmask(unit_id: str) -> int | None:
         if unit_id in unit_bitmasks:
@@ -1293,6 +1294,8 @@ async def _handle_test_run(
         is_ao = channel_type.startswith("ao")
         if not is_do and not is_ao:
             return row, "incompatible_channel_mode"
+        if is_do and str(row.unit_id) in unit_state_unknown:
+            return row, "initial_state_unknown"
         if hasattr(repo, "get_execution_binding"):
             current = await repo.get_execution_binding(workspace_id, signal_id)
         else:
@@ -1536,6 +1539,7 @@ async def _handle_test_run(
                     timeout_ms=readback_timeout_ms,
                 )
                 if not readback_ok:
+                    unit_state_unknown.add(unit_id)
                     await mark_hardware_command_intent_delivery_failure(
                         repo.db,
                         command_id=set_command_id,
@@ -1598,6 +1602,7 @@ async def _handle_test_run(
                         timeout_ms=readback_timeout_ms,
                     )
                     if not readback_ok:
+                        unit_state_unknown.add(unit_id)
                         await mark_hardware_command_intent_delivery_failure(
                             repo.db,
                             command_id=restore_command_id,
