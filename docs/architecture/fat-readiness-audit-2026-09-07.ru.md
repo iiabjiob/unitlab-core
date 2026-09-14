@@ -501,6 +501,9 @@ Manual multi-channel scope теперь отклоняет дубли канал
 persisted `channel_ids` не расходится с фактически защищённым набором.
 Manual DO/AO теперь также проверяет heartbeat status устройства перед получением
 lease; отсутствующий или не-`online` status не допускает аппаратную публикацию.
+State handler больше не собирает single-bit/changed-bit snapshot из fallback `0`,
+если полный bitmask отсутствует или невалиден; это сохраняет неизвестное состояние
+до полноценного state response.
 Проверка дополнена TTL-backed `last_seen`, поэтому stale `online` при остановленном
 offline-checker также не считается доступностью.
 Успешная публикация manual intent теперь также фиксируется как `queued` до

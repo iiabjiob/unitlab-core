@@ -53,16 +53,17 @@ class DeviceStateService:
 
         elif hdr.mode == State.STATE_SINGLE_BIT:
             current = await redis.get(f"device:{unit_id}:bitmask")
-            mask_val = to_int(current, 0) or 0
-            new_mask_val = mask_val
-            if decoded.value:
-                new_mask_val |= (1 << decoded.ch)
-            else:
-                new_mask_val &= ~(1 << decoded.ch)
+            mask_val = to_int(current)
+            if mask_val is not None:
+                new_mask_val = mask_val
+                if decoded.value:
+                    new_mask_val |= (1 << decoded.ch)
+                else:
+                    new_mask_val &= ~(1 << decoded.ch)
 
-            if new_mask_val != mask_val:
-                await redis.set(f"device:{unit_id}:bitmask", str(new_mask_val))
-                changed = True
+                if new_mask_val != mask_val:
+                    await redis.set(f"device:{unit_id}:bitmask", str(new_mask_val))
+                    changed = True
 
         elif hdr.mode == State.STATE_SINGLE_FLOAT:
             current_val = await redis.hget(f"device:{unit_id}:ao", str(decoded.ch))
@@ -99,13 +100,14 @@ class DeviceStateService:
         elif hdr.mode == State.STATE_CHANGED_BIT:
             bitmask_key = f"device:{unit_id}:bitmask"
             current = await redis.get(bitmask_key)
-            current_mask = to_int(current, 0) or 0
-            changed_mask = int(decoded.changed) & 0xFFFFFFFF
-            state_mask = int(decoded.state) & 0xFFFFFFFF
-            next_mask = (current_mask & ~changed_mask) | (state_mask & changed_mask)
-            if next_mask != current_mask:
-                await redis.set(bitmask_key, str(next_mask))
-                changed = True
+            current_mask = to_int(current)
+            if current_mask is not None:
+                changed_mask = int(decoded.changed) & 0xFFFFFFFF
+                state_mask = int(decoded.state) & 0xFFFFFFFF
+                next_mask = (current_mask & ~changed_mask) | (state_mask & changed_mask)
+                if next_mask != current_mask:
+                    await redis.set(bitmask_key, str(next_mask))
+                    changed = True
 
         elif hdr.mode in (State.DIAG_DI_BIT, State.DIAG_DI_BIT_V2):
             diag_key = f"device:{unit_id}:diag_di"
