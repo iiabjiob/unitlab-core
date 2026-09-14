@@ -26,6 +26,7 @@ class SetDoCommandMessage(BaseModel):
     action: Literal[WSAction.SET_DO_COMMAND]
     workspace_id: int
     channel_id: int | None = None
+    channel_ids: list[int] | None = None
     unit_id: str
     mode: Cmd
     ch: Optional[int] = None

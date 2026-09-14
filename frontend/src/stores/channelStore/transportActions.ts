@@ -123,6 +123,7 @@ export function createChannelTransportActions(params: Params) {
     const accepted = ws.send({
       action: WSAction.SET_DO_COMMAND,
       workspace_id: workspaceId,
+      channel_ids: doChannels.map(ch => ch.id),
       unit_id: unitId,
       mode: CmdMode.SET_ALL_BIT,
       bitmask: mask,
@@ -196,6 +197,7 @@ export function createChannelTransportActions(params: Params) {
     const accepted = ws.send({
       action: WSAction.SET_DO_COMMAND,
       workspace_id: workspaceId,
+      channel_ids: [channelA.id, channelB.id],
       unit_id: device.unit_id,
       mode: CmdMode.SET_PAIR_BIT,
       chA,

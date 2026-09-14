@@ -45,11 +45,29 @@ async def _channel(workspace_id: int, channel_id: int, unit_id: str, channel_ind
         return channel
 
 
+async def _channels(channel_ids: list[int], unit_id: str, indexes: list[int], expected_type: str):
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(Channel)
+            .join(Device, Device.id == Channel.device_id)
+            .where(Channel.id.in_(channel_ids), Device.unit_id == unit_id)
+        )
+        by_id = {int(channel.id): channel for channel in result.scalars().all()}
+    if set(by_id) != set(channel_ids) or len(indexes) != len(channel_ids):
+        return None
+    ordered = [by_id[channel_id] for channel_id in channel_ids]
+    if [int(channel.channel_index) for channel in ordered] != indexes:
+        return None
+    if any(not str(channel.channel_type).lower().startswith(expected_type) for channel in ordered):
+        return None
+    return ordered
+
+
 async def _enqueue_manual(
     ws: WebSocket,
     *,
     workspace_id: int,
-    channel_id: int,
+    channel_ids: list[int],
     unit_id: str,
     device_id: int,
     action: str,
@@ -59,8 +77,8 @@ async def _enqueue_manual(
     redis = RedisManager.get_instance()
     owner_id = f"manual:{id(ws)}"
     admission = HardwareCommandAdmission(redis)
-    lease = await admission.acquire(channel_id=channel_id, owner_kind="manual", owner_id=owner_id)
-    if lease is None:
+    leases = await admission.acquire_many(channel_ids=channel_ids, owner_kind="manual", owner_id=owner_id)
+    if leases is None:
         await _result(ws, command_id=None, delivery="rejected", reason="channel_lease_busy")
         return
 
@@ -76,11 +94,11 @@ async def _enqueue_manual(
                 owner_kind="manual",
                 owner_id=owner_id,
                 device_id=device_id,
-                channel_id=channel_id,
+                channel_id=channel_ids[0],
                 unit_id=unit_id,
                 action=action,
-                payload=payload,
-                fencing_epoch=lease.fencing_epoch,
+                payload={**payload, "channel_ids": channel_ids},
+                fencing_epoch=leases[0].fencing_epoch,
             )
             await session.commit()
         await sender(command_id)
@@ -95,13 +113,45 @@ async def _enqueue_manual(
         await _result(ws, command_id=command_id, delivery="rejected", reason="publish_failed")
         return
     finally:
-        await admission.release(lease)
+        for lease in leases:
+            await admission.release(lease)
     await _result(ws, command_id=command_id, delivery="queued")
 
 
 async def handle_manual_do(ws: WebSocket, msg: SetDoCommandMessage) -> None:
-    if msg.mode.name not in {"SET_SINGLE_BIT", "SET_PULSE_BIT"} or msg.channel_id is None or msg.ch is None:
-        await _result(ws, command_id=None, delivery="rejected", reason="single_channel_admission_required")
+    if msg.mode.name not in {"SET_SINGLE_BIT", "SET_PULSE_BIT"}:
+        if not msg.channel_ids:
+            await _result(ws, command_id=None, delivery="rejected", reason="channel_ids_required")
+            return
+        indexes = [msg.chA, msg.chB] if msg.mode.name == "SET_PAIR_BIT" else list(range(len(msg.channel_ids)))
+        if any(index is None for index in indexes):
+            await _result(ws, command_id=None, delivery="rejected", reason="channel_indexes_required")
+            return
+        channels = await _channels(msg.channel_ids, msg.unit_id, [int(index) for index in indexes], "do")
+        if channels is None:
+            await _result(ws, command_id=None, delivery="rejected", reason="channel_scope_invalid")
+            return
+        await _enqueue_manual(
+            ws,
+            workspace_id=msg.workspace_id,
+            channel_ids=[int(channel.id) for channel in channels],
+            unit_id=msg.unit_id,
+            device_id=channels[0].device_id,
+            action="do_pair" if msg.mode.name == "SET_PAIR_BIT" else "do_all",
+            payload=msg.model_dump(mode="json"),
+            sender=lambda command_id: enqueue_do_command(
+                unit_id=msg.unit_id,
+                mode=msg.mode,
+                bitmask=msg.bitmask,
+                chA=msg.chA,
+                chB=msg.chB,
+                state2b=msg.state2b,
+                command_id=command_id,
+            ),
+        )
+        return
+    if msg.channel_id is None or msg.ch is None:
+        await _result(ws, command_id=None, delivery="rejected", reason="channel_id_required")
         return
     channel = await _channel(msg.workspace_id, msg.channel_id, msg.unit_id, msg.ch, "do")
     if channel is None:
@@ -110,7 +160,7 @@ async def handle_manual_do(ws: WebSocket, msg: SetDoCommandMessage) -> None:
     await _enqueue_manual(
         ws,
         workspace_id=msg.workspace_id,
-        channel_id=channel.id,
+        channel_ids=[channel.id],
         unit_id=msg.unit_id,
         device_id=channel.device_id,
         action="do_set",

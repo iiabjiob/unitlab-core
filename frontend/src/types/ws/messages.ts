@@ -47,6 +47,7 @@ export interface SetDoCommandMessage {
   action: WSAction.SET_DO_COMMAND
   workspace_id: number
   channel_id?: number
+  channel_ids?: number[]
   unit_id: string
   mode: CmdMode
 
