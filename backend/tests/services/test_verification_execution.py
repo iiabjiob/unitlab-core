@@ -637,6 +637,7 @@ async def test_execute_simulated_verification_run_records_observed_evidence_and_
     assert result.evidence_set.summary.observed_count == 1
     assert result.evidence_set.summary.source_generation == 1
     assert repo.commit_count == 2
+    assert repo.rows[0]["signal_list_revision_id"] == 2
     assert result.verification_run.verification_steps[0].evidence_status == "observed"
     assert result.verification_run.verification_steps[0].verdict_state == "pass"
     assert result.verification_run.verification_steps[0].verification_confidence == "exact_report_match"

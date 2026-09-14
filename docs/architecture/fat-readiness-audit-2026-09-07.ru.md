@@ -883,6 +883,12 @@ recovery rehearsal остаётся release check.
 две commit boundaries. Production crash/transaction rehearsal остаётся release
 check.
 
+**Статус slice G99 (2026-09-14): standalone verification revision provenance.**
+Standalone verification теперь передаёт `execution_context.signal_list_revision_id`
+в каждую persisted evidence row; simulator regression проверяет, что evidence не
+теряет revision source при записи вне worker flow. Production crash/transaction
+rehearsal и проверка реального PostgreSQL остаются release checks.
+
 **Статус slice G68 (2026-09-14): offline downgrade для live signal sheet.**
 Migration `9a1b2c3d4e6f` теперь генерирует детерминированный downgrade SQL для
 `signal_allocations`, `signal_sheet_presets` и `signal_sheets`, не вызывая

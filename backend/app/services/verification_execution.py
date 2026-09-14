@@ -228,6 +228,7 @@ async def execute_verification_run(
             await repository.record_signal_verification_evidence(
                 workspace_id=workspace_id,
                 test_run_id=test_run_id,
+                signal_list_revision_id=execution_context.signal_list_revision_id,
                 evidence_id=evidence.evidence_id,
                 signal_id=evidence.signal_id,
                 signal_path=evidence.signal_path,
