@@ -150,7 +150,7 @@ class SimulatedDIDevice(SimulatedDeviceBase):
                 packet_id=header.packet_id,
                 retain=False,
             )
-        elif request == Mode.REQ_DIAG_DI_BIT:
+        elif request in (Mode.REQ_DIAG_DI_BIT, Mode.REQ_ALL_FLOAT):
             decision = await self._maybe_fail_exchange(
                 header.packet_id,
                 context="DI diagnostic request",
@@ -158,7 +158,10 @@ class SimulatedDIDevice(SimulatedDeviceBase):
             if decision:
                 return
             await self._send_resp(RespStatus.OK, packet_id=header.packet_id)
-            await self._publish_di_diagnostics(packet_id=header.packet_id)
+            await self._publish_di_diagnostics(
+                packet_id=header.packet_id,
+                mode=Mode.DIAG_DI_BIT_V2 if request == Mode.REQ_ALL_FLOAT else Mode.DIAG_DI_BIT,
+            )
             await self._publish_latched_state(packet_id=header.packet_id)
         else:
             self._logger.debug("Unhandled DI request %s", request)
@@ -277,7 +280,12 @@ class SimulatedDIDevice(SimulatedDeviceBase):
                 self._diag_latched_cause & self._mask(),
             )
 
-    async def _publish_di_diagnostics(self, *, packet_id: Optional[int] = None) -> None:
+    async def _publish_di_diagnostics(
+        self,
+        *,
+        packet_id: Optional[int] = None,
+        mode: Mode = Mode.DIAG_DI_BIT,
+    ) -> None:
         seen, stuck, lost, latched, changed, cause = await self._diag_snapshot()
         payload = encode_state_diag_di(
             DiagAllDi(
@@ -291,7 +299,7 @@ class SimulatedDIDevice(SimulatedDeviceBase):
         )
         await self._publish_packet(
             topic_state(self.unit_id),
-            Mode.DIAG_DI_BIT,
+            mode,
             payload,
             packet_id=packet_id,
             retain=True,

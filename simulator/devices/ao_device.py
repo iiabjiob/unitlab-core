@@ -13,10 +13,12 @@ from simulator.mqtt_client import (
 from simulator.packet_structures import (
     Cmd,
     CmdSetSingleFloat,
+    DiagAllAo,
     Mode,
     RespError,
     RespStatus,
     StateSingleFloat,
+    encode_diag_all_ao,
     encode_state_single_float,
     decode_cmd_set_single_float,
 )
@@ -115,8 +117,33 @@ class SimulatedAODevice(SimulatedDeviceBase):
                 return
             await self._send_resp(RespStatus.OK, packet_id=header.packet_id)
             await self._publish_value(ch, value, packet_id=header.packet_id)
+        elif request == Mode.REQ_DIAG_AO_FLOAT:
+            decision = await self._maybe_fail_exchange(
+                header.packet_id,
+                context="AO diagnostic request",
+            )
+            if decision:
+                return
+            await self._send_resp(RespStatus.OK, packet_id=header.packet_id)
+            await self._publish_diagnostics(packet_id=header.packet_id)
         else:
             self._logger.debug("Unhandled AO request %s", request)
+
+    async def _publish_diagnostics(self, *, packet_id: Optional[int] = None) -> None:
+        async with self._lock:
+            valid_mask = self._mask()
+        await self._publish_packet(
+            topic_state(self.unit_id),
+            Mode.DIAG_AO_FLOAT,
+            encode_diag_all_ao(DiagAllAo(
+                valid_mask=valid_mask,
+                pending_mask=0,
+                fault_mask=0,
+                error_mask=0,
+            )),
+            packet_id=packet_id,
+            retain=True,
+        )
 
     async def _handle_command(self, cmd: Cmd, payload: bytes, packet_id: int) -> None:
         if cmd != Cmd.SET_SINGLE_FLOAT:
@@ -181,3 +208,6 @@ class SimulatedAODevice(SimulatedDeviceBase):
         if 0 <= ch < len(self._values):
             return self._values[ch]
         return 0.0
+
+    def _mask(self) -> int:
+        return (1 << max(self.signals, 1)) - 1

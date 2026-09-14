@@ -75,6 +75,7 @@ class Mode(IntEnum):
     # Analog state (AO)
     REQ_SINGLE_FLOAT   = 0x1A
     REQ_ALL_FLOAT      = 0x1B
+    DIAG_DI_BIT_V2     = 0x1B
     STATE_SINGLE_FLOAT = 0x1C
     REQ_DIAG_AO_FLOAT  = 0x1D
     DIAG_AO_FLOAT      = 0x1E
@@ -169,6 +170,14 @@ class StateSingleFloat:
 
 
 @dataclass
+class DiagAllAo:
+    valid_mask: int
+    pending_mask: int
+    fault_mask: int
+    error_mask: int
+
+
+@dataclass
 class CmdSetSingleBit:
     ch: int
     value: int
@@ -256,6 +265,18 @@ def encode_state_latched_bit(payload: StateLatchedBit) -> bytes:
 
 def encode_state_single_float(payload: StateSingleFloat) -> bytes:
     return bytes([payload.ch & 0xFF]) + struct.pack(">f", float(payload.value))
+
+
+def encode_diag_all_ao(payload: DiagAllAo) -> bytes:
+    return b"".join(
+        value.to_bytes(4, "big", signed=False)
+        for value in (
+            payload.valid_mask,
+            payload.pending_mask,
+            payload.fault_mask,
+            payload.error_mask,
+        )
+    )
 
 
 def encode_resp(payload: RespFrame) -> bytes:

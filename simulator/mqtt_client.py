@@ -329,6 +329,10 @@ class SimulatedDeviceBase:
             except ValueError as exc:
                 self._logger.warning("Failed to parse packet from %s: %s", topic, exc)
                 return
+            if header.mode == Sys.SCAN:
+                await self._send_registration()
+                await self.publish_state(packet_id=header.packet_id)
+                return
             await self.handle_packet(topic, header, body)
 
     # --- core loops -----------------------------------------------------
