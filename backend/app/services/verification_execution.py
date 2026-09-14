@@ -371,7 +371,7 @@ def _build_step_and_evidence(
     target_index: int,
     target: VerificationTargetSchema,
     group: VerificationSubscriptionPlanGroupSchema | None,
-    observation_bundle: tuple[Any, str | None, str | None, str | None] | None,
+    observation_bundle: tuple[Any, str | None, str | None, str | None, int | None] | None,
     triggered_at: datetime,
     runtime_result,
     test_run_id: str,
@@ -383,6 +383,7 @@ def _build_step_and_evidence(
     actual_report_path = observation_bundle[1] if observation_bundle is not None else None
     signal_value = observation_bundle[2] if observation_bundle is not None else None
     source_timestamp = observation_bundle[3] if observation_bundle is not None else None
+    monotonic_duration_ms = observation_bundle[4] if observation_bundle is not None and len(observation_bundle) > 4 else None
     if source_timestamp is not None:
         observed_at = _parse_timestamp(source_timestamp)
     else:
@@ -459,7 +460,10 @@ def _build_step_and_evidence(
         source_report_sub_sequence_number=None,
         report_reason=report.event.reason.value if report is not None and report.event is not None else None,
         signal_value=signal_value,
-        timestamp_summary={"observed_at": observed_at.isoformat()} if observed_at is not None else {},
+        timestamp_summary={
+            **({"observed_at": observed_at.isoformat()} if observed_at is not None else {}),
+            **({"capture_duration_ms": int(monotonic_duration_ms)} if monotonic_duration_ms is not None else {}),
+        },
         stale_reason=reason_code if evidence_status == "stale" else None,
         evidence_kind=evidence_kind,
         diagnostics=diagnostics,

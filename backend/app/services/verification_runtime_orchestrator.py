@@ -710,6 +710,7 @@ class VerificationRuntimeOrchestrator:
         diagnostics: list[VerificationEvidenceDiagnosticSchema] = []
         observation_bundle = None
         source_generation = None
+        capture_started_monotonic = time.monotonic()
 
         if group is None:
             diagnostics.append(
@@ -831,6 +832,7 @@ class VerificationRuntimeOrchestrator:
                             observation.model_reference,
                             observation.value,
                             observation.timestamp,
+                            max(0, int((time.monotonic() - capture_started_monotonic) * 1000)),
                         )
                         break
                     if time.monotonic() >= deadline:

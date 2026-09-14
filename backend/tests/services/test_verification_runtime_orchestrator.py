@@ -1212,6 +1212,8 @@ async def test_runtime_orchestrator_captures_triggered_signal_report_after_initi
     assert capture.evidence.report_reason == "data-change"
     assert capture.evidence.source_report_sequence_number == 2
     assert capture.step.source_generation == 1
+    assert capture.evidence.timestamp_summary is not None
+    assert isinstance(capture.evidence.timestamp_summary.get("capture_duration_ms"), int)
 
 
 @pytest.mark.anyio

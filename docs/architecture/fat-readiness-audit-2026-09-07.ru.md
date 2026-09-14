@@ -82,6 +82,13 @@ triggered capture и проверяет `invalid/non_causal_report_reason` бе�
 но устраняет неподтверждённое качество в отчёте; перенос quality bit и политика
 его влияния на verdict остаются отдельным protocol/hardware slice.
 
+**Статус slice G65 (2026-09-14): monotonic capture duration.** Triggered IEC
+evidence теперь сохраняет `capture_duration_ms`, измеренный через monotonic clock,
+отдельно от wall-clock source timestamp и вычисленного timestamp latency. Это
+устраняет зависимость измерения длительности ожидания от рассинхронизированных
+часов; budget/percentile measurement на реальном IED и event-loop lag остаются
+release-проверками.
+
 ## GAP-02 — Двойной toggle не доказывает оба перехода
 
 **P0 · test-run · подтверждено порядком операций.**
