@@ -683,6 +683,25 @@ class VerificationRuntimeOrchestrator:
         timeout_ms: int | None = None,
     ) -> VerificationRuntimeSignalCaptureResult:
         handle = self._require_handle(orchestration_id)
+        with handle.lock:
+            return self._capture_triggered_signal_unlocked(
+                orchestration_id,
+                signal_id=signal_id,
+                triggered_at=triggered_at,
+                test_run_id=test_run_id,
+                timeout_ms=timeout_ms,
+            )
+
+    def _capture_triggered_signal_unlocked(
+        self,
+        orchestration_id: str,
+        *,
+        signal_id: int,
+        triggered_at: datetime,
+        test_run_id: str | None = None,
+        timeout_ms: int | None = None,
+    ) -> VerificationRuntimeSignalCaptureResult:
+        handle = self._require_handle(orchestration_id)
         target_index, target = self._resolve_target_for_signal(handle, signal_id)
         group = self._resolve_subscription_plan_group_for_target(handle, target_index)
         diagnostics: list[VerificationEvidenceDiagnosticSchema] = []
