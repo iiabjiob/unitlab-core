@@ -291,6 +291,15 @@ const edgePreview = computed(() => {
     target,
   }
 })
+const snapPreviewPoint = computed(() => {
+  if (draftLine.value?.current.portId) {
+    return draftLine.value.current.point
+  }
+  if (draggedEdge.value?.draft.portId) {
+    return draggedEdge.value.draft.point
+  }
+  return null
+})
 const minimapModel = computed(() => {
   const current = viewport.viewport.value
   const zoom = current.zoom > 0 ? current.zoom : 1
@@ -2058,6 +2067,18 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
           stroke-linejoin="round"
           :marker-end="lineKind === 'arrow' ? 'url(#switchgear-sld-package-arrow)' : undefined"
           style="color: var(--color-blue-500)"
+        />
+
+        <circle
+          v-if="snapPreviewPoint"
+          :cx="snapPreviewPoint.x"
+          :cy="snapPreviewPoint.y"
+          r="10"
+          fill="color-mix(in srgb, var(--color-blue-400) 18%, transparent)"
+          stroke="var(--color-blue-500)"
+          stroke-width="2"
+          stroke-dasharray="3 2"
+          pointer-events="none"
         />
 
         <g v-for="shape in visible.projection.value.shapes" :key="shape.id" :transform="resolveSelectionPreviewTransform(shape.id)">
