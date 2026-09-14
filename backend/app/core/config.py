@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     # ---- MQTT ----
     mqtt_host: str
     mqtt_port: int
+    mqtt_username: str | None = None
+    mqtt_password: str | None = None
     mqtt_in_stream: str = "mqtt:inbound"
     mqtt_out_stream: str = "mqtt:outbound"
     mqtt_stream_maxlen: int = 10000

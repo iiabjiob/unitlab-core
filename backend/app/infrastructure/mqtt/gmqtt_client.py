@@ -28,7 +28,16 @@ class UnitLabMqttClient:
         """Register async on_message hook owned by higher layer (manager)."""
         self._on_message_async = handler
 
-    async def connect(self, host: str, port: int):
+    async def connect(
+        self,
+        host: str,
+        port: int,
+        *,
+        username: str | None = None,
+        password: str | None = None,
+    ):
+        if username:
+            self.client.set_auth_credentials(username, password or "")
         await self.client.connect(host, port)
         logger.info("✅ MQTT client started")
 

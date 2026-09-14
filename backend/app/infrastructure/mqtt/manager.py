@@ -30,7 +30,12 @@ class MqttManager:
         if on_message:
             client.set_on_message(on_message)
 
-        await client.connect(host=settings.mqtt_host, port=settings.mqtt_port)
+        await client.connect(
+            host=settings.mqtt_host,
+            port=settings.mqtt_port,
+            username=settings.mqtt_username,
+            password=settings.mqtt_password,
+        )
         await client.connected.wait()
 
         if subscriptions:

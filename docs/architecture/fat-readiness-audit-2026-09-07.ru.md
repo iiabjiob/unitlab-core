@@ -379,6 +379,11 @@ Redis/PostgreSQL и durable evidence до/после commit ещё требую�
 
 **Приёмка:** анонимная команда и чужой topic запрещены; разрешённые регистрация, телеметрия и управление продолжают работать. Не публиковать реальные секреты в репозитории/логах.
 
+**Статус slice G6 (2026-09-14): частично закрыт.** Backend MQTT client теперь
+поддерживает credentials из environment и не хранит их в коде. Сам broker пока
+остаётся anonymous в текущем deployment до согласования provisioning firmware,
+password file/ACL и TLS rollout; GAP-11 не считается закрытым.
+
 ## GAP-12 — Повторные diagnostics-тосты и неоднозначность сетевой ошибки
 
 **P1 · operator UX/host diagnostics · механизм подтверждён, production-причина не установлена.**
