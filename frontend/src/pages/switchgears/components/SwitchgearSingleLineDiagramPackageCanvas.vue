@@ -463,23 +463,6 @@ watch(() => props.selectionRequestKey, (next, previous) => {
   selection.setSelection(nodeIds, nodeIds[0] ?? null)
 })
 
-watch(
-  () => [singleSelectedSwitchgearId.value, selectedNodeIds.value.length, selectedEdgeIds.value.length, selectedShapeIds.value.length, selectedTextIds.value.length] as const,
-  ([switchgearId, selectedNodeCountValue, selectedEdgeCountValue, selectedShapeCountValue, selectedTextCountValue]) => {
-    if (switchgearId != null) {
-      if (route.name !== "switchgears.detail" || Number(route.params.id) !== switchgearId) {
-        void router.push({ name: "switchgears.detail", params: { id: switchgearId } })
-      }
-      return
-    }
-    if (selectedNodeCountValue !== 1 || selectedEdgeCountValue > 0 || selectedShapeCountValue > 0 || selectedTextCountValue > 0) {
-      if (route.name === "switchgears.detail") {
-        void router.push({ name: "switchgears.list" })
-      }
-    }
-  },
-)
-
 diagram.engine.subscribe((scene) => {
   if (scene.revision === 0) {
     return
