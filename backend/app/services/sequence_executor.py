@@ -94,6 +94,10 @@ StepFailedHook = Callable[[StepFailedEvent], Awaitable[None]]
 CancellationHook = Callable[[CancellationEvent], Awaitable[int]]
 RunFinishedHook = Callable[[SequenceExecutionResult], Awaitable[None]]
 CancellationProbe = Callable[[], Awaitable[None]]
+HardwareCommandAdmission = Callable[
+    [StepContext, str, int | None, int | None, str, dict[str, Any], Callable[[str], Awaitable[Any]]],
+    Awaitable[Any],
+]
 
 
 async def _noop_async(*_args, **_kwargs) -> None:  # pragma: no cover - trivial
@@ -256,6 +260,7 @@ class SequenceExecutor:
         ctx: StepContext,
         cancel_event: asyncio.Event,
         cancellation_probe: Optional[CancellationProbe] = None,
+        command_admission: Optional[HardwareCommandAdmission] = None,
     ) -> None:
         async def _probe() -> None:
             if not cancellation_probe:
@@ -268,7 +273,7 @@ class SequenceExecutor:
             await cancellation_probe()
 
         try:
-            await self._execute_step(ctx, cancel_event, _probe)
+            await self._execute_step(ctx, cancel_event, _probe, command_admission)
         finally:
             self._last_probe_at.pop(id(cancel_event), None)
 
@@ -305,9 +310,31 @@ class SequenceExecutor:
         ctx: StepContext,
         cancel_event: asyncio.Event,
         cancellation_probe: CancellationProbe,
+        command_admission: Optional[HardwareCommandAdmission] = None,
     ) -> None:
         step_type = ctx.step_type
         payload = ctx.payload or {}
+
+        async def send_hardware(
+            *,
+            action: str,
+            channel_id: int | None,
+            device_id: int | None,
+            unit_id: str,
+            command_payload: dict[str, Any],
+            sender: Callable[[str], Awaitable[Any]],
+        ) -> Any:
+            if command_admission is not None:
+                return await command_admission(
+                    ctx,
+                    action,
+                    channel_id,
+                    device_id,
+                    unit_id,
+                    command_payload,
+                    sender,
+                )
+            return await sender("")
 
         if step_type == SequenceStepType.WAIT:
             delay_ms = int(payload.get("ms", 0))
@@ -319,10 +346,18 @@ class SequenceExecutor:
             if not ctx.primary_channel:
                 raise SequenceNotApplicableError("AO_SET step requires a primary channel")
             value = float(payload.get("value", 0))
-            await enqueue_ao_command(
+            await send_hardware(
+                action="ao_set",
+                channel_id=ctx.primary_channel.id,
+                device_id=ctx.primary_channel.device_id,
                 unit_id=ctx.primary_channel.unit_id,
-                ch=ctx.primary_channel.channel_index,
-                value=value,
+                command_payload={"channel_index": ctx.primary_channel.channel_index, "value": value},
+                sender=lambda command_id: enqueue_ao_command(
+                    unit_id=ctx.primary_channel.unit_id,
+                    ch=ctx.primary_channel.channel_index,
+                    value=value,
+                    command_id=command_id or None,
+                ),
             )
             return
 
@@ -330,11 +365,19 @@ class SequenceExecutor:
             if not ctx.primary_channel:
                 raise SequenceNotApplicableError("DO_LATCH step requires a primary channel")
             value = int(payload.get("value", 0))
-            await enqueue_do_command(
+            await send_hardware(
+                action="do_set",
+                channel_id=ctx.primary_channel.id,
+                device_id=ctx.primary_channel.device_id,
                 unit_id=ctx.primary_channel.unit_id,
-                mode=Cmd.SET_SINGLE_BIT,
-                ch=ctx.primary_channel.channel_index,
-                value=value,
+                command_payload={"channel_index": ctx.primary_channel.channel_index, "value": value},
+                sender=lambda command_id: enqueue_do_command(
+                    unit_id=ctx.primary_channel.unit_id,
+                    mode=Cmd.SET_SINGLE_BIT,
+                    ch=ctx.primary_channel.channel_index,
+                    value=value,
+                    command_id=command_id or None,
+                ),
             )
             return
 
@@ -343,12 +386,24 @@ class SequenceExecutor:
                 raise SequenceNotApplicableError("DO_PULSE step requires a primary channel")
             value = int(payload.get("value", 0))
             pulse_ms = int(payload.get("pulse_ms", 0))
-            await enqueue_do_command(
+            await send_hardware(
+                action="do_pulse",
+                channel_id=ctx.primary_channel.id,
+                device_id=ctx.primary_channel.device_id,
                 unit_id=ctx.primary_channel.unit_id,
-                mode=Cmd.SET_PULSE_BIT,
-                ch=ctx.primary_channel.channel_index,
-                value=value,
-                pulse_ms=pulse_ms,
+                command_payload={
+                    "channel_index": ctx.primary_channel.channel_index,
+                    "value": value,
+                    "pulse_ms": pulse_ms,
+                },
+                sender=lambda command_id: enqueue_do_command(
+                    unit_id=ctx.primary_channel.unit_id,
+                    mode=Cmd.SET_PULSE_BIT,
+                    ch=ctx.primary_channel.channel_index,
+                    value=value,
+                    pulse_ms=pulse_ms,
+                    command_id=command_id or None,
+                ),
             )
             return
 
@@ -367,6 +422,8 @@ class SequenceExecutor:
                 raise SequenceNotApplicableError("DO_PAIR state must be an integer in range 0..3") from exc
             if state2b < 0 or state2b > 3:
                 raise SequenceNotApplicableError("DO_PAIR state must be in range 0..3")
+            if command_admission is not None:
+                raise SequenceNotApplicableError("DO_PAIR requires atomic multi-channel admission")
             await enqueue_do_command(
                 unit_id=first.unit_id,
                 mode=Cmd.SET_PAIR_BIT,
@@ -380,6 +437,8 @@ class SequenceExecutor:
             if not ctx.target_device:
                 raise SequenceNotApplicableError("DO_BITMASK step requires device context")
             bitmask = int(payload.get("bitmask", 0))
+            if command_admission is not None:
+                raise SequenceNotApplicableError("DO_BITMASK requires atomic multi-channel admission")
             await enqueue_do_command(
                 unit_id=ctx.target_device.unit_id,
                 mode=Cmd.SET_ALL_BIT,

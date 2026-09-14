@@ -81,6 +81,10 @@ E8 подключает manual single-channel DO/AO к admission с обязат
 `single_channel_admission_required`, пока не появится атомарный multi-channel
 lease.
 
+E9 подключает single-channel sequence steps к тому же lease, durable intent и ACK
+barrier. `DO_PAIR` и `DO_BITMASK` пока отклоняются при включённом admission:
+для них нужен атомарный multi-channel lease.
+
 ## Состояния delivery и verdict
 
 Это независимые поля:

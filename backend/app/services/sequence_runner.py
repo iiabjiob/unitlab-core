@@ -21,6 +21,7 @@ from app.models.sequence_run import (
     SequenceRunStep,
     SequenceRunStepStatus,
 )
+from app.models.workspace import WorkspaceSequence
 from app.schemas.sequence_run_schema import SequenceRuntimeSchema, SequenceStateSchema
 from app.services.domain_errors import (
     ChannelNotFoundError,
@@ -34,6 +35,7 @@ from app.services.sequence_executor import (
     SequenceCancellationRequested,
     SequenceExecutionResult,
     SequenceExecutor,
+    HardwareCommandAdmission,
     SequenceExecutorHooks,
     StepCompletedEvent,
     StepContext,
@@ -41,6 +43,15 @@ from app.services.sequence_executor import (
     StepLifecycleEvent,
 )
 from app.services.sequence_event_stream import SequenceEventStream
+from app.services.hardware_command_ack import wait_for_hardware_command_acks
+from app.services.hardware_command_admission import HardwareCommandAdmission
+from app.services.hardware_command_intent import (
+    mark_hardware_command_intent_delivery_failure,
+    mark_hardware_command_intent_queued,
+    record_hardware_command_intent,
+)
+from app.infrastructure.redis.manager import RedisManager
+from uuid import uuid4
 
 
 logger = get_logger("sequence.runner")
@@ -997,6 +1008,78 @@ class SequenceRunner:
                     requested_by=requested_by,
                 )
 
+                workspace_id = await session.scalar(
+                    select(WorkspaceSequence.workspace_id)
+                    .where(WorkspaceSequence.sequence_id == sequence_id)
+                    .limit(1)
+                )
+                if workspace_id is None:
+                    raise SequenceNotApplicableError("Sequence is not linked to a workspace")
+                hardware_admission = HardwareCommandAdmission(RedisManager.get_instance())
+
+                async def admit_sequence_command(
+                    ctx: StepContext,
+                    action: str,
+                    channel_id: int | None,
+                    device_id: int | None,
+                    unit_id: str,
+                    command_payload: dict[str, Any],
+                    sender,
+                ) -> Any:
+                    if channel_id is None or device_id is None:
+                        raise SequenceNotApplicableError("Hardware sequence step requires a single channel")
+                    owner_id = f"sequence:{run_id}"
+                    lease = await hardware_admission.acquire(
+                        channel_id=channel_id,
+                        owner_kind="sequence",
+                        owner_id=owner_id,
+                    )
+                    if lease is None:
+                        raise SequenceNotApplicableError("Hardware channel is busy")
+                    command_id = uuid4().hex
+                    try:
+                        await record_hardware_command_intent(
+                            session,
+                            command_id=command_id,
+                            workspace_id=int(workspace_id),
+                            job_id=str(run_id),
+                            attempt_id=None,
+                            owner_kind="sequence",
+                            owner_id=owner_id,
+                            device_id=device_id,
+                            channel_id=channel_id,
+                            unit_id=unit_id,
+                            action=action,
+                            payload=command_payload,
+                            fencing_epoch=lease.fencing_epoch,
+                        )
+                        await session.commit()
+                        try:
+                            await sender(command_id)
+                        except Exception:
+                            await session.rollback()
+                            await mark_hardware_command_intent_delivery_failure(
+                                session,
+                                command_id=command_id,
+                                status="publish_failed",
+                            )
+                            await session.commit()
+                            raise
+                        await mark_hardware_command_intent_queued(session, command_id=command_id)
+                        await session.commit()
+                        states = await wait_for_hardware_command_acks(
+                            session,
+                            command_ids=[command_id],
+                            timeout_ms=3000,
+                        )
+                        if states.get(command_id) != "acknowledged":
+                            raise SequenceNotApplicableError(
+                                f"Hardware command {states.get(command_id, 'unknown')}"
+                            )
+                        return command_id
+                    finally:
+                        await hardware_admission.release(lease)
+
                 for top_step in root_sequence.steps:
                     await self._probe_cancellation_from_db(run_id, cancel_event)
                     if cancel_event.is_set():
@@ -1064,6 +1147,7 @@ class SequenceRunner:
                             active_step=top_step,
                             execution_path=(root_sequence.name,),
                             resolved_sequences=resolved_sequences,
+                            command_admission=admit_sequence_command,
                         )
                     except SequenceCancellationRequested:
                         cancel_event.set()
@@ -1237,6 +1321,7 @@ class SequenceRunner:
         active_step: ResolvedSequenceStep,
         execution_path: tuple[str, ...],
         resolved_sequences: dict[int, ResolvedSequenceDefinition],
+        command_admission: HardwareCommandAdmission,
         loop_state: Optional[ExecutionLoopState] = None,
     ) -> None:
         await self._probe_cancellation_from_db(run_id, cancel_event)
@@ -1279,6 +1364,7 @@ class SequenceRunner:
                     active_step=child_step,
                     execution_path=child_path,
                     resolved_sequences=resolved_sequences,
+                    command_admission=command_admission,
                     loop_state=loop_state,
                 )
             return
@@ -1327,6 +1413,7 @@ class SequenceRunner:
                         active_step=child_step,
                         execution_path=child_path,
                         resolved_sequences=resolved_sequences,
+                        command_admission=command_admission,
                         loop_state=child_loop,
                     )
 
@@ -1339,6 +1426,7 @@ class SequenceRunner:
             ctx=self._build_step_context(top_step=top_level_step, active_step=active_step),
             cancel_event=cancel_event,
             cancellation_probe=lambda: self._probe_cancellation_from_db(run_id, cancel_event),
+            command_admission=admit_sequence_command,
         )
 
         is_nested_progress = (

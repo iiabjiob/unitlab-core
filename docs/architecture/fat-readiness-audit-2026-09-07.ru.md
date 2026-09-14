@@ -210,6 +210,11 @@ intent, а результат доставки возвращается как `
 Multi-channel DO pair/all и sequence admission требуют отдельного атомарного
 multi-lease контракта.
 
+**Статус slice E9 (2026-09-14): частично закрыт.** Single-channel AO/DO sequence
+steps теперь используют общий hardware lease, durable intent и ACK barrier.
+`DO_PAIR`/`DO_BITMASK` явно блокируются до реализации атомарного multi-channel
+lease; recovery и финальный verdict barrier остаются открытыми.
+
 ## GAP-06 — Синхронное ожидание IEC 61850 блокирует event loop worker
 
 **P1 · runtime/performance · подтверждено кодом; длительности не измерены.**
