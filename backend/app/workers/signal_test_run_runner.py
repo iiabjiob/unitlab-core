@@ -1320,6 +1320,7 @@ async def _handle_test_run(
             evidence=evidence_set.evidence,
             diagnostics=evidence_set.diagnostics,
         )
+        await repo.db.commit()
 
     def close_verification_orchestration() -> None:
         nonlocal verification_local_orchestration_id

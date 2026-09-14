@@ -634,6 +634,7 @@ def test_signal_test_run_requires_iec61850_report_when_verification_enabled(monk
     assert repo.db.commit_count >= 2
     assert persisted_verification[0]["kind"] == "row"
     assert persisted_verification[-1]["kind"] == "set"
+    assert repo.db.commit_count >= 3
 
 
 def test_signal_test_run_publishes_iec61850_preparation_steps_before_commands(monkeypatch) -> None:
