@@ -193,6 +193,7 @@ async def execute_verification_run(
                 observation.model_reference,
                 observation.value,
                 observation.timestamp,
+                observation.quality,
             )
 
     evidence_rows: list[SignalVerificationEvidenceSchema] = []
@@ -371,7 +372,7 @@ def _build_step_and_evidence(
     target_index: int,
     target: VerificationTargetSchema,
     group: VerificationSubscriptionPlanGroupSchema | None,
-    observation_bundle: tuple[Any, str | None, str | None, str | None, int | None] | None,
+    observation_bundle: tuple[Any, str | None, str | None, str | None, Any, int | None] | None,
     triggered_at: datetime,
     runtime_result,
     test_run_id: str,
@@ -383,7 +384,8 @@ def _build_step_and_evidence(
     actual_report_path = observation_bundle[1] if observation_bundle is not None else None
     signal_value = observation_bundle[2] if observation_bundle is not None else None
     source_timestamp = observation_bundle[3] if observation_bundle is not None else None
-    monotonic_duration_ms = observation_bundle[4] if observation_bundle is not None and len(observation_bundle) > 4 else None
+    observed_quality = observation_bundle[4] if observation_bundle is not None and len(observation_bundle) > 4 else None
+    monotonic_duration_ms = observation_bundle[5] if observation_bundle is not None and len(observation_bundle) > 5 else None
     if source_timestamp is not None:
         observed_at = _parse_timestamp(source_timestamp)
     else:
@@ -396,6 +398,7 @@ def _build_step_and_evidence(
         actual_report_path=actual_report_path,
         observed_at=observed_at,
         signal_value=signal_value,
+        quality_value=observed_quality,
         report_reason=(report.event.reason.value if report is not None and report.event is not None else None),
         causal_report_required=causal_report_required,
         latency_ms=computed_latency_ms,
@@ -450,7 +453,7 @@ def _build_step_and_evidence(
         # A report observation proves value/path/timing only. The current
         # normalized runtime model does not carry the IEC quality bit, so never
         # infer "good" from the observed status.
-        quality="unknown" if evidence_status == "observed" else None,
+        quality=_resolve_quality_label(observed_quality, evidence_status),
         freshness=freshness,
         evidence_status=evidence_status,
         reason_code=reason_code,
@@ -528,6 +531,7 @@ def _resolve_evidence_state(
     actual_report_path: str | None,
     observed_at: datetime | None,
     signal_value: Any,
+    quality_value: Any = None,
     report_reason: str | None = None,
     causal_report_required: bool = True,
     latency_ms: int | None,
@@ -541,6 +545,8 @@ def _resolve_evidence_state(
         return "invalid", "unknown", "missing_report_path", "report_observation"
     if signal_value is None:
         return "invalid", "unknown", "missing_signal_value", "report_observation"
+    if _quality_is_unusable(quality_value):
+        return "invalid", "unknown", "bad_signal_quality", "report_observation"
     if causal_report_required and report_reason in {"general-interrogation", "integrity"}:
         return "invalid", "unknown", "non_causal_report_reason", "report_observation"
     if latency_ms is None:
@@ -556,6 +562,23 @@ def _resolve_evidence_state(
         if getattr(first, "severity", "") == "error":
             return "invalid", "unknown", first.code, "report_observation"
     return "observed", "live", "report_received", "report_observation"
+
+
+def _quality_is_unusable(value: Any) -> bool:
+    if isinstance(value, bool) or value is None:
+        return False
+    if isinstance(value, int):
+        return (value & 0b11) in {1, 2, 3}
+    normalized = str(value).strip().lower()
+    return normalized in {"questionable", "invalid", "bad", "reserved", "overflow"}
+
+
+def _resolve_quality_label(value: Any, evidence_status: str) -> str | None:
+    if evidence_status != "observed":
+        return None
+    if value is None:
+        return "unknown"
+    return "bad" if _quality_is_unusable(value) else "good"
 
 
 def _build_recovery_state(

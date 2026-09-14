@@ -82,6 +82,13 @@ triggered capture и проверяет `invalid/non_causal_report_reason` бе�
 но устраняет неподтверждённое качество в отчёте; перенос quality bit и политика
 его влияния на verdict остаются отдельным protocol/hardware slice.
 
+**Статус slice G66 (2026-09-14): IEC quality propagation.** Нормализатор report
+теперь переносит отдельный quality leaf (`$q`/`.q`) в signal observation;
+явно questionable/invalid/reserved quality получает `invalid/bad_signal_quality`.
+Quality `0` считается good, отсутствие quality остаётся `unknown`; optional IEC
+контур не становится обязательным. Проверены IEC mapping, verification/runtime
+focused tests и полный backend suite.
+
 **Статус slice G65 (2026-09-14): monotonic capture duration.** Triggered IEC
 evidence теперь сохраняет `capture_duration_ms`, измеренный через monotonic clock,
 отдельно от wall-clock source timestamp и вычисленного timestamp latency. Это

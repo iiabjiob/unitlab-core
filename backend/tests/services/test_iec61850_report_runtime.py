@@ -282,6 +282,14 @@ def test_report_observation_matches_do_level_st_report_to_stval_signal() -> None
                 reason_code=Iec61850ReportReason.DATA_CHANGE,
                 timestamp="2026-07-05T10:00:00.100Z",
             ),
+            Iec61850ReportEventValue(
+                data_set_index=1,
+                reference="KINTE15BCU01CTRL2/SlotHGGIO12$ST$Ind3$q",
+                data_reference="KINTE15BCU01CTRL2/SlotHGGIO12$ST$Ind3$q",
+                value=0,
+                reason_code=Iec61850ReportReason.QUALITY_CHANGE,
+                timestamp="2026-07-05T10:00:00.100Z",
+            ),
         ),
     )
 
@@ -304,6 +312,7 @@ def test_report_observation_matches_do_level_st_report_to_stval_signal() -> None
     assert len(result.observations) == 1
     assert result.observations[0].selected_signal_id == "33398"
     assert result.observations[0].value is True
+    assert result.observations[0].quality == 0
     assert result.diagnostics == ()
 
 

@@ -246,6 +246,7 @@ class Iec61850SignalObservation:
     value: bool | int | float | str | None
     reason_code: Iec61850ReportReason
     timestamp: str
+    quality: bool | int | float | str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -566,6 +567,7 @@ def map_report_event_to_signal_observations(
             data_set_index=value.data_set_index,
             data_reference=value.data_reference,
             value=value.value,
+            quality=_resolve_observation_quality(value=value, event=event, candidate=candidate),
             reason_code=value.reason_code,
             timestamp=value.timestamp,
         ))
@@ -1305,6 +1307,36 @@ def _observation_reference_aliases(reference: str, candidate: Iec61850ReportCont
         if base and not base.endswith(".stval"):
             aliases.add(f"{base}.stval[st]")
     return aliases
+
+
+def _quality_reference_aliases(reference: str, candidate: Iec61850ReportControlCandidate) -> set[str]:
+    normalized = _normalize_observation_reference(reference, candidate)
+    aliases = {normalized}
+    marker = ".stval["
+    if marker in normalized:
+        suffix = normalized[normalized.index("[", normalized.index(marker)) :]
+        aliases.add(f"{normalized.split(marker, 1)[0]}.q{suffix}")
+    elif normalized:
+        # Some MMS reports identify the primary leaf by its parent object
+        # (e.g. ``.../Ind3``) while quality is emitted as ``...Ind3$q``.
+        base = normalized[:-4] if normalized.endswith("[st]") else normalized
+        aliases.update({f"{base}.q[st]", f"{base}.q"})
+    return aliases
+
+
+def _resolve_observation_quality(
+    *,
+    value: Iec61850ReportEventValue,
+    event: Iec61850ReportEvent,
+    candidate: Iec61850ReportControlCandidate,
+) -> bool | int | float | str | None:
+    quality_aliases = _quality_reference_aliases(value.data_reference or value.reference, candidate)
+    for candidate_value in event.values:
+        reference = candidate_value.data_reference or candidate_value.reference
+        normalized = _normalize_observation_reference(reference, candidate)
+        if normalized in quality_aliases and normalized != _normalize_observation_reference(value.data_reference or value.reference, candidate):
+            return candidate_value.value
+    return None
 
 
 def _mms_reference_to_dot_reference(reference: str) -> str:

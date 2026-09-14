@@ -832,6 +832,7 @@ class VerificationRuntimeOrchestrator:
                             observation.model_reference,
                             observation.value,
                             observation.timestamp,
+                            observation.quality,
                             max(0, int((time.monotonic() - capture_started_monotonic) * 1000)),
                         )
                         break

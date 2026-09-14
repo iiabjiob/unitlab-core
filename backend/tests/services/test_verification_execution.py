@@ -199,6 +199,37 @@ def test_observed_evidence_does_not_infer_good_quality() -> None:
     assert evidence.quality == "unknown"
 
 
+def test_explicit_bad_quality_blocks_observed_evidence() -> None:
+    plan = _build_plan()
+    report = SimpleNamespace(
+        event=SimpleNamespace(
+            received_at="2026-06-23T12:00:00.100Z",
+            endpoint_id="IED-A/P1",
+            rpt_id="IED-A/LLN0.brA",
+            sequence_number=2,
+            reason=SimpleNamespace(value="data-change"),
+        ),
+        ied_name="IED-A",
+        report_control_name="brA",
+        data_set_ref="IED-A/LLN0.dsA",
+    )
+
+    evidence, step = _build_step_and_evidence(
+        target_index=0,
+        target=plan.targets[0],
+        group=plan.groups[0],
+        observation_bundle=(report, "LD0/XCBR1.Pos.stVal[ST]", True, "2026-06-23T12:00:00.100Z", 2),
+        triggered_at=datetime(2026, 6, 23, 12, 0, tzinfo=UTC),
+        runtime_result=SimpleNamespace(diagnostics=()),
+        test_run_id="run-quality-bad",
+    )
+
+    assert evidence.evidence_status == "invalid"
+    assert evidence.reason_code == "bad_signal_quality"
+    assert evidence.quality is None
+    assert step.verdict_state != "pass"
+
+
 def test_runtime_subscription_plan_keeps_transport_endpoint_out_of_ied_name() -> None:
     plan = build_verification_subscription_plan(
         [
