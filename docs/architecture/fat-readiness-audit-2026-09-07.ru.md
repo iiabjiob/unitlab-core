@@ -360,6 +360,15 @@ Redis/PostgreSQL и durable evidence до/после commit ещё требую�
 гарантирует exactly-once и не заменяет restart reconciliation, backup/restore
 проверку и kill-тесты на deployment.
 
+**Статус slice G52 (2026-09-14): cancellation reconciliation.** Если runner
+получает `CancelledError` после создания execution attempt, он сначала
+reconciles незавершённые durable hardware intents в `unknown` либо
+`recovery_required`, затем повторно передаёт отмену. Redis stream entry остаётся
+pending, а execution/workspace locks освобождаются в `finally`; terminal `failed`
+и ACK не создаются из cancellation path. Проверен unit-тестом helper-а и полной
+backend regression suite; реальный kill worker/Redis и deployment recovery ещё
+требуют стендовой проверки.
+
 ## GAP-10 — Нет доказанной общей исключительности физического выхода
 
 **P0 · allocation/command ownership · подтверждён разрыв границ.**

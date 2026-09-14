@@ -90,6 +90,32 @@ def _lease_stats_snapshot() -> dict[str, int]:
     return dict(_lease_stats)
 
 
+async def _reconcile_unfinished_intents_after_runner_exit(
+    *,
+    job_id: str | None,
+    attempt_id: str | None,
+) -> int:
+    """Reconcile durable hardware intents before a runner task exits unexpectedly."""
+    if not job_id or not attempt_id:
+        return 0
+    try:
+        async with AsyncSessionLocal() as recovery_session:
+            reconciled_intents = await reconcile_unfinished_hardware_command_intents(
+                recovery_session,
+                job_id=job_id,
+                attempt_id=attempt_id,
+            )
+            await recovery_session.commit()
+        return reconciled_intents
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "💥 Failed to reconcile hardware intents after signal test run exit job=%s attempt=%s",
+            job_id,
+            attempt_id,
+        )
+        return 0
+
+
 async def _wait_for_bit_readback(
     redis,
     *,
@@ -2235,6 +2261,15 @@ async def _process_entries(redis, entries) -> None:
                     str(result_payload.get("cursor_reason") or "-"),
                 )
                 should_ack = True
+        except asyncio.CancelledError:
+            # Cancellation is a BaseException on supported Python versions and does
+            # not reach the generic failure handler. Reconcile durable intents, then
+            # propagate cancellation so the stream entry remains pending for retry.
+            await _reconcile_unfinished_intents_after_runner_exit(
+                job_id=job_id,
+                attempt_id=execution_attempt_id,
+            )
+            raise
         except Exception as exc:  # noqa: BLE001
             duration_ms = int(((time.monotonic() - job_started_monotonic) * 1000)) if job_started_monotonic else 0
             logger.error(
@@ -2245,22 +2280,10 @@ async def _process_entries(redis, entries) -> None:
                 str(exc),
             )
             logger.exception("💥 Failed to process signal test run job %s: %s", entry_id, exc)
-            reconciled_hardware_intents = 0
-            if job_id and execution_attempt_id:
-                try:
-                    async with AsyncSessionLocal() as recovery_session:
-                        reconciled_hardware_intents = await reconcile_unfinished_hardware_command_intents(
-                            recovery_session,
-                            job_id=job_id,
-                            attempt_id=execution_attempt_id,
-                        )
-                        await recovery_session.commit()
-                except Exception:  # noqa: BLE001
-                    logger.exception(
-                        "💥 Failed to reconcile hardware intents after signal test run failure job=%s attempt=%s",
-                        job_id,
-                        execution_attempt_id,
-                    )
+            reconciled_hardware_intents = await _reconcile_unfinished_intents_after_runner_exit(
+                job_id=job_id,
+                attempt_id=execution_attempt_id,
+            )
             if job_id:
                 current_before_fail = await get_signal_job(job_id)
                 current_attempt_id, _ = _extract_job_attempt_meta(current_before_fail)

@@ -4,6 +4,7 @@ import asyncio
 import re
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -295,6 +296,32 @@ def test_sleep_before_restore_defers_task_cancellation(monkeypatch) -> None:
     monkeypatch.setattr(signal_test_run_runner.asyncio, "sleep", cancelled_sleep)
 
     assert run_async(signal_test_run_runner._sleep_before_restore(1.0)) is True
+
+
+def test_runner_exit_reconciles_unfinished_intents(monkeypatch) -> None:
+    class FakeSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return False
+
+        async def commit(self):
+            self.committed = True
+
+    session = FakeSession()
+    reconcile = AsyncMock(return_value=2)
+    monkeypatch.setattr(signal_test_run_runner, "AsyncSessionLocal", lambda: session)
+    monkeypatch.setattr(signal_test_run_runner, "reconcile_unfinished_hardware_command_intents", reconcile)
+
+    assert run_async(
+        signal_test_run_runner._reconcile_unfinished_intents_after_runner_exit(
+            job_id="job-1",
+            attempt_id="attempt-1",
+        )
+    ) == 2
+    reconcile.assert_awaited_once_with(session, job_id="job-1", attempt_id="attempt-1")
+    assert session.committed is True
 
 
 def test_signal_rows_patched_event_serializes_grid_patch_contract() -> None:
