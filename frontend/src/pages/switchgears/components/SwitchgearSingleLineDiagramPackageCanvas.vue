@@ -1697,16 +1697,28 @@ function snapToEightDirections(anchorX: number, anchorY: number, targetX: number
   }
 }
 
+function applySelectionPreview(point: { x: number; y: number }, entityId?: string) {
+  const delta = selectionPreviewDelta.value
+  if (!delta || !entityId || !selection.isSelected(entityId)) {
+    return point
+  }
+
+  return {
+    x: point.x + delta.x,
+    y: point.y + delta.y,
+  }
+}
+
 function resolveEdgeEndpointPosition(endpoint: { kind: "point"; point: { x: number; y: number } } | { kind: "node"; nodeId: string } | { kind: "port"; portId: string }) {
   if (endpoint.kind === "point") {
     return endpoint.point
   }
   if (endpoint.kind === "port") {
     const port = diagram.scene.value.entities.portsById.get(endpoint.portId)
-    return port ? { x: port.x, y: port.y } : { x: 0, y: 0 }
+    return port ? applySelectionPreview({ x: port.x, y: port.y }, port.nodeId) : { x: 0, y: 0 }
   }
   const node = diagram.scene.value.entities.nodesById.get(endpoint.nodeId)
-  return node ? { x: node.x + node.width / 2, y: node.y + node.height / 2 } : { x: 0, y: 0 }
+  return node ? applySelectionPreview({ x: node.x + node.width / 2, y: node.y + node.height / 2 }, node.id) : { x: 0, y: 0 }
 }
 
 function snapWorldValue(value: number) {
@@ -2064,19 +2076,6 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
           @dblclick.stop="openNodeDetail(node.id)"
           @contextmenu.stop.prevent="openNodeContextMenu($event, node.id)"
         />
-
-        <text
-          v-for="node in visible.projection.value.nodes"
-          :key="`${node.id}:caption`"
-          :x="node.geometry.bounds.x + node.geometry.bounds.width / 2"
-          :transform="resolveSelectionPreviewTransform(node.id)"
-          :y="node.geometry.bounds.y + node.geometry.bounds.height / 2 + 4"
-          class="switchgear-sld-package-canvas__node-text"
-          text-anchor="middle"
-          pointer-events="none"
-        >
-          {{ resolveNodeLabel(node.id) }}
-        </text>
 
         <text
           v-for="node in visible.projection.value.nodes"
@@ -2439,12 +2438,6 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
   height: 100%;
 }
 
-.switchgear-sld-package-canvas__node-text {
-  fill: var(--color-neutral-800);
-  font-size: 8px;
-  font-weight: 600;
-}
-
 .switchgear-sld-package-canvas__switchgear-label {
   fill: var(--color-neutral-700);
   font-size: 10px;
@@ -2561,10 +2554,6 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
 :global(.dark .switchgear-sld-package-canvas__stage) {
   border-color: var(--color-neutral-800);
   background: linear-gradient(180deg, rgb(10 15 28), rgb(3 7 18));
-}
-
-:global(.dark .switchgear-sld-package-canvas__node-text) {
-  fill: var(--color-neutral-950);
 }
 
 :global(.dark .switchgear-sld-package-canvas__switchgear-label) {
