@@ -403,6 +403,14 @@ read и command/request write, а device identity с username=`unit_id` огра
 собственным topic namespace через `%u`. Anonymous production profile не изменён;
 нужны provisioning credentials, broker integration test и TLS rollout на стенде.
 
+**Статус slice G43 (2026-09-14): internal manual command ACK barrier.** Manual
+DO/AO path теперь удерживает channel lease до terminal device ACK или bounded
+timeout; неподтверждённая команда остаётся в durable `unknown`/recovery flow.
+Существующий WS delivery-контракт не менялся; при timeout/negative ACK оператор
+получает существующий `reason`, но отдельное execution-поле требует отдельного
+согласования. Проверены focused backend tests и frontend type-check; simulator/
+device ACK latency и disconnect recovery остаются стендовыми проверками.
+
 ## GAP-12 — Повторные diagnostics-тосты и неоднозначность сетевой ошибки
 
 **P1 · operator UX/host diagnostics · механизм подтверждён, production-причина не установлена.**

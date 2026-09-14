@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 from fastapi import WebSocket
 from sqlalchemy import exists, select
@@ -18,14 +19,22 @@ from app.services.hardware_command_intent import (
     mark_hardware_command_intent_queued,
     record_hardware_command_intent,
 )
+from app.services.hardware_command_ack import wait_for_hardware_command_acks
 from app.schemas.ws.messages import SetAoCommandMessage, SetDoCommandMessage
 from app.schemas.ws.events import HardwareCommandResultEvent
 from uuid import uuid4
 
 settings = get_settings()
+MANUAL_COMMAND_ACK_TIMEOUT_MS = 3000
 
 
-async def _result(ws: WebSocket, *, command_id: str | None, delivery: str, reason: str | None = None) -> None:
+async def _result(
+    ws: WebSocket,
+    *,
+    command_id: str | None,
+    delivery: str,
+    reason: str | None = None,
+) -> None:
     await ws.send_json(
         HardwareCommandResultEvent(
             command_id=command_id,
@@ -116,6 +125,7 @@ async def _enqueue_manual(
         return
 
     command_id = uuid4().hex
+    execution_reason: str | None = None
     try:
         async with AsyncSessionLocal() as session:
             await record_hardware_command_intent(
@@ -137,6 +147,25 @@ async def _enqueue_manual(
             await sender(command_id)
             await mark_hardware_command_intent_queued(session, command_id=command_id)
             await session.commit()
+            ack_states = await wait_for_hardware_command_acks(
+                session,
+                command_ids=[command_id],
+                timeout_ms=MANUAL_COMMAND_ACK_TIMEOUT_MS,
+            )
+            execution = str(ack_states.get(command_id) or "unknown")
+            if execution == "negative_ack":
+                execution_reason = "device_negative_ack"
+            elif execution == "timeout":
+                execution_reason = "hardware_ack_timeout"
+    except asyncio.CancelledError:
+        async with AsyncSessionLocal() as session:
+            await mark_hardware_command_intent_delivery_failure(
+                session,
+                command_id=command_id,
+                status="recovery_required" if action == "restore" else "unknown",
+            )
+            await session.commit()
+        raise
     except Exception:
         async with AsyncSessionLocal() as session:
             await mark_hardware_command_intent_delivery_failure(
@@ -150,7 +179,12 @@ async def _enqueue_manual(
     finally:
         for lease in leases:
             await admission.release(lease)
-    await _result(ws, command_id=command_id, delivery="queued")
+    await _result(
+        ws,
+        command_id=command_id,
+        delivery="queued",
+        reason=execution_reason,
+    )
 
 
 async def handle_manual_do(ws: WebSocket, msg: SetDoCommandMessage) -> None:
