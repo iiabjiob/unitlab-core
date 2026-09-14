@@ -61,7 +61,7 @@ FastAPI subscribes to `ws:events` and forwards every payload to connected WebSoc
 
 ### Direct hardware control
 
-The Hardware tab can send manual DO/AO commands to an online registered device without a signal list or channel allocation. The backend still validates the workspace, device identity, channel id/index, channel type, device presence, command admission lease, acknowledgement, and readback. Sequence and signal test-run execution continue to require allocated channels.
+The Hardware tab can send manual DO/AO commands to an online registered device without a signal list or channel allocation. Sequence steps can use the same direct hardware channel selection, so a sequence may target a raw device channel without signal allocation. The backend still validates the workspace, device identity, channel id/index, channel type, device presence, command admission lease, acknowledgement, and readback. Signal test-run execution requires allocated channels because its evidence is tied to signal-list rows.
 
 Supported operations:
 
