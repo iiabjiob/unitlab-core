@@ -41,6 +41,7 @@ const systemHealthCriticalToastState = {
 const coreDiagnosticsCriticalToastState = {
   id: null as number | null,
   signature: null as string | null,
+  acknowledgedSignature: null as string | null,
   pendingSignature: null as string | null,
   pendingCount: 0,
 }
@@ -378,6 +379,7 @@ function syncCoreDiagnosticsCriticalAlert(
   }
 
   if (issues.length === 0) {
+    coreDiagnosticsCriticalToastState.acknowledgedSignature = null
     coreDiagnosticsCriticalToastState.pendingSignature = null
     coreDiagnosticsCriticalToastState.pendingCount = 0
     syncStickyCriticalToast(toastStore, coreDiagnosticsCriticalToastState, null, "")
@@ -395,6 +397,9 @@ function syncCoreDiagnosticsCriticalAlert(
   if (!debounce.stable) {
     return
   }
+  if (coreDiagnosticsCriticalToastState.acknowledgedSignature === signature) {
+    return
+  }
   if (coreDiagnosticsCriticalToastState.signature === signature && coreDiagnosticsCriticalToastState.id !== null) {
     toastStore.update(coreDiagnosticsCriticalToastState.id, {
       message: `Core diagnostics alert: ${issues.join("; ")}`,
@@ -407,9 +412,13 @@ function syncCoreDiagnosticsCriticalAlert(
   }
   coreDiagnosticsCriticalToastState.id = toastStore.error(`Core diagnostics alert: ${issues.join("; ")}`, {
     timeout: null,
-    actionLabel: "Open Diagnostics",
+    actionLabel: "Acknowledge",
     onAction: () => {
-      void router.push({ name: "settings.diagnostics" }).catch(() => undefined)
+      coreDiagnosticsCriticalToastState.acknowledgedSignature = signature
+      if (coreDiagnosticsCriticalToastState.id !== null) {
+        toastStore.remove(coreDiagnosticsCriticalToastState.id)
+        coreDiagnosticsCriticalToastState.id = null
+      }
     },
   })
   coreDiagnosticsCriticalToastState.signature = signature

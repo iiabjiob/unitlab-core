@@ -495,6 +495,10 @@ Manual multi-channel scope теперь отклоняет дубли канал
 persisted `channel_ids` не расходится с фактически защищённым набором.
 Успешная публикация manual intent теперь также фиксируется как `queued` до
 освобождения lease; это устраняет ложный `unknown` при restart reconciliation.
+Core diagnostics toast теперь имеет локальное acknowledgement: оператор может
+скрыть текущий incident, а повторное уведомление появится только после recovery
+или изменения нормализованной signature. Это не заменяет серверный incident ID
+и audit trail.
 В verification evidence builder теперь используется timestamp выбранного source
 observation, а не только время получения transport event; некорректный source
 timestamp не может замаскироваться receiver time и дать свежий PASS.
