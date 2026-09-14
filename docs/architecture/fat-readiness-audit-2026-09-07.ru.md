@@ -495,6 +495,9 @@ Manual multi-channel scope теперь отклоняет дубли канал
 persisted `channel_ids` не расходится с фактически защищённым набором.
 Успешная публикация manual intent теперь также фиксируется как `queued` до
 освобождения lease; это устраняет ложный `unknown` при restart reconciliation.
+В verification evidence builder теперь используется timestamp выбранного source
+observation, а не только время получения transport event; некорректный source
+timestamp не может замаскироваться receiver time и дать свежий PASS.
 Post-command DO readback также не принимает отсутствующий или невалидный snapshot
 за подтверждённый `0`; такие состояния доходят до timeout/recovery.
 После failed DO readback worker больше не использует локальный predicted bitmask

@@ -7,7 +7,7 @@ import pytest
 
 from app.schemas.verification_schema import VerificationExecutionContextSchema
 from app.services.iec61850.report_runtime import Iec61850DeviceEndpoint, Iec61850RuntimeMode
-from app.services.verification_execution import _first_non_empty_report_text, _latency_ms, _resolve_evidence_state, build_runtime_subscription_plan, execute_simulated_verification_run
+from app.services.verification_execution import _build_step_and_evidence, _first_non_empty_report_text, _latency_ms, _resolve_evidence_state, build_runtime_subscription_plan, execute_simulated_verification_run
 from app.services.verification_planner import VerificationTargetSource, build_verification_subscription_plan
 
 
@@ -92,6 +92,37 @@ def test_report_before_trigger_is_not_coerced_to_fresh_zero_latency() -> None:
         "report_before_trigger",
         "report_observation",
     )
+
+
+def test_source_observation_timestamp_controls_freshness_over_receive_time() -> None:
+    triggered_at = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
+    source_timestamp = (triggered_at - timedelta(minutes=5)).isoformat()
+    report = SimpleNamespace(
+        event=SimpleNamespace(
+            received_at=(triggered_at + timedelta(milliseconds=10)).isoformat(),
+            endpoint_id="IED-A/P1",
+            rpt_id="IED-A/LLN0.brA",
+            sequence_number=4,
+            reason=SimpleNamespace(value="data-change"),
+        ),
+        ied_name="IED-A",
+        report_control_name="brA",
+        data_set_ref="IED-A/LLN0.dsA",
+    )
+
+    evidence, step = _build_step_and_evidence(
+        target_index=0,
+        target=_build_plan().targets[0],
+        group=_build_plan().groups[0],
+        observation_bundle=(report, "LD0/XCBR1.Pos.stVal[ST]", True, source_timestamp),
+        triggered_at=triggered_at,
+        runtime_result=SimpleNamespace(diagnostics=()),
+        test_run_id="run-1",
+    )
+
+    assert evidence.observed_at == triggered_at - timedelta(minutes=5)
+    assert evidence.evidence_status == "stale"
+    assert step.verdict_state != "pass"
 
 
 def test_runtime_subscription_plan_keeps_transport_endpoint_out_of_ied_name() -> None:

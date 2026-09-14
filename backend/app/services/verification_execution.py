@@ -380,7 +380,11 @@ def _build_step_and_evidence(
     report = observation_bundle[0] if observation_bundle is not None else None
     actual_report_path = observation_bundle[1] if observation_bundle is not None else None
     signal_value = observation_bundle[2] if observation_bundle is not None else None
-    observed_at = _parse_timestamp(report.event.received_at) if report is not None and report.event is not None else None
+    source_timestamp = observation_bundle[3] if observation_bundle is not None else None
+    if source_timestamp is not None:
+        observed_at = _parse_timestamp(source_timestamp)
+    else:
+        observed_at = _parse_timestamp(report.event.received_at) if report is not None and report.event is not None else None
     computed_latency_ms = _latency_ms(triggered_at, observed_at) if observed_at is not None else None
     window_ms = int(target.window_ms)
     timeout_ms = int(target.timeout_ms)
