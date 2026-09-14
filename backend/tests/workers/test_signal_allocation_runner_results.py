@@ -288,6 +288,15 @@ def test_step_evidence_status_does_not_hide_verdict_failure_after_ack() -> None:
     assert signal_test_run_runner._step_evidence_status("value_mismatch") == "failed"
 
 
+def test_sleep_before_restore_defers_task_cancellation(monkeypatch) -> None:
+    async def cancelled_sleep(seconds: float) -> None:
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(signal_test_run_runner.asyncio, "sleep", cancelled_sleep)
+
+    assert run_async(signal_test_run_runner._sleep_before_restore(1.0)) is True
+
+
 def test_signal_rows_patched_event_serializes_grid_patch_contract() -> None:
     event = SignalRowsPatchedEvent(
         workspace_id=7,

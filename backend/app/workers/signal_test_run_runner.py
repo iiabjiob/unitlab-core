@@ -513,6 +513,15 @@ def _step_evidence_status(test_status: str) -> str:
     return "succeeded" if test_status in {"tested", "verified"} else "failed"
 
 
+async def _sleep_before_restore(seconds: float) -> bool:
+    """Return whether cancellation was deferred during the restore window."""
+    try:
+        await asyncio.sleep(seconds)
+    except asyncio.CancelledError:
+        return True
+    return False
+
+
 def _verification_runtime_ready(runtime_snapshot) -> bool:
     subscriptions = list(getattr(runtime_snapshot, "subscription_snapshots", ()) or ())
     if not subscriptions:
@@ -1561,13 +1570,9 @@ async def _handle_test_run(
                     test_status = "blocked"
 
                 if toggle_mode == "double":
-                    cancelled_during_restore_window = False
-                    try:
-                        await asyncio.sleep(signal_interval_seconds)
-                    except asyncio.CancelledError:
-                        # Do not leave a toggled output behind when the worker task
-                        # is cancelled during the bounded SET -> RESTORE window.
-                        cancelled_during_restore_window = True
+                    # Do not leave a toggled output behind when the worker task
+                    # is cancelled during the bounded SET -> RESTORE window.
+                    cancelled_during_restore_window = await _sleep_before_restore(signal_interval_seconds)
                     restore_correlation_id = f"test-run:{signal_id}:set:{current_value}"
                     commands_payload.append(
                         {
