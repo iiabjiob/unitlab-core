@@ -43,6 +43,9 @@ class DeviceStateService:
         """
         redis = RedisManager.get_instance()
         changed = False
+        packet_id = getattr(hdr, "packet_id", None)
+        if packet_id is not None:
+            await redis.set(f"device:{unit_id}:last_state_packet_id", str(int(packet_id)))
 
         if hdr.mode == State.STATE_ALL_BIT:
             current = await redis.get(f"device:{unit_id}:bitmask")

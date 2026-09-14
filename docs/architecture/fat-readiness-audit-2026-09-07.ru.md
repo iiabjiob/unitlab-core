@@ -424,6 +424,13 @@ resolved channel из command scope после общего ACK; mismatch пер
 intent в `recovery_required`. Pulse намеренно не включён до согласования его
 финального состояния. Focused regression suite остаётся зелёным.
 
+**Статус slice G46 (2026-09-14): свежесть manual readback.** State responses
+теперь сохраняют `last_state_packet_id`, `enqueue_request_state` возвращает
+request packet ID, а manual readback принимает совпавшее значение только после
+получения именно этого packet ID. Это закрывает ложное совпадение со старым
+Redis snapshot для manual path; malformed/missing marker остаётся failure.
+Проверены stale-packet negative test и state-service regression.
+
 ## GAP-12 — Повторные diagnostics-тосты и неоднозначность сетевой ошибки
 
 **P1 · operator UX/host diagnostics · механизм подтверждён, production-причина не установлена.**

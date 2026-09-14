@@ -39,23 +39,30 @@ async def _wait_for_manual_readback(
     channel_index: int,
     expected_value: float | int,
     timeout_ms: int,
+    packet_id: int | None = None,
 ) -> bool:
     deadline = time.monotonic() + max(100, int(timeout_ms)) / 1000
     while True:
+        fresh = True
+        if packet_id is not None:
+            try:
+                fresh = int(await redis.get(f"device:{unit_id}:last_state_packet_id")) == int(packet_id)
+            except (TypeError, ValueError):
+                fresh = False
         if action == "ao_set":
             raw_value = await redis.hget(f"device:{unit_id}:ao", str(int(channel_index)))
             try:
                 actual_value = float(raw_value)
             except (TypeError, ValueError):
                 actual_value = None
-            matched = actual_value is not None and abs(actual_value - float(expected_value)) <= 0.01
+            matched = fresh and actual_value is not None and abs(actual_value - float(expected_value)) <= 0.01
         else:
             raw_bitmask = await redis.get(f"device:{unit_id}:bitmask")
             try:
                 bitmask = int(raw_bitmask)
             except (TypeError, ValueError):
                 bitmask = None
-            matched = bitmask is not None and (1 if bitmask & (1 << int(channel_index)) else 0) == int(expected_value)
+            matched = fresh and bitmask is not None and (1 if bitmask & (1 << int(channel_index)) else 0) == int(expected_value)
         if matched:
             return True
         if time.monotonic() >= deadline:
@@ -223,7 +230,7 @@ async def _enqueue_manual(
                 readback_ok = bool(readback_targets)
                 for target_index, target_value in readback_targets:
                     try:
-                        await enqueue_request_state(
+                        readback_packet_id = await enqueue_request_state(
                             unit_id=unit_id,
                             mode=State.REQ_SINGLE_FLOAT if action == "ao_set" else State.REQ_SINGLE_BIT,
                             ch=target_index,
@@ -236,6 +243,7 @@ async def _enqueue_manual(
                             channel_index=target_index,
                             expected_value=target_value,
                             timeout_ms=MANUAL_READBACK_TIMEOUT_MS,
+                            packet_id=readback_packet_id,
                         )
                     except Exception:  # noqa: BLE001
                         target_ok = False

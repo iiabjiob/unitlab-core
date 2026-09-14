@@ -75,6 +75,26 @@ def test_manual_device_with_stale_last_seen_is_not_online(monkeypatch) -> None:
     assert run_async(manual_command_admission._device_is_online("unit-1")) is False
 
 
+def test_manual_readback_rejects_matching_value_from_old_packet() -> None:
+    class Redis:
+        async def get(self, key: str):
+            if key.endswith(":last_state_packet_id"):
+                return "41"
+            return "0"
+
+    assert run_async(
+        manual_command_admission._wait_for_manual_readback(
+            Redis(),
+            action="do_set",
+            unit_id="unit-1",
+            channel_index=0,
+            expected_value=0,
+            timeout_ms=100,
+            packet_id=42,
+        )
+    ) is False
+
+
 def test_manual_command_marks_intent_queued_after_publish(monkeypatch) -> None:
     calls: list[str] = []
 

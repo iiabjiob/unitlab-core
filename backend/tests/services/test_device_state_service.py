@@ -91,3 +91,21 @@ def test_single_bit_response_updates_existing_full_mask(monkeypatch) -> None:
     assert changed is True
     assert event is not None
     assert redis.writes == [("device:unit-1:bitmask", "3")]
+
+
+def test_state_response_records_request_packet_id_without_changing_legacy_fixture(monkeypatch) -> None:
+    redis = Redis("2")
+    monkeypatch.setattr(
+        "app.services.device_state_service.RedisManager.get_instance",
+        lambda: redis,
+    )
+
+    run_async(
+        DeviceStateService.update_state(
+            "unit-1",
+            SimpleNamespace(mode=State.STATE_SINGLE_BIT, timestamp_ms=1, packet_id=44),
+            Decoded(ch=0, value=1),
+        )
+    )
+
+    assert ("device:unit-1:last_state_packet_id", "44") in redis.writes

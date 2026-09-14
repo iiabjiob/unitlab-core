@@ -160,6 +160,7 @@ async def enqueue_request_state(
     await enqueue_outbound_command(msg)
     
     logger.info(f"🧺 Queued STATE REQ → {topic} | pid={pid} ({mode.name}) {data.hex().upper()}")
+    return pid
 
 
 # ---------------- SCAN ----------------
