@@ -3,6 +3,7 @@ import { computed, onMounted } from "vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import UiAffinoListbox from "@/components/ui/UiAffinoListbox.vue"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
+import { useChannelStore } from "@/stores/channelStore"
 import type { SequenceStep } from "@/types/sequences"
 import type { StepEditorChange } from "./editorTypes"
 
@@ -16,6 +17,15 @@ const emit = defineEmits<{
 }>()
 
 const switchgearStore = useSwitchgearStore()
+const channelStore = useChannelStore()
+
+const pairChannelLabels = computed(() => {
+	const ids = props.step.payload?.channel_ids ?? []
+	return ids.slice(0, 2).map((id) => {
+		const channel = channelStore.channels.find((item) => item.id === id)
+		return channel ? channelStore.resolveChannelFullLabel(channel) : `CH#${id}`
+	})
+})
 
 const switchgearId = computed(() => {
 	const raw = props.step.payload?.switchgear_id
@@ -89,6 +99,9 @@ const stateOptions = [
 					aria-label="Configured switchgear"
 					@update:modelValue="updateSwitchgear"
 				/>
+				<div v-if="pairChannelLabels.length" class="sequence-step-form__configured-pair">
+					{{ pairChannelLabels.join(" + ") }}
+				</div>
 			</div>
 
 		<div>
