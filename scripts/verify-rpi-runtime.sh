@@ -13,6 +13,7 @@ HEALTH_STARTUP_GRACE_SEC="${HEALTH_STARTUP_GRACE_SEC:-20}"
 HEALTH_POLL_INTERVAL_SEC="${HEALTH_POLL_INTERVAL_SEC:-2}"
 RELEASE_VERSION="${RELEASE_VERSION:-}"
 REQUIRE_TIME_SYNC="${REQUIRE_TIME_SYNC:-0}"
+MQTT_CHECK_PORT="${MQTT_CHECK_PORT:-1883}"
 
 fail_count=0
 warn_count=0
@@ -35,6 +36,7 @@ Options:
   --health-poll-interval-sec <int>  Poll interval during health grace wait (default: 2)
   --release-version <value>     Expected release version label (unitlab.release)
   --require-time-sync <0|1>     Fail if chrony is not synchronised (default: 0)
+  --mqtt-port <1-65535>         MQTT listener port to verify (default: 1883)
   -h, --help                    Show this help
 
 Environment overrides:
@@ -43,6 +45,7 @@ Environment overrides:
   MAX_IMAGE_COUNT_WARN, MAX_VOLUME_COUNT_WARN,
   HEALTH_STARTUP_GRACE_SEC, HEALTH_POLL_INTERVAL_SEC,
   RELEASE_VERSION, REQUIRE_TIME_SYNC
+  MQTT_CHECK_PORT
 EOF
 }
 
@@ -106,6 +109,11 @@ while [[ $# -gt 0 ]]; do
     --require-time-sync)
       [[ $# -ge 2 ]] || { echo "[unitlab] ERROR: --require-time-sync requires a value" >&2; usage; exit 1; }
       REQUIRE_TIME_SYNC="$2"
+      shift 2
+      ;;
+    --mqtt-port)
+      [[ $# -ge 2 ]] || { echo "[unitlab] ERROR: --mqtt-port requires a value" >&2; usage; exit 1; }
+      MQTT_CHECK_PORT="$2"
       shift 2
       ;;
     -h|--help)
@@ -201,6 +209,10 @@ if ! [[ "$HEALTH_POLL_INTERVAL_SEC" =~ ^[0-9]+$ ]]; then
 fi
 if [[ "$REQUIRE_TIME_SYNC" != "0" && "$REQUIRE_TIME_SYNC" != "1" ]]; then
   echo "[unitlab] ERROR: --require-time-sync must be 0 or 1" >&2
+  exit 2
+fi
+if ! [[ "$MQTT_CHECK_PORT" =~ ^[0-9]+$ ]] || (( MQTT_CHECK_PORT < 1 || MQTT_CHECK_PORT > 65535 )); then
+  echo "[unitlab] ERROR: --mqtt-port must be between 1 and 65535" >&2
   exit 2
 fi
 
@@ -376,15 +388,15 @@ else
 fi
 
 if command -v nc >/dev/null 2>&1; then
-  if nc -z -w 2 127.0.0.1 1883 >/dev/null 2>&1; then
-    ok "mosquitto listening on 1883"
+  if nc -z -w 2 127.0.0.1 "$MQTT_CHECK_PORT" >/dev/null 2>&1; then
+    ok "mosquitto listening on $MQTT_CHECK_PORT"
   else
-    fail "mosquitto port 1883 not reachable"
+    fail "mosquitto port $MQTT_CHECK_PORT not reachable"
   fi
-elif timeout 2 bash -c 'echo > /dev/tcp/127.0.0.1/1883' >/dev/null 2>&1; then
-  ok "mosquitto listening on 1883"
+elif timeout 2 bash -c 'echo > /dev/tcp/127.0.0.1/'"$MQTT_CHECK_PORT" >/dev/null 2>&1; then
+  ok "mosquitto listening on $MQTT_CHECK_PORT"
 else
-  fail "mosquitto port 1883 not reachable"
+  fail "mosquitto port $MQTT_CHECK_PORT not reachable"
 fi
 
 readonly expected_workers=(

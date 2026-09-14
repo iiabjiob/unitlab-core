@@ -479,6 +479,13 @@ migration/backfill legacy intents требуют отдельного deployment
 full backend suite проверены; production PostgreSQL p95/query-plan всё ещё нужен
 на целевом deployment.
 
+**Статус slice G90 (2026-09-14): secure MQTT runtime verification.**
+`verify-rpi-runtime.sh` больше не зашит на plaintext `1883`: порт listener можно
+передать через `--mqtt-port`/`MQTT_CHECK_PORT`, включая TLS `8883`, при этом
+default сохраняет совместимость с текущим production profile. Проверены bash
+syntax и help; реальная сетевая проверка доступности broker остаётся deployment
+check.
+
 ## GAP-10 — Нет доказанной общей исключительности физического выхода
 
 **P0 · allocation/command ownership · подтверждён разрыв границ.**

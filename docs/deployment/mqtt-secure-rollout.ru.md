@@ -33,6 +33,14 @@ docker compose -f docker-compose.prod.yml \
 mapping `1883` из production compose остаётся без listener в TLS-конфигурации и
 не должен использоваться для подключения.
 
+Для проверки runtime на TLS-профиле передайте порт listener явно:
+
+```bash
+./scripts/verify-rpi-runtime.sh --mqtt-port 8883
+```
+
+Без параметра verifier сохраняет проверку обычного production listener `1883`.
+
 ## Activation
 
 ```bash
