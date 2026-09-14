@@ -39,6 +39,14 @@ mapping `1883` из production compose остаётся без listener в TLS-�
 ./scripts/verify-rpi-runtime.sh --mqtt-port 8883
 ```
 
+Проверку цепочки серверного сертификата можно включить на хосте с CA-файлом:
+
+```bash
+./scripts/verify-rpi-runtime.sh \
+  --mqtt-port 8883 \
+  --mqtt-tls-ca-file /opt/unitlab/shared/mosquitto-tls/ca.crt
+```
+
 Без параметра verifier сохраняет проверку обычного production listener `1883`.
 
 ## Activation

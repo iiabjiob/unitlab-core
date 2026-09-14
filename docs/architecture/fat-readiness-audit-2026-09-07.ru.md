@@ -517,6 +517,13 @@ state snapshot с matching packet ID и проверяют фактически�
 полный backend suite; firmware timing и физический restore остаются hardware
 checks.
 
+**Статус slice G92 (2026-09-14): MQTT TLS handshake verification.** Runtime
+verifier получил opt-in CA-backed TLS handshake check через
+`--mqtt-tls-ca-file`; deployment gate теперь может отличить настоящий
+сертификатный listener от просто открытого TCP-порта. По умолчанию plaintext
+проверка `1883` не меняется. Проверены shell syntax и CLI help; broker/device
+authentication и round-trip остаются отдельными deployment checks.
+
 **Порядок исправления:**
 1. Перечислить всех отправителей: manual, sequence, FAT, recovery; отделить повторно используемую привязку от активного владения.
 2. Определить единый backend admission и атомарное получение владения нужными каналами.

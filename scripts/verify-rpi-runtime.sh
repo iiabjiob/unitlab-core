@@ -14,6 +14,7 @@ HEALTH_POLL_INTERVAL_SEC="${HEALTH_POLL_INTERVAL_SEC:-2}"
 RELEASE_VERSION="${RELEASE_VERSION:-}"
 REQUIRE_TIME_SYNC="${REQUIRE_TIME_SYNC:-0}"
 MQTT_CHECK_PORT="${MQTT_CHECK_PORT:-1883}"
+MQTT_TLS_CA_FILE="${MQTT_TLS_CA_FILE:-}"
 
 fail_count=0
 warn_count=0
@@ -37,6 +38,7 @@ Options:
   --release-version <value>     Expected release version label (unitlab.release)
   --require-time-sync <0|1>     Fail if chrony is not synchronised (default: 0)
   --mqtt-port <1-65535>         MQTT listener port to verify (default: 1883)
+  --mqtt-tls-ca-file <path>      Verify TLS handshake using this CA file (optional)
   -h, --help                    Show this help
 
 Environment overrides:
@@ -45,7 +47,7 @@ Environment overrides:
   MAX_IMAGE_COUNT_WARN, MAX_VOLUME_COUNT_WARN,
   HEALTH_STARTUP_GRACE_SEC, HEALTH_POLL_INTERVAL_SEC,
   RELEASE_VERSION, REQUIRE_TIME_SYNC
-  MQTT_CHECK_PORT
+  MQTT_CHECK_PORT, MQTT_TLS_CA_FILE
 EOF
 }
 
@@ -116,6 +118,11 @@ while [[ $# -gt 0 ]]; do
       MQTT_CHECK_PORT="$2"
       shift 2
       ;;
+    --mqtt-tls-ca-file)
+      [[ $# -ge 2 ]] || { echo "[unitlab] ERROR: --mqtt-tls-ca-file requires a value" >&2; usage; exit 1; }
+      MQTT_TLS_CA_FILE="$2"
+      shift 2
+      ;;
     -h|--help)
       usage
       exit 0
@@ -173,6 +180,9 @@ container_restart_count() {
 require_cmd docker
 require_cmd curl
 require_cmd systemctl
+if [[ -n "$MQTT_TLS_CA_FILE" ]]; then
+  require_cmd openssl
+fi
 
 if [[ ! -f "$COMPOSE_FILE" ]]; then
   echo "[unitlab] ERROR: compose file not found: $COMPOSE_FILE" >&2
@@ -213,6 +223,10 @@ if [[ "$REQUIRE_TIME_SYNC" != "0" && "$REQUIRE_TIME_SYNC" != "1" ]]; then
 fi
 if ! [[ "$MQTT_CHECK_PORT" =~ ^[0-9]+$ ]] || (( MQTT_CHECK_PORT < 1 || MQTT_CHECK_PORT > 65535 )); then
   echo "[unitlab] ERROR: --mqtt-port must be between 1 and 65535" >&2
+  exit 2
+fi
+if [[ -n "$MQTT_TLS_CA_FILE" && ! -f "$MQTT_TLS_CA_FILE" ]]; then
+  echo "[unitlab] ERROR: MQTT TLS CA file not found: $MQTT_TLS_CA_FILE" >&2
   exit 2
 fi
 
@@ -397,6 +411,18 @@ elif timeout 2 bash -c 'echo > /dev/tcp/127.0.0.1/'"$MQTT_CHECK_PORT" >/dev/null
   ok "mosquitto listening on $MQTT_CHECK_PORT"
 else
   fail "mosquitto port $MQTT_CHECK_PORT not reachable"
+fi
+
+if [[ -n "$MQTT_TLS_CA_FILE" ]]; then
+  if openssl s_client \
+      -connect "127.0.0.1:$MQTT_CHECK_PORT" \
+      -CAfile "$MQTT_TLS_CA_FILE" \
+      -verify_return_error \
+      </dev/null 2>&1 | grep -q "Verify return code: 0 (ok)"; then
+    ok "mosquitto TLS certificate verified on $MQTT_CHECK_PORT"
+  else
+    fail "mosquitto TLS certificate verification failed on $MQTT_CHECK_PORT"
+  fi
 fi
 
 readonly expected_workers=(
