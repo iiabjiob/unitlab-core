@@ -770,6 +770,11 @@ head `ca9b8c7d6e5f`; дополнительно backend suite завершилс
 применение migration на production PostgreSQL и rollback rehearsal остаются
 отдельными release checks.
 
+**Статус slice G67 (2026-09-14): current-head validation повторена.** На HEAD
+offline graph снова сгенерирован до единственного `ca9b8c7d6e5f`; optional IEC
+wrapper корректно завершился явным `SKIP`, поскольку `pyiec61850` отсутствует.
+Это не заменяет online migration/rollback и внешний IEC wrapper/hardware gate.
+
 **Статус slice G38 (2026-09-14): offline-safe signal sheet migration.**
 `9a1b2c3d4e6f` получил PostgreSQL offline-ветку для создания signal sheet/preset и
 live allocation tables и удаления прежних snapshot tables без `inspect` на
