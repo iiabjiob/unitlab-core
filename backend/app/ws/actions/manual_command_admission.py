@@ -20,6 +20,7 @@ from app.services.hardware_command_intent import (
     mark_hardware_command_intent_delivery_failure,
     mark_hardware_command_intent_completed,
     mark_hardware_command_intent_queued,
+    list_hardware_recovery_required_channels,
     record_hardware_command_intent,
 )
 from app.services.hardware_command_ack import wait_for_hardware_command_acks
@@ -161,6 +162,19 @@ async def _enqueue_manual(
 ) -> None:
     redis = RedisManager.get_instance()
     owner_id = f"manual:{id(ws)}"
+    async with AsyncSessionLocal() as recovery_session:
+        blocked_channels = await list_hardware_recovery_required_channels(
+            recovery_session,
+            channel_ids=channel_ids,
+        )
+    if blocked_channels:
+        await _result(
+            ws,
+            command_id=None,
+            delivery="rejected",
+            reason="hardware_recovery_required",
+        )
+        return
     admission = HardwareCommandAdmission(redis)
     leases = await admission.acquire_many(channel_ids=channel_ids, owner_kind="manual", owner_id=owner_id)
     if leases is None:

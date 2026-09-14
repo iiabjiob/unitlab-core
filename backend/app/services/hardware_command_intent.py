@@ -42,6 +42,36 @@ async def has_hardware_recovery_required(
     return bool(result.scalar())
 
 
+async def list_hardware_recovery_required_channels(
+    db: AsyncSession,
+    *,
+    channel_ids: list[int],
+) -> set[int]:
+    """Return blocked physical channels in one query for multi-channel admission."""
+    normalized = {int(channel_id) for channel_id in channel_ids if int(channel_id) > 0}
+    if not normalized:
+        return set()
+    recovery_required = or_(
+        HardwareCommandIntent.status.in_(
+            ("unknown", "recovery_required", "publish_failed")
+        ),
+        and_(
+            HardwareCommandIntent.status.in_(("created", "queued")),
+            HardwareCommandIntent.execution_status.in_(
+                ("unknown", "timeout")
+            ),
+        ),
+    )
+    result = await db.execute(
+        select(HardwareCommandIntentChannel.channel_id).where(
+            HardwareCommandIntentChannel.channel_id.in_(normalized),
+            HardwareCommandIntentChannel.command_id == HardwareCommandIntent.command_id,
+            recovery_required,
+        ).distinct()
+    )
+    return {int(channel_id) for channel_id in result.scalars().all()}
+
+
 async def reconcile_unfinished_hardware_command_intents(
     db: AsyncSession,
     *,

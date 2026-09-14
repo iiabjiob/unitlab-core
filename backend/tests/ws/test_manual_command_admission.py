@@ -4,12 +4,26 @@ import asyncio
 import time
 from types import SimpleNamespace
 
+import pytest
+
 from app.schemas.ws.messages import SetAoCommandMessage, WSAction
 from app.ws.actions import manual_command_admission
 
 
 def run_async(awaitable):
     return asyncio.run(awaitable)
+
+
+@pytest.fixture(autouse=True)
+def manual_recovery_barrier_default(monkeypatch):
+    async def no_blocked_channels(*args, **kwargs):
+        return set()
+
+    monkeypatch.setattr(
+        manual_command_admission,
+        "list_hardware_recovery_required_channels",
+        no_blocked_channels,
+    )
 
 
 def test_manual_ao_passes_single_channel_as_channel_ids(monkeypatch) -> None:
@@ -287,6 +301,50 @@ def test_manual_command_marks_recovery_when_acknowledged_readback_fails(monkeypa
 
     assert statuses == ["recovery_required"]
     assert captured["reason"] == "hardware_readback_timeout"
+
+
+def test_manual_command_rejects_channel_with_recovery_required_intent(monkeypatch) -> None:
+    captured: dict = {}
+    acquire_calls: list[dict] = []
+
+    async def blocked_channels(*args, **kwargs):
+        return {17}
+
+    async def result(*args, **kwargs):
+        captured.update(kwargs)
+
+    class Admission:
+        def __init__(self, redis) -> None:
+            del redis
+
+        async def acquire_many(self, **kwargs):
+            acquire_calls.append(kwargs)
+            raise AssertionError("recovery barrier must run before lease admission")
+
+    monkeypatch.setattr(manual_command_admission, "list_hardware_recovery_required_channels", blocked_channels)
+    monkeypatch.setattr(manual_command_admission, "HardwareCommandAdmission", Admission)
+    monkeypatch.setattr(manual_command_admission, "RedisManager", SimpleNamespace(get_instance=lambda: object()))
+    monkeypatch.setattr(manual_command_admission, "_result", result)
+
+    run_async(
+        manual_command_admission._enqueue_manual(
+            object(),
+            workspace_id=7,
+            channel_ids=[17],
+            unit_id="unit-1",
+            device_id=23,
+            action="do_set",
+            payload={"ch": 2, "value": 1},
+            sender=lambda command_id: _done(),
+        )
+    )
+
+    assert acquire_calls == []
+    assert captured == {
+        "command_id": None,
+        "delivery": "rejected",
+        "reason": "hardware_recovery_required",
+    }
 
 
 async def _done(*args, **kwargs):

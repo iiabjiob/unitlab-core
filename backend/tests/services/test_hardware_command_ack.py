@@ -13,6 +13,7 @@ from app.services.hardware_command_intent import (
     has_hardware_recovery_required,
     mark_hardware_command_intent_completed,
     mark_hardware_command_intent_delivery_failure,
+    list_hardware_recovery_required_channels,
     record_hardware_command_intent,
     reconcile_orphaned_manual_hardware_command_intents,
     reconcile_unfinished_hardware_command_intents,
@@ -243,6 +244,22 @@ async def test_recovery_required_lookup_returns_channel_block() -> None:
 
     assert blocked is True
     db.execute.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_bulk_recovery_lookup_returns_only_blocked_requested_channels() -> None:
+    db = AsyncMock()
+    db.execute.return_value = SimpleNamespace(
+        scalars=lambda: SimpleNamespace(all=lambda: [101, 303])
+    )
+
+    blocked = await list_hardware_recovery_required_channels(db, channel_ids=[101, 202, 303])
+
+    assert blocked == {101, 303}
+    statement = db.execute.await_args.args[0]
+    compiled = str(statement.compile(compile_kwargs={"literal_binds": True}))
+    assert "recovery_required" in compiled
+    assert "unknown" in compiled
 
 
 @pytest.mark.anyio

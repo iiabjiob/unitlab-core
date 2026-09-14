@@ -935,6 +935,13 @@ API теперь выполняется fail-closed sweep manual intents без 
 service regression. Multi-replica deployment и реальный kill/restart rehearsal
 остаются release checks.
 
+**Статус slice G107 (2026-09-14): manual recovery barrier.** Manual WS admission
+теперь одним SQL lookup проверяет весь запрошенный channel scope до lease и
+отклоняет воздействие при cross-workspace `unknown`/`recovery_required` либо
+legacy `publish_failed`. Это закрывает bypass через ручной путь; явный операторский
+physical recovery workflow и firmware safe-state по-прежнему требуют отдельного
+согласованного recovery contract и hardware release check.
+
 **Статус slice G68 (2026-09-14): offline downgrade для live signal sheet.**
 Migration `9a1b2c3d4e6f` теперь генерирует детерминированный downgrade SQL для
 `signal_allocations`, `signal_sheet_presets` и `signal_sheets`, не вызывая
