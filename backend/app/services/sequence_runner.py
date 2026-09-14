@@ -157,6 +157,7 @@ class SequenceRunner:
         self,
         sequence_id: int,
         *,
+        workspace_id: Optional[int] = None,
         request_id: Optional[str] = None,
         requested_by: Optional[str] = None,
         signal_bindings: Optional[dict[str, int]] = None,
@@ -169,6 +170,7 @@ class SequenceRunner:
 
             run_id, root_sequence, resolved_sequences = await self._create_run(
                 sequence_id,
+                workspace_id=workspace_id,
                 signal_bindings=signal_bindings or {},
             )
             cancel_event = asyncio.Event()
@@ -181,6 +183,7 @@ class SequenceRunner:
                     cancel_event=cancel_event,
                     request_id=request_id,
                     requested_by=requested_by,
+                    workspace_id=workspace_id,
                 ),
                 name=f"sequence-run-{run_id}",
             )
@@ -558,6 +561,7 @@ class SequenceRunner:
         self,
         sequence_id: int,
         *,
+        workspace_id: Optional[int] = None,
         signal_bindings: dict[str, int] | None = None,
     ) -> tuple[int, ResolvedSequenceDefinition, dict[int, ResolvedSequenceDefinition]]:
         signal_bindings = signal_bindings or {}
@@ -565,6 +569,13 @@ class SequenceRunner:
             sequence = await self._load_sequence(session, sequence_id, include_steps=True)
             if not sequence:
                 raise SequenceNotFoundError(f"Sequence {sequence_id} not found")
+            if workspace_id is not None and await session.scalar(
+                select(WorkspaceSequence.workspace_id).where(
+                    WorkspaceSequence.workspace_id == workspace_id,
+                    WorkspaceSequence.sequence_id == sequence_id,
+                )
+            ) is None:
+                raise SequenceNotApplicableError("Sequence is not linked to the requested workspace")
 
             ordered_steps = sorted(sequence.steps, key=lambda s: s.order_index)
             if not ordered_steps:
@@ -967,6 +978,7 @@ class SequenceRunner:
         cancel_event: asyncio.Event,
         request_id: Optional[str],
         requested_by: Optional[str],
+        workspace_id: Optional[int],
     ) -> None:
         total_steps = len(root_sequence.steps)
         start_time = time.monotonic()
@@ -1012,7 +1024,7 @@ class SequenceRunner:
                     requested_by=requested_by,
                 )
 
-                workspace_id = await session.scalar(
+                workspace_id = workspace_id or await session.scalar(
                     select(WorkspaceSequence.workspace_id)
                     .where(WorkspaceSequence.sequence_id == sequence_id)
                     .limit(1)
@@ -1024,7 +1036,7 @@ class SequenceRunner:
                 async def admit_sequence_command(
                     ctx: StepContext,
                     action: str,
-                    channel_id: int | None,
+                    channel_id: int | list[int] | None,
                     device_id: int | None,
                     unit_id: str,
                     command_payload: dict[str, Any],

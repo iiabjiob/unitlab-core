@@ -148,8 +148,14 @@ async def _process_entries(redis, runner: SequenceRunner, entries) -> None:
 async def _handle_command(runner: SequenceRunner, command: SequenceCommand) -> None:
     if command.type == SequenceCommandType.START:
         signal_bindings = _coerce_signal_bindings(command.extra)
+        raw_workspace_id = command.extra.get("workspace_id") if isinstance(command.extra, dict) else None
+        try:
+            workspace_id = int(raw_workspace_id) if raw_workspace_id is not None else None
+        except (TypeError, ValueError):
+            workspace_id = None
         await runner.start(
             command.sequence_id,
+            workspace_id=workspace_id,
             request_id=command.request_id,
             requested_by=command.requested_by,
             signal_bindings=signal_bindings,

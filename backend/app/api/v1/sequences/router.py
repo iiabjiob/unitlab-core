@@ -258,7 +258,7 @@ async def start_sequence(
 ):
     repo = SequenceRepository(db)
     await _ensure_sequence_in_workspace(repo, workspace_id, seq_id)
-    await SequenceCommandService.enqueue_start(seq_id)
+    await SequenceCommandService.enqueue_start(seq_id, workspace_id=workspace_id)
     try:
         return await SequenceStateService.get_state(seq_id)
     except SequenceNotFoundError:

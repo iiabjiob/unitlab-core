@@ -95,6 +95,8 @@ E15 публикует для manual WS `devices/command-result` с delivery `qu
 чтобы оператор видел результат admission отдельно от device RESP.
 E16 добавляет явную `verification_policy` для test-run: `off`, `optional` или
 `required`; required блокирует шаги без IEC mapping/подписки, optional не блокирует.
+E18 передаёт `workspace_id` в sequence command/run и проверяет workspace link до
+создания запуска, устраняя неоднозначный выбор workspace для shared sequence.
 
 ## Состояния delivery и verdict
 

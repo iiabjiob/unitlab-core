@@ -249,6 +249,11 @@ multi-command ACK/verdict UI и sequence `DO_BITMASK` остаются откр�
 intent и ACK barrier. Требуются runtime-проверки device channel inventory и
 полноценный multi-command verdict UI.
 
+**Статус slice E18 (2026-09-14): частично закрыт.** Sequence start command
+теперь несёт `workspace_id`; runner проверяет link sequence к workspace и
+использует этот scope для hardware intent/admission. Старые команды без scope
+сохраняют fallback на единственный найденный link до миграции producer-ов.
+
 ## GAP-06 — Синхронное ожидание IEC 61850 блокирует event loop worker
 
 **P1 · runtime/performance · подтверждено кодом; длительности не измерены.**

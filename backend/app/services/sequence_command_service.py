@@ -15,6 +15,7 @@ class SequenceCommandService:
         sequence_id: int,
         requested_by: Optional[str] = None,
         *,
+        workspace_id: Optional[int] = None,
         run_id: Optional[int] = None,
         extra: dict[str, Any] | None = None,
     ) -> SequenceCommand:
@@ -23,7 +24,7 @@ class SequenceCommandService:
             sequence_id=sequence_id,
             run_id=run_id,
             requested_by=requested_by,
-            extra=extra or {},
+            extra={**(extra or {}), **({"workspace_id": workspace_id} if workspace_id is not None else {})},
         )
         await enqueue_sequence_command(command)
         return command
