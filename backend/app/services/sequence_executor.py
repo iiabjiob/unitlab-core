@@ -95,7 +95,7 @@ CancellationHook = Callable[[CancellationEvent], Awaitable[int]]
 RunFinishedHook = Callable[[SequenceExecutionResult], Awaitable[None]]
 CancellationProbe = Callable[[], Awaitable[None]]
 HardwareCommandAdmission = Callable[
-    [StepContext, str, int | None, int | None, str, dict[str, Any], Callable[[str], Awaitable[Any]]],
+    [StepContext, str, int | list[int] | None, int | None, str, dict[str, Any], Callable[[str], Awaitable[Any]]],
     Awaitable[Any],
 ]
 
@@ -318,7 +318,7 @@ class SequenceExecutor:
         async def send_hardware(
             *,
             action: str,
-            channel_id: int | None,
+            channel_id: int | list[int] | None,
             device_id: int | None,
             unit_id: str,
             command_payload: dict[str, Any],
@@ -356,7 +356,7 @@ class SequenceExecutor:
                     unit_id=ctx.primary_channel.unit_id,
                     ch=ctx.primary_channel.channel_index,
                     value=value,
-                    command_id=command_id or None,
+                    **({"command_id": command_id} if command_id else {}),
                 ),
             )
             return
@@ -376,7 +376,7 @@ class SequenceExecutor:
                     mode=Cmd.SET_SINGLE_BIT,
                     ch=ctx.primary_channel.channel_index,
                     value=value,
-                    command_id=command_id or None,
+                    **({"command_id": command_id} if command_id else {}),
                 ),
             )
             return
@@ -402,7 +402,7 @@ class SequenceExecutor:
                     ch=ctx.primary_channel.channel_index,
                     value=value,
                     pulse_ms=pulse_ms,
-                    command_id=command_id or None,
+                    **({"command_id": command_id} if command_id else {}),
                 ),
             )
             return
@@ -422,14 +422,24 @@ class SequenceExecutor:
                 raise SequenceNotApplicableError("DO_PAIR state must be an integer in range 0..3") from exc
             if state2b < 0 or state2b > 3:
                 raise SequenceNotApplicableError("DO_PAIR state must be in range 0..3")
-            if command_admission is not None:
-                raise SequenceNotApplicableError("DO_PAIR requires atomic multi-channel admission")
-            await enqueue_do_command(
+            await send_hardware(
+                action="do_pair",
+                channel_id=[first.id, second.id],
+                device_id=first.device_id,
                 unit_id=first.unit_id,
-                mode=Cmd.SET_PAIR_BIT,
-                chA=first.channel_index,
-                chB=second.channel_index,
-                state2b=state2b,
+                command_payload={
+                    "channel_ids": [first.id, second.id],
+                    "channel_indexes": [first.channel_index, second.channel_index],
+                    "state2b": state2b,
+                },
+                sender=lambda command_id: enqueue_do_command(
+                    unit_id=first.unit_id,
+                    mode=Cmd.SET_PAIR_BIT,
+                    chA=first.channel_index,
+                    chB=second.channel_index,
+                    state2b=state2b,
+                    **({"command_id": command_id} if command_id else {}),
+                ),
             )
             return
 

@@ -1028,13 +1028,16 @@ class SequenceRunner:
                 ) -> Any:
                     if channel_id is None or device_id is None:
                         raise SequenceNotApplicableError("Hardware sequence step requires a single channel")
+                    channel_ids = [channel_id] if isinstance(channel_id, int) else list(channel_id)
+                    if not channel_ids or len(set(channel_ids)) != len(channel_ids):
+                        raise SequenceNotApplicableError("Hardware sequence step has invalid channel set")
                     owner_id = f"sequence:{run_id}"
-                    lease = await hardware_admission.acquire(
-                        channel_id=channel_id,
+                    leases = await hardware_admission.acquire_many(
+                        channel_ids=channel_ids,
                         owner_kind="sequence",
                         owner_id=owner_id,
                     )
-                    if lease is None:
+                    if leases is None:
                         raise SequenceNotApplicableError("Hardware channel is busy")
                     command_id = uuid4().hex
                     try:
@@ -1047,10 +1050,10 @@ class SequenceRunner:
                             owner_kind="sequence",
                             owner_id=owner_id,
                             device_id=device_id,
-                            channel_id=channel_id,
+                            channel_id=channel_ids[0],
                             unit_id=unit_id,
                             action=action,
-                            payload=command_payload,
+                            payload={**command_payload, "channel_ids": channel_ids},
                             fencing_epoch=lease.fencing_epoch,
                         )
                         await session.commit()
@@ -1078,7 +1081,8 @@ class SequenceRunner:
                             )
                         return command_id
                     finally:
-                        await hardware_admission.release(lease)
+                        for lease in locals().get("leases", []) or []:
+                            await hardware_admission.release(lease)
 
                 for top_step in root_sequence.steps:
                     await self._probe_cancellation_from_db(run_id, cancel_event)

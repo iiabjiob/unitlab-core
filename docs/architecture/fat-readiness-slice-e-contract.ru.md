@@ -82,8 +82,9 @@ E8 подключает manual single-channel DO/AO к admission с обязат
 lease.
 
 E9 подключает single-channel sequence steps к тому же lease, durable intent и ACK
-barrier. E10 добавляет атомарный `acquire_many` для multi-channel операций;
-подключение pair/all к durable intent и ACK остаётся следующим шагом.
+barrier. E10 добавляет атомарный `acquire_many` для multi-channel операций.
+E11 подключает `DO_PAIR` sequence к multi-channel lease, одному durable intent и
+одному ACK barrier; `DO_BITMASK` остаётся отдельным случаем без resolved channel-set.
 
 ## Состояния delivery и verdict
 

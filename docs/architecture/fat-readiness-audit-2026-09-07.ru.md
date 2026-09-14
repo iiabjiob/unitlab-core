@@ -220,6 +220,12 @@ lease; recovery и финальный verdict barrier остаются откр�
 при конфликте не захватывается ни один канал. Подключение pair/all к intent,
 ACK и command payload остаётся следующим шагом.
 
+**Статус slice E11 (2026-09-14): частично закрыт.** `DO_PAIR` в sequence теперь
+использует атомарный multi-channel lease, один command intent с полным
+`channel_ids` payload и ACK barrier. `DO_BITMASK` пока блокируется до фиксации
+его resolved channel-set; manual pair/all и полноценный multi-command verdict
+остаются открытыми.
+
 ## GAP-06 — Синхронное ожидание IEC 61850 блокирует event loop worker
 
 **P1 · runtime/performance · подтверждено кодом; длительности не измерены.**
