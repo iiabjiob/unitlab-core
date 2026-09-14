@@ -75,6 +75,13 @@ Initial-GI simulator/planning flow явно остаётся non-causal режи
 triggered capture и проверяет `invalid/non_causal_report_reason` без PASS. Это
 подтверждает barrier именно на post-trigger пути, а не только в execution helper.
 
+**Статус slice G64 (2026-09-14): quality inference removed.** Evidence builder
+ больше не выводит `quality="good"` только из `evidence_status="observed"`;
+поскольку текущая нормализованная observation-модель не содержит IEC quality bit,
+качество явно помечается как `unknown`. Это не делает optional IEC обязательным,
+но устраняет неподтверждённое качество в отчёте; перенос quality bit и политика
+его влияния на verdict остаются отдельным protocol/hardware slice.
+
 ## GAP-02 — Двойной toggle не доказывает оба перехода
 
 **P0 · test-run · подтверждено порядком операций.**

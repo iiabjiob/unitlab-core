@@ -446,7 +446,10 @@ def _build_step_and_evidence(
         dataset=report.data_set_ref if report is not None else target.protocol_metadata.get("data_set_reference"),
         observed_at=observed_at,
         latency_ms=computed_latency_ms,
-        quality="good" if evidence_status == "observed" else None,
+        # A report observation proves value/path/timing only. The current
+        # normalized runtime model does not carry the IEC quality bit, so never
+        # infer "good" from the observed status.
+        quality="unknown" if evidence_status == "observed" else None,
         freshness=freshness,
         evidence_status=evidence_status,
         reason_code=reason_code,
