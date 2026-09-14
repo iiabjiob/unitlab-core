@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue"
+import { computed, onBeforeUnmount, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { getSvgEntityProps, useDiagramEngine, useDiagramPointerController, useDiagramSelection, useDiagramTextEditor, useDiagramViewport, useDiagramVisibleEntities } from "@affino/diagram-vue"
 import type { DiagramEdge } from "@affino/diagram-core"
@@ -439,13 +439,8 @@ watch(() => props.fitRequestKey, (next, previous) => {
   fitScene()
 })
 
-onMounted(() => {
-  window.addEventListener("keydown", handleWindowKeydown)
-})
-
 onBeforeUnmount(() => {
   flushPersistedState()
-  window.removeEventListener("keydown", handleWindowKeydown)
 })
 
 watch(() => props.selectionRequestKey, (next, previous) => {
@@ -1302,20 +1297,16 @@ function nudgeSelection(dx: number, dy: number): boolean {
   return true
 }
 
-function shouldIgnoreWindowKeydown() {
+function shouldIgnoreStageKeydown() {
   const active = document.activeElement as HTMLElement | null
   const tagName = active?.tagName?.toLowerCase() ?? ""
   return active?.isContentEditable || ["input", "textarea", "select"].includes(tagName)
 }
 
-function handleWindowKeydown(event: KeyboardEvent) {
-  if (shouldIgnoreWindowKeydown()) {
+function onStageKeydown(event: KeyboardEvent) {
+  if (shouldIgnoreStageKeydown()) {
     return
   }
-  onStageKeydown(event)
-}
-
-function onStageKeydown(event: KeyboardEvent) {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "c") {
     event.preventDefault()
     if (!textEditor.activeEditor.value) {
@@ -1972,6 +1963,7 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
       ref="stageRef"
       class="switchgear-sld-package-canvas__stage"
       tabindex="0"
+      @keydown="onStageKeydown"
       @pointerdown.capture="handleStagePointerDownCapture"
       @wheel.prevent="onWheel"
     >
