@@ -15,6 +15,11 @@ class _FakeVerificationEvidenceRepository:
     def __init__(self) -> None:
         self.rows: list[dict] = []
         self.evidence_sets: list[dict] = []
+        self.db = self
+        self.commit_count = 0
+
+    async def commit(self) -> None:
+        self.commit_count += 1
 
     async def record_signal_verification_evidence(self, **kwargs):
         self.rows.append(dict(kwargs))
@@ -631,6 +636,7 @@ async def test_execute_simulated_verification_run_records_observed_evidence_and_
     assert result.evidence_set.summary.evidence_count == 1
     assert result.evidence_set.summary.observed_count == 1
     assert result.evidence_set.summary.source_generation == 1
+    assert repo.commit_count == 2
     assert result.verification_run.verification_steps[0].evidence_status == "observed"
     assert result.verification_run.verification_steps[0].verdict_state == "pass"
     assert result.verification_run.verification_steps[0].verification_confidence == "exact_report_match"

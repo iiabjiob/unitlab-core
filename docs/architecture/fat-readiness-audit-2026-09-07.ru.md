@@ -876,6 +876,13 @@ aggregate report index не теряется отдельно от уже сох
 при crash между последним evidence и terminal job commit. Production crash/DB
 recovery rehearsal остаётся release check.
 
+**Статус slice G98 (2026-09-14): standalone verification durability.**
+`execute_verification_run` теперь commit-ит каждую persisted verification row и
+итоговый aggregate, если ему передан DB-backed repository. Поздний сбой не
+стирает уже полученное append-only evidence; simulator regression подтверждает
+две commit boundaries. Production crash/transaction rehearsal остаётся release
+check.
+
 **Статус slice G68 (2026-09-14): offline downgrade для live signal sheet.**
 Migration `9a1b2c3d4e6f` теперь генерирует детерминированный downgrade SQL для
 `signal_allocations`, `signal_sheet_presets` и `signal_sheets`, не вызывая

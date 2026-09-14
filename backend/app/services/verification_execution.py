@@ -254,6 +254,9 @@ async def execute_verification_run(
                 evidence_kind=evidence.evidence_kind,
                 diagnostics=evidence.diagnostics,
             )
+            repository_db = getattr(repository, "db", None)
+            if repository_db is not None:
+                await repository_db.commit()
 
     evidence_set = build_signal_verification_evidence_set(
         test_run_id=test_run_id,
@@ -267,6 +270,9 @@ async def execute_verification_run(
             evidence=evidence_rows,
             diagnostics=diagnostics,
         )
+        repository_db = getattr(repository, "db", None)
+        if repository_db is not None:
+            await repository_db.commit()
 
     session_snapshots = _build_session_snapshots(
         test_run_id=test_run_id,
