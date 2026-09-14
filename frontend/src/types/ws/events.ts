@@ -20,6 +20,7 @@ export enum WSChannel {
   DEVICE_STATE    = "devices/state",
   DEVICE_REGISTER = "devices/register",
   DEVICE_RESP     = "devices/resp",
+  HARDWARE_COMMAND_RESULT = "devices/command-result",
   DEVICE_STATUS   = "devices/status",
   EXTERNAL_IED_STATUS = "external-ieds/status",
   EXTERNAL_IED_MANUAL_REPORTS = "external-ieds/manual-reports",
@@ -132,6 +133,15 @@ export interface DeviceRespEvent {
   status: RespStatus
   error: RespError
   timestamp: number
+}
+
+export interface HardwareCommandResultEvent {
+  channel: WSChannel.HARDWARE_COMMAND_RESULT
+  event: "hardware_command_result"
+  command_id?: string | null
+  delivery: "queued" | "rejected"
+  execution: "unknown"
+  reason?: string | null
 }
 
 export interface DeviceHeartbeatEvent {
@@ -473,6 +483,7 @@ export type ChannelWSEvent =
   | DeviceStateEvent
   | DeviceRegisterEvent
   | DeviceRespEvent
+  | HardwareCommandResultEvent
   | DeviceHeartbeatEvent
   | TimeStatusEvent
 

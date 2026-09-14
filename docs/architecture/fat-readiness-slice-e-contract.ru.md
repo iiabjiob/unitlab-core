@@ -91,6 +91,8 @@ E13 подключает sequence `DO_BITMASK` к resolved channel-set устр�
 multi-channel lease, intent и ACK barrier.
 E14 дополнительно проверяет workspace scope manual-команд через persisted
 allocation до получения lease и публикации.
+E15 публикует для manual WS `devices/command-result` с delivery `queued/rejected`,
+чтобы оператор видел результат admission отдельно от device RESP.
 
 ## Состояния delivery и verdict
 

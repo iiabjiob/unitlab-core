@@ -210,6 +210,10 @@ intent, а результат доставки возвращается как `
 Multi-channel DO pair/all и sequence admission требуют отдельного атомарного
 multi-lease контракта.
 
+**Статус slice E15 (2026-09-14): частично закрыт.** Manual WS теперь получает
+`devices/command-result` с delivery `queued/rejected`; frontend показывает это
+отдельным toast и не смешивает admission result с device RESP.
+
 **Статус slice E9 (2026-09-14): частично закрыт.** Single-channel AO/DO sequence
 steps теперь используют общий hardware lease, durable intent и ACK barrier.
 `DO_PAIR`/`DO_BITMASK` явно блокируются до реализации атомарного multi-channel

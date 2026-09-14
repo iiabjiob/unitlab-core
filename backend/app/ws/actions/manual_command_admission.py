@@ -21,6 +21,7 @@ from uuid import uuid4
 
 async def _result(ws: WebSocket, *, command_id: str | None, delivery: str, reason: str | None = None) -> None:
     await ws.send_json({
+        "channel": "devices/command-result",
         "event": "hardware_command_result",
         "command_id": command_id,
         "delivery": delivery,

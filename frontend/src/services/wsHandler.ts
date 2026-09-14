@@ -46,6 +46,7 @@ import type {
   DeviceHeartbeatEvent,
   DeviceStateEvent,
   DeviceRespEvent,
+  HardwareCommandResultEvent,
   SequenceWsEvent,
   ChannelWSEvent,
   SystemHealthChangedEvent,
@@ -585,6 +586,16 @@ export function handleWsEvent(event: WSEvent) {
     case WSChannel.DEVICE_RESP: {
       logger.debug("📡 IN ← DEVICE_RESP:", channelEvent)
       channelStore.setResponse(channelEvent as DeviceRespEvent)
+      break
+    }
+    case WSChannel.HARDWARE_COMMAND_RESULT: {
+      const result = channelEvent as HardwareCommandResultEvent
+      const command = result.command_id ? ` ${result.command_id}` : ""
+      if (result.delivery === "rejected") {
+        toastStore.error(`Hardware command${command} rejected${result.reason ? `: ${result.reason}` : ""}`)
+      } else {
+        toastStore.info(`Hardware command${command} queued`)
+      }
       break
     }
     default:
