@@ -16,11 +16,31 @@ from app.infrastructure.protocol.packet_structures import (
 from app.core.mqtt_dto import OutboundCmdMsg
 from app.infrastructure.redis.stream_bus import enqueue_outbound_command
 from app.core.logger import get_logger
+from uuid import uuid4
 
 logger = get_logger("cmdq")
 
 # ---------------- Packet ID generator ----------------
 _packet_id = 0
+
+
+def _command_id(value: str | None) -> str:
+    return str(value or uuid4()).strip()
+
+
+async def _remember_command(unit_id: str, packet_id: int, command_id: str) -> None:
+    try:
+        from app.infrastructure.redis.manager import RedisManager
+
+        await RedisManager.get_instance().set(
+            f"hardware:command:{unit_id}:{packet_id}",
+            command_id,
+            ex=86400,
+        )
+    except Exception:  # noqa: BLE001
+        logger.warning("Unable to persist command correlation for %s/%s", unit_id, packet_id)
+
+
 def next_packet_id() -> int:
     global _packet_id
     _packet_id = 1 if _packet_id >= 0xFFFF else _packet_id + 1
@@ -39,6 +59,7 @@ async def enqueue_do_command(
     state2b: int | None = None,
     pulse_ms: int = 0,
     correlation_id: str | None = None,
+    command_id: str | None = None,
 ):
     topic = topics.cmd(unit_id)
 
@@ -58,22 +79,26 @@ async def enqueue_do_command(
     builder.build(mode, packet_id=pid, ts=0, payload=payload)
     data = builder.to_bytes()
 
+    resolved_command_id = _command_id(command_id)
     msg = OutboundCmdMsg(
         topic=topic,
         payload=data,
         qos=0,
         retain=False,
         correlation_id=correlation_id,
+        command_id=resolved_command_id,
         packet_id=pid,
     )
 
     await enqueue_outbound_command(msg)
+    await _remember_command(unit_id, pid, resolved_command_id)
 
     logger.info(f"🧺 Queued DO → {topic} | pid={pid} ({mode.name}) {data.hex().upper()}")
+    return resolved_command_id
 
 
 # ---------------- AO Commands ----------------
-async def enqueue_ao_command(unit_id: str, ch: int, value: float, correlation_id: str | None = None):
+async def enqueue_ao_command(unit_id: str, ch: int, value: float, correlation_id: str | None = None, command_id: str | None = None):
     topic = topics.cmd(unit_id)
 
     mode = Cmd.SET_SINGLE_FLOAT
@@ -84,18 +109,22 @@ async def enqueue_ao_command(unit_id: str, ch: int, value: float, correlation_id
     builder.build(mode, packet_id=pid, ts=0, payload=payload)
     data = builder.to_bytes()
 
+    resolved_command_id = _command_id(command_id)
     msg = OutboundCmdMsg(
         topic=topic,
         payload=data,
         qos=0,
         retain=False,
         correlation_id=correlation_id,
+        command_id=resolved_command_id,
         packet_id=pid,
     )
         
     await enqueue_outbound_command(msg)
+    await _remember_command(unit_id, pid, resolved_command_id)
     
     logger.info(f"🧺 Queued AO → {topic} | pid={pid} ({mode.name}) {data.hex().upper()}")
+    return resolved_command_id
 
 
 # ---------------- STATE Requests ----------------

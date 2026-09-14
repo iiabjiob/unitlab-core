@@ -1,6 +1,6 @@
 # Слайз E — единый admission и ACK для аппаратных команд
 
-Статус: предложение на согласование, реализация не начата.
+Статус: E1/E2/E3/E4/E5/E6/E7 частично реализованы; manual/sequence paths остаются открыты.
 Дата: 2026-09-14.
 
 ## Проблема
@@ -39,6 +39,29 @@
 
 ## Admission
 
+### Реализовано в E1
+
+Backend outbound commands теперь получают глобальный `command_id`, который
+проходит через Redis stream и связывается с RESP по `(unit_id, packet_id)`.
+Binary frame и MQTT topic не изменены. Это только корреляционный фундамент:
+`command_id` пока не является доказательством ACK и не заменяет admission lease.
+
+E2 добавил внутренний Redis-backed `HardwareCommandAdmission` для exclusive
+channel lease с `owner_kind`, `owner_id`, TTL и monotonic `fencing_epoch`.
+FAT worker теперь удерживает lease на время одного test-step и блокирует шаг при
+занятом канале. E3 добавил PostgreSQL `hardware_command_intents`: FAT DO/AO
+намерение фиксируется и коммитится до публикации, затем получает статус `queued`;
+при ошибке публикации остаётся видимым как `created`. E4 сохраняет сопоставленный
+RESP как `acknowledged`/`negative_ack` в intent при совпадении
+`command_id + unit_id`. E5 подключает ACK barrier в FAT worker: каждый DO/AO step
+ждёт terminal ACK, а timeout/negative ACK переводит step в `blocked` с
+persisted evidence. Manual/sequence paths остаются открыты.
+E6 делает execution state терминальным: timeout коммитится как отдельное состояние,
+а поздний или повторный RESP не переписывает `acknowledged`, `negative_ack` или
+`timeout`.
+E7 отслеживает активные hardware leases FAT worker и освобождает их в cleanup даже
+при исключении шага или rollback транзакции.
+
 Все аппаратные отправители проходят один сервис `HardwareCommandAdmission`:
 
 1. проверить device/channel capability и тип канала;
@@ -59,7 +82,7 @@ Manual WS не должен сам выбирать correlation или обхо�
 
 | Поле | Значения |
 | --- | --- |
-| delivery | `created`, `queued`, `published`, `expired`, `rejected` |
+| delivery | `created`, `queued`, `published`, `expired`, `rejected`, `publish_failed`, `recovery_required` |
 | execution | `unknown`, `acknowledged`, `negative_ack`, `timeout` |
 | FAT verdict | `pending`, `pass`, `fail`, `blocked`, `inconclusive` |
 
@@ -67,6 +90,29 @@ Manual WS не должен сам выбирать correlation или обхо�
 `fencing_epoch` может перейти к execution success. `queued/published` не дают
 PASS. Потеря ACK даёт `unknown` и блокирует автоматический retry до явной
 политики idempotency.
+
+При ошибке outbound publish intent получает `publish_failed`; для restore-команды
+используется `recovery_required`, чтобы оператор/recovery worker видел риск
+оставшегося физического состояния.
+
+## IEC 61850 как опциональный контур
+
+IEC 61850 не является глобально обязательным условием FAT. Для test plan/signal
+должна быть явная политика:
+
+- `off` — IEC 61850 не используется;
+- `optional` — подписка и observation выполняются при доступности, но отсутствие
+  или блокировка reserved report не блокирует командный тест;
+- `required` — отсутствие mapping, подписки, свежего report или ожидаемого значения
+  блокирует `PASS`.
+
+RESP аппаратного модуля и IEC 61850 observation остаются разными видами evidence.
+IEC report подтверждает наблюдение контроллером, но сам по себе не доказывает
+физическое изменение выхода без отдельного feedback-сигнала.
+
+Синхронное ожидание optional IEC report выполняется вне event loop FAT worker;
+ошибка или timeout observation остаются явными `not_validated` evidence и не
+превращаются в подтверждённый hardware PASS.
 
 ## RESP correlation
 
@@ -118,4 +164,3 @@ result event оформить отдельным подэтапом.
 - expired command отклоняется до MQTT publish;
 - старый fencing epoch не может воздействовать после lease loss;
 - manual и FAT используют одну admission boundary.
-

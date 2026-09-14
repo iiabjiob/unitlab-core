@@ -144,6 +144,61 @@ retest lineage и legacy jobs без plan требуют отдельного п
 allocation и блокируется. При ошибке публикации job его plan удаляется. Полная
 restart reconciliation и миграция старых jobs остаются открытыми.
 
+**Статус slice E1 (2026-09-14): частично закрыт.** Outbound DO/AO команды теперь
+получают глобальный `command_id`; он сохраняется в Redis stream и возвращается в
+RESP WS event при совпадении `unit_id + packet_id`. Binary/MQTT контракт не менялся.
+Единый admission, durable intent, ACK barrier и cross-workspace channel lease
+остаются открытыми.
+
+**Статус slice E2 (2026-09-14): частично закрыт.** Добавлен внутренний
+Redis-backed channel lease с TTL, владельцем и fencing epoch; lease не может быть
+снят другим владельцем. FAT worker получает lease на время одного test-step и
+блокирует шаг при занятом канале. Подключение к manual/sequence paths, durable
+intent и ACK barrier ещё не выполнены.
+
+**Статус slice E3 (2026-09-14): частично закрыт.** Добавлена PostgreSQL-таблица
+`hardware_command_intents`. FAT DO/AO intent сохраняется и коммитится до outbound
+publish, после успешной постановки получает `queued`; ошибка публикации оставляет
+долговечный `created` для диагностики/recovery. Manual/sequence paths, delivery
+deadline, ACK barrier и execution/FAT verdict ещё не реализованы.
+
+**Статус slice E4 (2026-09-14): частично закрыт.** RESP с найденным
+`command_id` теперь сохраняется в intent как `acknowledged` или `negative_ack`
+при совпадении `command_id + unit_id`; неизвестные correlation не изменяют intent.
+ACK barrier, timeout/late/duplicate policy и перевод FAT verdict остаются открытыми.
+
+**Статус slice E5 (2026-09-14): частично закрыт.** FAT worker теперь ждёт
+`acknowledged` для всех DO/AO-команд шага; `timeout` и `negative_ack` не дают
+успешный шаг и сохраняются как `failed` evidence с явной причиной. Late/duplicate
+ACK policy, manual/sequence paths и финальный verdict-level barrier ещё открыты.
+
+**Статус slice E7 (2026-09-14): частично закрыт.** Активные hardware leases
+теперь регистрируются на время FAT execution и освобождаются в cleanup при
+исключении/rollback; обычный terminal release остаётся идемпотентным. Отдельная
+recovery-политика после процесса, manual/sequence paths и verdict barrier ещё открыты.
+
+**Решение по IEC 61850 (2026-09-14): опциональный контур.** IEC observation не
+становится глобальным обязательным барьером: `off` и `optional` сохраняют обычный
+командный тест при недоступном/reserved report, а `required` блокирует PASS без
+свежего подтверждения. После failed/blocked hardware command IEC capture не
+запускается.
+
+**Статус slice F2 (2026-09-14): частично закрыт.** В double-toggle
+восстановительная команда теперь имеет отдельную роль `restore` в persisted
+command intent и step evidence; её ACK остаётся самостоятельным обязательным
+условием успешного шага. Полный abort/restore/readback recovery при падении
+между командами ещё открыт.
+
+**Статус slice F3 (2026-09-14): частично закрыт.** Ошибка публикации restore
+теперь оставляет intent в состоянии `recovery_required`, а ошибка обычной DO/AO
+команды — `publish_failed`. Это сохраняет явный recovery сигнал даже при rollback
+основной транзакции; автоматический restore/readback recovery ещё не реализован.
+
+**Статус slice E6 (2026-09-14): частично закрыт.** Timeout теперь сохраняется
+в intent как terminal execution state. Поздний или дублированный RESP не может
+переписать `acknowledged`, `negative_ack` или `timeout`; отдельный diagnostic event
+для таких ACK и manual/sequence paths остаются открытыми.
+
 ## GAP-06 — Синхронное ожидание IEC 61850 блокирует event loop worker
 
 **P1 · runtime/performance · подтверждено кодом; длительности не измерены.**
@@ -151,6 +206,11 @@ restart reconciliation и миграция старых jobs остаются о
 Источники: [signal_test_run_runner.py](../../backend/app/workers/signal_test_run_runner.py), [verification_runtime_orchestrator.py](../../backend/app/services/verification_runtime_orchestrator.py), `capture_triggered_signal`.
 
 В async execution вызывается синхронный wait, внутри есть `time.sleep`. Другие задачи этого процесса, включая heartbeat, задерживаются; control state проверяется после возврата.
+
+**Статус slice F1 (2026-09-14): частично закрыт.** Optional IEC capture теперь
+вызывается через `asyncio.to_thread`, поэтому ожидание report не блокирует event
+loop FAT worker. Требуются отдельные thread-safety проверки runtime, измерение
+heartbeat/cancel latency и управляемая отмена длительного capture.
 
 **Порядок исправления:**
 1. Измерить event-loop lag, heartbeat и latency отмены при timeout IED.

@@ -29,6 +29,13 @@ from app.schemas.verification_schema import (
     VerificationExecutionContextSchema,
 )
 from app.services.command_queue_service import enqueue_ao_command, enqueue_do_command, enqueue_request_state
+from app.services.hardware_command_admission import HardwareChannelLease, HardwareCommandAdmission
+from app.services.hardware_command_intent import (
+    mark_hardware_command_intent_delivery_failure,
+    mark_hardware_command_intent_queued,
+    record_hardware_command_intent,
+)
+from app.services.hardware_command_ack import wait_for_hardware_command_acks
 from app.services.external_ied_discovery_scheduler import schedule_external_ied_discovery_for_verification
 from app.services.iec61850.report_runtime import group_report_subscription_plan_devices_by_endpoint
 from app.services.signal_job_service import (
@@ -185,7 +192,7 @@ async def _collect_peripheral_preflight(
         if row is None:
             notes.append(f"{signal_id}: missing allocation row")
             continue
-        if not row.unit_id or not isinstance(row.channel_index, int):
+        if not row.unit_id or row.channel_id is None or not isinstance(row.channel_index, int):
             notes.append(f"{signal_id}: missing peripheral binding")
             continue
         channel_type = str(row.channel_type or "").strip().lower()
@@ -481,6 +488,7 @@ async def _handle_test_run(
     execution_lease_owner: str | None = None,
     execution_attempt_id: str | None = None,
     execution_attempt_no: int = 0,
+    active_hardware_leases: dict[str, HardwareChannelLease] | None = None,
 ) -> dict[str, Any]:
     requested_ids_raw = payload.get("signal_ids") if isinstance(payload, dict) else None
     signal_interval_ms_raw = payload.get("signal_interval_ms") if isinstance(payload, dict) else None
@@ -532,6 +540,49 @@ async def _handle_test_run(
     signal_interval_seconds = signal_interval_ms / 1000
     resume_from_cursor = bool(resume_from_cursor_raw)
     redis = RedisManager.get_instance()
+    hardware_admission = HardwareCommandAdmission(redis)
+
+    async def enqueue_durable_command(
+        *,
+        action: str,
+        channel_id: int,
+        device_id: int | None,
+        unit_id: str,
+        payload: dict[str, Any],
+        command_sender,
+    ) -> str:
+        command_id = uuid4().hex
+        await record_hardware_command_intent(
+            repo.db,
+            command_id=command_id,
+            workspace_id=workspace_id,
+            job_id=job_id,
+            attempt_id=execution_attempt_id,
+            owner_kind="fat",
+            owner_id=job_id,
+            device_id=device_id,
+            channel_id=channel_id,
+            unit_id=unit_id,
+            action=action,
+            payload=payload,
+            fencing_epoch=channel_lease.fencing_epoch if channel_lease is not None else None,
+        )
+        # The intent must survive a worker crash before the outbound stream publish.
+        await repo.db.commit()
+        try:
+            await command_sender(command_id)
+        except Exception:
+            await repo.db.rollback()
+            await mark_hardware_command_intent_delivery_failure(
+                repo.db,
+                command_id=command_id,
+                status="recovery_required" if action == "restore" else "publish_failed",
+            )
+            await repo.db.commit()
+            raise
+        await mark_hardware_command_intent_queued(repo.db, command_id=command_id)
+        await repo.db.commit()
+        return command_id
 
     original_requested_ids = list(requested_ids)
     original_total = len(original_requested_ids)
@@ -601,6 +652,7 @@ async def _handle_test_run(
         "incompatible_channel_mode": 0,
         "offline_unit": 0,
         "binding_changed": 0,
+        "channel_lease_busy": 0,
     }
     evidence_count = 0
     verification_failed = 0
@@ -1203,10 +1255,22 @@ async def _handle_test_run(
             return result_payload
 
         row, skip_reason = await resolve_plan_signal_row(signal_id)
+        channel_lease: HardwareChannelLease | None = None
+        if skip_reason is None and row is not None and row.channel_id is not None:
+            channel_lease = await hardware_admission.acquire(
+                channel_id=row.channel_id,
+                owner_kind="fat",
+                owner_id=job_id,
+            )
+            if channel_lease is None:
+                skip_reason = "channel_lease_busy"
+            elif active_hardware_leases is not None:
+                active_hardware_leases[channel_lease.lease_id] = channel_lease
         success = False
         command_payload: dict[str, Any] | None = None
         test_status = "pending"
         verification_expected_value: Any | None = None
+        command_ids: list[str] = []
         if skip_reason is not None:
             skipped += 1
             skip_reasons[skip_reason] += 1
@@ -1262,12 +1326,26 @@ async def _handle_test_run(
                         },
                     ],
                 }
-                await enqueue_ao_command(
+                ao_command_id = await enqueue_durable_command(
+                    action="ao_set",
+                    channel_id=int(row.channel_id),
+                    device_id=int(row.device_id) if row.device_id is not None else None,
                     unit_id=unit_id,
-                    ch=channel_index,
-                    value=random_value,
-                    correlation_id=ao_correlation_id,
+                    payload={
+                        "channel_index": channel_index,
+                        "value": random_value,
+                        "correlation_id": ao_correlation_id,
+                    },
+                    command_sender=lambda command_id: enqueue_ao_command(
+                        unit_id=unit_id,
+                        ch=channel_index,
+                        value=random_value,
+                        correlation_id=ao_correlation_id,
+                        command_id=command_id,
+                    ),
                 )
+                command_payload["commands"][0]["command_id"] = ao_command_id
+                command_ids.append(ao_command_id)
                 verification_expected_value = random_value
                 await enqueue_request_state(
                     unit_id=unit_id,
@@ -1289,13 +1367,27 @@ async def _handle_test_run(
                         "correlation_id": set_correlation_id,
                     }
                 ]
-                await enqueue_do_command(
+                set_command_id = await enqueue_durable_command(
+                    action="do_set",
+                    channel_id=int(row.channel_id),
+                    device_id=int(row.device_id) if row.device_id is not None else None,
                     unit_id=unit_id,
-                    mode=Cmd.SET_SINGLE_BIT,
-                    ch=channel_index,
-                    value=toggled_value,
-                    correlation_id=set_correlation_id,
+                    payload={
+                        "channel_index": channel_index,
+                        "value": toggled_value,
+                        "correlation_id": set_correlation_id,
+                    },
+                    command_sender=lambda command_id: enqueue_do_command(
+                        unit_id=unit_id,
+                        mode=Cmd.SET_SINGLE_BIT,
+                        ch=channel_index,
+                        value=toggled_value,
+                        correlation_id=set_correlation_id,
+                        command_id=command_id,
+                    ),
                 )
+                commands_payload[0]["command_id"] = set_command_id
+                command_ids.append(set_command_id)
 
                 if toggled_value:
                     bitmask = bitmask | (1 << channel_index)
@@ -1308,19 +1400,34 @@ async def _handle_test_run(
                     commands_payload.append(
                         {
                             "kind": "do_set",
+                            "role": "restore",
                             "unit_id": unit_id,
                             "channel_index": channel_index,
                             "value": current_value,
                             "correlation_id": restore_correlation_id,
                         }
                     )
-                    await enqueue_do_command(
+                    restore_command_id = await enqueue_durable_command(
+                        action="restore",
+                        channel_id=int(row.channel_id),
+                        device_id=int(row.device_id) if row.device_id is not None else None,
                         unit_id=unit_id,
-                        mode=Cmd.SET_SINGLE_BIT,
-                        ch=channel_index,
-                        value=current_value,
-                        correlation_id=restore_correlation_id,
+                        payload={
+                            "channel_index": channel_index,
+                            "value": current_value,
+                            "correlation_id": restore_correlation_id,
+                        },
+                        command_sender=lambda command_id: enqueue_do_command(
+                            unit_id=unit_id,
+                            mode=Cmd.SET_SINGLE_BIT,
+                            ch=channel_index,
+                            value=current_value,
+                            correlation_id=restore_correlation_id,
+                            command_id=command_id,
+                        ),
                     )
+                    commands_payload[1]["command_id"] = restore_command_id
+                    command_ids.append(restore_command_id)
                     if current_value:
                         bitmask = bitmask | (1 << channel_index)
                     else:
@@ -1352,11 +1459,23 @@ async def _handle_test_run(
                     ch=channel_index,
                     correlation_id=state_correlation_id,
                 )
-            success = True
+            ack_states = await wait_for_hardware_command_acks(
+                repo.db,
+                command_ids=command_ids,
+                timeout_ms=min(10000, max(1000, verification_timeout_ms)),
+            )
+            if command_payload is not None:
+                command_payload["ack_states"] = ack_states
+            success = bool(command_ids) and all(
+                state == "acknowledged" for state in ack_states.values()
+            )
+            if not success:
+                test_status = "blocked"
 
             verification_capture = None
             if (
-                verification_orchestrator is not None
+                success
+                and verification_orchestrator is not None
                 and verification_local_orchestration_id is not None
                 and signal_id in verification_signal_id_set
             ):
@@ -1364,7 +1483,8 @@ async def _handle_test_run(
                     command_payload = {}
                 verification_triggered_at = datetime.now(timezone.utc)
                 try:
-                    verification_capture = verification_orchestrator.capture_triggered_signal(
+                    verification_capture = await asyncio.to_thread(
+                        verification_orchestrator.capture_triggered_signal,
                         verification_local_orchestration_id,
                         signal_id=signal_id,
                         triggered_at=verification_triggered_at,
@@ -1407,6 +1527,12 @@ async def _handle_test_run(
                         "error": str(exc),
                     }
 
+        if channel_lease is not None:
+            await hardware_admission.release(channel_lease)
+            if active_hardware_leases is not None:
+                active_hardware_leases.pop(channel_lease.lease_id, None)
+            channel_lease = None
+
         if success:
             if test_status == "pending":
                 test_status = "tested"
@@ -1440,7 +1566,15 @@ async def _handle_test_run(
             if len(pending_tested_at_by_signal) >= tested_at_batch_size:
                 await flush_tested_at_batch()
         elif row is not None and command_payload:
-            failure_state = "iec61850_report_not_observed" if verification_orchestrator is not None else "command_failed"
+            failure_state = (
+                "hardware_command_ack_timeout"
+                if command_payload.get("ack_states") and "timeout" in command_payload["ack_states"].values()
+                else "hardware_command_negative_ack"
+                if command_payload.get("ack_states")
+                else "iec61850_report_not_observed"
+                if verification_orchestrator is not None
+                else "command_failed"
+            )
             test_report_by_signal[signal_id] = _build_signal_test_report_entry(
                 signal_id=signal_id,
                 order_index=progress_done_global,
@@ -1734,6 +1868,7 @@ async def _process_entries(redis, entries) -> None:
             )
 
             async with AsyncSessionLocal() as session:
+                active_hardware_leases: dict[str, HardwareChannelLease] = {}
                 try:
                     if await has_processed_job_marker(session, worker_name=WORKER_NAME, job_id=job_id):
                         logger.warning(
@@ -1764,6 +1899,7 @@ async def _process_entries(redis, entries) -> None:
                         execution_lease_owner=execution_lease_owner,
                         execution_attempt_id=execution_attempt_id,
                         execution_attempt_no=execution_attempt_no,
+                        active_hardware_leases=active_hardware_leases,
                     )
                     await write_processed_job_marker_best_effort(
                         session,
@@ -1776,6 +1912,16 @@ async def _process_entries(redis, entries) -> None:
                 except Exception:
                     await session.rollback()
                     raise
+                finally:
+                    for hardware_lease in list(active_hardware_leases.values()):
+                        try:
+                            await HardwareCommandAdmission(RedisManager.get_instance()).release(hardware_lease)
+                        except Exception:  # noqa: BLE001
+                            logger.exception(
+                                "Failed to release hardware channel lease after test-run exception: %s",
+                                hardware_lease.channel_id,
+                            )
+                    active_hardware_leases.clear()
 
             cancelled = bool((result or {}).get("cancelled")) if isinstance(result, dict) else False
             current_before_terminal = await get_signal_job(job_id)

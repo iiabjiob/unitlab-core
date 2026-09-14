@@ -60,6 +60,7 @@ class DeviceRespEvent(BaseModel):
     channel: Literal[WSChannel.DEVICE_RESP] = WSChannel.DEVICE_RESP
     unit_id: str
     packet_id: int
+    command_id: str | None = None
     status: RespStatus
     error: RespError
     timestamp: int

@@ -31,11 +31,13 @@ class OutboundCmdMsg:
     qos: int = 0
     retain: bool = False
     correlation_id: Optional[str] = None
+    command_id: Optional[str] = None
     packet_id: Optional[int] = None
     enqueued_at_ms: int = field(default_factory=lambda: int(time.time() * 1000))
 
     def to_metadata(self) -> Dict[str, Any]:
         return {
             "correlation_id": self.correlation_id,
+            "command_id": self.command_id,
             "packet_id": self.packet_id,
         }

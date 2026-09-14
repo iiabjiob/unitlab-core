@@ -64,6 +64,7 @@ async def enqueue_outbound_command(msg: OutboundCmdMsg) -> str:
         "retain": msg.retain,
         "enqueued_at_ms": msg.enqueued_at_ms,
         "correlation_id": msg.correlation_id,
+        "command_id": msg.command_id,
         "packet_id": msg.packet_id,
     }
     return await redis.xadd(
@@ -96,6 +97,7 @@ def parse_outbound_entry(entry: StreamEntry) -> Tuple[str, OutboundCmdMsg]:
         qos=payload.get("qos", 0),
         retain=payload.get("retain", False),
         correlation_id=payload.get("correlation_id"),
+        command_id=payload.get("command_id"),
         packet_id=payload.get("packet_id"),
         enqueued_at_ms=payload.get("enqueued_at_ms") or payload.get("ts_ms"),
     )

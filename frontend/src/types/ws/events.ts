@@ -128,6 +128,7 @@ export interface DeviceRespEvent {
   channel: WSChannel.DEVICE_RESP
   unit_id: string
   packet_id: number
+  command_id?: string | null
   status: RespStatus
   error: RespError
   timestamp: number
