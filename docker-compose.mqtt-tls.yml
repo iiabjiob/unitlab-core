@@ -1,0 +1,8 @@
+services:
+  mosquitto:
+    volumes:
+      - ./config/mosquitto.secure.tls.conf:/mosquitto/config/mosquitto.conf:ro
+      - /opt/unitlab/shared/mosquitto.password:/mosquitto/config/passwordfile:ro
+      - ./config/mosquitto.secure.acl:/mosquitto/config/aclfile:ro
+      - /opt/unitlab/shared/mosquitto-tls:/mosquitto/config/certs:ro
+      - mosquitto_data:/mosquitto/data

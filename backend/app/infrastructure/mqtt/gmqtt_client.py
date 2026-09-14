@@ -1,5 +1,7 @@
 # app/infrastructure/mqtt/gmqtt_client.py
 import asyncio
+import ssl
+from pathlib import Path
 from gmqtt import Client as MQTTClient
 from typing import Callable, Awaitable, Optional
 from app.core.logger import get_logger
@@ -35,10 +37,27 @@ class UnitLabMqttClient:
         *,
         username: str | None = None,
         password: str | None = None,
+        tls: bool = False,
+        tls_ca_file: str | None = None,
+        tls_cert_file: str | None = None,
+        tls_key_file: str | None = None,
     ):
         if username:
             self.client.set_auth_credentials(username, password or "")
-        await self.client.connect(host, port)
+        if tls:
+            if not tls_ca_file:
+                raise ValueError("MQTT TLS requires a CA file")
+            ca_path = Path(tls_ca_file)
+            if not ca_path.is_file():
+                raise ValueError(f"MQTT TLS CA file does not exist: {tls_ca_file}")
+            tls_context = ssl.create_default_context(cafile=str(ca_path))
+            if bool(tls_cert_file) != bool(tls_key_file):
+                raise ValueError("MQTT TLS client certificate and key must be configured together")
+            if tls_cert_file and tls_key_file:
+                tls_context.load_cert_chain(certfile=tls_cert_file, keyfile=tls_key_file)
+            await self.client.connect(host, port, ssl=tls_context)
+        else:
+            await self.client.connect(host, port)
         logger.info("✅ MQTT client started")
 
     async def disconnect(self):

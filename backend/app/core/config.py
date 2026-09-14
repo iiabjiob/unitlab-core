@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     mqtt_port: int
     mqtt_username: str | None = None
     mqtt_password: str | None = None
+    mqtt_tls: bool = False
+    mqtt_tls_ca_file: str | None = None
+    mqtt_tls_cert_file: str | None = None
+    mqtt_tls_key_file: str | None = None
     mqtt_in_stream: str = "mqtt:inbound"
     mqtt_out_stream: str = "mqtt:outbound"
     mqtt_stream_maxlen: int = 10000

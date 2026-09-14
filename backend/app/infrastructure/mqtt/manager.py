@@ -35,6 +35,10 @@ class MqttManager:
             port=settings.mqtt_port,
             username=settings.mqtt_username,
             password=settings.mqtt_password,
+            tls=settings.mqtt_tls,
+            tls_ca_file=settings.mqtt_tls_ca_file,
+            tls_cert_file=settings.mqtt_tls_cert_file,
+            tls_key_file=settings.mqtt_tls_key_file,
         )
         await client.connected.wait()
 

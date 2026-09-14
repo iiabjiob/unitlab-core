@@ -802,6 +802,12 @@ backup/restore, а не ошибка генерации промежуточны
 проверка presence и recovery barrier сохранены; production PostgreSQL query-count
 и p95 всё ещё требуют отдельного benchmark на целевом deployment.
 
+**Статус slice G72 (2026-09-14): backend MQTT TLS client boundary.** MQTT client
+теперь умеет подключаться через проверяемый CA-backed TLS context; неполная или
+отсутствующая TLS-конфигурация отклоняется до соединения. TLS остаётся opt-in и
+не меняет текущий anonymous production profile; broker listener, firmware
+provisioning и end-to-end TLS round-trip требуют deployment/hardware проверки.
+
 **Статус slice G38 (2026-09-14): offline-safe signal sheet migration.**
 `9a1b2c3d4e6f` получил PostgreSQL offline-ветку для создания signal sheet/preset и
 live allocation tables и удаления прежних snapshot tables без `inspect` на
