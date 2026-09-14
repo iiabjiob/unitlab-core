@@ -476,6 +476,12 @@ Redis query-count measurement или стендовый hardware run.
 focused harness проходит. Browser/Pi trace, memory/long-task/scroll budgets,
 MQTT/ACK и сменный soak остаются обязательными release-проверками.
 
+**Статус slice G18 (2026-09-14): deterministic baseline повторён.** На текущем
+окружении harness для 20 000 строк и burst из 5 000 allocation/runtime patches
+прошёл `3/3` теста за `494 ms` (Vitest test time); frontend type-check также
+прошёл. Результат остаётся simulator/unit evidence и не подменяет browser/Pi,
+memory/long-task, MQTT/ACK или сменный soak.
+
 ## Дополнительный связанный риск — AO-сценарий
 
 При следующем аппаратном slice отдельно проверить AO-ветку [signal_test_run_runner.py](../../backend/app/workers/signal_test_run_runner.py): она выбирает случайное значение 0–24. Это подтверждено кодом, но электрические единицы/допустимые диапазоны конкретного оборудования здесь не установлены. Не переносить такой сценарий автоматически в доверенный test plan: сначала определить тип/диапазон канала, затем сохранить детерминированную последовательность значений в ревизии плана и проверить readback. Основная цель текущей очереди — сухой контакт; расширение AO оформить отдельным scope.
