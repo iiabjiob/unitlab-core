@@ -8,6 +8,7 @@ import { getLogger } from "@/utils/logger"
 import { SequencesAPI } from "@/api/sequences.api"
 import { useWorkspaceStore } from "./workspaceStore"
 import { useSequenceStore } from "./sequenceStore"
+import { useSwitchgearStore } from "./switchgearStore"
 
 const logger = getLogger("SEQS")
 
@@ -18,6 +19,7 @@ export const useSequenceStepStore = defineStore("sequenceStepStore", () => {
   let tempStepId = -1
   const channelStore = useChannelStore()
   const workspaceStore = useWorkspaceStore()
+  const switchgearStore = useSwitchgearStore()
 
   async function ensureSteps(seqId: number) {
     if (!loadedSequence.value.has(seqId)) {
@@ -88,7 +90,13 @@ export const useSequenceStepStore = defineStore("sequenceStepStore", () => {
         const ids = step.payload?.channel_ids ?? []
         const keys = step.payload?.signal_keys ?? []
         const [idA, idB] = ids
-        return `Switch position ${resolvePairStateLabel(step.payload?.state2b)} · ${resolve(idA, keys[0])} + ${resolve(idB, keys[1])}`
+        const switchgearId = Number(step.payload?.switchgear_id ?? NaN)
+        const switchgear = Number.isFinite(switchgearId)
+          ? switchgearStore.getById(switchgearId)
+          : null
+        const switchgearLabel = switchgear?.name
+          ?? (Number.isFinite(switchgearId) ? `#${switchgearId}` : "n/a")
+        return `Switchgear ${switchgearLabel} · ${resolvePairStateLabel(step.payload?.state2b)} · ${resolve(idA, keys[0])} + ${resolve(idB, keys[1])}`
       }
       case SequenceStepType.DO_BITMASK: {
         const deviceId = Number(step.payload?.device_id ?? NaN)
