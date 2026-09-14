@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from fastapi import WebSocket
-from sqlalchemy import select
+from sqlalchemy import exists, select
 
 from app.infrastructure.db.database import AsyncSessionLocal
 from app.infrastructure.redis.manager import RedisManager
 from app.models.channel import Channel
 from app.models.device import Device
+from app.models.signal_sheet import SignalAllocation
 from app.services.command_queue_service import enqueue_ao_command, enqueue_do_command
 from app.services.hardware_command_admission import HardwareChannelLease, HardwareCommandAdmission
 from app.services.hardware_command_intent import (
@@ -37,6 +38,10 @@ async def _channel(workspace_id: int, channel_id: int, unit_id: str, channel_ind
                 Channel.id == channel_id,
                 Channel.channel_index == channel_index,
                 Device.unit_id == unit_id,
+                exists().where(
+                    SignalAllocation.workspace_id == workspace_id,
+                    SignalAllocation.channel_id == Channel.id,
+                ),
             )
         )
         channel = result.scalar_one_or_none()
@@ -45,12 +50,18 @@ async def _channel(workspace_id: int, channel_id: int, unit_id: str, channel_ind
         return channel
 
 
-async def _channels(channel_ids: list[int], unit_id: str, indexes: list[int], expected_type: str):
+async def _channels(workspace_id: int, channel_ids: list[int], unit_id: str, indexes: list[int], expected_type: str):
     async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(Channel)
             .join(Device, Device.id == Channel.device_id)
             .where(Channel.id.in_(channel_ids), Device.unit_id == unit_id)
+            .where(
+                exists().where(
+                    SignalAllocation.workspace_id == workspace_id,
+                    SignalAllocation.channel_id == Channel.id,
+                )
+            )
         )
         by_id = {int(channel.id): channel for channel in result.scalars().all()}
     if set(by_id) != set(channel_ids) or len(indexes) != len(channel_ids):
@@ -127,7 +138,7 @@ async def handle_manual_do(ws: WebSocket, msg: SetDoCommandMessage) -> None:
         if any(index is None for index in indexes):
             await _result(ws, command_id=None, delivery="rejected", reason="channel_indexes_required")
             return
-        channels = await _channels(msg.channel_ids, msg.unit_id, [int(index) for index in indexes], "do")
+        channels = await _channels(msg.workspace_id, msg.channel_ids, msg.unit_id, [int(index) for index in indexes], "do")
         if channels is None:
             await _result(ws, command_id=None, delivery="rejected", reason="channel_scope_invalid")
             return

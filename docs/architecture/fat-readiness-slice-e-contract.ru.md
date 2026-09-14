@@ -89,6 +89,8 @@ E12 подключает manual pair/all к `channel_ids` и тому же atomi
 lease; intent хранит primary channel и полный набор затронутых каналов.
 E13 подключает sequence `DO_BITMASK` к resolved channel-set устройства и тому же
 multi-channel lease, intent и ACK barrier.
+E14 дополнительно проверяет workspace scope manual-команд через persisted
+allocation до получения lease и публикации.
 
 ## Состояния delivery и verdict
 

@@ -231,6 +231,10 @@ ACK и command payload остаётся следующим шагом.
 набор каналов в command intent. Workspace/channel scope проверяется до публикации;
 multi-command ACK/verdict UI и sequence `DO_BITMASK` остаются открытыми.
 
+**Статус slice E14 (2026-09-14): частично закрыт.** Manual DO/AO теперь требует
+не только совпадения `unit_id/channel_id`, но и active allocation канала в
+`workspace_id`; непринадлежащий workspace канал отклоняется до lease/publish.
+
 **Статус slice E13 (2026-09-14): частично закрыт.** Sequence `DO_BITMASK` теперь
 получает resolved channel-set устройства и проходит multi-channel lease, durable
 intent и ACK barrier. Требуются runtime-проверки device channel inventory и
