@@ -49,7 +49,7 @@ const typeLabels: Record<SequenceStepType, string> = {
   [SequenceStepType.WAIT]: "Wait",
   [SequenceStepType.DO_LATCH]: "DO · Latch",
   [SequenceStepType.DO_PULSE]: "DO · Pulse",
-  [SequenceStepType.DO_PAIR]: "Switch position",
+  [SequenceStepType.DO_PAIR]: "Switchgear",
   [SequenceStepType.DO_BITMASK]: "Group control",
   [SequenceStepType.AO_SET]: "AO · Set",
   [SequenceStepType.CALL_SEQUENCE]: "Call instruction",
@@ -67,6 +67,7 @@ const headerLabel = computed(() => {
 })
 
 const description = computed(() => (props.step ? stepStore.getStepDescription(props.step) : ""))
+const showDescription = computed(() => props.step?.sequence_step_type !== SequenceStepType.DO_PAIR)
 
 watch(
   () => props.step?.id,
@@ -123,13 +124,10 @@ function exitEditMode() {
     <div v-if="step && editorComponent" class="sequence-step-editor">
       <div class="sequence-step-editor__header">
         <div>
-          <div class="sequence-step-editor__eyebrow">
-            Editing step
-          </div>
           <div class="sequence-step-editor__title">
             {{ headerLabel }}
           </div>
-          <div class="sequence-step-editor__description">
+          <div v-if="showDescription" class="sequence-step-editor__description">
             {{ description }}
           </div>
         </div>

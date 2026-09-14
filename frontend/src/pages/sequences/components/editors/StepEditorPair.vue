@@ -17,11 +17,6 @@ const emit = defineEmits<{
 
 const switchgearStore = useSwitchgearStore()
 
-const pairChannels = computed<[number | null, number | null]>(() => {
-	const ids = props.step.payload?.channel_ids ?? []
-	return [ids[0] ?? null, ids[1] ?? null]
-})
-
 const switchgearId = computed(() => {
 	const raw = props.step.payload?.switchgear_id
 	return Number.isFinite(Number(raw)) ? Number(raw) : null
@@ -81,8 +76,7 @@ const stateOptions = [
 
 <template>
 	<div class="sequence-step-form">
-		<div class="sequence-step-form__grid sequence-step-form__grid--two">
-			<div>
+		<div>
 				<div class="sequence-step-form__label">
 					Switchgear
 				</div>
@@ -96,16 +90,6 @@ const stateOptions = [
 					@update:modelValue="updateSwitchgear"
 				/>
 			</div>
-			<div>
-				<div class="sequence-step-form__label">
-					Configured outputs
-				</div>
-				<div class="sequence-step-form__configured-pair">
-					<span>Open #{{ pairChannels[0] ?? "—" }}</span>
-					<span>Close #{{ pairChannels[1] ?? "—" }}</span>
-				</div>
-			</div>
-		</div>
 
 		<div>
 			<div class="sequence-step-form__label">
