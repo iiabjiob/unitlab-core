@@ -441,6 +441,12 @@ pending, а execution/workspace locks освобождаются в `finally`; t
 backend regression suite; реальный kill worker/Redis и deployment recovery ещё
 требуют стендовой проверки.
 
+**Статус slice G84 (2026-09-14): pulse recovery classification.** Незавершённый
+`do_pulse` после cancellation/restart теперь получает `recovery_required`, как и
+`restore`, поскольку его физическое состояние нельзя считать безопасно
+восстановленным по факту потери процесса. Добавлена negative regression; физический
+recovery/readback и firmware watchdog остаются deployment checks.
+
 ## GAP-10 — Нет доказанной общей исключительности физического выхода
 
 **P0 · allocation/command ownership · подтверждён разрыв границ.**

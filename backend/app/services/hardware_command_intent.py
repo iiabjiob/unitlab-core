@@ -49,7 +49,7 @@ async def reconcile_unfinished_hardware_command_intents(
     result = await db.execute(select(HardwareCommandIntent).where(*filters))
     intents = list(result.scalars().all())
     for intent in intents:
-        intent.status = "recovery_required" if intent.action == "restore" else "unknown"
+        intent.status = "recovery_required" if intent.action in {"restore", "do_pulse"} else "unknown"
     if intents:
         await db.flush()
     return len(intents)

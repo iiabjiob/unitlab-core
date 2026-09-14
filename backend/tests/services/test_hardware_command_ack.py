@@ -176,6 +176,18 @@ async def test_delivery_failure_status_is_persisted() -> None:
 
 
 @pytest.mark.anyio
+async def test_interrupted_pulse_requires_physical_recovery() -> None:
+    intent = SimpleNamespace(action="do_pulse", status="queued")
+    db = AsyncMock()
+    db.execute.return_value = SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [intent]))
+
+    reconciled = await reconcile_unfinished_hardware_command_intents(db, job_id="run-1")
+
+    assert reconciled == 1
+    assert intent.status == "recovery_required"
+
+
+@pytest.mark.anyio
 async def test_recovery_required_lookup_returns_channel_block() -> None:
     db = AsyncMock()
     db.execute.return_value = SimpleNamespace(scalar=lambda: True)
