@@ -482,7 +482,13 @@ def test_signal_test_run_resolves_current_binding_per_signal(monkeypatch) -> Non
     assert repo.db.commit_count >= len(repo.evidence)
 
 
-def test_signal_test_run_double_toggle_requires_set_and_restore_readback(monkeypatch) -> None:
+@pytest.mark.parametrize(
+    ("readback_results", "expected_succeeded"),
+    [([True, True], 1), ([True, False], 0)],
+)
+def test_signal_test_run_double_toggle_requires_set_and_restore_readback(
+    monkeypatch, readback_results: list[bool], expected_succeeded: int
+) -> None:
     repo = FakeLiveRowsRepo()
     commands: list[tuple[str, dict]] = []
     readbacks: list[dict] = []
@@ -503,7 +509,7 @@ def test_signal_test_run_double_toggle_requires_set_and_restore_readback(monkeyp
     async def readback(*args, **kwargs) -> bool:
         del args
         readbacks.append(dict(kwargs))
-        return True
+        return readback_results.pop(0)
 
     async def fresh_bitmask(*args, **kwargs) -> int:
         del args, kwargs
@@ -533,7 +539,9 @@ def test_signal_test_run_double_toggle_requires_set_and_restore_readback(monkeyp
 
     result = run_async(signal_test_run_runner._handle_test_run(repo, 7, payload, job_state))  # type: ignore[arg-type]
 
-    assert result["succeeded"] == 1, result["test_report_by_signal"][1]
+    assert result["succeeded"] == expected_succeeded
+    if expected_succeeded == 0:
+        assert result["skipped"] == 0
     assert [item["value"] for kind, item in commands if kind == "do"] == [1, 0]
     assert [item["expected_value"] for item in readbacks] == [1, 0]
     assert repo.evidence[0]["command_payload"]["expected_feedback_value"] == 0

@@ -895,6 +895,13 @@ rehearsal и проверка реального PostgreSQL остаются rel
 ожидаемое значение `0`. IEC 61850 остаётся optional observation; delayed/reordered
 IED reports и автономный hardware safe-state требуют стендовой проверки.
 
+**Статус slice G101 (2026-09-14): readback failure execution barrier.**
+Провал DO SET/RESTORE или AO physical readback теперь сбрасывает execution
+success до terminal bookkeeping; такой шаг не попадает в `succeeded`, получает
+blocked/recovery-required semantics. Negative double-toggle regression фиксирует
+провал RESTORE readback; delivery ACK и hardware bench validation остаются
+отдельными release checks.
+
 **Статус slice G68 (2026-09-14): offline downgrade для live signal sheet.**
 Migration `9a1b2c3d4e6f` теперь генерирует детерминированный downgrade SQL для
 `signal_allocations`, `signal_sheet_presets` и `signal_sheets`, не вызывая

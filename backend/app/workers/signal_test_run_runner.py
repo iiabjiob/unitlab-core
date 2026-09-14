@@ -1533,6 +1533,7 @@ async def _handle_test_run(
             elif active_hardware_leases is not None:
                 active_hardware_leases[channel_lease.lease_id] = channel_lease
         success = False
+        hardware_readback_ok = True
         command_payload: dict[str, Any] | None = None
         test_status = "pending"
         verification_expected_value: Any | None = None
@@ -1636,6 +1637,7 @@ async def _handle_test_run(
                     )
                     await repo.db.commit()
                     test_status = "blocked"
+                    hardware_readback_ok = False
             else:
                 bitmask = await get_unit_bitmask(unit_id)
                 current_value = 1 if (bitmask & (1 << channel_index)) else 0
@@ -1702,6 +1704,7 @@ async def _handle_test_run(
                     )
                     await repo.db.commit()
                     test_status = "blocked"
+                    hardware_readback_ok = False
 
                 if toggle_mode == "double":
                     # Do not leave a toggled output behind when the worker task
@@ -1768,6 +1771,7 @@ async def _handle_test_run(
                         )
                         await repo.db.commit()
                         test_status = "blocked"
+                        hardware_readback_ok = False
                     if cancelled_during_restore_window:
                         raise asyncio.CancelledError
 
@@ -1806,7 +1810,7 @@ async def _handle_test_run(
                 command_payload["ack_states"] = ack_states
             success = bool(command_ids) and all(
                 state == "acknowledged" for state in ack_states.values()
-            )
+            ) and hardware_readback_ok
             if not success:
                 test_status = "blocked"
 
