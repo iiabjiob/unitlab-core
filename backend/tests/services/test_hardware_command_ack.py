@@ -263,6 +263,26 @@ async def test_bulk_recovery_lookup_returns_only_blocked_requested_channels() ->
 
 
 @pytest.mark.anyio
+async def test_pair_state_lookup_does_not_block_on_uncertain_absolute_command() -> None:
+    db = AsyncMock()
+    db.execute.return_value = SimpleNamespace(
+        scalars=lambda: SimpleNamespace(all=lambda: [])
+    )
+
+    blocked = await list_hardware_recovery_required_channels(
+        db,
+        channel_ids=[101, 202],
+        action="do_pair",
+    )
+
+    assert blocked == set()
+    statement = db.execute.await_args.args[0]
+    compiled = str(statement.compile(compile_kwargs={"literal_binds": True}))
+    assert "recovery_required" in compiled
+    assert "unknown" not in compiled
+
+
+@pytest.mark.anyio
 async def test_pending_queued_command_is_part_of_recovery_lookup() -> None:
     db = AsyncMock()
     db.execute.return_value = SimpleNamespace(scalar=lambda: True)

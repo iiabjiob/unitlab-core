@@ -186,6 +186,7 @@ async def _enqueue_manual(
         blocked_channels = await list_hardware_recovery_required_channels(
             recovery_session,
             channel_ids=channel_ids,
+            action=action,
         )
     if blocked_channels:
         await _result(

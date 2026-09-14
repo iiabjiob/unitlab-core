@@ -46,22 +46,30 @@ async def list_hardware_recovery_required_channels(
     db: AsyncSession,
     *,
     channel_ids: list[int],
+    action: str | None = None,
 ) -> set[int]:
     """Return blocked physical channels in one query for multi-channel admission."""
     normalized = {int(channel_id) for channel_id in channel_ids if int(channel_id) > 0}
     if not normalized:
         return set()
-    recovery_required = or_(
-        HardwareCommandIntent.status.in_(
-            ("unknown", "recovery_required", "publish_failed")
-        ),
-        and_(
-            HardwareCommandIntent.status.in_(("created", "queued")),
-            HardwareCommandIntent.execution_status.in_(
-                ("unknown", "timeout")
+    if str(action or "").strip().lower() == "do_pair":
+        # DO_PAIR is an absolute two-bit state command. All four states are
+        # valid for BSU and can be safely re-issued after an uncertain result.
+        recovery_required = HardwareCommandIntent.status.in_(
+            ("recovery_required", "publish_failed")
+        )
+    else:
+        recovery_required = or_(
+            HardwareCommandIntent.status.in_(
+                ("unknown", "recovery_required", "publish_failed")
             ),
-        ),
-    )
+            and_(
+                HardwareCommandIntent.status.in_(("created", "queued")),
+                HardwareCommandIntent.execution_status.in_(
+                    ("unknown", "timeout")
+                ),
+            ),
+        )
     result = await db.execute(
         select(HardwareCommandIntentChannel.channel_id).where(
             HardwareCommandIntentChannel.channel_id.in_(normalized),

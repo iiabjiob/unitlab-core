@@ -1170,6 +1170,7 @@ class SequenceRunner:
                     blocked_channels = await list_hardware_recovery_required_channels(
                         session,
                         channel_ids=[int(channel_id) for channel_id in channel_ids],
+                        action=action,
                     )
                     if blocked_channels:
                         raise SequenceNotApplicableError(
