@@ -5,13 +5,14 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.models.hardware_command import HardwareCommandIntent
+from app.models.hardware_command import HardwareCommandIntent, HardwareCommandIntentChannel
 from app.infrastructure.redis.manager import RedisManager
 from app.services.hardware_command_ack import record_hardware_command_ack, wait_for_hardware_command_acks
 from app.services.hardware_command_ack import record_hardware_command_ack_diagnostic
 from app.services.hardware_command_intent import (
     has_hardware_recovery_required,
     mark_hardware_command_intent_delivery_failure,
+    record_hardware_command_intent,
     reconcile_unfinished_hardware_command_intents,
     requires_physical_recovery,
 )
@@ -197,7 +198,7 @@ def test_pulse_and_restore_require_physical_recovery() -> None:
 @pytest.mark.anyio
 async def test_recovery_required_lookup_returns_channel_block() -> None:
     db = AsyncMock()
-    db.execute.return_value = SimpleNamespace(all=lambda: [(101, {})])
+    db.execute.return_value = SimpleNamespace(scalar=lambda: True)
 
     blocked = await has_hardware_recovery_required(db, workspace_id=7, channel_id=101)
 
@@ -208,7 +209,7 @@ async def test_recovery_required_lookup_returns_channel_block() -> None:
 @pytest.mark.anyio
 async def test_pending_queued_command_is_part_of_recovery_lookup() -> None:
     db = AsyncMock()
-    db.execute.return_value = SimpleNamespace(all=lambda: [(101, {})])
+    db.execute.return_value = SimpleNamespace(scalar=lambda: True)
 
     blocked = await has_hardware_recovery_required(db, workspace_id=7, channel_id=101)
 
@@ -219,7 +220,7 @@ async def test_pending_queued_command_is_part_of_recovery_lookup() -> None:
 @pytest.mark.anyio
 async def test_legacy_publish_failed_command_is_part_of_recovery_lookup() -> None:
     db = AsyncMock()
-    db.execute.return_value = SimpleNamespace(all=lambda: [(101, {})])
+    db.execute.return_value = SimpleNamespace(scalar=lambda: True)
 
     blocked = await has_hardware_recovery_required(db, workspace_id=7, channel_id=101)
 
@@ -231,11 +232,41 @@ async def test_legacy_publish_failed_command_is_part_of_recovery_lookup() -> Non
 @pytest.mark.anyio
 async def test_multi_channel_recovery_lookup_blocks_secondary_channel() -> None:
     db = AsyncMock()
-    db.execute.return_value = SimpleNamespace(all=lambda: [(101, {"channel_ids": [101, 202]})])
+    db.execute.return_value = SimpleNamespace(scalar=lambda: True)
 
     blocked = await has_hardware_recovery_required(db, workspace_id=9, channel_id=202)
 
     assert blocked is True
+    assert "hardware_command_intent_channels" in str(db.execute.await_args.args[0])
+
+
+@pytest.mark.anyio
+async def test_record_intent_persists_every_multi_channel_scope() -> None:
+    db = AsyncMock()
+    db.add = lambda item: db._added.append(item)
+    db._added = []
+
+    await record_hardware_command_intent(
+        db,
+        command_id="cmd-multi",
+        workspace_id=7,
+        job_id="run-1",
+        attempt_id=None,
+        owner_kind="sequence",
+        owner_id="run-1",
+        device_id=3,
+        channel_id=101,
+        unit_id="UNIT-1",
+        action="do_pair",
+        payload={"channel_ids": [101, 202]},
+        fencing_epoch=1,
+    )
+
+    links = [item for item in db._added if isinstance(item, HardwareCommandIntentChannel)]
+    assert [(item.command_id, item.channel_id) for item in links] == [
+        ("cmd-multi", 101),
+        ("cmd-multi", 202),
+    ]
 
 
 @pytest.mark.anyio

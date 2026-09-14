@@ -17,7 +17,7 @@ from app.models.signal_sheet import (
     SignalSheetPreset,
     SignalTestRunStepEvidence,
 )
-from app.models.hardware_command import HardwareCommandIntent
+from app.models.hardware_command import HardwareCommandIntent, HardwareCommandIntentChannel
 from app.models.workspace import Workspace
 from app.schemas.signal_import_schema import SignalImportMetaSchema
 from app.schemas.signal_sheet_schema import (
@@ -474,7 +474,8 @@ class SignalSheetRepository:
         include_recovery: bool,
     ) -> SignalExecutionBinding | None:
         recovery_expression = exists().where(
-                    HardwareCommandIntent.channel_id == SignalAllocation.channel_id,
+                    HardwareCommandIntentChannel.channel_id == SignalAllocation.channel_id,
+                    HardwareCommandIntentChannel.command_id == HardwareCommandIntent.command_id,
                     or_(
                         HardwareCommandIntent.status.in_(("unknown", "recovery_required", "publish_failed")),
                         and_(

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DateTime, Index, Integer, JSON, String, func
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, JSON, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.infrastructure.db.database import Base
@@ -38,3 +38,18 @@ class HardwareCommandIntent(Base):
     ack_received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     fencing_epoch: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class HardwareCommandIntentChannel(Base):
+    __tablename__ = "hardware_command_intent_channels"
+    __table_args__ = (
+        UniqueConstraint("command_id", "channel_id", name="uq_hardware_command_intent_channels_command_channel"),
+        Index("ix_hardware_command_intent_channels_channel", "channel_id"),
+    )
+
+    command_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("hardware_command_intents.command_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    channel_id: Mapped[int] = mapped_column(BIGINT_PK, primary_key=True)

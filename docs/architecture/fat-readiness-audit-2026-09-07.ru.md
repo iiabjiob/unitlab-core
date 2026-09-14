@@ -486,6 +486,13 @@ default сохраняет совместимость с текущим producti
 syntax и help; реальная сетевая проверка доступности broker остаётся deployment
 check.
 
+**Статус slice G91 (2026-09-14): normalized multi-channel intent scope.**
+Появилась durable association table `hardware_command_intent_channels`; новые и
+legacy intents сохраняют каждый физический канал из `payload.channel_ids`, а
+recovery lookup и execution binding используют indexed association вместо
+неограниченного JSON scan. Offline migration graph и online backfill path
+проверены; production migration/legacy-data rehearsal остаются release checks.
+
 ## GAP-10 — Нет доказанной общей исключительности физического выхода
 
 **P0 · allocation/command ownership · подтверждён разрыв границ.**

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import and_, or_, select, update
+from sqlalchemy import and_, exists, or_, select, update
 
-from app.models.hardware_command import HardwareCommandIntent
+from app.models.hardware_command import HardwareCommandIntent, HardwareCommandIntentChannel
 
 RECOVERY_REQUIRED_ACTIONS = frozenset({"restore", "do_pulse"})
 
@@ -23,32 +23,23 @@ async def has_hardware_recovery_required(
     # callers and migrations, but scope the safety lookup by channel globally.
     del workspace_id
     result = await db.execute(
-        select(HardwareCommandIntent.channel_id, HardwareCommandIntent.payload).where(
-            or_(
-                HardwareCommandIntent.status.in_(
-                    ("unknown", "recovery_required", "publish_failed")
-                ),
-                and_(
-                    HardwareCommandIntent.status.in_(("created", "queued")),
-                    HardwareCommandIntent.execution_status.in_(("unknown", "timeout")),
+        select(
+            exists().where(
+                HardwareCommandIntentChannel.channel_id == int(channel_id),
+                HardwareCommandIntentChannel.command_id == HardwareCommandIntent.command_id,
+                or_(
+                    HardwareCommandIntent.status.in_(
+                        ("unknown", "recovery_required", "publish_failed")
+                    ),
+                    and_(
+                        HardwareCommandIntent.status.in_(("created", "queued")),
+                        HardwareCommandIntent.execution_status.in_(("unknown", "timeout")),
+                    ),
                 ),
             )
         )
     )
-    target_channel_id = int(channel_id)
-    for primary_channel_id, payload in result.all():
-        if int(primary_channel_id) == target_channel_id:
-            return True
-        if isinstance(payload, dict):
-            raw_channel_ids = payload.get("channel_ids")
-            if isinstance(raw_channel_ids, list):
-                try:
-                    if target_channel_id in {int(value) for value in raw_channel_ids}:
-                        return True
-                except (TypeError, ValueError):
-                    # Malformed multi-channel scope is not evidence of safety.
-                    return True
-    return False
+    return bool(result.scalar())
 
 
 async def reconcile_unfinished_hardware_command_intents(
@@ -105,6 +96,23 @@ async def record_hardware_command_intent(
         status="created",
     )
     db.add(intent)
+    channel_ids: list[int] = [int(channel_id)]
+    raw_channel_ids = payload.get("channel_ids") if isinstance(payload, dict) else None
+    if isinstance(raw_channel_ids, list):
+        for raw_channel_id in raw_channel_ids:
+            try:
+                normalized_channel_id = int(raw_channel_id)
+            except (TypeError, ValueError):
+                continue
+            if normalized_channel_id > 0 and normalized_channel_id not in channel_ids:
+                channel_ids.append(normalized_channel_id)
+    for intent_channel_id in channel_ids:
+        db.add(
+            HardwareCommandIntentChannel(
+                command_id=str(command_id),
+                channel_id=int(intent_channel_id),
+            )
+        )
     await db.flush()
     return intent
 
