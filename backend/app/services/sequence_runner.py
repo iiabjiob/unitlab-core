@@ -72,6 +72,8 @@ async def _wait_for_sequence_readback(
     timeout_ms: int = SEQUENCE_READBACK_TIMEOUT_MS,
 ) -> bool:
     """Require a state snapshot caused by this request before accepting a step."""
+    if not targets:
+        return False
     deadline = time.monotonic() + max(100, int(timeout_ms)) / 1000
     while True:
         try:
@@ -121,12 +123,17 @@ def _sequence_readback_targets(
     if action == "do_pair":
         state2b = int(payload["state2b"]) & 0b11
         indexes = [int(index) for index in payload["channel_indexes"]]
+        if len(indexes) != 2:
+            raise SequenceNotApplicableError("DO_PAIR readback requires two channel indexes")
         return [(indexes[0], state2b & 0b01), (indexes[1], (state2b >> 1) & 0b01)], False
     if action == "do_all":
         bitmask = int(payload["bitmask"])
+        indexes = payload.get("channel_indexes")
+        if not isinstance(indexes, list) or not indexes:
+            raise SequenceNotApplicableError("DO_BITMASK readback requires resolved channel indexes")
         return [
             (int(index), 1 if bitmask & (1 << int(index)) else 0)
-            for index in payload["channel_indexes"]
+            for index in indexes
         ], False
     raise SequenceNotApplicableError(f"Unsupported hardware readback action {action}")
 
@@ -1127,6 +1134,10 @@ class SequenceRunner:
                     )
                     if leases is None:
                         raise SequenceNotApplicableError("Hardware channel is busy")
+                    targets, analog = _sequence_readback_targets(
+                        action=action,
+                        payload=command_payload,
+                    )
                     command_id = uuid4().hex
                     try:
                         await record_hardware_command_intent(
@@ -1172,10 +1183,6 @@ class SequenceRunner:
                             raise SequenceNotApplicableError(
                                 f"Hardware command {states.get(command_id, 'unknown')}"
                             )
-                        targets, analog = _sequence_readback_targets(
-                            action=action,
-                            payload=command_payload,
-                        )
                         readback_packet_id = await enqueue_request_state(
                             unit_id=unit_id,
                             mode=(

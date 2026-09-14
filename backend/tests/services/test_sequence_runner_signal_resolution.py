@@ -84,6 +84,14 @@ def test_sequence_readback_targets_cover_pair_and_device_bitmask() -> None:
     assert all_analog is False
 
 
+def test_sequence_bitmask_readback_rejects_missing_channel_indexes() -> None:
+    with pytest.raises(SequenceNotApplicableError, match="resolved channel indexes"):
+        _sequence_readback_targets(
+            action="do_all",
+            payload={"bitmask": 1, "channel_indexes": []},
+        )
+
+
 def test_sequence_readback_requires_matching_fresh_packet() -> None:
     class Redis:
         async def get(self, key: str):

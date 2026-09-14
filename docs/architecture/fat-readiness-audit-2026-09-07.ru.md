@@ -460,6 +460,12 @@ delivery path теперь также классифицирует ошибку 
 доставки. Добавлена SQL regression; фактический safe-state требует hardware
 проверки.
 
+**Статус slice G87 (2026-09-14): fail-closed sequence readback scope.**
+`DO_BITMASK` и `DO_PAIR` теперь требуют полного resolved channel-index scope до
+создания intent и публикации; пустой scope больше не может пройти через
+ошибочно истинный `all([])`. Добавлена negative regression; inventory и
+соответствие индексов реальному firmware остаются hardware checks.
+
 ## GAP-10 — Нет доказанной общей исключительности физического выхода
 
 **P0 · allocation/command ownership · подтверждён разрыв границ.**
