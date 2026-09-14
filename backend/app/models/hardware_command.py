@@ -16,6 +16,7 @@ class HardwareCommandIntent(Base):
         Index("ix_hardware_command_intents_workspace_created", "workspace_id", "created_at"),
         Index("ix_hardware_command_intents_job_created", "job_id", "created_at"),
         Index("ix_hardware_command_intents_channel_created", "channel_id", "created_at"),
+        Index("ix_hardware_command_intents_status_execution", "status", "execution_status"),
     )
 
     command_id: Mapped[str] = mapped_column(String(64), primary_key=True)

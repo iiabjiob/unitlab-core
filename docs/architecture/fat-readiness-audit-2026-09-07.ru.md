@@ -473,6 +473,12 @@ payload.channel_ids; recovery после DO_PAIR/DO_BITMASK блокирует �
 небезопасным. Добавлена regression для secondary channel; PostgreSQL query-rate и
 migration/backfill legacy intents требуют отдельного deployment check.
 
+**Статус slice G89 (2026-09-14): recovery lookup index.** Для нового lookup
+добавлен индекс `status + execution_status`, чтобы fail-closed проверка intent
+сохраняла предсказуемый план при росте durable history. Offline migration graph и
+full backend suite проверены; production PostgreSQL p95/query-plan всё ещё нужен
+на целевом deployment.
+
 ## GAP-10 — Нет доказанной общей исключительности физического выхода
 
 **P0 · allocation/command ownership · подтверждён разрыв границ.**
