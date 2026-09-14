@@ -1829,79 +1829,79 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
 
 <template>
   <section class="switchgear-sld-package-canvas">
-    <div class="switchgear-sld-package-canvas__toolbar">
-      <div class="switchgear-sld-package-canvas__status">
+    <div class="switchgear-sld-package-canvas__toolbar" role="toolbar" aria-label="Single line diagram editor">
+      <div class="switchgear-sld-package-canvas__status" aria-live="polite">
         <span>{{ sceneCounts.nodes }} switchgears</span>
         <span>{{ sceneCounts.edges }} lines</span>
         <span>{{ sceneCounts.statics }} symbols</span>
         <span>{{ sceneCounts.texts }} texts</span>
       </div>
       <div class="switchgear-sld-package-canvas__actions">
-        <div class="switchgear-sld-package-canvas__tool-tabs">
-          <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': activeTool === 'select' }" @click="setTool('select')">
+        <div class="switchgear-sld-package-canvas__tool-tabs" role="group" aria-label="Canvas tool">
+          <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': activeTool === 'select' }" :aria-pressed="activeTool === 'select'" title="Select and move objects (V)" @click="setTool('select')">
             Select
           </button>
-          <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': activeTool === 'pan' }" @click="setTool('pan')">
+          <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': activeTool === 'pan' }" :aria-pressed="activeTool === 'pan'" title="Pan the canvas (H)" @click="setTool('pan')">
             Pan
           </button>
-          <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': activeTool === 'line' }" @click="setTool('line')">
+          <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': activeTool === 'line' }" :aria-pressed="activeTool === 'line'" title="Draw a line (L)" @click="setTool('line')">
             Line
           </button>
         </div>
-        <div v-if="activeTool === 'line' || selectedEdgeCount > 0" class="switchgear-sld-package-canvas__tool-tabs">
-          <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': (activeTool === 'line' ? lineKind : selectedEdgeKind) === 'line' }" @click="activeTool === 'line' ? lineKind = 'line' : setSelectedEdgesKind('line')">
+        <div v-if="activeTool === 'line' || selectedEdgeCount > 0" class="switchgear-sld-package-canvas__tool-tabs" role="group" aria-label="Line style">
+          <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': (activeTool === 'line' ? lineKind : selectedEdgeKind) === 'line' }" :aria-pressed="(activeTool === 'line' ? lineKind : selectedEdgeKind) === 'line'" title="Plain line" @click="activeTool === 'line' ? lineKind = 'line' : setSelectedEdgesKind('line')">
             Plain
           </button>
-          <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': (activeTool === 'line' ? lineKind : selectedEdgeKind) === 'arrow' }" @click="activeTool === 'line' ? lineKind = 'arrow' : setSelectedEdgesKind('arrow')">
+          <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': (activeTool === 'line' ? lineKind : selectedEdgeKind) === 'arrow' }" :aria-pressed="(activeTool === 'line' ? lineKind : selectedEdgeKind) === 'arrow'" title="Arrow line" @click="activeTool === 'line' ? lineKind = 'arrow' : setSelectedEdgesKind('arrow')">
             Arrow
           </button>
-          <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': (activeTool === 'line' ? lineWeight : selectedEdgeWeight) === 'normal' }" @click="activeTool === 'line' ? lineWeight = 'normal' : setSelectedEdgesWeight('normal')">
+          <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': (activeTool === 'line' ? lineWeight : selectedEdgeWeight) === 'normal' }" :aria-pressed="(activeTool === 'line' ? lineWeight : selectedEdgeWeight) === 'normal'" title="Normal line weight" @click="activeTool === 'line' ? lineWeight = 'normal' : setSelectedEdgesWeight('normal')">
             Normal
           </button>
-          <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': (activeTool === 'line' ? lineWeight : selectedEdgeWeight) === 'bold' }" @click="activeTool === 'line' ? lineWeight = 'bold' : setSelectedEdgesWeight('bold')">
+          <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': (activeTool === 'line' ? lineWeight : selectedEdgeWeight) === 'bold' }" :aria-pressed="(activeTool === 'line' ? lineWeight : selectedEdgeWeight) === 'bold'" title="Bold line weight" @click="activeTool === 'line' ? lineWeight = 'bold' : setSelectedEdgesWeight('bold')">
             Bold
           </button>
-          <UiButton v-if="selectedEdgeCount > 0" size="sm" variant="secondary" @click="rotateSelectedEdges90">
+          <UiButton v-if="selectedEdgeCount > 0" size="sm" variant="secondary" title="Rotate selected lines 90 degrees" @click="rotateSelectedEdges90">
             Rotate
           </UiButton>
         </div>
-        <UiButton size="sm" variant="secondary" @click="addStatic('transformer')">
+        <UiButton size="sm" variant="secondary" title="Add transformer symbol" @click="addStatic('transformer')">
           Add transformer
         </UiButton>
-        <UiButton size="sm" variant="secondary" @click="addStatic('ground')">
+        <UiButton size="sm" variant="secondary" title="Add ground symbol" @click="addStatic('ground')">
           Add ground
         </UiButton>
-        <UiButton size="sm" variant="secondary" @click="addText">
+        <UiButton size="sm" variant="secondary" title="Add text label" @click="addText">
           Add text
         </UiButton>
-        <UiButton v-if="selectedTextCount === 1" size="sm" variant="secondary" @click="beginTextEdit(selectedTextIds[0]!)">
+        <UiButton v-if="selectedTextCount === 1" size="sm" variant="secondary" title="Edit selected text" @click="beginTextEdit(selectedTextIds[0]!)">
           Edit text
         </UiButton>
-        <div v-if="selectedStaticCount > 0" class="switchgear-sld-package-canvas__tool-tabs">
-          <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': selectedStaticSize === 'sm' }" @click="setSelectedStaticSize('sm')">
+        <div v-if="selectedStaticCount > 0" class="switchgear-sld-package-canvas__tool-tabs" role="group" aria-label="Symbol size">
+          <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': selectedStaticSize === 'sm' }" :aria-pressed="selectedStaticSize === 'sm'" title="Small symbol" @click="setSelectedStaticSize('sm')">
             S
           </button>
-          <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': selectedStaticSize === 'md' }" @click="setSelectedStaticSize('md')">
+          <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': selectedStaticSize === 'md' }" :aria-pressed="selectedStaticSize === 'md'" title="Medium symbol" @click="setSelectedStaticSize('md')">
             M
           </button>
-          <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': selectedStaticSize === 'lg' }" @click="setSelectedStaticSize('lg')">
+          <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': selectedStaticSize === 'lg' }" :aria-pressed="selectedStaticSize === 'lg'" title="Large symbol" @click="setSelectedStaticSize('lg')">
             L
           </button>
-          <UiButton size="sm" variant="secondary" @click="rotateSelectedStatic">
+          <UiButton size="sm" variant="secondary" title="Rotate selected symbols 90 degrees" @click="rotateSelectedStatic">
             Rotate
           </UiButton>
         </div>
         <div v-if="selectedNodeCount > 1" class="switchgear-sld-package-canvas__tool-tabs">
-          <UiButton size="sm" variant="secondary" @click="alignSelectedNodesLeft">
+          <UiButton size="sm" variant="secondary" title="Align selected switchgears to the left" @click="alignSelectedNodesLeft">
             Align left
           </UiButton>
-          <UiButton size="sm" variant="secondary" @click="alignSelectedNodesTop">
+          <UiButton size="sm" variant="secondary" title="Align selected switchgears to the top" @click="alignSelectedNodesTop">
             Align top
           </UiButton>
-          <UiButton size="sm" variant="secondary" @click="alignSelectedNodesRight">
+          <UiButton size="sm" variant="secondary" title="Align selected switchgears to the right" @click="alignSelectedNodesRight">
             Align right
           </UiButton>
-          <UiButton size="sm" variant="secondary" @click="alignSelectedNodesBottom">
+          <UiButton size="sm" variant="secondary" title="Align selected switchgears to the bottom" @click="alignSelectedNodesBottom">
             Align bottom
           </UiButton>
         </div>
@@ -1935,25 +1935,25 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
         </div>
         <span class="switchgear-sld-package-canvas__selection">{{ snapStateLabel }}</span>
         <span class="switchgear-sld-package-canvas__selection">{{ selectionLabel }}</span>
-        <UiButton size="sm" variant="secondary" :disabled="!canUndo" @click="undo">
+        <UiButton size="sm" variant="secondary" :disabled="!canUndo" title="Undo last change (Ctrl/Cmd+Z)" @click="undo">
           Undo
         </UiButton>
-        <UiButton size="sm" variant="secondary" :disabled="!canRedo" @click="redo">
+        <UiButton size="sm" variant="secondary" :disabled="!canRedo" title="Redo last change (Ctrl/Cmd+Shift+Z)" @click="redo">
           Redo
         </UiButton>
-        <UiButton size="sm" variant="secondary" @click="fitScene">
+        <UiButton size="sm" variant="secondary" title="Fit all objects in view" @click="fitScene">
           Fit
         </UiButton>
-        <UiButton size="sm" variant="secondary" @click="autoArrange">
+        <UiButton size="sm" variant="secondary" title="Arrange switchgears automatically" @click="autoArrange">
           Auto layout
         </UiButton>
-        <UiButton size="sm" variant="secondary" :disabled="selection.selection.value.ids.length === 0" @click="clearSelection">
+        <UiButton size="sm" variant="secondary" :disabled="selection.selection.value.ids.length === 0" title="Clear selection (Esc)" @click="clearSelection">
           Clear
         </UiButton>
-        <UiButton size="sm" variant="secondary" :disabled="!canDuplicateSelection" @click="duplicateSelection">
+        <UiButton size="sm" variant="secondary" :disabled="!canDuplicateSelection" title="Duplicate selected symbols, lines, or text (Ctrl/Cmd+D)" @click="duplicateSelection">
           Duplicate
         </UiButton>
-        <UiButton size="sm" variant="secondary" :disabled="!canDelete" @click="deleteSelection">
+        <UiButton size="sm" variant="secondary" :disabled="!canDelete" title="Delete selection (Delete/Backspace)" @click="deleteSelection">
           Delete
         </UiButton>
       </div>
