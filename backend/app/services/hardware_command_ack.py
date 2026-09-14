@@ -8,6 +8,7 @@ from sqlalchemy import case, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.hardware_command import HardwareCommandIntent
+from app.services.hardware_command_intent import RECOVERY_REQUIRED_ACTIONS
 
 HARDWARE_COMMAND_ACK_DIAGNOSTIC_STREAM = "hardware:command-ack-diagnostics"
 
@@ -47,7 +48,7 @@ async def wait_for_hardware_command_acks(
             .values(
                 execution_status="timeout",
                 status=case(
-                    (HardwareCommandIntent.action == "restore", "recovery_required"),
+                    (HardwareCommandIntent.action.in_(tuple(RECOVERY_REQUIRED_ACTIONS)), "recovery_required"),
                     else_="unknown",
                 ),
             )

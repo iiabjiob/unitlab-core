@@ -447,6 +447,12 @@ backend regression suite; реальный kill worker/Redis и deployment recov
 восстановленным по факту потери процесса. Добавлена negative regression; физический
 recovery/readback и firmware watchdog остаются deployment checks.
 
+**Статус slice G85 (2026-09-14): pulse ACK-timeout recovery.** Та же политика
+`recovery_required` теперь применяется к `do_pulse` при timeout ACK, а не только
+при cancellation/restart; это закрывает отдельную SQL-ветку timeout и сохраняет
+физический канал заблокированным до recovery. Проверены ACK/recovery regressions;
+реальное поведение firmware при потерянном ACK остаётся hardware check.
+
 ## GAP-10 — Нет доказанной общей исключительности физического выхода
 
 **P0 · allocation/command ownership · подтверждён разрыв границ.**

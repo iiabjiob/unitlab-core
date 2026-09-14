@@ -13,6 +13,7 @@ from app.services.hardware_command_intent import (
     has_hardware_recovery_required,
     mark_hardware_command_intent_delivery_failure,
     reconcile_unfinished_hardware_command_intents,
+    requires_physical_recovery,
 )
 from app.workers.signal_test_run_runner import (
     _deliver_durable_command,
@@ -185,6 +186,12 @@ async def test_interrupted_pulse_requires_physical_recovery() -> None:
 
     assert reconciled == 1
     assert intent.status == "recovery_required"
+
+
+def test_pulse_and_restore_require_physical_recovery() -> None:
+    assert requires_physical_recovery("do_pulse") is True
+    assert requires_physical_recovery("restore") is True
+    assert requires_physical_recovery("do_set") is False
 
 
 @pytest.mark.anyio

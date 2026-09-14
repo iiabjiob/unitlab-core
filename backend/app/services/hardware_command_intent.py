@@ -5,6 +5,12 @@ from sqlalchemy import and_, exists, or_, select, update
 
 from app.models.hardware_command import HardwareCommandIntent
 
+RECOVERY_REQUIRED_ACTIONS = frozenset({"restore", "do_pulse"})
+
+
+def requires_physical_recovery(action: str | None) -> bool:
+    return str(action or "").strip().lower() in RECOVERY_REQUIRED_ACTIONS
+
 
 async def has_hardware_recovery_required(
     db: AsyncSession,
@@ -49,7 +55,7 @@ async def reconcile_unfinished_hardware_command_intents(
     result = await db.execute(select(HardwareCommandIntent).where(*filters))
     intents = list(result.scalars().all())
     for intent in intents:
-        intent.status = "recovery_required" if intent.action in {"restore", "do_pulse"} else "unknown"
+        intent.status = "recovery_required" if requires_physical_recovery(intent.action) else "unknown"
     if intents:
         await db.flush()
     return len(intents)
