@@ -7,7 +7,7 @@ import pytest
 
 from app.schemas.verification_schema import VerificationExecutionContextSchema
 from app.services.iec61850.report_runtime import Iec61850DeviceEndpoint, Iec61850RuntimeMode
-from app.services.verification_execution import _first_non_empty_report_text, build_runtime_subscription_plan, execute_simulated_verification_run
+from app.services.verification_execution import _first_non_empty_report_text, _latency_ms, _resolve_evidence_state, build_runtime_subscription_plan, execute_simulated_verification_run
 from app.services.verification_planner import VerificationTargetSource, build_verification_subscription_plan
 
 
@@ -68,6 +68,30 @@ def _build_plan():
 def test_report_identifier_normalization_ignores_native_empty_placeholder() -> None:
     assert _first_non_empty_report_text("<empty>", "brcbST01", "fallback") == "brcbST01"
     assert _first_non_empty_report_text("<none>", "fallback") == "fallback"
+
+
+def test_report_before_trigger_is_not_coerced_to_fresh_zero_latency() -> None:
+    triggered_at = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
+    observed_at = triggered_at - timedelta(minutes=5)
+    latency_ms = _latency_ms(triggered_at, observed_at)
+
+    assert latency_ms == -300_000
+    status, freshness, reason, kind = _resolve_evidence_state(
+        target=_build_plan().targets[0],
+        actual_report_path="LD0/XCBR1.Pos.stVal[ST]",
+        observed_at=observed_at,
+        latency_ms=latency_ms,
+        runtime_result=SimpleNamespace(diagnostics=()),
+        window_ms=500,
+        timeout_ms=2_000,
+    )
+
+    assert (status, freshness, reason, kind) == (
+        "stale",
+        "stale",
+        "report_before_trigger",
+        "report_observation",
+    )
 
 
 def test_runtime_subscription_plan_keeps_transport_endpoint_out_of_ied_name() -> None:

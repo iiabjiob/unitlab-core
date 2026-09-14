@@ -501,7 +501,9 @@ def _latency_ms(triggered_at: datetime, observed_at: datetime | None) -> int | N
     if observed_at is None:
         return None
     delta = observed_at - triggered_at
-    return max(0, int(delta.total_seconds() * 1000))
+    # Keep the sign: a report received before the trigger is stale evidence,
+    # not a zero-latency confirmation.
+    return int(delta.total_seconds() * 1000)
 
 
 def _resolve_evidence_state(
@@ -520,6 +522,8 @@ def _resolve_evidence_state(
         return "invalid", "unknown", "missing_report_path", "report_observation"
     if latency_ms is None:
         return "invalid", "unknown", "missing_latency", "report_observation"
+    if latency_ms < 0:
+        return "stale", "stale", "report_before_trigger", "report_observation"
     if latency_ms > timeout_ms:
         return "out_of_window", "live", "window_exceeded", "report_observation"
     if latency_ms > window_ms:

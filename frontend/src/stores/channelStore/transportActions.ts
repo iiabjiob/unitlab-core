@@ -61,7 +61,6 @@ export function createChannelTransportActions(params: Params) {
     }
 
     const ws = useWebSocketStore()
-    const actionId = params.enqueueAction(device.id)
     const msg: SetDoCommandMessage = {
       action: WSAction.SET_DO_COMMAND,
       unit_id: device.unit_id,
@@ -70,7 +69,11 @@ export function createChannelTransportActions(params: Params) {
       value: state ? 1 : 0,
     }
     const commandIssuedAt = Date.now()
-    ws.send(msg)
+    if (!ws.send(msg, { queue: "reject" })) {
+      params.logger.error(`DO command rejected: WebSocket is not open (${device.unit_id}, ch=${chIndex})`)
+      return
+    }
+    const actionId = params.enqueueAction(device.id)
 
     const channel = params.findDoChannel(device.id, chIndex)
     if (channel) {
@@ -104,12 +107,16 @@ export function createChannelTransportActions(params: Params) {
 
     const ws = useWebSocketStore()
     const maskSummary = params.formatSummary(params.summarizeMaskTargets(doChannels, mask))
-    ws.send({
+    const accepted = ws.send({
       action: WSAction.SET_DO_COMMAND,
       unit_id: unitId,
       mode: CmdMode.SET_ALL_BIT,
       bitmask: mask,
-    } satisfies SetDoCommandMessage)
+    } satisfies SetDoCommandMessage, { queue: "reject" })
+    if (!accepted) {
+      params.logger.error(`DO ALL command rejected: WebSocket is not open (${unitId})`)
+      return
+    }
 
     doChannels.forEach(ch => {
       const target = ((mask >>> ch.index) & 1) === 1
@@ -165,16 +172,21 @@ export function createChannelTransportActions(params: Params) {
     }
 
     const ws = useWebSocketStore()
-    const actionId = params.enqueueAction(device.id)
     const commandIssuedAt = Date.now()
-    ws.send({
+    const accepted = ws.send({
       action: WSAction.SET_DO_COMMAND,
       unit_id: device.unit_id,
       mode: CmdMode.SET_PAIR_BIT,
       chA,
       chB,
       state2b,
-    } satisfies SetDoCommandMessage)
+    } satisfies SetDoCommandMessage, { queue: "reject" })
+    if (!accepted) {
+      const error = `DO pair command rejected: WebSocket is not open (${unitId})`
+      params.logger.error(error)
+      return { ok: false, error }
+    }
+    const actionId = params.enqueueAction(device.id)
 
     params.enterDoPendingState(channelA, pairTargets[0], actionId)
     params.enterDoPendingState(channelB, pairTargets[1], actionId)
@@ -206,13 +218,17 @@ export function createChannelTransportActions(params: Params) {
     }
 
     const ws = useWebSocketStore()
-    const actionId = params.enqueueAction(device.id)
-    ws.send({
+    const accepted = ws.send({
       action: WSAction.SET_AO_COMMAND,
       unit_id: device.unit_id,
       ch: chIndex,
       value,
-    } satisfies SetAoCommandMessage)
+    } satisfies SetAoCommandMessage, { queue: "reject" })
+    if (!accepted) {
+      params.logger.error(`AO command rejected: WebSocket is not open (${device.unit_id}, ch=${chIndex})`)
+      return
+    }
+    const actionId = params.enqueueAction(device.id)
 
     params.registerAoAction(device.id, chIndex, actionId)
 

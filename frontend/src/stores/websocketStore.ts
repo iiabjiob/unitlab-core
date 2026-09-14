@@ -7,6 +7,10 @@ import { getLogger } from "@/utils/logger"
 
 const logger = getLogger("WS")
 
+export type WebSocketSendOptions = {
+  queue?: "allow" | "reject"
+}
+
 export const useWebSocketStore = defineStore("websocketStore", () => {
   const socket = ref<WebSocket | null>(null)
   const isConnected = ref(false)
@@ -216,9 +220,15 @@ export const useWebSocketStore = defineStore("websocketStore", () => {
     }
   }
 
-  function send(msg: WSMessage) {
+  function send(msg: WSMessage, options: WebSocketSendOptions = {}): boolean {
     if (socket.value?.readyState === WebSocket.OPEN) {
       _sendNow(msg)
+      return true
+    }
+
+    if (options.queue === "reject") {
+      logger.warn("🚫 Rejected while WS is not open", msg)
+      return false
     } else {
       if (messageQueue.length > MAX_QUEUE) {
         logger.warn("⚠️ Queue full, dropping oldest")
@@ -226,6 +236,7 @@ export const useWebSocketStore = defineStore("websocketStore", () => {
       }
       messageQueue.push(msg)
       logger.info("🕒 Queued", msg)
+      return true
     }
   }
 
