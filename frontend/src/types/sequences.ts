@@ -54,6 +54,7 @@ export interface SequenceStepPayload {
   repeat_mode?: SequenceRepeatMode | null
   iterations?: number | null
   duration_ms?: number | null
+  switchgear_id?: number | null
 }
 
 export interface SequenceRuntimeState {

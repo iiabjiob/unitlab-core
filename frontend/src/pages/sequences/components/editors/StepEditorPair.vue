@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue"
-import SignalBackedChannelField from "@/components/signals/SignalBackedChannelField.vue"
+import { computed, onMounted } from "vue"
 import UiButton from "@/components/ui/UiButton.vue"
+import { useSwitchgearStore } from "@/stores/switchgearStore"
 import type { SequenceStep } from "@/types/sequences"
-import { CHANNEL_TYPES } from "@/types/channel"
 import type { StepEditorChange } from "./editorTypes"
 
 const props = defineProps<{
@@ -15,62 +14,50 @@ const emit = defineEmits<{
 	(e: "update", payload: StepEditorChange): void
 }>()
 
+const switchgearStore = useSwitchgearStore()
+
 const pairChannels = computed<[number | null, number | null]>(() => {
 	const ids = props.step.payload?.channel_ids ?? []
 	return [ids[0] ?? null, ids[1] ?? null]
 })
 
+const switchgearId = computed(() => {
+	const raw = props.step.payload?.switchgear_id
+	return Number.isFinite(Number(raw)) ? Number(raw) : null
+})
+
+const configuredSwitchgears = computed(() => switchgearStore.switchgears.filter((switchgear) => {
+	const open = switchgear.bindings.find((binding) => binding.role === "do_open")?.channel_id
+	const closed = switchgear.bindings.find((binding) => binding.role === "do_closed")?.channel_id
+	return open !== null && open !== undefined && closed !== null && closed !== undefined && open !== closed
+}))
+
 const state2b = computed(() => Number(props.step.payload?.state2b ?? 0))
-const pairSignalIds = computed<[number | null, number | null]>(() => {
-	const ids = props.step.payload?.signal_ids ?? []
-	const normalize = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : null
-	return [normalize(ids[0]), normalize(ids[1])]
+onMounted(() => {
+	void switchgearStore.ensureLoaded().catch(() => undefined)
 })
-const pairSignalKeys = computed<[string | null, string | null]>(() => {
-	const keys = props.step.payload?.signal_keys ?? []
-	const normalize = (value: unknown) => {
-		if (value === null || value === undefined) return null
-		const text = String(value).trim()
-		return text.length > 0 ? text : null
+
+function updateSwitchgear(value: string) {
+	const id = Number(value)
+	const selected = configuredSwitchgears.value.find((switchgear) => switchgear.id === id)
+	if (!selected) {
+		return
 	}
-	return [normalize(keys[0]), normalize(keys[1])]
-})
 
-const draftChannels = ref<[number | null, number | null]>([null, null])
-const draftSignalIds = ref<[number | null, number | null]>([null, null])
-const draftSignalKeys = ref<[string | null, string | null]>([null, null])
+	const openChannelId = selected.bindings.find((binding) => binding.role === "do_open")?.channel_id ?? null
+	const closedChannelId = selected.bindings.find((binding) => binding.role === "do_closed")?.channel_id ?? null
+	if (openChannelId === null || closedChannelId === null || openChannelId === closedChannelId) {
+		return
+	}
 
-watch(
-	[pairChannels, pairSignalIds, pairSignalKeys],
-	([nextChannels, nextSignalIds, nextSignalKeys]) => {
-		draftChannels.value = [...nextChannels] as [number | null, number | null]
-		draftSignalIds.value = [...nextSignalIds] as [number | null, number | null]
-		draftSignalKeys.value = [...nextSignalKeys] as [string | null, string | null]
-	},
-	{ immediate: true },
-)
-
-function emitPairPayloadPatch() {
 	emit("update", {
 		payload: {
-			channel_ids: [...draftChannels.value],
-			signal_ids: [...draftSignalIds.value],
-			signal_keys: [...draftSignalKeys.value],
+			switchgear_id: selected.id,
+			channel_ids: [openChannelId, closedChannelId],
+			signal_ids: [null, null],
+			signal_keys: [null, null],
 		},
 	})
-}
-
-function updateChannel(index: 0 | 1, value: number | null) {
-	draftChannels.value[index] = value ?? null
-	draftSignalIds.value[index] = null
-	draftSignalKeys.value[index] = null
-	emitPairPayloadPatch()
-}
-
-function updateSignal(index: 0 | 1, payload: { signalId: number | null; signalKey: string | null }) {
-	draftSignalIds.value[index] = payload.signalId ?? null
-	draftSignalKeys.value[index] = payload.signalKey ?? null
-	emitPairPayloadPatch()
 }
 
 function setState(next: number) {
@@ -91,37 +78,32 @@ const stateOptions = [
 		<div class="sequence-step-form__grid sequence-step-form__grid--two">
 			<div>
 				<div class="sequence-step-form__label">
-					Open output
+					Switchgear
 				</div>
-				<SignalBackedChannelField
-					class="sequence-step-form__control"
-					:channel-id="pairChannels[0]"
-					:channel-type="CHANNEL_TYPES.DO"
-					:signal-id="pairSignalIds[0]"
-					:signal-key="pairSignalKeys[0]"
-					:exclude-ids="pairChannels[1] ? [pairChannels[1]] : []"
-					:signal-picker-title="'Select pair signal A'"
-					:disabled="disabled"
-					@update:channelId="value => updateChannel(0, value)"
-					@update:signal="value => updateSignal(0, value)"
-				/>
+				<select
+					class="sequence-step-form__control sequence-step-form__select"
+					:value="switchgearId ?? ''"
+					:disabled="disabled || switchgearStore.loading"
+					@change="updateSwitchgear(($event.target as HTMLSelectElement).value)"
+				>
+					<option value="">Select configured switchgear</option>
+					<option
+						v-for="item in configuredSwitchgears"
+						:key="item.id"
+						:value="item.id"
+					>
+						{{ item.name }} · {{ item.switchgear_type }}
+					</option>
+				</select>
 			</div>
 			<div>
 				<div class="sequence-step-form__label">
-					Close output
+					Configured outputs
 				</div>
-				<SignalBackedChannelField
-					class="sequence-step-form__control"
-					:channel-id="pairChannels[1]"
-					:channel-type="CHANNEL_TYPES.DO"
-					:signal-id="pairSignalIds[1]"
-					:signal-key="pairSignalKeys[1]"
-					:exclude-ids="pairChannels[0] ? [pairChannels[0]] : []"
-					:signal-picker-title="'Select pair signal B'"
-					:disabled="disabled"
-					@update:channelId="value => updateChannel(1, value)"
-					@update:signal="value => updateSignal(1, value)"
-				/>
+				<div class="sequence-step-form__configured-pair">
+					<span>Open #{{ pairChannels[0] ?? "—" }}</span>
+					<span>Close #{{ pairChannels[1] ?? "—" }}</span>
+				</div>
 			</div>
 		</div>
 
