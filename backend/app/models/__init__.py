@@ -16,6 +16,7 @@ from .workspace_iec61850 import (
     WorkspaceIec61850RuntimeSelectionEvent,
     WorkspaceIec61850SclImport,
 )  # noqa: F401
+from .core_diagnostics import CoreDiagnosticsAcknowledgement  # noqa: F401
 
 __all__ = [
     "Device",
@@ -47,4 +48,5 @@ __all__ = [
     "WorkspaceIec61850SclImport",
     "WorkspaceIec61850RuntimeSelectionEvent",
     "WorkspaceIec61850RuntimeSelection",
+    "CoreDiagnosticsAcknowledgement",
 ]

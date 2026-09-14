@@ -1,5 +1,9 @@
 from app.services.core_diag_event_forwarder import _incident_id
-from app.services.core_diagnostics_incident import acknowledge_incident, is_incident_acknowledged
+from app.services.core_diagnostics_incident import (
+    acknowledge_incident,
+    is_incident_acknowledged,
+    record_incident_acknowledgement,
+)
 
 
 class _Redis:
@@ -65,3 +69,23 @@ def test_incident_acknowledgement_is_ttl_backed_and_scoped() -> None:
     assert next(iter(redis.values)) == "core:diagnostics:ack:rpi-1:core-diag:abc"
     assert redis.events[0]["stream"] == "core:diagnostics:ack-events"
     assert "core_diagnostics_acknowledged" in redis.events[0]["event"]
+
+
+def test_incident_acknowledgement_is_persisted_as_append_only_record() -> None:
+    import asyncio
+
+    class Db:
+        def __init__(self) -> None:
+            self.records = []
+
+        def add(self, record) -> None:
+            self.records.append(record)
+
+        async def commit(self) -> None:
+            return None
+
+    db = Db()
+    asyncio.run(record_incident_acknowledgement(db, hostname="rpi-1", incident_id="core-diag:abc"))
+    assert db.records[0].hostname == "rpi-1"
+    assert db.records[0].incident_id == "core-diag:abc"
+    assert db.records[0].actor == "websocket-anonymous"

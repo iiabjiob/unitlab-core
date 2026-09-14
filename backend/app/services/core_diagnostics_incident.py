@@ -36,6 +36,25 @@ async def acknowledge_incident(redis: Any, *, hostname: str, incident_id: str) -
     return True
 
 
+async def record_incident_acknowledgement(
+    db: Any,
+    *,
+    hostname: str,
+    incident_id: str,
+    actor: str = "websocket-anonymous",
+) -> None:
+    from app.models.core_diagnostics import CoreDiagnosticsAcknowledgement
+
+    db.add(
+        CoreDiagnosticsAcknowledgement(
+            hostname=hostname.strip(),
+            incident_id=incident_id.strip(),
+            actor=actor.strip() or "websocket-anonymous",
+        )
+    )
+    await db.commit()
+
+
 async def is_incident_acknowledged(redis: Any, *, hostname: str, incident_id: str) -> bool:
     if not hostname.strip() or not incident_id.strip():
         return False

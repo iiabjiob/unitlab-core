@@ -556,6 +556,12 @@ Redis stream `core:diagnostics:ack-events` с incident ID, hostname, време�
 Redis persistence, но не заменяет authenticated multi-user identity и экспорт в
 долговечное PostgreSQL audit storage.
 
+**Статус slice G31 (2026-09-14): PostgreSQL acknowledgement audit storage.**
+Добавлены модель `core_diagnostics_acknowledgements` и Alembic migration; WS ack
+теперь коммитит append-only запись в PostgreSQL перед обновлением Redis cache и
+stream. Actor пока явно `websocket-anonymous`, поэтому authenticated multi-user
+identity остаётся незакрытым.
+
 ## Дополнительный связанный риск — AO-сценарий
 
 При следующем аппаратном slice отдельно проверить AO-ветку [signal_test_run_runner.py](../../backend/app/workers/signal_test_run_runner.py): она выбирает случайное значение 0–24. Это подтверждено кодом, но электрические единицы/допустимые диапазоны конкретного оборудования здесь не установлены. Не переносить такой сценарий автоматически в доверенный test plan: сначала определить тип/диапазон канала, затем сохранить детерминированную последовательность значений в ревизии плана и проверить readback. Основная цель текущей очереди — сухой контакт; расширение AO оформить отдельным scope.
