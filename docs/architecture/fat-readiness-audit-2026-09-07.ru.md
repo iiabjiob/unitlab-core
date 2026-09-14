@@ -1070,7 +1070,8 @@ hardware profile шаг получает `ao_profile_required` до lease/enqueu
 **Статус slice G12 (2026-09-14): частично закрыт.** Исправлен manual AO
 boundary: single-channel AO теперь передаёт channel scope в общем формате
 `channel_ids`, поэтому валидная команда доходит до admission/enqueue. ACK и
-readback для manual-команд остаются отдельным runtime gap.
+readback для manual-команд закрыты server-side slices G43/G44/G45/G102; реальный
+device ACK path и timing остаются отдельными runtime release checks.
 Recovery lookup для физического канала теперь не ограничен workspace: `unknown`
 или `recovery_required` из другого workspace также блокирует повторное воздействие.
 Timeout ожидания hardware ACK теперь переводит обычную команду в `unknown`, а
