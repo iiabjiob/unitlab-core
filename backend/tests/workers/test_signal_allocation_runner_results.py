@@ -289,6 +289,20 @@ def test_step_evidence_status_does_not_hide_verdict_failure_after_ack() -> None:
     assert signal_test_run_runner._step_evidence_status("value_mismatch") == "failed"
 
 
+def test_terminal_job_status_does_not_promote_skips_or_verification_failures() -> None:
+    base = {"processed": 2, "succeeded": 2, "skipped": 0, "verification_failed": 0}
+    assert signal_test_run_runner._derive_terminal_job_status(base, progress_total=2) == "succeeded"
+    assert signal_test_run_runner._derive_terminal_job_status(
+        {**base, "skipped": 1}, progress_total=2
+    ) == "failed"
+    assert signal_test_run_runner._derive_terminal_job_status(
+        {**base, "verification_failed": 1}, progress_total=2
+    ) == "failed"
+    assert signal_test_run_runner._derive_terminal_job_status(
+        {**base, "succeeded": 1}, progress_total=2
+    ) == "failed"
+
+
 def test_sleep_before_restore_defers_task_cancellation(monkeypatch) -> None:
     async def cancelled_sleep(seconds: float) -> None:
         raise asyncio.CancelledError

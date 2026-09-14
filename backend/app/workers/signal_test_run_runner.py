@@ -581,6 +581,29 @@ def _step_evidence_status(test_status: str) -> str:
     return "succeeded" if test_status in {"tested", "verified"} else "failed"
 
 
+def _derive_terminal_job_status(result: dict[str, Any], *, progress_total: int) -> str:
+    """Keep terminal job status aligned with step verdicts, not enqueue count."""
+    if bool(result.get("cancelled")):
+        return "cancelled"
+    if progress_total <= 0:
+        return "succeeded"
+    if int(result.get("processed") or 0) < progress_total:
+        return "failed"
+    if int(result.get("skipped") or 0) > 0:
+        return "failed"
+    if int(result.get("verification_failed") or 0) > 0:
+        return "failed"
+    if int(result.get("succeeded") or 0) < progress_total:
+        return "failed"
+    statuses = result.get("test_status_by_signal")
+    if isinstance(statuses, dict) and any(
+        str(status).strip().lower() not in {"tested", "verified"}
+        for status in statuses.values()
+    ):
+        return "failed"
+    return "succeeded"
+
+
 async def _sleep_before_restore(seconds: float) -> bool:
     """Return whether cancellation was deferred during the restore window."""
     try:
@@ -2230,7 +2253,6 @@ async def _process_entries(redis, entries) -> None:
                             )
                     active_hardware_leases.clear()
 
-            cancelled = bool((result or {}).get("cancelled")) if isinstance(result, dict) else False
             current_before_terminal = await get_signal_job(job_id)
             current_attempt_id, _ = _extract_job_attempt_meta(current_before_terminal)
             if execution_attempt_id and current_attempt_id and current_attempt_id != execution_attempt_id:
@@ -2242,11 +2264,17 @@ async def _process_entries(redis, entries) -> None:
                 )
                 continue
 
+            terminal_status = _derive_terminal_job_status(result or {}, progress_total=progress_total)
+            terminal_message = {
+                "cancelled": "Cancelled",
+                "succeeded": "Completed",
+                "failed": "Completed with failed or skipped steps",
+            }[terminal_status]
             completed_state = await update_signal_job(
                 job_id,
-                status="cancelled" if cancelled else "succeeded",
-                message="Cancelled" if cancelled else "Completed",
-                progress_done=(result.get("processed", 0) if cancelled and isinstance(result, dict) else progress_total),
+                status=terminal_status,
+                message=terminal_message,
+                progress_done=(result.get("processed", 0) if terminal_status == "cancelled" and isinstance(result, dict) else progress_total),
                 progress_total=progress_total,
                 result=result,
             )
@@ -2258,7 +2286,7 @@ async def _process_entries(redis, entries) -> None:
                     "✅ Signal test run job complete | workspace=%s job=%s status=%s duration=%sms processed=%s ok=%s skip=%s cancelled=%s resume_applied=%s resume_offset=%s reason=%s",
                     workspace_id,
                     job_id,
-                    "cancelled" if cancelled else "succeeded",
+                    terminal_status,
                     duration_ms,
                     result_payload.get("processed", progress_total),
                     result_payload.get("succeeded", 0),
