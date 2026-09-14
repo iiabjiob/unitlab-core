@@ -1818,6 +1818,15 @@ function resolveSelectionPreviewTransform(id: string) {
   return `translate(${delta.x} ${delta.y})`
 }
 
+function resolveHandlePreviewTransform(handleId: string) {
+  const delta = selectionPreviewDelta.value
+  const ownerId = handleId.split(":")[0] ?? ""
+  if (!delta || (ownerId !== "__selection__" && !selection.isSelected(ownerId))) {
+    return undefined
+  }
+  return `translate(${delta.x} ${delta.y})`
+}
+
 function resolveNodeFill(id: string) {
   const node = diagram.scene.value.entities.nodesById.get(id)
   const switchgearId = Number(node?.metadata?.switchgearId)
@@ -2145,7 +2154,7 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
           :key="handle.id"
           :cx="handle.point.x"
           :cy="handle.point.y"
-          :transform="resolveSelectionPreviewTransform(handle.id.split(':')[0] ?? '')"
+          :transform="resolveHandlePreviewTransform(handle.id)"
           r="4"
           fill="var(--color-blue-500)"
           stroke="var(--color-white)"
