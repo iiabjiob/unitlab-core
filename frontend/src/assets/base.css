@@ -189,7 +189,7 @@ video {
 }
 
 .workspace-surface {
-  border: 1px solid var(--runtime-panel-border);
+  border: 0;
   background: linear-gradient(
     145deg,
     color-mix(in srgb, var(--runtime-panel-bg) 98%, var(--color-white) 2%),

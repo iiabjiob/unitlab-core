@@ -283,7 +283,7 @@ async function confirmDelete() {
 
 :global(.dark .switchgear-editor__summary-panel),
 :global(.dark .switchgear-editor__summary-card) {
-  border-color: var(--color-neutral-700);
+  border-color: transparent;
   background: var(--color-neutral-900);
 }
 </style>
