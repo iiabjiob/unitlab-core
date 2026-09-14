@@ -197,7 +197,7 @@ def test_pulse_and_restore_require_physical_recovery() -> None:
 @pytest.mark.anyio
 async def test_recovery_required_lookup_returns_channel_block() -> None:
     db = AsyncMock()
-    db.execute.return_value = SimpleNamespace(scalar=lambda: True)
+    db.execute.return_value = SimpleNamespace(all=lambda: [(101, {})])
 
     blocked = await has_hardware_recovery_required(db, workspace_id=7, channel_id=101)
 
@@ -208,7 +208,7 @@ async def test_recovery_required_lookup_returns_channel_block() -> None:
 @pytest.mark.anyio
 async def test_pending_queued_command_is_part_of_recovery_lookup() -> None:
     db = AsyncMock()
-    db.execute.return_value = SimpleNamespace(scalar=lambda: True)
+    db.execute.return_value = SimpleNamespace(all=lambda: [(101, {})])
 
     blocked = await has_hardware_recovery_required(db, workspace_id=7, channel_id=101)
 
@@ -219,13 +219,23 @@ async def test_pending_queued_command_is_part_of_recovery_lookup() -> None:
 @pytest.mark.anyio
 async def test_legacy_publish_failed_command_is_part_of_recovery_lookup() -> None:
     db = AsyncMock()
-    db.execute.return_value = SimpleNamespace(scalar=lambda: True)
+    db.execute.return_value = SimpleNamespace(all=lambda: [(101, {})])
 
     blocked = await has_hardware_recovery_required(db, workspace_id=7, channel_id=101)
 
     assert blocked is True
     statement = db.execute.await_args.args[0]
     assert "publish_failed" in str(statement.compile(compile_kwargs={"literal_binds": True}))
+
+
+@pytest.mark.anyio
+async def test_multi_channel_recovery_lookup_blocks_secondary_channel() -> None:
+    db = AsyncMock()
+    db.execute.return_value = SimpleNamespace(all=lambda: [(101, {"channel_ids": [101, 202]})])
+
+    blocked = await has_hardware_recovery_required(db, workspace_id=9, channel_id=202)
+
+    assert blocked is True
 
 
 @pytest.mark.anyio

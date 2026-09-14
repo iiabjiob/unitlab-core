@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import and_, exists, or_, select, update
+from sqlalchemy import and_, or_, select, update
 
 from app.models.hardware_command import HardwareCommandIntent
 
@@ -23,20 +23,32 @@ async def has_hardware_recovery_required(
     # callers and migrations, but scope the safety lookup by channel globally.
     del workspace_id
     result = await db.execute(
-        select(
-            exists().where(
-                HardwareCommandIntent.channel_id == channel_id,
-                or_(
-                    HardwareCommandIntent.status.in_(("unknown", "recovery_required", "publish_failed")),
-                    and_(
-                        HardwareCommandIntent.status.in_(("created", "queued")),
-                        HardwareCommandIntent.execution_status.in_(("unknown", "timeout")),
-                    ),
+        select(HardwareCommandIntent.channel_id, HardwareCommandIntent.payload).where(
+            or_(
+                HardwareCommandIntent.status.in_(
+                    ("unknown", "recovery_required", "publish_failed")
+                ),
+                and_(
+                    HardwareCommandIntent.status.in_(("created", "queued")),
+                    HardwareCommandIntent.execution_status.in_(("unknown", "timeout")),
                 ),
             )
         )
     )
-    return bool(result.scalar())
+    target_channel_id = int(channel_id)
+    for primary_channel_id, payload in result.all():
+        if int(primary_channel_id) == target_channel_id:
+            return True
+        if isinstance(payload, dict):
+            raw_channel_ids = payload.get("channel_ids")
+            if isinstance(raw_channel_ids, list):
+                try:
+                    if target_channel_id in {int(value) for value in raw_channel_ids}:
+                        return True
+                except (TypeError, ValueError):
+                    # Malformed multi-channel scope is not evidence of safety.
+                    return True
+    return False
 
 
 async def reconcile_unfinished_hardware_command_intents(

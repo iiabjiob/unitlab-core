@@ -466,6 +466,13 @@ delivery path теперь также классифицирует ошибку 
 ошибочно истинный `all([])`. Добавлена negative regression; inventory и
 соответствие индексов реальному firmware остаются hardware checks.
 
+**Статус slice G88 (2026-09-14): multi-channel recovery coverage.** Recovery
+lookup теперь проверяет не только primary channel_id, но и весь сохранённый
+payload.channel_ids; recovery после DO_PAIR/DO_BITMASK блокирует каждый
+затронутый физический канал. Некорректный multi-channel payload также считается
+небезопасным. Добавлена regression для secondary channel; PostgreSQL query-rate и
+migration/backfill legacy intents требуют отдельного deployment check.
+
 ## GAP-10 — Нет доказанной общей исключительности физического выхода
 
 **P0 · allocation/command ownership · подтверждён разрыв границ.**
