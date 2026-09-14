@@ -52,10 +52,83 @@ from app.services.hardware_command_intent import (
     record_hardware_command_intent,
 )
 from app.infrastructure.redis.manager import RedisManager
+from app.infrastructure.protocol.modes import State
+from app.services.command_queue_service import enqueue_request_state
 from uuid import uuid4
 
 
 logger = get_logger("sequence.runner")
+
+SEQUENCE_READBACK_TIMEOUT_MS = 2000
+
+
+async def _wait_for_sequence_readback(
+    redis: Any,
+    *,
+    unit_id: str,
+    targets: list[tuple[int, int | float]],
+    analog: bool,
+    packet_id: int,
+    timeout_ms: int = SEQUENCE_READBACK_TIMEOUT_MS,
+) -> bool:
+    """Require a state snapshot caused by this request before accepting a step."""
+    deadline = time.monotonic() + max(100, int(timeout_ms)) / 1000
+    while True:
+        try:
+            fresh = int(await redis.get(f"device:{unit_id}:last_state_packet_id")) == int(packet_id)
+        except (TypeError, ValueError):
+            fresh = False
+        if fresh:
+            matched = True
+            if analog:
+                for channel_index, expected in targets:
+                    try:
+                        actual = float(await redis.hget(f"device:{unit_id}:ao", str(int(channel_index))))
+                    except (TypeError, ValueError):
+                        matched = False
+                        break
+                    if abs(actual - float(expected)) > 0.01:
+                        matched = False
+                        break
+            else:
+                try:
+                    bitmask = int(await redis.get(f"device:{unit_id}:bitmask"))
+                except (TypeError, ValueError):
+                    bitmask = None
+                if bitmask is None:
+                    matched = False
+                else:
+                    matched = all(
+                        (1 if bitmask & (1 << int(channel_index)) else 0) == int(expected)
+                        for channel_index, expected in targets
+                    )
+            if matched:
+                return True
+        if time.monotonic() >= deadline:
+            return False
+        await asyncio.sleep(0.05)
+
+
+def _sequence_readback_targets(
+    *,
+    action: str,
+    payload: dict[str, Any],
+) -> tuple[list[tuple[int, int | float]], bool]:
+    if action == "ao_set":
+        return [(int(payload["channel_index"]), float(payload["value"]))], True
+    if action == "do_set" or action == "do_pulse":
+        return [(int(payload["channel_index"]), int(payload["value"]))], False
+    if action == "do_pair":
+        state2b = int(payload["state2b"]) & 0b11
+        indexes = [int(index) for index in payload["channel_indexes"]]
+        return [(indexes[0], state2b & 0b01), (indexes[1], (state2b >> 1) & 0b01)], False
+    if action == "do_all":
+        bitmask = int(payload["bitmask"])
+        return [
+            (int(index), 1 if bitmask & (1 << int(index)) else 0)
+            for index in payload["channel_indexes"]
+        ], False
+    raise SequenceNotApplicableError(f"Unsupported hardware readback action {action}")
 
 
 class SequenceRunnerError(Exception):
@@ -822,6 +895,7 @@ class SequenceRunner:
                     id=device.id,
                     unit_id=device.unit_id,
                     channel_ids=[int(channel.id) for channel in (device.channels or [])],
+                    channel_indexes=[int(channel.channel_index) for channel in (device.channels or [])],
                 )
 
         return {
@@ -1098,6 +1172,58 @@ class SequenceRunner:
                             raise SequenceNotApplicableError(
                                 f"Hardware command {states.get(command_id, 'unknown')}"
                             )
+                        targets, analog = _sequence_readback_targets(
+                            action=action,
+                            payload=command_payload,
+                        )
+                        readback_packet_id = await enqueue_request_state(
+                            unit_id=unit_id,
+                            mode=(
+                                State.REQ_SINGLE_FLOAT
+                                if analog
+                                else State.REQ_SINGLE_BIT
+                                if len(targets) == 1
+                                else State.REQ_ALL_BIT
+                            ),
+                            ch=targets[0][0] if analog or len(targets) == 1 else None,
+                            correlation_id=f"sequence:{command_id}:readback",
+                        )
+                        if not await _wait_for_sequence_readback(
+                            RedisManager.get_instance(),
+                            unit_id=unit_id,
+                            targets=targets,
+                            analog=analog,
+                            packet_id=readback_packet_id,
+                        ):
+                            await mark_hardware_command_intent_delivery_failure(
+                                session,
+                                command_id=command_id,
+                                status="recovery_required",
+                            )
+                            await session.commit()
+                            raise SequenceNotApplicableError("Hardware state readback failed")
+                        if action == "do_pulse":
+                            await asyncio.sleep(max(0, int(command_payload.get("pulse_ms", 0))) / 1000)
+                            revert_packet_id = await enqueue_request_state(
+                                unit_id=unit_id,
+                                mode=State.REQ_SINGLE_BIT,
+                                ch=int(command_payload["channel_index"]),
+                                correlation_id=f"sequence:{command_id}:pulse-revert",
+                            )
+                            if not await _wait_for_sequence_readback(
+                                RedisManager.get_instance(),
+                                unit_id=unit_id,
+                                targets=[(int(command_payload["channel_index"]), 0)],
+                                analog=False,
+                                packet_id=revert_packet_id,
+                            ):
+                                await mark_hardware_command_intent_delivery_failure(
+                                    session,
+                                    command_id=command_id,
+                                    status="recovery_required",
+                                )
+                                await session.commit()
+                                raise SequenceNotApplicableError("Hardware pulse restore readback failed")
                         return command_id
                     finally:
                         for lease in locals().get("leases", []) or []:

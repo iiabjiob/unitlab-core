@@ -29,6 +29,7 @@ class DeviceInfo:
     id: int
     unit_id: str
     channel_ids: List[int] = field(default_factory=list)
+    channel_indexes: List[int] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -455,7 +456,11 @@ class SequenceExecutor:
                 channel_id=list(ctx.target_device.channel_ids),
                 device_id=ctx.target_device.id,
                 unit_id=ctx.target_device.unit_id,
-                command_payload={"channel_ids": list(ctx.target_device.channel_ids), "bitmask": bitmask},
+                command_payload={
+                    "channel_ids": list(ctx.target_device.channel_ids),
+                    "channel_indexes": list(ctx.target_device.channel_indexes),
+                    "bitmask": bitmask,
+                },
                 sender=lambda command_id: enqueue_do_command(
                     unit_id=ctx.target_device.unit_id,
                     mode=Cmd.SET_ALL_BIT,

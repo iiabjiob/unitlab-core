@@ -456,6 +456,15 @@ sequence и FAT paths используют общий channel lease и пере�
 окно stale-owner command, но не заменяет атомарный broker/device-side fencing и
 стендовый тест истечения lease во время publish.
 
+**Статус slice G83 (2026-09-14): sequence post-command readback barrier.**
+Sequence hardware steps после положительного ACK теперь запрашивают свежий
+state snapshot с matching packet ID и проверяют фактические DO/AO значения;
+`DO_PAIR`/`DO_BITMASK` проверяют весь resolved channel-set, а pulse дополнительно
+проверяет возврат в `0`. Ошибка readback сохраняет intent как
+`recovery_required` и останавливает шаг. Проверены sequence helper regression и
+полный backend suite; firmware timing и физический restore остаются hardware
+checks.
+
 **Порядок исправления:**
 1. Перечислить всех отправителей: manual, sequence, FAT, recovery; отделить повторно используемую привязку от активного владения.
 2. Определить единый backend admission и атомарное получение владения нужными каналами.

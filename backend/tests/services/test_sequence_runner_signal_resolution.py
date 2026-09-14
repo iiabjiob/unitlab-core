@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 
 import pytest
 
 from app.services.domain_errors import SequenceNotApplicableError
-from app.services.sequence_runner import SequenceRunner
+from app.services.sequence_runner import (
+    SequenceRunner,
+    _sequence_readback_targets,
+    _wait_for_sequence_readback,
+)
 
 
 class _StepType:
@@ -61,3 +66,40 @@ def test_resolve_payload_channel_ids_raises_for_missing_signal_key() -> None:
             {"signal_keys": ["left", "right"]},
             signal_bindings={"left": 1},
         )
+
+
+def test_sequence_readback_targets_cover_pair_and_device_bitmask() -> None:
+    pair_targets, pair_analog = _sequence_readback_targets(
+        action="do_pair",
+        payload={"channel_indexes": [4, 7], "state2b": 2},
+    )
+    all_targets, all_analog = _sequence_readback_targets(
+        action="do_all",
+        payload={"channel_indexes": [1, 5], "bitmask": 0b10},
+    )
+
+    assert pair_targets == [(4, 0), (7, 1)]
+    assert pair_analog is False
+    assert all_targets == [(1, 1), (5, 0)]
+    assert all_analog is False
+
+
+def test_sequence_readback_requires_matching_fresh_packet() -> None:
+    class Redis:
+        async def get(self, key: str):
+            if key.endswith(":last_state_packet_id"):
+                return "42"
+            if key.endswith(":bitmask"):
+                return str(1 << 2)
+            return None
+
+    assert asyncio.run(
+        _wait_for_sequence_readback(
+            Redis(),
+            unit_id="DO-001",
+            targets=[(2, 1)],
+            analog=False,
+            packet_id=42,
+            timeout_ms=100,
+        )
+    ) is True
