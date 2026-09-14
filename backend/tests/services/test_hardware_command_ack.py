@@ -273,6 +273,26 @@ async def test_regular_delivery_does_not_retry_after_publish_failure() -> None:
 
 
 @pytest.mark.anyio
+async def test_pulse_publish_failure_is_recorded_as_recovery_required() -> None:
+    db = AsyncMock()
+
+    async def sender(command_id: str) -> None:
+        del command_id
+        raise RuntimeError("stream unavailable")
+
+    with pytest.raises(RuntimeError, match="stream unavailable"):
+        await _deliver_durable_command(
+            db,
+            command_id="cmd-pulse",
+            action="do_pulse",
+            command_sender=sender,
+        )
+
+    statement = db.execute.await_args.args[0]
+    assert "recovery_required" in str(statement.compile(compile_kwargs={"literal_binds": True}))
+
+
+@pytest.mark.anyio
 async def test_reconcile_unfinished_intents_marks_restore_for_recovery() -> None:
     restore = HardwareCommandIntent(
         command_id="cmd-restore",

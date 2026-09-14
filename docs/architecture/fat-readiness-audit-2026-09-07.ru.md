@@ -453,6 +453,13 @@ recovery/readback и firmware watchdog остаются deployment checks.
 физический канал заблокированным до recovery. Проверены ACK/recovery regressions;
 реальное поведение firmware при потерянном ACK остаётся hardware check.
 
+**Статус slice G86 (2026-09-14): pulse publish-failure recovery.** FAT durable
+delivery path теперь также классифицирует ошибку публикации `do_pulse` как
+`recovery_required`; это согласует publish-failure с timeout и restart-путями и
+не позволяет считать состояние импульсного выхода безопасным после потери
+доставки. Добавлена SQL regression; фактический safe-state требует hardware
+проверки.
+
 ## GAP-10 — Нет доказанной общей исключительности физического выхода
 
 **P0 · allocation/command ownership · подтверждён разрыв границ.**

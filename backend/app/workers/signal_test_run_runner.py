@@ -37,6 +37,7 @@ from app.services.hardware_command_intent import (
     mark_hardware_command_intent_queued,
     reconcile_unfinished_hardware_command_intents,
     record_hardware_command_intent,
+    requires_physical_recovery,
 )
 from app.services.hardware_command_ack import wait_for_hardware_command_acks
 from app.services.external_ied_discovery_scheduler import schedule_external_ied_discovery_for_verification
@@ -217,7 +218,7 @@ async def _deliver_durable_command(
     action: str,
     command_sender,
 ) -> None:
-    """Publish a persisted command, retrying idempotent restore delivery once."""
+    """Publish a persisted command, retrying only idempotent restore delivery once."""
     delivery_attempts = 2 if action == "restore" else 1
     for attempt_no in range(delivery_attempts):
         try:
@@ -228,7 +229,7 @@ async def _deliver_durable_command(
             await mark_hardware_command_intent_delivery_failure(
                 db,
                 command_id=command_id,
-                status="recovery_required" if action == "restore" else "unknown",
+                status="recovery_required" if requires_physical_recovery(action) else "unknown",
             )
             await db.commit()
             if attempt_no + 1 == delivery_attempts:
