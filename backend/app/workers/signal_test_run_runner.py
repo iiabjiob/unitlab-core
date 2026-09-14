@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import random
+import threading
 import time
 from collections import defaultdict
 from contextlib import suppress
@@ -1736,14 +1737,25 @@ async def _handle_test_run(
                     command_payload = {}
                 verification_triggered_at = datetime.now(timezone.utc)
                 try:
-                    verification_capture = await asyncio.to_thread(
-                        verification_orchestrator.capture_triggered_signal,
-                        verification_local_orchestration_id,
-                        signal_id=signal_id,
-                        triggered_at=verification_triggered_at,
-                        test_run_id=job_id,
-                        timeout_ms=verification_timeout_ms,
+                    capture_cancel_event = threading.Event()
+                    capture_task = asyncio.create_task(
+                        asyncio.to_thread(
+                            verification_orchestrator.capture_triggered_signal,
+                            verification_local_orchestration_id,
+                            signal_id=signal_id,
+                            triggered_at=verification_triggered_at,
+                            test_run_id=job_id,
+                            timeout_ms=verification_timeout_ms,
+                            cancel_event=capture_cancel_event,
+                        )
                     )
+                    try:
+                        verification_capture = await asyncio.shield(capture_task)
+                    except asyncio.CancelledError:
+                        capture_cancel_event.set()
+                        with suppress(asyncio.CancelledError, Exception):
+                            await asyncio.wait_for(asyncio.shield(capture_task), timeout=1.0)
+                        raise
                     await record_verification_evidence(verification_capture)
                     command_payload["iec61850_verification"] = {
                         "source": "worker_runtime_orchestration",

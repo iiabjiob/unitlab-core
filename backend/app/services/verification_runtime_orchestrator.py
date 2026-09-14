@@ -5,7 +5,7 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 import socket
-from threading import RLock, Thread
+from threading import Event, RLock, Thread
 import time
 from typing import Any, Callable, Sequence
 from uuid import uuid4
@@ -681,6 +681,7 @@ class VerificationRuntimeOrchestrator:
         triggered_at: datetime,
         test_run_id: str | None = None,
         timeout_ms: int | None = None,
+        cancel_event: Event | None = None,
     ) -> VerificationRuntimeSignalCaptureResult:
         handle = self._require_handle(orchestration_id)
         with handle.lock:
@@ -690,6 +691,7 @@ class VerificationRuntimeOrchestrator:
                 triggered_at=triggered_at,
                 test_run_id=test_run_id,
                 timeout_ms=timeout_ms,
+                cancel_event=cancel_event,
             )
 
     def _capture_triggered_signal_unlocked(
@@ -700,6 +702,7 @@ class VerificationRuntimeOrchestrator:
         triggered_at: datetime,
         test_run_id: str | None = None,
         timeout_ms: int | None = None,
+        cancel_event: Event | None = None,
     ) -> VerificationRuntimeSignalCaptureResult:
         handle = self._require_handle(orchestration_id)
         target_index, target = self._resolve_target_for_signal(handle, signal_id)
@@ -740,6 +743,8 @@ class VerificationRuntimeOrchestrator:
                 deadline = time.monotonic() + (max(1, int(timeout_ms or target.timeout_ms)) / 1000)
                 last_event_diagnostics: tuple[Any, ...] = ()
                 while True:
+                    if cancel_event is not None and cancel_event.is_set():
+                        break
                     remaining_ms = max(1, int((deadline - time.monotonic()) * 1000))
                     event = handle.runtime_service.wait_for_report(
                         session_id=session_state.session_id,
@@ -747,8 +752,10 @@ class VerificationRuntimeOrchestrator:
                         client_id=handle.client_id,
                         after_sequence_number=subscription_state.last_sequence_number,
                         after_event_id=subscription_state.last_report_id,
-                        timeout_ms=remaining_ms,
+                        timeout_ms=min(remaining_ms, 250) if cancel_event is not None else remaining_ms,
                     )
+                    if cancel_event is not None and cancel_event.is_set():
+                        break
                     observation_result = map_report_event_to_signal_observations(
                         candidate=runtime_report.candidate,
                         matched_signals=runtime_report.matched_signals,

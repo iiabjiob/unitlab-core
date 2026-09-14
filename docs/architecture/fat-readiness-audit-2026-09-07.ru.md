@@ -281,6 +281,13 @@ intent и ACK barrier. Требуются runtime-проверки device channe
 loop FAT worker. Требуются отдельные thread-safety проверки runtime, измерение
 heartbeat/cancel latency и управляемая отмена длительного capture.
 
+**Статус slice G51 (2026-09-14): cooperative IEC capture cancellation.**
+Optional IEC capture в worker теперь запускается с `threading.Event`; при отмене
+event loop выставляет cancel flag и bounded-await дожидается завершения thread.
+Orchestrator ограничивает blocking report polls 250 ms только для такого вызова
+и проверяет cancel до/после poll. Реальный MMS client cancellation и измерение
+cancel latency на стенде остаются release checks.
+
 **Порядок исправления:**
 1. Измерить event-loop lag, heartbeat и latency отмены при timeout IED.
 2. Проверить thread safety и владельца runtime; выбрать async adapter либо выделенный последовательный исполнитель блокирующих операций.

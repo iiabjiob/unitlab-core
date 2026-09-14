@@ -1215,6 +1215,37 @@ async def test_runtime_orchestrator_captures_triggered_signal_report_after_initi
 
 
 @pytest.mark.anyio
+async def test_runtime_orchestrator_honors_cooperative_capture_cancellation() -> None:
+    plan = _build_same_endpoint_multi_report_plan()
+    orchestrator = VerificationRuntimeOrchestrator(now=lambda: datetime(2026, 6, 23, 12, 0, tzinfo=UTC))
+    started = orchestrator.start(
+        workspace_id=7,
+        test_run_id="run-capture-cancelled",
+        verification_targets=plan.targets,
+        subscription_plan=plan,
+        execution_context=VerificationExecutionContextSchema(
+            project_id=1,
+            signal_list_revision_id=2,
+            planner_version="test",
+            runtime_version="simulator",
+            policy_version="v1",
+        ),
+    )
+    cancel_event = Event()
+    cancel_event.set()
+
+    capture = orchestrator.capture_triggered_signal(
+        started.orchestration_id,
+        signal_id=101,
+        triggered_at=datetime(2026, 6, 23, 12, 0, tzinfo=UTC),
+        timeout_ms=1000,
+        cancel_event=cancel_event,
+    )
+
+    assert capture.evidence.evidence_status != "observed"
+
+
+@pytest.mark.anyio
 async def test_runtime_orchestrator_waits_past_unrelated_report_for_triggered_signal() -> None:
     plan = _build_same_endpoint_multi_report_plan()
     adapter = _UnrelatedThenTargetReportAdapter()
