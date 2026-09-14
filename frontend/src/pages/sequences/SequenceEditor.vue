@@ -134,7 +134,7 @@ const { isDesktop } = useViewport()
       :state="state"
     />
 
-    <div class="sequence-editor__workspace">
+    <div class="sequence-editor__workspace workspace-surface">
       <div
         v-if="sequence"
         class="sequence-editor__steps-column"
@@ -213,8 +213,6 @@ const { isDesktop } = useViewport()
   overflow: hidden;
   padding: 1rem;
   border-radius: var(--radius-md);
-  background: var(--color-white);
-  box-shadow: var(--shadow-sm);
 }
 
 .sequence-editor__steps-column,
@@ -286,11 +284,6 @@ const { isDesktop } = useViewport()
   .sequence-editor__main-column--split .sequence-editor__log {
     margin-top: 0;
   }
-}
-
-:global(.dark .sequence-editor__workspace) {
-  border: 1px solid var(--color-neutral-800);
-  background: var(--color-neutral-950);
 }
 
 :global(.dark .sequence-editor__steps-card) {

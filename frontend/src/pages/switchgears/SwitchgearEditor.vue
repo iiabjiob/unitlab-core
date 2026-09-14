@@ -129,7 +129,7 @@ async function confirmDelete() {
 
       <SwitchgearControlToolbar :switchgear="switchgear" />
 
-      <div class="switchgear-editor__workspace">
+      <div class="switchgear-editor__workspace workspace-surface">
         <div class="switchgear-editor__summary-column">
           <ResizablePanel
             v-if="isDesktop"
@@ -201,8 +201,6 @@ async function confirmDelete() {
   margin-top: 1.25rem;
   padding: 1rem;
   border-radius: var(--radius-md);
-  background: var(--color-white);
-  box-shadow: var(--shadow-sm);
 }
 
 .switchgear-editor__summary-column,
@@ -281,10 +279,6 @@ async function confirmDelete() {
   .switchgear-editor__main-column {
     gap: 1rem;
   }
-}
-
-:global(.dark .switchgear-editor__workspace) {
-  background: var(--color-neutral-800);
 }
 
 :global(.dark .switchgear-editor__summary-panel),

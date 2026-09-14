@@ -71,7 +71,7 @@ onBeforeUnmount(() => {
       :device="device"
     />
 
-    <div class="device-editor__workspace">
+    <div class="device-editor__workspace workspace-surface">
       <div
         v-if="device"
         class="device-editor__channels-column"
@@ -144,8 +144,6 @@ onBeforeUnmount(() => {
   margin-top: 1.25rem;
   padding: 1rem;
   border-radius: var(--radius-md);
-  background: var(--color-white);
-  box-shadow: var(--shadow-sm);
 }
 
 .device-editor__channels-column,
@@ -246,10 +244,6 @@ onBeforeUnmount(() => {
     flex-direction: column;
     min-height: 0;
   }
-}
-
-:global(.dark .device-editor__workspace) {
-  background: var(--color-neutral-800);
 }
 
 :global(.dark .device-editor__channels-card),

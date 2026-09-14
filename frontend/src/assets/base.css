@@ -188,6 +188,16 @@ video {
   color: var(--color-neutral-100);
 }
 
+.workspace-surface {
+  border: 1px solid var(--runtime-panel-border);
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--runtime-panel-bg) 98%, var(--color-white) 2%),
+    var(--runtime-panel-bg)
+  );
+  box-shadow: var(--runtime-panel-shadow);
+}
+
 :where(
   button,
   [type="button"],
