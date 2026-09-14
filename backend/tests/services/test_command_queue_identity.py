@@ -16,6 +16,12 @@ async def _capture_outbound(message):
 async def test_do_command_assigns_distinct_command_id(monkeypatch) -> None:
     monkeypatch.setattr(command_queue_service, "enqueue_outbound_command", _capture_outbound)
 
+    class FakeRedis:
+        async def set(self, key, value, **kwargs):
+            return True
+
+    monkeypatch.setattr(RedisManager, "get_instance", classmethod(lambda cls: FakeRedis()))
+
     command_id = await command_queue_service.enqueue_do_command(
         unit_id="UNIT-1",
         mode=Cmd.SET_SINGLE_BIT,

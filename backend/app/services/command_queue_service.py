@@ -40,10 +40,8 @@ async def _reserve_command_packet(unit_id: str, packet_id: int, command_id: str)
         )
         return bool(reserved)
     except Exception:  # noqa: BLE001
-        # Keep local/unit tests and degraded startup behavior compatible. The
-        # durable command intent still records the command before publication.
-        logger.warning("Unable to reserve command correlation for %s/%s", unit_id, packet_id)
-        return True
+        logger.exception("Unable to reserve command correlation for %s/%s", unit_id, packet_id)
+        raise RuntimeError("Command packet identity reservation unavailable")
 
 
 async def _release_command_packet(unit_id: str, packet_id: int, command_id: str) -> None:
