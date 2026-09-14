@@ -599,6 +599,13 @@ graph до новой diagnostics audit schema.
 для append-only acknowledgement table и обоих индексов; online idempotent
 проверка сохранена. После этого шага повторно проверяется полный graph.
 
+**Статус slice G41 (2026-09-14): full migration offline validation.** Полный
+`alembic upgrade head --sql` успешно прошёл от initial revision до единственного
+head `ca9b8c7d6e5f`; дополнительно backend suite завершился результатом
+`413 passed`. Это подтверждает только генерацию SQL и регрессию backend-кода;
+применение migration на production PostgreSQL и rollback rehearsal остаются
+отдельными release checks.
+
 **Статус slice G38 (2026-09-14): offline-safe signal sheet migration.**
 `9a1b2c3d4e6f` получил PostgreSQL offline-ветку для создания signal sheet/preset и
 live allocation tables и удаления прежних snapshot tables без `inspect` на
