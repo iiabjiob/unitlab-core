@@ -285,6 +285,8 @@ function createDiagramEdge(
   edge: LegacyDiagramEdge,
   ports: ReadonlyArray<LegacyPortPoint>,
 ): DiagramEdge {
+  const startBinding = edge.startBinding ?? null
+  const endBinding = edge.endBinding ?? null
   return {
     id: edge.id,
     kind: "edge",
@@ -294,8 +296,10 @@ function createDiagramEdge(
       entityType: "edge",
       edgeKind: edge.kind,
       edgeWeight: edge.weight ?? "normal",
-      startBinding: edge.startBinding ?? null,
-      endBinding: edge.endBinding ?? null,
+      startBinding,
+      endBinding,
+      startBindingValid: !startBinding || Boolean(resolvePortBinding(startBinding, ports)),
+      endBindingValid: !endBinding || Boolean(resolvePortBinding(endBinding, ports)),
     },
   }
 }

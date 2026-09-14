@@ -7,7 +7,7 @@ type EdgeWeight = "normal" | "bold"
 type DiagramStaticSize = "sm" | "md" | "lg"
 
 const props = defineProps<{
-  counts: { nodes: number; edges: number; statics: number; texts: number }
+  counts: { nodes: number; edges: number; statics: number; texts: number; broken: number }
   activeTool: PackageTool
   lineKind: EdgeStyle
   lineWeight: EdgeWeight
@@ -58,6 +58,7 @@ const props = defineProps<{
       <span>{{ props.counts.edges }} lines</span>
       <span>{{ props.counts.statics }} symbols</span>
       <span>{{ props.counts.texts }} texts</span>
+      <span v-if="props.counts.broken > 0" class="switchgear-sld-package-canvas__status--warning">{{ props.counts.broken }} broken bindings</span>
     </div>
     <div class="switchgear-sld-package-canvas__actions">
       <div class="switchgear-sld-package-canvas__tool-tabs" role="group" aria-label="Canvas tool">
@@ -106,3 +107,15 @@ const props = defineProps<{
     </div>
   </div>
 </template>
+
+<style scoped>
+.switchgear-sld-package-canvas__status--warning {
+  border: 1px solid var(--color-rose-300);
+  border-radius: 999px;
+  background: var(--color-rose-50);
+  color: var(--color-rose-700);
+  padding: 0.25rem 0.5rem;
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+</style>

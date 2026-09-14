@@ -195,6 +195,7 @@ const sceneCounts = computed(() => ({
   edges: diagram.scene.value.order.edgeIds.length,
   statics: diagram.scene.value.order.shapeIds.length,
   texts: diagram.scene.value.order.textIds.length,
+  broken: diagram.scene.value.order.edgeIds.filter(id => isBrokenEdge(id)).length,
 }))
 const selectionLabel = computed(() => {
   const ids = selection.selection.value.ids
@@ -1865,9 +1866,17 @@ function resolveEdgeWeightValue(id: string): EdgeWeight {
 }
 
 function resolveEdgeStroke(id: string) {
+  if (isBrokenEdge(id)) {
+    return "var(--color-rose-600)"
+  }
   return resolveEdgeKind(id) === "arrow"
     ? "var(--color-blue-700)"
     : "var(--color-neutral-700)"
+}
+
+function isBrokenEdge(id: string) {
+  const edge = diagram.scene.value.entities.edgesById.get(id)
+  return edge?.metadata?.startBindingValid === false || edge?.metadata?.endBindingValid === false
 }
 
 function resolveEdgeWidth(id: string) {
