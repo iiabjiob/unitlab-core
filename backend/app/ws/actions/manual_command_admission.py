@@ -16,18 +16,18 @@ from app.services.hardware_command_intent import (
     record_hardware_command_intent,
 )
 from app.schemas.ws.messages import SetAoCommandMessage, SetDoCommandMessage
+from app.schemas.ws.events import HardwareCommandResultEvent
 from uuid import uuid4
 
 
 async def _result(ws: WebSocket, *, command_id: str | None, delivery: str, reason: str | None = None) -> None:
-    await ws.send_json({
-        "channel": "devices/command-result",
-        "event": "hardware_command_result",
-        "command_id": command_id,
-        "delivery": delivery,
-        "execution": "unknown",
-        "reason": reason,
-    })
+    await ws.send_json(
+        HardwareCommandResultEvent(
+            command_id=command_id,
+            delivery=delivery,
+            reason=reason,
+        ).model_dump(mode="json")
+    )
 
 
 async def _channel(workspace_id: int, channel_id: int, unit_id: str, channel_index: int, expected_type: str):

@@ -29,6 +29,7 @@ class WSChannel(str, Enum):
     DEVICE_STATE    = "devices/state"
     DEVICE_REGISTER = "devices/register"
     DEVICE_RESP     = "devices/resp"
+    HARDWARE_COMMAND_RESULT = "devices/command-result"
     DEVICE_STATUS   = "devices/status"
     EXTERNAL_IED_STATUS = "external-ieds/status"
     EXTERNAL_IED_MANUAL_REPORTS = "external-ieds/manual-reports"
@@ -68,6 +69,15 @@ class DeviceRespEvent(BaseModel):
     @field_serializer("status", "error")
     def _serialize_resp_enum(self, value: RespStatus | RespError) -> str:
         return value.name
+
+
+class HardwareCommandResultEvent(BaseModel):
+    channel: Literal[WSChannel.HARDWARE_COMMAND_RESULT] = WSChannel.HARDWARE_COMMAND_RESULT
+    event: Literal["hardware_command_result"] = "hardware_command_result"
+    command_id: str | None = None
+    delivery: Literal["queued", "rejected"]
+    execution: Literal["unknown"] = "unknown"
+    reason: str | None = None
 
 # ---------------------------------------------------------------------
 # Heartbeat
