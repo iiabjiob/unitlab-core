@@ -197,7 +197,7 @@ async def handle_manual_ao(ws: WebSocket, msg: SetAoCommandMessage) -> None:
     await _enqueue_manual(
         ws,
         workspace_id=msg.workspace_id,
-        channel_id=channel.id,
+        channel_ids=[channel.id],
         unit_id=msg.unit_id,
         device_id=channel.device_id,
         action="ao_set",

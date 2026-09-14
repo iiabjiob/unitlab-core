@@ -482,6 +482,11 @@ MQTT/ACK и сменный soak остаются обязательными rele
 невалидный Redis bitmask больше не преобразуется в `0`: worker сохраняет явное
 `initial_state_unknown` и не получает lease/не публикует DO-команду. Требуется
 стендовая проверка свежести state snapshot и автономной защиты при потере Redis.
+
+**Статус slice G12 (2026-09-14): частично закрыт.** Исправлен manual AO
+boundary: single-channel AO теперь передаёт channel scope в общем формате
+`channel_ids`, поэтому валидная команда доходит до admission/enqueue. ACK и
+readback для manual-команд остаются отдельным runtime gap.
 Post-command DO readback также не принимает отсутствующий или невалидный snapshot
 за подтверждённый `0`; такие состояния доходят до timeout/recovery.
 После failed DO readback worker больше не использует локальный predicted bitmask
