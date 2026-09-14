@@ -113,7 +113,9 @@ async def _enqueue_manual(
                 fencing_epoch=leases[0].fencing_epoch,
             )
             await session.commit()
-        await sender(command_id)
+            await sender(command_id)
+            await mark_hardware_command_intent_queued(session, command_id=command_id)
+            await session.commit()
     except Exception:
         async with AsyncSessionLocal() as session:
             await mark_hardware_command_intent_delivery_failure(

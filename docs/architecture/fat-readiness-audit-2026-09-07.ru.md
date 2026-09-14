@@ -487,6 +487,8 @@ MQTT/ACK и сменный soak остаются обязательными rele
 boundary: single-channel AO теперь передаёт channel scope в общем формате
 `channel_ids`, поэтому валидная команда доходит до admission/enqueue. ACK и
 readback для manual-команд остаются отдельным runtime gap.
+Успешная публикация manual intent теперь также фиксируется как `queued` до
+освобождения lease; это устраняет ложный `unknown` при restart reconciliation.
 Post-command DO readback также не принимает отсутствующий или невалидный snapshot
 за подтверждённый `0`; такие состояния доходят до timeout/recovery.
 После failed DO readback worker больше не использует локальный predicted bitmask

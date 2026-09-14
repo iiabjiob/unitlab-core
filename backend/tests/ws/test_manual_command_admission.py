@@ -36,3 +36,62 @@ def test_manual_ao_passes_single_channel_as_channel_ids(monkeypatch) -> None:
     assert captured["channel_ids"] == [17]
     assert captured["device_id"] == 23
     assert captured["action"] == "ao_set"
+
+
+def test_manual_command_marks_intent_queued_after_publish(monkeypatch) -> None:
+    calls: list[str] = []
+
+    class Session:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def commit(self):
+            calls.append("commit")
+
+    class Admission:
+        def __init__(self, redis) -> None:
+            return None
+
+        async def acquire_many(self, **kwargs):
+            return [SimpleNamespace(fencing_epoch=4, lease_id="lease-1")]
+
+        async def release(self, lease):
+            calls.append("release")
+            return True
+
+    async def record_intent(*args, **kwargs):
+        calls.append("record")
+
+    async def mark_queued(*args, **kwargs):
+        calls.append("queued")
+
+    async def sender(command_id: str):
+        calls.append("publish")
+
+    async def result(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(manual_command_admission, "AsyncSessionLocal", lambda: Session())
+    monkeypatch.setattr(manual_command_admission, "RedisManager", SimpleNamespace(get_instance=lambda: object()))
+    monkeypatch.setattr(manual_command_admission, "HardwareCommandAdmission", Admission)
+    monkeypatch.setattr(manual_command_admission, "record_hardware_command_intent", record_intent)
+    monkeypatch.setattr(manual_command_admission, "mark_hardware_command_intent_queued", mark_queued)
+    monkeypatch.setattr(manual_command_admission, "_result", result)
+
+    run_async(
+        manual_command_admission._enqueue_manual(
+            object(),
+            workspace_id=7,
+            channel_ids=[17],
+            unit_id="unit-1",
+            device_id=23,
+            action="ao_set",
+            payload={"value": 12.5},
+            sender=sender,
+        )
+    )
+
+    assert calls.index("publish") < calls.index("queued") < calls.index("release")
