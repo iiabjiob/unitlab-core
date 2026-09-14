@@ -830,6 +830,12 @@ verification failures, неполная обработка или delivery count
 `failed` с явным `processed_marker_without_terminal_result` и
 `recovery_required=true`; потерянный terminal result требует явного recovery.
 
+**Статус slice G81 (2026-09-14): processed-marker result regression.** Формат
+fail-closed recovery result вынесен в проверяемый worker helper: он сохраняет
+причину, обязательность явного recovery и число reconciled hardware intents.
+Это укрепляет локальный контракт ветки replay, но не заменяет process/power-loss
+recovery rehearsal на deployment.
+
 **Статус slice G76 (2026-09-14): unique execution progress accounting.** Worker
 теперь считает `progress_total` по тому же уникальному положительному набору
 signal IDs, который реально исполняется из immutable plan. Duplicate/invalid IDs

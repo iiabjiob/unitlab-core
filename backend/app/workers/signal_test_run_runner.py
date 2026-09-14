@@ -645,6 +645,16 @@ def _unique_positive_signal_ids(value: Any) -> list[int]:
     return result
 
 
+def _processed_marker_recovery_result(reconciled_intents: int) -> dict[str, object]:
+    """Build the explicit fail-closed result when only the processed marker survived."""
+    return {
+        "recovery_policy": "fail_closed_on_processed_marker",
+        "recovery_reason": "processed_marker_without_terminal_result",
+        "recovery_required": True,
+        "reconciled_hardware_intents": reconciled_intents,
+    }
+
+
 def _mms_subscription_plan_blockers(runtime_context) -> list[str]:
     plan = getattr(runtime_context, "subscription_plan", None)
     groups = list(getattr(plan, "groups", ()) or ())
@@ -2227,12 +2237,7 @@ async def _process_entries(redis, entries) -> None:
                             progress_done=progress_total,
                             progress_total=progress_total,
                             error="processed_marker_without_terminal_result",
-                            result={
-                                "recovery_policy": "fail_closed_on_processed_marker",
-                                "recovery_reason": "processed_marker_without_terminal_result",
-                                "recovery_required": True,
-                                "reconciled_hardware_intents": reconciled_intents,
-                            },
+                            result=_processed_marker_recovery_result(reconciled_intents),
                         )
                         if recovered_state:
                             await WsEventPublisher.publish(build_signal_job_event(recovered_state))

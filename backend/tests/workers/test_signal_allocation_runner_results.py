@@ -409,6 +409,17 @@ def test_signal_test_run_skips_missing_signal_without_sheet_revision_metadata(mo
         run_async(signal_test_run_runner._handle_test_run(repo, 7, payload, job_state))  # type: ignore[arg-type]
 
 
+def test_processed_marker_recovery_result_is_explicit_and_fail_closed() -> None:
+    result = signal_test_run_runner._processed_marker_recovery_result(3)
+
+    assert result == {
+        "recovery_policy": "fail_closed_on_processed_marker",
+        "recovery_reason": "processed_marker_without_terminal_result",
+        "recovery_required": True,
+        "reconciled_hardware_intents": 3,
+    }
+
+
 def test_signal_test_run_resolves_current_binding_per_signal(monkeypatch) -> None:
     repo = FakeLiveRowsRepo()
     commands: list[tuple[str, dict]] = []
