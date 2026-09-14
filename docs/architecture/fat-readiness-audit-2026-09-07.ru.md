@@ -108,6 +108,11 @@ packet ID теперь до публикации резервируется в R
 16-bit ID без изменения бинарного протокола; Redis outage и device-side ACK
 correlation остаются release-проверками.
 
+**Статус slice G57 (2026-09-14): fail-closed reservation.** Если Redis
+reservation недоступен, DO/AO enqueue теперь отклоняется до публикации; команда
+не отправляется с неподтверждённой корреляцией packet ID. Это safety-поведение
+проверено command-queue regression и полной backend suite.
+
 ## GAP-04 — Восстановление выхода и исходное состояние не гарантированы
 
 **P0 · peripheral safety/test-run · подтверждено кодом; аппаратная защита не проверена.**
