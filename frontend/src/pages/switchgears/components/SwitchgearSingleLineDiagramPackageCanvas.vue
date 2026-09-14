@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from "vue"
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { getSvgEntityProps, useDiagramEngine, useDiagramPointerController, useDiagramSelection, useDiagramTextEditor, useDiagramViewport, useDiagramVisibleEntities } from "@affino/diagram-vue"
 import type { DiagramEdge } from "@affino/diagram-core"
@@ -461,6 +461,14 @@ const minimapModel = computed(() => {
 pointer.setTool("select")
 syncRouteSelection()
 
+onMounted(() => {
+  if (!props.initialStoredState?.viewState) {
+    void nextTick(() => {
+      requestAnimationFrame(() => fitScene())
+    })
+  }
+})
+
 watch(() => route.params.id, () => {
   syncRouteSelection()
 })
@@ -541,8 +549,10 @@ function syncRouteSelection() {
     return
   }
   const nodeId = `switchgear:${switchgearId}`
-  if (diagram.scene.value.entities.nodesById.has(nodeId)) {
+  const node = diagram.scene.value.entities.nodesById.get(nodeId)
+  if (node) {
     selection.setSelection([nodeId], nodeId)
+    void nextTick(() => centerViewportAtWorldPoint(node.x + node.width / 2, node.y + node.height / 2))
   }
 }
 
