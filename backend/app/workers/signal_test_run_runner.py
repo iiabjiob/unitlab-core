@@ -736,6 +736,7 @@ async def _handle_test_run(
         "incompatible_channel_mode": 0,
         "offline_unit": 0,
         "initial_state_unknown": 0,
+        "ao_profile_required": 0,
         "binding_changed": 0,
         "channel_lease_busy": 0,
         "recovery_required": 0,
@@ -1294,6 +1295,8 @@ async def _handle_test_run(
         is_ao = channel_type.startswith("ao")
         if not is_do and not is_ao:
             return row, "incompatible_channel_mode"
+        if is_ao:
+            return row, "ao_profile_required"
         if is_do and str(row.unit_id) in unit_state_unknown:
             return row, "initial_state_unknown"
         if hasattr(repo, "get_execution_binding"):

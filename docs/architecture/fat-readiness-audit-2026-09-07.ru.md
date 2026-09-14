@@ -473,6 +473,12 @@ MQTT/ACK и сменный soak остаются обязательными rele
 детерминированный безопасный restore AO всё ещё требуют отдельного согласования
 с hardware profile.
 
+**Статус slice G13 (2026-09-14): частично закрыт.** Автоматический test-run
+больше не отправляет implicit random AO `0..24`: при отсутствии согласованного
+hardware profile шаг получает `ao_profile_required` до lease/enqueue. Manual AO
+остаётся явным операторским путём; диапазон и safe restore для него также должны
+быть проверены hardware policy.
+
 **Статус slice G7 (2026-09-14): частично закрыт.** Провал DO readback теперь
 помечает исходный command intent как `recovery_required` и блокирует канал, в том
 числе для single-toggle; это предотвращает повторное воздействие после
