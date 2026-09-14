@@ -585,7 +585,7 @@ function setFloatingContentRef(el: Element | ComponentPublicInstance | null) {
   --picker-shadow: 0 18px 45px rgba(15, 23, 42, 0.14);
   --picker-trigger-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
   --picker-option-border: rgba(15, 23, 42, 0.08);
-  --picker-option-hover: rgba(15, 23, 42, 0.04);
+  --picker-option-hover: #f5f5f5;
   --picker-divider: rgba(15, 23, 42, 0.06);
   --picker-status-online-bg: rgba(34, 197, 94, 0.15);
   --picker-status-online-text: #15803d;
@@ -614,7 +614,7 @@ function setFloatingContentRef(el: Element | ComponentPublicInstance | null) {
   --picker-shadow: 0 28px 60px rgba(2, 6, 23, 0.75);
   --picker-trigger-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
   --picker-option-border: rgba(255, 255, 255, 0.08);
-  --picker-option-hover: var(--ui-menu-hover-bg, #2b2b2b);
+  --picker-option-hover: #27272a;
   --picker-divider: rgba(255, 255, 255, 0.09);
   --picker-status-online-bg: rgba(34, 197, 94, 0.2);
   --picker-status-online-text: #4ade80;
@@ -795,18 +795,21 @@ function setFloatingContentRef(el: Element | ComponentPublicInstance | null) {
 }
 
 .device-picker-combobox__option {
-  border-radius: 0.375rem;
+  border-radius: 0.5rem;
   border: 1px solid transparent;
-  padding: 0.45rem 0.9rem;
+  padding: 0 0.375rem;
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.5rem;
   text-align: left;
   background: transparent;
   color: var(--picker-text);
+  font-size: 12px;
+  line-height: 1.2;
   cursor: pointer;
   transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
-  min-height: 0;
+  height: 1.75rem;
+  min-height: 1.75rem;
 }
 
 .device-picker-combobox__option:hover {
