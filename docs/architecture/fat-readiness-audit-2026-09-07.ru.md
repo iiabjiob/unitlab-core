@@ -917,6 +917,11 @@ paths переводят intent в terminal `completed`; reconciliation расс
 команды, оборванной до readback. Crash/kill rehearsal на production Redis и
 PostgreSQL остаётся release check.
 
+**Статус slice G104 (2026-09-14): terminal-state regression.** Добавлена
+отдельная persistence regression для `completed` intent status; recovery lookup
+и crash reconciliation сохраняют границу между завершённым воздействием и
+оборванной командой. Реальный restart/kill rehearsal остаётся release check.
+
 **Статус slice G68 (2026-09-14): offline downgrade для live signal sheet.**
 Migration `9a1b2c3d4e6f` теперь генерирует детерминированный downgrade SQL для
 `signal_allocations`, `signal_sheet_presets` и `signal_sheets`, не вызывая

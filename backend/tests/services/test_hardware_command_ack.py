@@ -11,6 +11,7 @@ from app.services.hardware_command_ack import record_hardware_command_ack, wait_
 from app.services.hardware_command_ack import record_hardware_command_ack_diagnostic
 from app.services.hardware_command_intent import (
     has_hardware_recovery_required,
+    mark_hardware_command_intent_completed,
     mark_hardware_command_intent_delivery_failure,
     record_hardware_command_intent,
     reconcile_unfinished_hardware_command_intents,
@@ -174,6 +175,17 @@ async def test_delivery_failure_status_is_persisted() -> None:
     )
 
     db.execute.assert_awaited_once()
+    db.flush.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_completed_intent_status_is_persisted_as_terminal() -> None:
+    db = AsyncMock()
+
+    await mark_hardware_command_intent_completed(db, command_id="cmd-completed")
+
+    statement = db.execute.await_args.args[0]
+    assert "completed" in str(statement.compile(compile_kwargs={"literal_binds": True}))
     db.flush.assert_awaited_once()
 
 
