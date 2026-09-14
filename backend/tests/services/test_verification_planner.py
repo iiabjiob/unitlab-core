@@ -89,40 +89,34 @@ def test_build_verification_subscription_plan_separates_exact_partial_and_uncove
     )
 
     assert [target.signal_id for target in plan.targets] == [1, 2, 3]
-    assert plan.targets[0].coverage_state == "exact"
+    assert plan.targets[0].coverage_state == "uncovered"
+    assert plan.targets[0].coverage_reason == "signal-list IEC 61850 address is not a report-observable Online 61850 scope"
     assert plan.targets[0].endpoint_id == "sim:unit-a/unknown"
     assert plan.targets[0].expected_feedback_path == "KINTE13LVC01CTRL/LLN0.RCB1"
     assert plan.targets[0].protocol == "iec61850"
     assert plan.targets[0].source_row_index == 17
-    assert plan.targets[1].coverage_state == "partial"
+    assert plan.targets[1].coverage_state == "uncovered"
     assert plan.targets[1].endpoint_id == "sim:unit-b/unknown"
-    assert plan.targets[1].coverage_reason == "allocation_offline_device"
+    assert plan.targets[1].coverage_reason == "signal-list IEC 61850 address is not a report-observable Online 61850 scope"
     assert plan.targets[1].expected_feedback_path == "pump_feedback"
     assert plan.targets[2].coverage_state == "uncovered"
     assert plan.targets[2].endpoint_id is None
     assert plan.targets[2].coverage_reason == "no_endpoint"
     assert plan.plan_id.startswith("plan-")
-    assert len(plan.groups) == 2
-    assert [group.target_indexes for group in plan.groups] == [[0], [1]]
-    assert [group.source_classification for group in plan.groups] == ["fallback", "fallback"]
-    assert plan.groups[0].endpoint_id == "unit-a"
-    assert plan.groups[1].endpoint_id == "unit-b"
-    assert plan.groups[0].report_control_reference == "KINTE13LVC01CTRL/LLN0.RCB1"
-    assert plan.groups[0].report_control_name == "RCB1"
-    assert plan.groups[1].report_control_reference == "pump_feedback"
-    assert len(plan.uncovered_targets) == 1
-    assert plan.uncovered_targets[0].target_index == 2
-    assert plan.uncovered_targets[0].reason == "no_endpoint"
-    assert plan.uncovered_targets[0].detail == "no_endpoint"
+    assert len(plan.groups) == 0
+    assert plan.coverage.groups_count == 0
+    assert plan.coverage.endpoints_count == 0
+    assert len(plan.uncovered_targets) == 3
+    assert [item.target_index for item in plan.uncovered_targets] == [0, 1, 2]
     assert "normalized 3 verification targets" in plan.planning_diagnostics[0]
-    assert "2 subscription groups across 2 endpoints" in plan.planning_diagnostics[1]
+    assert "0 subscription groups across 0 endpoints" in plan.planning_diagnostics[1]
 
     assert plan.coverage.total_targets == 3
-    assert plan.coverage.covered_targets == 1
-    assert plan.coverage.partially_covered_targets == 1
-    assert plan.coverage.uncovered_targets == 1
-    assert plan.coverage.groups_count == 2
-    assert plan.coverage.endpoints_count == 2
+    assert plan.coverage.covered_targets == 0
+    assert plan.coverage.partially_covered_targets == 0
+    assert plan.coverage.uncovered_targets == 3
+    assert plan.coverage.groups_count == 0
+    assert plan.coverage.endpoints_count == 0
     assert plan.coverage.planning_quality == "partial"
 
 

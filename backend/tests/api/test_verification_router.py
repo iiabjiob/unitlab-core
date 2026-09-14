@@ -127,5 +127,5 @@ async def test_start_orchestration_from_signals_uses_backend_runtime_context(mon
     )
 
     assert response.orchestration_id.startswith("7:online-route:")
-    assert response.verification_run.runtime_state == "reporting"
-    assert response.verification_run.subscription_snapshots[0].subscription_state == "reporting"
+    assert response.verification_run.runtime_state == "connecting"
+    assert response.verification_run.subscription_snapshots[0].subscription_state == "pending"
