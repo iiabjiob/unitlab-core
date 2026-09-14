@@ -230,6 +230,10 @@ onBeforeUnmount(() => {
 }
 
 .device-execution-log__body {
+  box-sizing: border-box;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
   padding: 0.5rem 1rem;
   color: var(--color-neutral-700);
   font-family: var(--font-mono);
@@ -377,9 +381,7 @@ onBeforeUnmount(() => {
   }
 
   .device-execution-log__body {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto;
+    flex-basis: 0;
   }
 }
 </style>

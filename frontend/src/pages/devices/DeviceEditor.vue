@@ -239,6 +239,7 @@ onBeforeUnmount(() => {
   .device-editor__detail-content {
     display: flex;
     flex-direction: column;
+    min-height: 0;
   }
 }
 

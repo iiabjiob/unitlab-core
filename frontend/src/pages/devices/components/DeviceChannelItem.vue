@@ -409,7 +409,7 @@ function submitAoValue() {
   max-width: 40rem;
   min-width: 0;
   grid-template-columns: 9rem minmax(0, 1fr);
-  align-items: start;
+  align-items: center;
   gap: 0.75rem;
 }
 
@@ -420,6 +420,7 @@ function submitAoValue() {
 
 .device-channel-item__label--ao {
   display: grid;
+  align-self: center;
   gap: 0.125rem;
   text-align: center;
 }
@@ -451,6 +452,7 @@ function submitAoValue() {
 
 .device-channel-item__ao-controls {
   display: flex;
+  width: 100%;
   min-width: 0;
   flex: 1 1 auto;
   align-items: center;
@@ -459,6 +461,7 @@ function submitAoValue() {
 
 .device-channel-item__ao-inline {
   display: flex;
+  width: 100%;
   min-width: 0;
   align-items: center;
   gap: 0.5rem;
@@ -516,6 +519,7 @@ function submitAoValue() {
 
 .device-channel-item__ao-actual {
   display: inline-flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 0.25rem;
   padding: 0.125rem;
