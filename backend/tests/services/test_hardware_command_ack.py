@@ -12,7 +12,11 @@ from app.services.hardware_command_intent import (
     mark_hardware_command_intent_delivery_failure,
     reconcile_unfinished_hardware_command_intents,
 )
-from app.workers.signal_test_run_runner import _deliver_durable_command, _wait_for_bit_readback
+from app.workers.signal_test_run_runner import (
+    _deliver_durable_command,
+    _wait_for_bit_readback,
+    _wait_for_float_readback,
+)
 
 
 @pytest.mark.anyio
@@ -234,5 +238,22 @@ async def test_bit_readback_wait_accepts_expected_channel_value() -> None:
         unit_id="UNIT-1",
         channel_index=2,
         expected_value=1,
+        timeout_ms=100,
+    ) is True
+
+
+@pytest.mark.anyio
+async def test_float_readback_wait_accepts_small_measurement_tolerance() -> None:
+    class Redis:
+        async def hget(self, key: str, field: str):
+            assert key == "device:UNIT-1:ao"
+            assert field == "3"
+            return "12.345"
+
+    assert await _wait_for_float_readback(
+        Redis(),
+        unit_id="UNIT-1",
+        channel_index=3,
+        expected_value=12.34,
         timeout_ms=100,
     ) is True

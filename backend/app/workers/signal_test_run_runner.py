@@ -113,6 +113,28 @@ async def _wait_for_bit_readback(
         await asyncio.sleep(0.05)
 
 
+async def _wait_for_float_readback(
+    redis,
+    *,
+    unit_id: str,
+    channel_index: int,
+    expected_value: float,
+    timeout_ms: int,
+) -> bool:
+    deadline = time.monotonic() + max(100, timeout_ms) / 1000
+    while True:
+        raw_value = await redis.hget(f"device:{unit_id}:ao", str(int(channel_index)))
+        try:
+            actual_value = float(raw_value)
+        except (TypeError, ValueError):
+            actual_value = None
+        if actual_value is not None and abs(actual_value - float(expected_value)) <= 0.01:
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        await asyncio.sleep(0.05)
+
+
 async def _deliver_durable_command(
     db,
     *,
@@ -1418,12 +1440,28 @@ async def _handle_test_run(
                 command_payload["commands"][0]["command_id"] = ao_command_id
                 command_ids.append(ao_command_id)
                 verification_expected_value = random_value
+                ao_readback_ok = False
                 await enqueue_request_state(
                     unit_id=unit_id,
                     mode=State.REQ_SINGLE_FLOAT,
                     ch=channel_index,
                     correlation_id=state_correlation_id,
                 )
+                ao_readback_ok = await _wait_for_float_readback(
+                    redis,
+                    unit_id=unit_id,
+                    channel_index=channel_index,
+                    expected_value=random_value,
+                    timeout_ms=min(2000, max(250, verification_timeout_ms)),
+                )
+                if not ao_readback_ok:
+                    await mark_hardware_command_intent_delivery_failure(
+                        repo.db,
+                        command_id=ao_command_id,
+                        status="recovery_required",
+                    )
+                    await repo.db.commit()
+                    test_status = "blocked"
             else:
                 bitmask = await get_unit_bitmask(unit_id)
                 current_value = 1 if (bitmask & (1 << channel_index)) else 0
