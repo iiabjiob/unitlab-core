@@ -1561,7 +1561,13 @@ async def _handle_test_run(
                     test_status = "blocked"
 
                 if toggle_mode == "double":
-                    await asyncio.sleep(signal_interval_seconds)
+                    cancelled_during_restore_window = False
+                    try:
+                        await asyncio.sleep(signal_interval_seconds)
+                    except asyncio.CancelledError:
+                        # Do not leave a toggled output behind when the worker task
+                        # is cancelled during the bounded SET -> RESTORE window.
+                        cancelled_during_restore_window = True
                     restore_correlation_id = f"test-run:{signal_id}:set:{current_value}"
                     commands_payload.append(
                         {
@@ -1622,6 +1628,8 @@ async def _handle_test_run(
                         )
                         await repo.db.commit()
                         test_status = "blocked"
+                    if cancelled_during_restore_window:
+                        raise asyncio.CancelledError
 
                 unit_bitmasks[unit_id] = bitmask
                 state_correlation_id = f"test-run:{signal_id}:state"
