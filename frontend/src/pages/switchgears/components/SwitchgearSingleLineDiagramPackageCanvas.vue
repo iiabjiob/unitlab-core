@@ -2448,10 +2448,17 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
   background: linear-gradient(180deg, var(--color-white), color-mix(in srgb, var(--color-sky-50) 42%, var(--color-white)));
   overflow: hidden;
   outline: none;
+  touch-action: none;
+  user-select: none;
 }
 
 .switchgear-sld-package-canvas__stage:focus-visible {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-blue-500) 35%, transparent);
+}
+
+.switchgear-sld-package-canvas__svg {
+  touch-action: none;
+  user-select: none;
 }
 
 .switchgear-sld-package-canvas__selected-controls {
