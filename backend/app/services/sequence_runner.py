@@ -14,6 +14,7 @@ from app.core.logger import get_logger
 from app.infrastructure.db.database import AsyncSessionLocal
 from app.models.channel import Channel
 from app.models.device import Device
+from app.models.switchgear import Switchgear
 from app.models.sequence import Sequence, SequenceStep, SequenceStepType
 from app.models.sequence_run import (
     SequenceRun,
@@ -21,7 +22,7 @@ from app.models.sequence_run import (
     SequenceRunStep,
     SequenceRunStepStatus,
 )
-from app.models.workspace import WorkspaceSequence
+from app.models.workspace import WorkspaceSequence, WorkspaceSwitchgear
 from app.schemas.sequence_run_schema import SequenceRuntimeSchema, SequenceStateSchema
 from app.services.domain_errors import (
     ChannelNotFoundError,
@@ -687,6 +688,7 @@ class SequenceRunner:
                 resolved_root = await self._build_resolved_sequence(
                     session,
                     sequence_id,
+                    workspace_id=workspace_id,
                     signal_bindings=signal_bindings,
                     resolved_cache=resolved_cache,
                     channel_cache={},
@@ -715,6 +717,7 @@ class SequenceRunner:
         session,
         sequence_id: int,
         *,
+        workspace_id: int | None,
         signal_bindings: dict[str, int],
         resolved_cache: dict[int, ResolvedSequenceDefinition],
         channel_cache: dict[int, ChannelInfo],
@@ -743,11 +746,46 @@ class SequenceRunner:
         payload_channel_ids: set[int] = set()
         device_ids: set[int] = set()
 
+        switchgear_ids = {
+            int(step.payload.get("switchgear_id"))
+            for step in ordered_steps
+            if step.sequence_step_type == SequenceStepType.DO_PAIR
+            and isinstance(step.payload, dict)
+            and step.payload.get("switchgear_id") is not None
+        }
+        switchgear_lookup: dict[int, Switchgear] = {}
+        if switchgear_ids:
+            if workspace_id is None:
+                raise SequenceNotApplicableError("Switchgear pair steps require a workspace context")
+            switchgear_result = await session.execute(
+                select(Switchgear)
+                .join(WorkspaceSwitchgear, WorkspaceSwitchgear.switchgear_id == Switchgear.id)
+                .where(
+                    Switchgear.id.in_(switchgear_ids),
+                    WorkspaceSwitchgear.workspace_id == workspace_id,
+                )
+                .options(selectinload(Switchgear.bindings))
+            )
+            switchgear_lookup = {item.id: item for item in switchgear_result.scalars().unique().all()}
+
         for step in ordered_steps:
             payload = self._resolve_payload_channel_ids(
                 step.payload or {},
                 signal_bindings=signal_bindings,
             )
+            if step.sequence_step_type == SequenceStepType.DO_PAIR and payload.get("switchgear_id") is not None:
+                switchgear_id = int(payload["switchgear_id"])
+                switchgear = switchgear_lookup.get(switchgear_id)
+                if switchgear is None:
+                    raise SequenceNotApplicableError(f"Configured switchgear #{switchgear_id} is not available")
+                bindings = {binding.role: binding.channel_id for binding in switchgear.bindings}
+                open_channel_id = bindings.get("do_open")
+                closed_channel_id = bindings.get("do_closed")
+                if open_channel_id is None or closed_channel_id is None or open_channel_id == closed_channel_id:
+                    raise SequenceNotApplicableError(
+                        f"Switchgear {switchgear.name} requires distinct do_open and do_closed channels"
+                    )
+                payload["channel_ids"] = [int(open_channel_id), int(closed_channel_id)]
             resolved_primary = self._resolve_primary_channel_id(
                 step=step,
                 payload=payload,
@@ -796,6 +834,7 @@ class SequenceRunner:
                 await self._build_resolved_sequence(
                     session,
                     int(target_sequence_id),
+                    workspace_id=workspace_id,
                     signal_bindings=signal_bindings,
                     resolved_cache=resolved_cache,
                     channel_cache=channel_cache,
