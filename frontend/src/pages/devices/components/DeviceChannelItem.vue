@@ -387,6 +387,8 @@ function submitAoValue() {
 
 <style scoped>
 .device-channel-item {
+  container-name: device-channel-item;
+  container-type: inline-size;
   padding: 0.375rem 0.5rem;
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
@@ -728,7 +730,7 @@ function submitAoValue() {
   }
 }
 
-@media (max-width: 520px) {
+@container device-channel-item (max-width: 520px) {
   .device-channel-item__ao-grid {
     grid-template-columns: minmax(6rem, 7rem) minmax(0, 1fr);
     gap: 0.5rem;
