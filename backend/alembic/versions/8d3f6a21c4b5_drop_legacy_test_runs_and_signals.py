@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Sequence, Union
 
-from alembic import op
+from alembic import context, op
 import sqlalchemy as sa
 
 
@@ -36,6 +36,9 @@ ENUM_TYPES = (
 
 
 def _drop_table_if_exists(table_name: str) -> None:
+    if context.is_offline_mode():
+        op.execute(sa.text(f"DROP TABLE IF EXISTS {table_name} CASCADE"))
+        return
     inspector = sa.inspect(op.get_bind())
     if inspector.has_table(table_name):
         op.drop_table(table_name)
