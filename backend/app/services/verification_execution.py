@@ -392,6 +392,7 @@ def _build_step_and_evidence(
         target=target,
         actual_report_path=actual_report_path,
         observed_at=observed_at,
+        signal_value=signal_value,
         latency_ms=computed_latency_ms,
         runtime_result=runtime_result,
         window_ms=window_ms,
@@ -515,6 +516,7 @@ def _resolve_evidence_state(
     target: VerificationTargetSchema,
     actual_report_path: str | None,
     observed_at: datetime | None,
+    signal_value: Any,
     latency_ms: int | None,
     runtime_result,
     window_ms: int,
@@ -524,6 +526,8 @@ def _resolve_evidence_state(
         return "timeout", "unknown", "no_confirmation", "timeout"
     if actual_report_path is None:
         return "invalid", "unknown", "missing_report_path", "report_observation"
+    if signal_value is None:
+        return "invalid", "unknown", "missing_signal_value", "report_observation"
     if latency_ms is None:
         return "invalid", "unknown", "missing_latency", "report_observation"
     if latency_ms < 0:
@@ -918,6 +922,7 @@ def _diagnostic_message(code: str, evidence_status: str) -> str:
         "window_exceeded": "Report was observed outside the allowed window.",
         "no_confirmation": "No report confirmation arrived before timeout.",
         "missing_report_path": "Report confirmation did not include a path.",
+        "missing_signal_value": "Report confirmation did not include the expected signal value.",
         "missing_latency": "Report confirmation did not include a latency measurement.",
     }
     if code in messages:
