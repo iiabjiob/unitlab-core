@@ -152,6 +152,8 @@
 
 **Приёмка:** медленный клиент закрывается и восстанавливает состояние, остальные продолжают работать; нет утечек sender/sync tasks. В браузере видна потеря актуальности.
 
+**Статус slice B (2026-09-14): частично закрыт.** При queue overflow, send timeout и initial-sync failure backend теперь удаляет клиент из runtime и отдельно закрывает underlying WebSocket transport; закрытие идемпотентно на уровне менеджера. Reconnect/snapshot recovery и browser-level slow-client regression остаются для стендовой проверки.
+
 ## GAP-08 — Аппаратные WS-команды могут отправляться после reconnect
 
 **P0 · frontend transport/backend admission · подтверждено кодом.**
@@ -232,6 +234,8 @@ Redis работает без RDB/AOF, на tmpfs. Теряются очеред
 4. Постоянное состояние вынести в status panel; тост оставить для нового инцидента. Проверить acknowledgement/ручное закрытие и повторный реальный сбой.
 
 **Приёмка:** десять одинаковых/численно меняющихся snapshots одного инцидента не создают поток новых тостов; настоящая новая неисправность и восстановление видны. Визуально проверить настройки сети, diagnostics и работу во время FAT.
+
+**Статус slice B (2026-09-14): частично закрыт.** Для core diagnostics численные изменения CPU/memory/disk не меняют incident signature; inactive-service alert ограничен обязательными `docker` и `NetworkManager`, а существующий toast обновляется вместо пересоздания. Production incident ID, hysteresis/debounce, recovery и ручное acknowledgement остаются открытыми.
 
 ## GAP-13 — Повторная загрузка полного allocation-контекста на каждый сигнал
 

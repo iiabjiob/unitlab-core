@@ -17,6 +17,7 @@ import { useToastStore } from '@/stores/toastStore'
 import type { SystemHealthResponse } from '@/types/health'
 import type { CoreDiagnosticsSnapshot } from '@/types/coreDiagnostics'
 import router from '@/router'
+import { buildCoreDiagnosticsIssueSignature } from '@/services/coreDiagnosticsIncident'
 
 const logger = getLogger('ws')
 const lastTestRunJobEventMetaByJobId = new Map<string, {
@@ -287,6 +288,7 @@ function syncStickyCriticalToast(
   }
 
   if (state.signature === nextSignature && state.id !== null) {
+    toastStore.update(state.id, { message })
     return
   }
 
@@ -361,6 +363,7 @@ function syncCoreDiagnosticsCriticalAlert(
   }
 
   const inactiveServices = (Array.isArray(snapshot.services) ? snapshot.services : [])
+    .filter(service => ["docker", "NetworkManager"].includes(String(service.name ?? "")))
     .filter(service => service.active === false)
     .map(service => String(service.name ?? "").trim())
     .filter(Boolean)
@@ -373,7 +376,7 @@ function syncCoreDiagnosticsCriticalAlert(
     return
   }
 
-  const signature = JSON.stringify({ mode, issues })
+  const signature = buildCoreDiagnosticsIssueSignature(mode, issues)
   if (coreDiagnosticsCriticalToastState.signature === signature && coreDiagnosticsCriticalToastState.id !== null) {
     return
   }

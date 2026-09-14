@@ -18,6 +18,7 @@ class WebSocketManager:
         self._outbound_queues: dict[WebSocket, asyncio.Queue[Dict[str, Any]]] = {}
         self._sender_tasks: dict[WebSocket, asyncio.Task[None]] = {}
         self._sync_tasks: dict[WebSocket, asyncio.Task[None]] = {}
+        self._closing_sockets: set[WebSocket] = set()
         self._counters: dict[str, int] = defaultdict(int)
         self._channel_log_last_at: dict[str, float] = {}
         self._channel_log_suppressed: dict[str, int] = defaultdict(int)
@@ -45,6 +46,12 @@ class WebSocketManager:
         )
 
     def disconnect(self, websocket: WebSocket, *, reason: str = "unknown"):
+        known_socket = (
+            websocket in self.active_connections
+            or websocket in self._outbound_queues
+            or websocket in self._sender_tasks
+            or websocket in self._sync_tasks
+        )
         removed = False
         if websocket in self.active_connections:
             self.active_connections.remove(websocket)
@@ -56,6 +63,9 @@ class WebSocketManager:
         sync_task = self._sync_tasks.pop(websocket, None)
         if sync_task is not None:
             sync_task.cancel()
+        if known_socket and websocket not in self._closing_sockets:
+            self._closing_sockets.add(websocket)
+            asyncio.create_task(self._close_transport(websocket, reason))
         if removed:
             self._inc("disconnect.calls")
             self._inc(f"disconnect.reason.{reason}")
@@ -66,6 +76,15 @@ class WebSocketManager:
                 len(self._outbound_queues),
                 len(self._sender_tasks),
             )
+
+    async def _close_transport(self, websocket: WebSocket, reason: str) -> None:
+        """Close the underlying transport after removing it from runtime state."""
+        try:
+            await websocket.close(code=1013, reason=f"UnitLab WS disconnected: {reason}")
+        except Exception as exc:
+            logger.debug("WS transport close failed after %s: %s", reason, exc)
+        finally:
+            self._closing_sockets.discard(websocket)
 
     async def send_event(self, websocket: WebSocket, event: Union[BaseModel, Dict[str, Any]]):
         """Send a Pydantic or dict event to a specific client."""

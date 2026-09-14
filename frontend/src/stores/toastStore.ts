@@ -74,6 +74,12 @@ export const useToastStore = defineStore("toastStore", () => {
     toasts.value = toasts.value.filter(t => t.id !== id)
   }
 
+  function update(id: number, options: Partial<Omit<ToastItem, "id">>) {
+    const toast = toasts.value.find(item => item.id === id)
+    if (!toast) return
+    Object.assign(toast, options)
+  }
+
   function clear() {
     toasts.value = []
   }
@@ -90,6 +96,7 @@ export const useToastStore = defineStore("toastStore", () => {
     info,
     warning,
     remove,
+    update,
     clear,
     getByPosition,
   }
