@@ -86,7 +86,7 @@ function handlePulseChange(event: Event) {
 					:disabled="disabled"
 					@click="setValue(option)"
 				>
-					{{ option === 0 ? "Low" : "High" }}
+					{{ option === 0 ? "Off" : "On" }}
 				</UiButton>
 			</div>
 		</div>
