@@ -949,6 +949,11 @@ hardware admission теперь выполняет тот же bulk cross-worksp
 backend regression; явный physical recovery contract и hardware validation
 остаются release checks.
 
+**Статус slice G109 (2026-09-14): audit lifecycle alignment.** Tracking GAP-04
+обновлён под текущий intent lifecycle: успешный manual command завершается только
+после ACK и readback, а orphaned command остаётся recovery-состоянием. Удалено
+дублирующее утверждение о `initial_state_unknown`; поведение кода не менялось.
+
 **Статус slice G68 (2026-09-14): offline downgrade для live signal sheet.**
 Migration `9a1b2c3d4e6f` теперь генерирует детерминированный downgrade SQL для
 `signal_allocations`, `signal_sheet_presets` и `signal_sheets`, не вызывая
@@ -1104,8 +1109,9 @@ State handler больше не собирает single-bit/changed-bit snapshot
 до полноценного state response.
 Проверка дополнена TTL-backed `last_seen`, поэтому stale `online` при остановленном
 offline-checker также не считается доступностью.
-Успешная публикация manual intent теперь также фиксируется как `queued` до
-освобождения lease; это устраняет ложный `unknown` при restart reconciliation.
+Manual intent теперь проходит lifecycle `created` → `queued` → `completed` после
+ACK и physical readback; незавершённый intent при restart остаётся в
+`unknown`/`recovery_required`, а не маскируется как успешно завершённый.
 Core diagnostics toast теперь имеет локальное acknowledgement: оператор может
 скрыть текущий incident, а повторное уведомление появится только после recovery
 или изменения нормализованной signature. Это не заменяет серверный incident ID
