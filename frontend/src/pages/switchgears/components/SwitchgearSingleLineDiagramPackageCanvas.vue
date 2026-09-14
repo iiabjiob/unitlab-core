@@ -129,6 +129,7 @@ const localClipboardSelection = ref<DiagramClipboardSelection | null>(null)
 const clipboardPasteCount = ref(0)
 let persistTimer: ReturnType<typeof setTimeout> | null = null
 let entityIdSequence = 0
+let hasLocalStateChanges = false
 
 const diagram = useDiagramEngine(props.model.scene)
 const viewport = useDiagramViewport(diagram, { element: stageRef })
@@ -469,7 +470,7 @@ watch(() => textEditor.activeEditor.value, (next) => {
 })
 
 watch(() => props.initialStoredState, (next) => {
-  if (persistTimer == null) {
+  if (!hasLocalStateChanges) {
     lastStoredState.value = next
   }
 })
@@ -506,6 +507,7 @@ diagram.engine.subscribe((scene) => {
     labelOffsetById: lastStoredState.value?.labelOffsetById,
     baseState: lastStoredState.value,
   })
+  hasLocalStateChanges = true
   lastStoredState.value = nextState
   schedulePersistedState(nextState)
 })
@@ -571,6 +573,7 @@ function toggleSnapEnabled() {
     ...(lastStoredState.value ?? { workspaceId: props.workspaceId }),
     snapEnabled: !snapEnabled.value,
   }
+  hasLocalStateChanges = true
   lastStoredState.value = nextState
   schedulePersistedState(nextState)
   focusStage()
