@@ -168,7 +168,7 @@ function onSetAo({ channel, value }: { channel: Channel; value: number }) {
 .device-channels-list__items--digital {
   display: grid;
   grid-auto-flow: column;
-  grid-template-rows: repeat(8, minmax(0, 1fr));
+  grid-template-rows: repeat(8, minmax(2.5rem, auto));
   align-content: start;
   column-gap: 0.25rem;
   row-gap: 0.5rem;
