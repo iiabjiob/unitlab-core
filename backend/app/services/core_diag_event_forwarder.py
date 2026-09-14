@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import socket
 from datetime import datetime, timezone
@@ -43,6 +44,48 @@ def _parse_changed_at(payload: dict[str, Any]) -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _incident_id(payload: dict[str, Any]) -> str | None:
+    """Build a stable identity from diagnostic categories, not measurements."""
+    mode = str(payload.get("mode") or "unknown").strip().lower()
+    categories: list[str] = []
+    cpu = payload.get("cpu") if isinstance(payload.get("cpu"), dict) else {}
+    memory = payload.get("memory") if isinstance(payload.get("memory"), dict) else {}
+    disk = payload.get("disk_root") if isinstance(payload.get("disk_root"), dict) else {}
+    try:
+        if float(cpu.get("temperature_c")) >= 85:
+            categories.append("cpu_temperature")
+    except (TypeError, ValueError):
+        pass
+    try:
+        if float(memory.get("used_percent")) >= 95:
+            categories.append("memory_pressure")
+    except (TypeError, ValueError):
+        pass
+    try:
+        if float(disk.get("used_percent")) >= 95:
+            categories.append("disk_pressure")
+    except (TypeError, ValueError):
+        pass
+    inactive = sorted(
+        str(service.get("name") or "").strip()
+        for service in (payload.get("services") if isinstance(payload.get("services"), list) else [])
+        if isinstance(service, dict)
+        and str(service.get("name") or "") in {"docker", "NetworkManager"}
+        and service.get("active") is False
+    )
+    if inactive:
+        categories.append(f"inactive_services:{','.join(inactive)}")
+    if not categories and mode not in {"error", "degraded"}:
+        return None
+    canonical = json.dumps(
+        {"mode": mode, "categories": sorted(categories)},
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return f"core-diag:{hashlib.sha256(canonical).hexdigest()[:24]}"
+
+
 async def _ensure_group(redis) -> None:
     try:
         await redis.xgroup_create(STREAM_NAME, GROUP_NAME, id="0", mkstream=True)
@@ -83,9 +126,15 @@ async def _process_entries(redis, entries) -> None:
             if not payload:
                 logger.warning("⚠️ Invalid core diagnostics event payload in %s", entry_id)
             elif str(payload.get("event") or "") == "state":
+                snapshot = {**payload}
+                incident_id = _incident_id(snapshot)
+                if incident_id is None:
+                    snapshot.pop("incident_id", None)
+                else:
+                    snapshot["incident_id"] = incident_id
                 await WsEventPublisher.publish(
                     CoreDiagnosticsStateEvent(
-                        snapshot=payload,
+                        snapshot=snapshot,
                         changed_at=_parse_changed_at(payload),
                     )
                 )
@@ -104,4 +153,3 @@ async def forward_core_diag_events() -> None:
         if not entries:
             continue
         await _process_entries(redis, entries)
-

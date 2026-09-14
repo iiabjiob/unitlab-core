@@ -50,6 +50,7 @@ export interface CoreDiagnosticsSnapshot {
   last_error?: string | null
   updated_at: string
   request_id?: string
+  incident_id?: string
 }
 
 export interface CoreDiagnosticsStateResponse {
@@ -61,4 +62,3 @@ export interface CoreDiagnosticsCommandAccepted {
   action: string
   queued_at: string
 }
-

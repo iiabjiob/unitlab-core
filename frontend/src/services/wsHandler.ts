@@ -386,7 +386,8 @@ function syncCoreDiagnosticsCriticalAlert(
     return
   }
 
-  const signature = buildCoreDiagnosticsIssueSignature(mode, issues)
+  const signature = String(snapshot.incident_id ?? "").trim()
+    || buildCoreDiagnosticsIssueSignature(mode, issues)
   const debounce = advanceCoreDiagnosticsIncidentDebounce(
     coreDiagnosticsCriticalToastState.pendingSignature,
     coreDiagnosticsCriticalToastState.pendingCount,
