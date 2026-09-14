@@ -5,12 +5,17 @@ from app.services.core_diagnostics_incident import acknowledge_incident, is_inci
 class _Redis:
     def __init__(self) -> None:
         self.values: dict[str, str] = {}
+        self.events: list[dict[str, str]] = []
 
     async def set(self, key: str, value: str, *, ex: int) -> None:
         self.values[key] = value
 
     async def get(self, key: str) -> str | None:
         return self.values.get(key)
+
+    async def xadd(self, stream: str, fields: dict[str, str]) -> str:
+        self.events.append({"stream": stream, **fields})
+        return "1-0"
 
 
 def _snapshot(*, cpu: float = 86.0, memory: float = 96.0, disk: float = 96.0) -> dict:
@@ -58,3 +63,5 @@ def test_incident_acknowledgement_is_ttl_backed_and_scoped() -> None:
     assert asyncio.run(is_incident_acknowledged(redis, hostname="rpi-1", incident_id="core-diag:abc")) is True
     assert asyncio.run(is_incident_acknowledged(redis, hostname="rpi-2", incident_id="core-diag:abc")) is False
     assert next(iter(redis.values)) == "core:diagnostics:ack:rpi-1:core-diag:abc"
+    assert redis.events[0]["stream"] == "core:diagnostics:ack-events"
+    assert "core_diagnostics_acknowledged" in redis.events[0]["event"]

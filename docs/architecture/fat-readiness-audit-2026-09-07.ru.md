@@ -549,6 +549,13 @@ acknowledgement в Redis с TTL 7 дней, а последующие diagnostic
 ID; старый fallback остаётся local-only. Полный durable audit trail и multi-user
 identity остаются отдельным release gap.
 
+**Статус slice G30 (2026-09-14): append-only acknowledgement event.** Каждый
+server-side diagnostics acknowledgement дополнительно записывается в отдельный
+Redis stream `core:diagnostics:ack-events` с incident ID, hostname, временем и
+явным anonymous actor marker. Это даёт reconstructable event trail при включённой
+Redis persistence, но не заменяет authenticated multi-user identity и экспорт в
+долговечное PostgreSQL audit storage.
+
 ## Дополнительный связанный риск — AO-сценарий
 
 При следующем аппаратном slice отдельно проверить AO-ветку [signal_test_run_runner.py](../../backend/app/workers/signal_test_run_runner.py): она выбирает случайное значение 0–24. Это подтверждено кодом, но электрические единицы/допустимые диапазоны конкретного оборудования здесь не установлены. Не переносить такой сценарий автоматически в доверенный test plan: сначала определить тип/диапазон канала, затем сохранить детерминированную последовательность значений в ревизии плана и проверить readback. Основная цель текущей очереди — сухой контакт; расширение AO оформить отдельным scope.

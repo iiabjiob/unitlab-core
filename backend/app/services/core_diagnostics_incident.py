@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+import json
 from typing import Any
 
 ACK_TTL_SECONDS = 7 * 24 * 60 * 60
+ACK_EVENT_STREAM = "core:diagnostics:ack-events"
 
 
 def acknowledgement_key(hostname: str, incident_id: str) -> str:
@@ -15,6 +18,21 @@ async def acknowledge_incident(redis: Any, *, hostname: str, incident_id: str) -
     if not hostname or not incident_id:
         return False
     await redis.set(acknowledgement_key(hostname, incident_id), "1", ex=ACK_TTL_SECONDS)
+    await redis.xadd(
+        ACK_EVENT_STREAM,
+        {
+            "event": json.dumps(
+                {
+                    "event": "core_diagnostics_acknowledged",
+                    "hostname": hostname,
+                    "incident_id": incident_id,
+                    "acknowledged_at": datetime.now(UTC).isoformat(),
+                    "actor": "websocket-anonymous",
+                },
+                separators=(",", ":"),
+            )
+        },
+    )
     return True
 
 
