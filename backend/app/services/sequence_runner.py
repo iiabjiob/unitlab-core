@@ -1207,9 +1207,13 @@ class SequenceRunner:
                         )
                         await session.commit()
                         is_current = getattr(hardware_admission, "is_current", None)
-                        if is_current is not None and any(
-                            not await is_current(lease) for lease in leases
-                        ):
+                        lease_lost = False
+                        if is_current is not None:
+                            for lease in leases:
+                                if not await is_current(lease):
+                                    lease_lost = True
+                                    break
+                        if lease_lost:
                             raise SequenceNotApplicableError("Hardware channel lease lost")
                         try:
                             await sender(command_id)
