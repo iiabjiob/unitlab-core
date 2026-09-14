@@ -676,6 +676,20 @@ Known gap:
 
 - The layout now respects SCL hierarchy coordinates and busbar-connected cells, but it is still not a full operator-grade substation drawing. Remaining work includes transformer multi-voltage relationships, ground endpoint symbols, ambiguous vendor topology diagnostics, and larger-canvas render pressure.
 
+Implemented 2026-09-14 - SLD editor interaction quality:
+
+- The package-based editor uses unique IDs for created and pasted objects, coalesces local persistence writes, and flushes pending state on unmount.
+- Bound lines cannot be rotated destructively; unresolved bindings remain persisted and are shown as broken bindings in the editor.
+- Canvas keyboard shortcuts are scoped to the focused editor. `V`, `H`, and `L` select the main tools, and `Escape` cancels active line and pointer interactions.
+- Port snapping shows a preview target, zero-length lines are rejected, and browser touch gestures do not compete with Canvas pointer handling.
+- Toolbar presentation is isolated in `SwitchgearSldPackageToolbar.vue`; minimap work is skipped during active drag operations.
+
+Validation:
+
+- Frontend type-check and production build pass.
+- Full frontend test suite passes with 38 files and 198 tests.
+- SLD scene tests cover unresolved binding preservation.
+
 ### Slice 12 - C# Migration Readiness
 
 Status: `[ ]`
