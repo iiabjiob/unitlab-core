@@ -34,6 +34,7 @@ from app.services.hardware_command_admission import HardwareChannelLease, Hardwa
 from app.services.hardware_command_intent import (
     has_hardware_recovery_required,
     mark_hardware_command_intent_delivery_failure,
+    mark_hardware_command_intent_completed,
     mark_hardware_command_intent_queued,
     reconcile_unfinished_hardware_command_intents,
     record_hardware_command_intent,
@@ -1813,6 +1814,10 @@ async def _handle_test_run(
             ) and hardware_readback_ok
             if not success:
                 test_status = "blocked"
+            else:
+                for command_id in command_ids:
+                    await mark_hardware_command_intent_completed(repo.db, command_id=command_id)
+                await repo.db.commit()
 
             verification_capture = None
             if (

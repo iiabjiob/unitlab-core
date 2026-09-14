@@ -47,6 +47,7 @@ from app.services.hardware_command_ack import wait_for_hardware_command_acks
 from app.services.hardware_command_admission import HardwareCommandAdmission
 from app.services.hardware_command_intent import (
     mark_hardware_command_intent_delivery_failure,
+    mark_hardware_command_intent_completed,
     mark_hardware_command_intent_queued,
     reconcile_unfinished_hardware_command_intents,
     record_hardware_command_intent,
@@ -1231,6 +1232,8 @@ class SequenceRunner:
                                 )
                                 await session.commit()
                                 raise SequenceNotApplicableError("Hardware pulse restore readback failed")
+                        await mark_hardware_command_intent_completed(session, command_id=command_id)
+                        await session.commit()
                         return command_id
                     finally:
                         for lease in locals().get("leases", []) or []:

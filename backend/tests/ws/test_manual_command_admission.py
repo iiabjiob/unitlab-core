@@ -125,6 +125,9 @@ def test_manual_command_marks_intent_queued_after_publish(monkeypatch) -> None:
     async def mark_queued(*args, **kwargs):
         calls.append("queued")
 
+    async def mark_completed(*args, **kwargs):
+        calls.append("completed")
+
     async def sender(command_id: str):
         calls.append("publish")
 
@@ -136,6 +139,7 @@ def test_manual_command_marks_intent_queued_after_publish(monkeypatch) -> None:
     monkeypatch.setattr(manual_command_admission, "HardwareCommandAdmission", Admission)
     monkeypatch.setattr(manual_command_admission, "record_hardware_command_intent", record_intent)
     monkeypatch.setattr(manual_command_admission, "mark_hardware_command_intent_queued", mark_queued)
+    monkeypatch.setattr(manual_command_admission, "mark_hardware_command_intent_completed", mark_completed)
     async def wait_for_acks(*args, **kwargs):
         calls.append("acknowledged")
         return {kwargs["command_ids"][0]: "acknowledged"}
@@ -158,7 +162,7 @@ def test_manual_command_marks_intent_queued_after_publish(monkeypatch) -> None:
         )
     )
 
-    assert calls.index("publish") < calls.index("queued") < calls.index("acknowledged") < calls.index("release")
+    assert calls.index("publish") < calls.index("queued") < calls.index("acknowledged") < calls.index("completed") < calls.index("release")
 
 
 def test_manual_command_timeout_is_reported_and_lease_released(monkeypatch) -> None:

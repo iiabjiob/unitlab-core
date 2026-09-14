@@ -909,6 +909,14 @@ Manual DO/AO/pair/all/pulse paths уже ждут durable ACK и свежий ch
 G12 не утверждала отсутствие этого server-side barrier; реальный device ACK,
 physical timing и browser/WS observation остаются release checks.
 
+**Статус slice G103 (2026-09-14): terminal intent state before restart recovery.**
+После подтверждённого ACK и успешного physical readback manual, FAT и sequence
+paths переводят intent в terminal `completed`; reconciliation рассматривает только
+`created/queued` как незавершённые. Это предотвращает ложную блокировку уже
+завершённых команд после штатного рестарта и сохраняет fail-closed поведение для
+команды, оборванной до readback. Crash/kill rehearsal на production Redis и
+PostgreSQL остаётся release check.
+
 **Статус slice G68 (2026-09-14): offline downgrade для live signal sheet.**
 Migration `9a1b2c3d4e6f` теперь генерирует детерминированный downgrade SQL для
 `signal_allocations`, `signal_sheet_presets` и `signal_sheets`, не вызывая

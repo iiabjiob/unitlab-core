@@ -18,6 +18,7 @@ from app.services.command_queue_service import enqueue_ao_command, enqueue_do_co
 from app.services.hardware_command_admission import HardwareChannelLease, HardwareCommandAdmission
 from app.services.hardware_command_intent import (
     mark_hardware_command_intent_delivery_failure,
+    mark_hardware_command_intent_completed,
     mark_hardware_command_intent_queued,
     record_hardware_command_intent,
 )
@@ -284,6 +285,9 @@ async def _enqueue_manual(
                         command_id=command_id,
                         status="recovery_required",
                     )
+                    await session.commit()
+                else:
+                    await mark_hardware_command_intent_completed(session, command_id=command_id)
                     await session.commit()
     except asyncio.CancelledError:
         async with AsyncSessionLocal() as session:

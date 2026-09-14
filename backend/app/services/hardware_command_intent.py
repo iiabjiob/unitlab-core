@@ -143,6 +143,19 @@ async def mark_hardware_command_intent_queued(
     await db.flush()
 
 
+async def mark_hardware_command_intent_completed(
+    db: AsyncSession,
+    *,
+    command_id: str,
+) -> None:
+    await db.execute(
+        update(HardwareCommandIntent)
+        .where(HardwareCommandIntent.command_id == command_id)
+        .values(status="completed")
+    )
+    await db.flush()
+
+
 async def mark_hardware_command_intent_delivery_failure(
     db: AsyncSession,
     *,
