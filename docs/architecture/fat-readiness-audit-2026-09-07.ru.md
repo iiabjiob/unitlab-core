@@ -811,6 +811,12 @@ backup/restore, а не ошибка генерации промежуточны
 не меняет текущий anonymous production profile; broker listener, firmware
 provisioning и end-to-end TLS round-trip требуют deployment/hardware проверки.
 
+**Статус slice G82 (2026-09-14): MQTT secure-profile regression.** Добавлены
+автоматические проверки secure ACL и TLS overlay: anonymous access запрещён,
+backend/device topic scopes сохранены, TLS listener не возвращает plaintext
+listener. Это предотвращает регрессию конфигурационного барьера, но не закрывает
+provisioning credentials, broker/device round-trip и rollout на production.
+
 **Статус slice G73 (2026-09-14): AO profile barrier regression.** Worker-тест
 теперь явно проверяет, что AO signal без hardware profile получает
 `ao_profile_required`, не получает lease и не доходит до enqueue. Случайный
@@ -1012,8 +1018,3 @@ npm test -- src/api/http.test.ts src/pages/signals/composables/useSignalGridPatc
 ## Как обновлять статус
 
 Для каждого завершённого slice добавить к соответствующему GAP: дату, commit/PR, закрытые подэтапы, выполненные проверки и остаточные риски. Статусы: `открыт → частично закрыт → закрыт` либо `ожидает аппаратной проверки`. Не стирать исходный finding и не называть запланированный контракт реализованным.
-**Статус slice G82 (2026-09-14): MQTT secure-profile regression.** Добавлены
-автоматические проверки secure ACL и TLS overlay: anonymous access запрещён,
-backend/device topic scopes сохранены, TLS listener не возвращает plaintext
-listener. Это предотвращает регрессию конфигурационного барьера, но не закрывает
-provisioning credentials, broker/device round-trip и rollout на production.
