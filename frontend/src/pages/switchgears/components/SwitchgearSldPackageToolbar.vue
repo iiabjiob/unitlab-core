@@ -120,16 +120,28 @@ const props = defineProps<{
 }
 
 .switchgear-sld-package-canvas__tool-tab {
-  min-width: 2rem;
-  padding: 0.35rem 0.55rem;
+  width: 2.25rem;
+  height: 2.25rem;
+  min-width: 2.25rem;
+  padding: 0;
   border: 1px solid var(--color-neutral-200);
   border-radius: 0.5rem;
   background: var(--color-white);
   color: var(--color-neutral-600);
   font: inherit;
-  font-size: var(--text-sm);
+  font-size: 1.05rem;
+  line-height: 1;
   font-weight: 600;
   cursor: pointer;
+}
+
+.switchgear-sld-package-canvas__actions :deep(.btn-toolbar) {
+  width: 2.25rem;
+  height: 2.25rem;
+  min-width: 2.25rem;
+  padding: 0;
+  font-size: 1.05rem;
+  line-height: 1;
 }
 
 .switchgear-sld-package-canvas__tool-tab.is-active {
