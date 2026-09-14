@@ -8,7 +8,6 @@ Create Date: 2025-12-15 10:00:00.000000
 from __future__ import annotations
 
 from typing import Sequence, Union
-from uuid import uuid4
 
 from alembic import op
 import sqlalchemy as sa
@@ -82,25 +81,30 @@ def upgrade() -> None:
         ondelete="CASCADE",
     )
 
-    bind = op.get_bind()
-    default_uuid = str(uuid4())
-    bind.execute(
-        sa.text("INSERT INTO projects (name, uuid) VALUES (:name, :uuid)"),
-        {"name": "Default Project", "uuid": default_uuid},
+    # Keep the data migration executable in Alembic offline mode as well.  A
+    # Python result lookup (`scalar_one`) cannot be rendered to SQL and caused
+    # the complete migration graph to fail before later safety migrations.
+    default_uuid = "00000000-0000-4000-8000-000000000001"
+    op.execute(
+        sa.text(
+            "INSERT INTO projects (name, uuid) "
+            "SELECT 'Default Project', :default_uuid "
+            "WHERE NOT EXISTS (SELECT 1 FROM projects WHERE uuid = :default_uuid)"
+        ).bindparams(default_uuid=default_uuid)
     )
-    result = bind.execute(
-        sa.text("SELECT id FROM projects WHERE uuid = :uuid"),
-        {"uuid": default_uuid},
+    op.execute(
+        sa.text(
+            "UPDATE switchgears SET project_id = "
+            "(SELECT id FROM projects WHERE uuid = :default_uuid) "
+            "WHERE project_id IS NULL"
+        ).bindparams(default_uuid=default_uuid)
     )
-    default_project_id = result.scalar_one()
-
-    bind.execute(
-        sa.text("UPDATE switchgears SET project_id = :pid WHERE project_id IS NULL"),
-        {"pid": default_project_id},
-    )
-    bind.execute(
-        sa.text("UPDATE sequences SET project_id = :pid WHERE project_id IS NULL"),
-        {"pid": default_project_id},
+    op.execute(
+        sa.text(
+            "UPDATE sequences SET project_id = "
+            "(SELECT id FROM projects WHERE uuid = :default_uuid) "
+            "WHERE project_id IS NULL"
+        ).bindparams(default_uuid=default_uuid)
     )
 
     op.alter_column("switchgears", "project_id", nullable=False)
