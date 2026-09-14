@@ -2170,6 +2170,22 @@ async def _process_entries(redis, entries) -> None:
                 str(exc),
             )
             logger.exception("💥 Failed to process signal test run job %s: %s", entry_id, exc)
+            reconciled_hardware_intents = 0
+            if job_id and execution_attempt_id:
+                try:
+                    async with AsyncSessionLocal() as recovery_session:
+                        reconciled_hardware_intents = await reconcile_unfinished_hardware_command_intents(
+                            recovery_session,
+                            job_id=job_id,
+                            attempt_id=execution_attempt_id,
+                        )
+                        await recovery_session.commit()
+                except Exception:  # noqa: BLE001
+                    logger.exception(
+                        "💥 Failed to reconcile hardware intents after signal test run failure job=%s attempt=%s",
+                        job_id,
+                        execution_attempt_id,
+                    )
             if job_id:
                 current_before_fail = await get_signal_job(job_id)
                 current_attempt_id, _ = _extract_job_attempt_meta(current_before_fail)
@@ -2191,6 +2207,7 @@ async def _process_entries(redis, entries) -> None:
                         "attempt_id": execution_attempt_id,
                         "attempt_no": execution_attempt_no,
                         "failure_policy": "attempt_scoped_terminal_update",
+                        "reconciled_hardware_intents": reconciled_hardware_intents,
                     } if execution_attempt_id else None,
                 )
                 if failed_state:

@@ -505,6 +505,13 @@ production build. Runtime hardware, target-browser и Pi evidence остаютс
 Счётчик `succeeded` по-прежнему означает доставленные команды и не меняет
 optional IEC policy, поэтому различие delivery и FAT verdict остаётся явным.
 
+**Статус slice G23 (2026-09-14): failure-path hardware reconciliation.** При
+исключении worker после создания текущего execution attempt незавершённые
+hardware intents теперь переводятся в `unknown` либо `recovery_required` до
+terminal `failed` job update; количество reconciled intents сохраняется в
+failure result. Это закрывает окно между публикацией команды и progress cursor,
+а автономная защита/kill-test стенда по GAP-04 остаются обязательными.
+
 ## Дополнительный связанный риск — AO-сценарий
 
 При следующем аппаратном slice отдельно проверить AO-ветку [signal_test_run_runner.py](../../backend/app/workers/signal_test_run_runner.py): она выбирает случайное значение 0–24. Это подтверждено кодом, но электрические единицы/допустимые диапазоны конкретного оборудования здесь не установлены. Не переносить такой сценарий автоматически в доверенный test plan: сначала определить тип/диапазон канала, затем сохранить детерминированную последовательность значений в ревизии плана и проверить readback. Основная цель текущей очереди — сухой контакт; расширение AO оформить отдельным scope.
