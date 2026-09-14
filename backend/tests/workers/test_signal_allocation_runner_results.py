@@ -62,7 +62,7 @@ def legacy_worker_contract_fixture(monkeypatch: pytest.MonkeyPatch):
         rows: list[SignalAllocationRowSchema] = []
         list_rows = getattr(repo, "list_allocation_rows_by_signal_ids", None)
         if list_rows is not None:
-            for signal_id in (1, 2, 3):
+            for signal_id in (1, 2, 3, 4):
                 rows.extend(await list_rows(workspace_id, [signal_id]))
         if tracked_calls is not None and original_calls is not None:
             tracked_calls[:] = original_calls
@@ -1074,6 +1074,7 @@ def test_signal_test_run_skips_non_executable_current_bindings(monkeypatch) -> N
         1: build_allocation_row(1, unit_id=None),
         2: build_allocation_row(2, channel_type="di"),
         3: build_allocation_row(3, unit_online=False),
+        4: build_allocation_row(4, channel_type="ao"),
     }
     commands: list[dict] = []
 
@@ -1108,7 +1109,7 @@ def test_signal_test_run_skips_non_executable_current_bindings(monkeypatch) -> N
     }
     payload = {
         "job_id": "job-1",
-        "signal_ids": [1, 2, 3],
+        "signal_ids": [1, 2, 3, 4],
         "signal_interval_ms": 100,
         "toggle_mode": "single",
     }
@@ -1117,15 +1118,17 @@ def test_signal_test_run_skips_non_executable_current_bindings(monkeypatch) -> N
     result = run_async(signal_test_run_runner._handle_test_run(repo, 7, payload, job_state))  # type: ignore[arg-type]
 
     assert result["succeeded"] == 0
-    assert result["skipped"] == 3
-    assert result["evidence_count"] == 3
+    assert result["skipped"] == 4
+    assert result["evidence_count"] == 4
     assert result["skip_reasons"]["invalid_binding"] == 1
     assert result["skip_reasons"]["incompatible_channel_mode"] == 1
     assert result["skip_reasons"]["offline_unit"] == 1
+    assert result["skip_reasons"]["ao_profile_required"] == 1
     assert [item["reason"] for item in repo.evidence] == [
         "invalid_binding",
         "incompatible_channel_mode",
         "offline_unit",
+        "ao_profile_required",
     ]
     assert repo.evidence[1]["channel_id"] == 102
     assert repo.evidence[2]["unit_id"] == "unit-3"

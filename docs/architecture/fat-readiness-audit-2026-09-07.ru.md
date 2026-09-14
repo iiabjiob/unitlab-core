@@ -808,6 +808,12 @@ backup/restore, а не ошибка генерации промежуточны
 не меняет текущий anonymous production profile; broker listener, firmware
 provisioning и end-to-end TLS round-trip требуют deployment/hardware проверки.
 
+**Статус slice G73 (2026-09-14): AO profile barrier regression.** Worker-тест
+теперь явно проверяет, что AO signal без hardware profile получает
+`ao_profile_required`, не получает lease и не доходит до enqueue. Случайный
+диапазон `0..24` не считается допустимым FAT-поведением; profile/units/safe
+restore остаются hardware-policy scope.
+
 **Статус slice G38 (2026-09-14): offline-safe signal sheet migration.**
 `9a1b2c3d4e6f` получил PostgreSQL offline-ветку для создания signal sheet/preset и
 live allocation tables и удаления прежних snapshot tables без `inspect` на
