@@ -44,8 +44,6 @@ class DeviceStateService:
         redis = RedisManager.get_instance()
         changed = False
         packet_id = getattr(hdr, "packet_id", None)
-        if packet_id is not None:
-            await redis.set(f"device:{unit_id}:last_state_packet_id", str(int(packet_id)))
 
         if hdr.mode == State.STATE_ALL_BIT:
             current = await redis.get(f"device:{unit_id}:bitmask")
@@ -138,6 +136,9 @@ class DeviceStateService:
             if any(current_diag.get(k) != v for k, v in new_mapping.items()):
                 await redis.hset(latched_key, mapping=new_mapping)
                 changed = True
+
+        if packet_id is not None:
+            await redis.set(f"device:{unit_id}:last_state_packet_id", str(int(packet_id)))
 
         if not changed and not await DeviceStateService._should_emit_unchanged_event(unit_id, hdr.mode, redis):
             return False, None

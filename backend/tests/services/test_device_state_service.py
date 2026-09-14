@@ -108,4 +108,4 @@ def test_state_response_records_request_packet_id_without_changing_legacy_fixtur
         )
     )
 
-    assert ("device:unit-1:last_state_packet_id", "44") in redis.writes
+    assert redis.writes[-1] == ("device:unit-1:last_state_packet_id", "44")

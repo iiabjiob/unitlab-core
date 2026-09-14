@@ -444,6 +444,12 @@ focused suites.
 свежего snapshot блокирует воздействие как `initial_state_unknown`. Проверен
 stale initial-packet negative scenario.
 
+**Статус slice G49 (2026-09-14): atomic ordering of state freshness marker.**
+`last_state_packet_id` теперь записывается после обновления bitmask/AO/diagnostic
+данных, поэтому matching marker не может наблюдаться между marker write и
+обновлением фактического snapshot. Проверены state-service regressions и полный
+focused worker readback suite.
+
 ## GAP-12 — Повторные diagnostics-тосты и неоднозначность сетевой ошибки
 
 **P1 · operator UX/host diagnostics · механизм подтверждён, production-причина не установлена.**
