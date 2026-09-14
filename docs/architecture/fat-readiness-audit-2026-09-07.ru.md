@@ -138,6 +138,12 @@ fresh safety truth: доступность устройства и неизме�
 При rebind шаг получает `binding_changed` и не переключает новый канал. Recovery,
 retest lineage и legacy jobs без plan требуют отдельного подэтапа.
 
+**Статус slice D2 (2026-09-14): частично закрыт.** Resume/retest по
+`resume_job_id` теперь наследует и клонирует исходный immutable plan; переданная
+другая revision отклоняется. Запуск без plan не получает fallback к текущей
+allocation и блокируется. При ошибке публикации job его plan удаляется. Полная
+restart reconciliation и миграция старых jobs остаются открытыми.
+
 ## GAP-06 — Синхронное ожидание IEC 61850 блокирует event loop worker
 
 **P1 · runtime/performance · подтверждено кодом; длительности не измерены.**

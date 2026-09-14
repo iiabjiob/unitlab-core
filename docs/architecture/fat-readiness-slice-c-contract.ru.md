@@ -1,6 +1,6 @@
 # Слайз C — контракт durable revision и immutable test plan
 
-Статус: подэтапы C1/C2 и D1 реализованы, D2 (recovery/retest semantics) открыт.
+Статус: подэтапы C1/C2/D1/D2 реализованы, D3 (legacy migration/reconciliation) открыт.
 Дата: 2026-09-14.
 
 ## Цель
@@ -116,7 +116,9 @@ Retest по умолчанию принимает исходный `test_run_id`
 Worker D1 читает binding и порядок из plan items. Перед воздействием он отдельно
 сверяет только свежую доступность и неизменность physical binding; при rebind
 строка блокируется как `binding_changed`, текущая allocation не подставляется.
-Recovery/retest semantics и legacy jobs без plan остаются открытыми.
+Resume/retest теперь клонирует исходный plan по `resume_job_id`; несовпадающая
+revision отклоняется. Legacy jobs без plan явно блокируются. Полная migration и
+restart reconciliation остаются открытыми.
 
 ## Порядок реализации после согласования
 

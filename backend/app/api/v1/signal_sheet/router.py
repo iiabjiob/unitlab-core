@@ -605,6 +605,7 @@ async def enqueue_signal_test_run_job(
     payload: SignalTestRunJobSchema,
     repo: SignalSheetRepository = Depends(get_repo),
     signals_repo: SignalsRepository = Depends(get_signals_repo),
+    db: AsyncSession = Depends(get_db),
 ):
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -617,8 +618,18 @@ async def enqueue_signal_test_run_job(
 
     requested_signal_ids = [int(signal_id) for signal_id in payload.signal_ids if int(signal_id) > 0]
     revision_service = SignalRevisionService(db)
+    resume_source_job_id = str(payload.resume_job_id or "").strip() if payload.resume_from_cursor else ""
+    source_plan = None
+    if resume_source_job_id:
+        source_plan = await revision_service.get_test_run_plan(job_id=resume_source_job_id, workspace_id=workspace_id)
+        if source_plan is None:
+            raise HTTPException(status_code=409, detail="Cannot resume test run without an immutable source plan")
     revision_id = payload.verification_signal_list_revision_id if (payload.verification_signal_list_revision_id or 0) > 0 else None
-    if revision_id is None:
+    if source_plan is not None:
+        if revision_id is not None and revision_id != source_plan.revision_id:
+            raise HTTPException(status_code=409, detail="Resume revision does not match source test-run plan")
+        revision_id = source_plan.revision_id
+    elif revision_id is None:
         sheet = await repo.get_sheet(workspace_id)
         rows = await repo.list_allocation_rows_by_signal_ids(workspace_id, requested_signal_ids)
         revision = await revision_service.create_active_revision(
@@ -631,12 +642,19 @@ async def enqueue_signal_test_run_job(
     job_id = uuid4().hex
 
     async def persist_immutable_plan() -> None:
-        await revision_service.create_test_run_plan(
-            job_id=job_id,
-            workspace_id=workspace_id,
-            revision_id=int(revision_id),
-            signal_ids=requested_signal_ids,
-        )
+        if source_plan is not None:
+            await revision_service.clone_test_run_plan(
+                source_job_id=resume_source_job_id,
+                job_id=job_id,
+                workspace_id=workspace_id,
+            )
+        else:
+            await revision_service.create_test_run_plan(
+                job_id=job_id,
+                workspace_id=workspace_id,
+                revision_id=int(revision_id),
+                signal_ids=requested_signal_ids,
+            )
         await db.commit()
     initial_result: dict[str, Any] = {}
     initial_result["signal_list_revision_id"] = revision_id
@@ -665,6 +683,7 @@ async def enqueue_signal_test_run_job(
             "pending",
         )
         initial_result = {"verification_plan_error": str(exc)}
+    initial_result["signal_list_revision_id"] = revision_id
 
     try:
         job_state = await create_signal_job(
@@ -677,6 +696,9 @@ async def enqueue_signal_test_run_job(
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception:
+        await revision_service.delete_test_run_plan(job_id=job_id, workspace_id=workspace_id)
+        raise
     await WsEventPublisher.publish(build_signal_job_event(job_state))
     return SignalJobStatusSchema.model_validate(job_state)
 

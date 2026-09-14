@@ -5,7 +5,7 @@ import json
 from datetime import UTC, datetime
 from typing import Sequence
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.signal_revision import SignalListRevision, SignalListRevisionItem, SignalTestRunPlan, SignalTestRunPlanItem
@@ -94,6 +94,51 @@ class SignalRevisionService:
                 snapshot=snapshot,
             )
             for index, (item, snapshot) in enumerate(zip(items, snapshots, strict=True))
+        ]
+        self.db.add(plan)
+        await self.db.flush()
+        return plan
+
+    async def get_test_run_plan(self, *, job_id: str, workspace_id: int) -> SignalTestRunPlan | None:
+        return await self.db.scalar(
+            select(SignalTestRunPlan).where(
+                SignalTestRunPlan.job_id == str(job_id),
+                SignalTestRunPlan.workspace_id == workspace_id,
+            )
+        )
+
+    async def delete_test_run_plan(self, *, job_id: str, workspace_id: int) -> None:
+        await self.db.execute(
+            delete(SignalTestRunPlan).where(
+                SignalTestRunPlan.job_id == str(job_id),
+                SignalTestRunPlan.workspace_id == workspace_id,
+            )
+        )
+        await self.db.commit()
+
+    async def clone_test_run_plan(
+        self,
+        *,
+        source_job_id: str,
+        job_id: str,
+        workspace_id: int,
+    ) -> SignalTestRunPlan:
+        source = await self.get_test_run_plan(job_id=source_job_id, workspace_id=workspace_id)
+        if source is None:
+            raise ValueError("Source test-run plan is missing")
+        plan = SignalTestRunPlan(
+            job_id=str(job_id),
+            workspace_id=workspace_id,
+            revision_id=source.revision_id,
+            content_hash=source.content_hash,
+        )
+        plan.items = [
+            SignalTestRunPlanItem(
+                revision_item_id=item.revision_item_id,
+                order_index=item.order_index,
+                snapshot=dict(item.snapshot),
+            )
+            for item in sorted(source.items, key=lambda item: item.order_index)
         ]
         self.db.add(plan)
         await self.db.flush()
