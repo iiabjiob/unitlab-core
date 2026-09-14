@@ -196,6 +196,73 @@ def test_manual_command_timeout_is_reported_and_lease_released(monkeypatch) -> N
     assert captured["reason"] == "hardware_ack_timeout"
 
 
+def test_manual_command_marks_recovery_when_acknowledged_readback_fails(monkeypatch) -> None:
+    captured: dict = {}
+    statuses: list[str] = []
+
+    class Session:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def commit(self):
+            return None
+
+    class Admission:
+        def __init__(self, redis) -> None:
+            return None
+
+        async def acquire_many(self, **kwargs):
+            return [SimpleNamespace(fencing_epoch=1, lease_id="lease-1")]
+
+        async def release(self, lease):
+            return True
+
+    async def mark_failure(*args, **kwargs):
+        statuses.append(kwargs["status"])
+
+    async def result(*args, **kwargs):
+        captured.update(kwargs)
+
+    async def wait_for_acks(*args, **kwargs):
+        return {kwargs["command_ids"][0]: "acknowledged"}
+
+    async def readback(*args, **kwargs):
+        return False
+
+    async def noop(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(manual_command_admission, "AsyncSessionLocal", lambda: Session())
+    monkeypatch.setattr(manual_command_admission, "RedisManager", SimpleNamespace(get_instance=lambda: object()))
+    monkeypatch.setattr(manual_command_admission, "HardwareCommandAdmission", Admission)
+    monkeypatch.setattr(manual_command_admission, "record_hardware_command_intent", noop)
+    monkeypatch.setattr(manual_command_admission, "mark_hardware_command_intent_queued", noop)
+    monkeypatch.setattr(manual_command_admission, "mark_hardware_command_intent_delivery_failure", mark_failure)
+    monkeypatch.setattr(manual_command_admission, "wait_for_hardware_command_acks", wait_for_acks)
+    monkeypatch.setattr(manual_command_admission, "enqueue_request_state", noop)
+    monkeypatch.setattr(manual_command_admission, "_wait_for_manual_readback", readback)
+    monkeypatch.setattr(manual_command_admission, "_result", result)
+
+    run_async(
+        manual_command_admission._enqueue_manual(
+            object(),
+            workspace_id=7,
+            channel_ids=[17],
+            unit_id="unit-1",
+            device_id=23,
+            action="do_set",
+            payload={"ch": 2, "value": 1},
+            sender=lambda command_id: _done(),
+        )
+    )
+
+    assert statuses == ["recovery_required"]
+    assert captured["reason"] == "hardware_readback_timeout"
+
+
 async def _done():
     return None
 

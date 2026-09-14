@@ -411,6 +411,13 @@ timeout; неподтверждённая команда остаётся в dur
 согласования. Проверены focused backend tests и frontend type-check; simulator/
 device ACK latency и disconnect recovery остаются стендовыми проверками.
 
+**Статус slice G44 (2026-09-14): manual DO/AO readback barrier.** После
+положительного ACK single-channel manual DO/AO запрашивает соответствующий
+state snapshot и ждёт совпадение значения; отсутствие/mismatch переводит intent
+в `recovery_required`. Pair/all и pulse paths не получили неподтверждённую
+интерпретацию и остаются отдельным runtime gap. Проверен negative readback
+scenario focused-тестом.
+
 ## GAP-12 — Повторные diagnostics-тосты и неоднозначность сетевой ошибки
 
 **P1 · operator UX/host diagnostics · механизм подтверждён, production-причина не установлена.**

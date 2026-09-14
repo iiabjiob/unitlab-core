@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from typing import Any
 from fastapi import WebSocket
 from sqlalchemy import exists, select
 
@@ -12,7 +13,8 @@ from app.infrastructure.redis.manager import RedisManager
 from app.models.channel import Channel
 from app.models.device import Device
 from app.models.signal_sheet import SignalAllocation
-from app.services.command_queue_service import enqueue_ao_command, enqueue_do_command
+from app.infrastructure.protocol.modes import State
+from app.services.command_queue_service import enqueue_ao_command, enqueue_do_command, enqueue_request_state
 from app.services.hardware_command_admission import HardwareChannelLease, HardwareCommandAdmission
 from app.services.hardware_command_intent import (
     mark_hardware_command_intent_delivery_failure,
@@ -26,6 +28,39 @@ from uuid import uuid4
 
 settings = get_settings()
 MANUAL_COMMAND_ACK_TIMEOUT_MS = 3000
+MANUAL_READBACK_TIMEOUT_MS = 2000
+
+
+async def _wait_for_manual_readback(
+    redis: Any,
+    *,
+    action: str,
+    unit_id: str,
+    channel_index: int,
+    expected_value: float | int,
+    timeout_ms: int,
+) -> bool:
+    deadline = time.monotonic() + max(100, int(timeout_ms)) / 1000
+    while True:
+        if action == "ao_set":
+            raw_value = await redis.hget(f"device:{unit_id}:ao", str(int(channel_index)))
+            try:
+                actual_value = float(raw_value)
+            except (TypeError, ValueError):
+                actual_value = None
+            matched = actual_value is not None and abs(actual_value - float(expected_value)) <= 0.01
+        else:
+            raw_bitmask = await redis.get(f"device:{unit_id}:bitmask")
+            try:
+                bitmask = int(raw_bitmask)
+            except (TypeError, ValueError):
+                bitmask = None
+            matched = bitmask is not None and (1 if bitmask & (1 << int(channel_index)) else 0) == int(expected_value)
+        if matched:
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        await asyncio.sleep(0.05)
 
 
 async def _result(
@@ -157,6 +192,38 @@ async def _enqueue_manual(
                 execution_reason = "device_negative_ack"
             elif execution == "timeout":
                 execution_reason = "hardware_ack_timeout"
+            elif execution == "acknowledged" and action in {"do_set", "ao_set"}:
+                channel_index = payload.get("ch")
+                expected_value = payload.get("value")
+                if channel_index is None or expected_value is None:
+                    execution_reason = "readback_scope_missing"
+                else:
+                    readback_mode = State.REQ_SINGLE_FLOAT if action == "ao_set" else State.REQ_SINGLE_BIT
+                    try:
+                        await enqueue_request_state(
+                            unit_id=unit_id,
+                            mode=readback_mode,
+                            ch=int(channel_index),
+                            correlation_id=f"manual:{command_id}:readback",
+                        )
+                        readback_ok = await _wait_for_manual_readback(
+                            redis,
+                            action=action,
+                            unit_id=unit_id,
+                            channel_index=int(channel_index),
+                            expected_value=float(expected_value) if action == "ao_set" else int(expected_value),
+                            timeout_ms=MANUAL_READBACK_TIMEOUT_MS,
+                        )
+                    except Exception:  # noqa: BLE001
+                        readback_ok = False
+                    if not readback_ok:
+                        execution_reason = "hardware_readback_timeout"
+                        await mark_hardware_command_intent_delivery_failure(
+                            session,
+                            command_id=command_id,
+                            status="recovery_required",
+                        )
+                        await session.commit()
     except asyncio.CancelledError:
         async with AsyncSessionLocal() as session:
             await mark_hardware_command_intent_delivery_failure(
