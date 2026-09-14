@@ -24,3 +24,25 @@ async def test_disconnect_closes_transport_after_queue_overflow_cleanup() -> Non
     assert websocket not in manager.active_connections
     assert websocket not in manager._outbound_queues
     assert manager.get_stats()["counters"]["disconnect.reason.queue_full"] == 1
+
+
+@pytest.mark.anyio
+async def test_sender_timeout_closes_transport_and_removes_runtime_state() -> None:
+    manager = WebSocketManager()
+    websocket = AsyncMock()
+    websocket.send_json.side_effect = asyncio.TimeoutError
+    manager.active_connections.append(websocket)
+    queue = asyncio.Queue(maxsize=1)
+    manager._outbound_queues[websocket] = queue
+    await queue.put({"event": "slow"})
+
+    task = asyncio.create_task(manager._sender_loop(websocket, queue))
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+
+    assert task.done()
+    websocket.close.assert_awaited_once()
+    assert websocket not in manager.active_connections
+    assert websocket not in manager._outbound_queues
+    assert manager.get_stats()["counters"]["disconnect.reason.send_timeout"] == 1

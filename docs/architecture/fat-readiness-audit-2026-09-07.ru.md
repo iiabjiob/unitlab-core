@@ -343,6 +343,12 @@ cancel latency на стенде остаются release checks.
 
 **Статус slice B (2026-09-14): частично закрыт.** При queue overflow, send timeout и initial-sync failure backend теперь удаляет клиент из runtime и отдельно закрывает underlying WebSocket transport; закрытие идемпотентно на уровне менеджера. Reconnect/snapshot recovery и browser-level slow-client regression остаются для стендовой проверки.
 
+**Статус slice G60 (2026-09-14): send-timeout regression.** Backend test теперь
+воспроизводит timeout отправки через медленный WebSocket и проверяет удаление
+клиента из runtime, закрытие транспорта и счётчик причины disconnect. Это
+подтверждает server-side cleanup; browser reconnect/snapshot recovery остаются
+стендовой проверкой.
+
 ## GAP-08 — Аппаратные WS-команды могут отправляться после reconnect
 
 **P0 · frontend transport/backend admission · подтверждено кодом.**
