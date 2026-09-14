@@ -818,8 +818,8 @@ function setFloatingContentRef(el: Element | ComponentPublicInstance | null) {
 }
 
 .device-picker-combobox__option.is-active {
-  border-color: var(--picker-accent);
-  background: var(--picker-accent-soft);
+  border-color: transparent;
+  background: var(--picker-option-hover);
 }
 
 .device-picker-combobox__option.is-selected {
