@@ -338,6 +338,12 @@ test-run worker перед явным отказом replay теперь reconci
 Redis/PostgreSQL и durable evidence до/после commit ещё требуют стендовой
 проверки.
 
+**Статус slice G4 (2026-09-14): частично закрыт.** Production Redis теперь
+использует named volume и AOF `everysec` вместе с периодическими RDB snapshots;
+это уменьшает окно потери queue/lock/cursor state при штатном restart. Это не
+гарантирует exactly-once и не заменяет restart reconciliation, backup/restore
+проверку и kill-тесты на deployment.
+
 ## GAP-10 — Нет доказанной общей исключительности физического выхода
 
 **P0 · allocation/command ownership · подтверждён разрыв границ.**

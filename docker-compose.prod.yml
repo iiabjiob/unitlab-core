@@ -290,9 +290,9 @@ services:
     container_name: unitlab-redis
     labels:
       <<: *release-labels
-    command: ["redis-server", "--save", "", "--appendonly", "no"]
-    tmpfs:
-      - /data
+    command: ["redis-server", "--save", "900", "1", "--save", "300", "10", "--appendonly", "yes", "--appendfsync", "everysec"]
+    volumes:
+      - redis_data:/data
     restart: unless-stopped
     mem_limit: 512m
     cpus: 0.50
@@ -325,6 +325,7 @@ services:
 
 volumes:
   db_data:
+  redis_data:
 
 networks:
   app_network:
