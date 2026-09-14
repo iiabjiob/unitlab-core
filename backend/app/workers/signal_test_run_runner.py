@@ -1207,6 +1207,7 @@ async def _handle_test_run(
         await repo.record_signal_test_run_step_evidence(
             workspace_id=workspace_id,
             job_id=job_id,
+            signal_list_revision_id=verification_signal_list_revision_id or None,
             attempt_id=execution_attempt_id,
             attempt_no=execution_attempt_no,
             order_index=order_index,
@@ -1240,6 +1241,7 @@ async def _handle_test_run(
         await repository.record_signal_verification_evidence(
             workspace_id=workspace_id,
             test_run_id=job_id,
+            signal_list_revision_id=verification_signal_list_revision_id or None,
             evidence_id=evidence.evidence_id,
             signal_id=evidence.signal_id,
             signal_path=evidence.signal_path,

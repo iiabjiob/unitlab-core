@@ -841,6 +841,13 @@ index не более одной active revision на workspace и архиви�
 две active revision; immutable test-run plans продолжают ссылаться на свою
 историческую revision.
 
+**Статус slice G78 (2026-09-14): durable evidence revision provenance.** Step и
+IEC verification evidence теперь сохраняют nullable FK
+`signal_list_revision_id`; migration `cc2e3f4a5b6c` backfill-ит его из
+`signal_test_run_plans` по `job_id`, а новые test-run записи получают revision
+при создании. Nullable оставлен для legacy/external runs без plan и не создаёт
+выдуманную историческую revision.
+
 **Статус slice G38 (2026-09-14): offline-safe signal sheet migration.**
 `9a1b2c3d4e6f` получил PostgreSQL offline-ветку для создания signal sheet/preset и
 live allocation tables и удаления прежних snapshot tables без `inspect` на

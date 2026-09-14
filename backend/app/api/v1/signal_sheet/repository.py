@@ -278,6 +278,7 @@ class SignalSheetRepository:
         *,
         workspace_id: int,
         job_id: str,
+        signal_list_revision_id: int | None = None,
         order_index: int,
         signal_id: int,
         status: str,
@@ -297,6 +298,9 @@ class SignalSheetRepository:
         evidence = SignalTestRunStepEvidence(
             workspace_id=int(workspace_id),
             job_id=str(job_id).strip(),
+            signal_list_revision_id=(
+                int(signal_list_revision_id) if signal_list_revision_id is not None else None
+            ),
             attempt_id=str(attempt_id).strip() if attempt_id else None,
             attempt_no=max(0, int(attempt_no)),
             order_index=max(0, int(order_index)),

@@ -56,6 +56,7 @@ class VerificationEvidenceRepository:
         *,
         workspace_id: int,
         test_run_id: str,
+        signal_list_revision_id: int | None = None,
         evidence_id: str,
         signal_id: int,
         signal_path: str,
@@ -85,6 +86,9 @@ class VerificationEvidenceRepository:
         evidence = SignalVerificationEvidence(
             workspace_id=int(workspace_id),
             test_run_id=str(test_run_id),
+            signal_list_revision_id=(
+                int(signal_list_revision_id) if signal_list_revision_id is not None else None
+            ),
             evidence_id=str(evidence_id),
             signal_id=int(signal_id),
             signal_path=str(signal_path),
