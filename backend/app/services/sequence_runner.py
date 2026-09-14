@@ -49,6 +49,7 @@ from app.services.hardware_command_intent import (
     mark_hardware_command_intent_delivery_failure,
     mark_hardware_command_intent_completed,
     mark_hardware_command_intent_queued,
+    list_hardware_recovery_required_channels,
     reconcile_unfinished_hardware_command_intents,
     record_hardware_command_intent,
 )
@@ -1127,6 +1128,14 @@ class SequenceRunner:
                     channel_ids = [channel_id] if isinstance(channel_id, int) else list(channel_id)
                     if not channel_ids or len(set(channel_ids)) != len(channel_ids):
                         raise SequenceNotApplicableError("Hardware sequence step has invalid channel set")
+                    blocked_channels = await list_hardware_recovery_required_channels(
+                        session,
+                        channel_ids=[int(channel_id) for channel_id in channel_ids],
+                    )
+                    if blocked_channels:
+                        raise SequenceNotApplicableError(
+                            "Hardware sequence channel requires physical recovery"
+                        )
                     owner_id = f"sequence:{run_id}"
                     leases = await hardware_admission.acquire_many(
                         channel_ids=channel_ids,

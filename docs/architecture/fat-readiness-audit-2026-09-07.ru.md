@@ -942,6 +942,13 @@ legacy `publish_failed`. Это закрывает bypass через ручно�
 physical recovery workflow и firmware safe-state по-прежнему требуют отдельного
 согласованного recovery contract и hardware release check.
 
+**Статус slice G108 (2026-09-14): sequence recovery barrier.** Sequence
+hardware admission теперь выполняет тот же bulk cross-workspace recovery lookup
+до lease acquisition; `unknown`/`recovery_required` и legacy `publish_failed`
+не могут быть обойдены sequence path. Добавлена серверная проверка и полная
+backend regression; явный physical recovery contract и hardware validation
+остаются release checks.
+
 **Статус slice G68 (2026-09-14): offline downgrade для live signal sheet.**
 Migration `9a1b2c3d4e6f` теперь генерирует детерминированный downgrade SQL для
 `signal_allocations`, `signal_sheet_presets` и `signal_sheets`, не вызывая
