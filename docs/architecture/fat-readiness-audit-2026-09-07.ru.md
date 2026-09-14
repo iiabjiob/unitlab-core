@@ -614,6 +614,11 @@ Optional IEC wrapper по-прежнему запускается отдельн
 projection/patch contract; browser frame trace, Pi memory/soak и backend
 query/message-rate baseline остаются release-проверками.
 
+**Статус slice G61 (2026-09-14): frontend release gates повторены.** Полный
+frontend regression прошёл `43` test files и `219` тестов; отдельно type-check и
+production build завершились успешно. Это не заменяет browser trace на целевом
+Pi, real-WebSocket reconnect, long-task/memory profile и сменный soak.
+
 **Статус slice G20 (2026-09-14): frontend regression suite повторён.** Полный
 Vitest прогон прошёл `43` test files и `219` тестов; performance harness входит
 в этот результат. Это подтверждает текущие store/transport/projection contracts,
