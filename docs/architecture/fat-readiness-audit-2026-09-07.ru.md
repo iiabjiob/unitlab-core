@@ -827,6 +827,12 @@ verification failures, неполная обработка или delivery count
 `failed` с явным `processed_marker_without_terminal_result` и
 `recovery_required=true`; потерянный terminal result требует явного recovery.
 
+**Статус slice G76 (2026-09-14): unique execution progress accounting.** Worker
+теперь считает `progress_total` по тому же уникальному положительному набору
+signal IDs, который реально исполняется из immutable plan. Duplicate/invalid IDs
+не создают ложный incomplete/failed verdict; добавлена regression-проверка
+нормализации входа.
+
 **Статус slice G38 (2026-09-14): offline-safe signal sheet migration.**
 `9a1b2c3d4e6f` получил PostgreSQL offline-ветку для создания signal sheet/preset и
 live allocation tables и удаления прежних snapshot tables без `inspect` на

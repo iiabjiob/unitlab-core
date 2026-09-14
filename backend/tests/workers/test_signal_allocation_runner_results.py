@@ -303,6 +303,10 @@ def test_terminal_job_status_does_not_promote_skips_or_verification_failures() -
     ) == "failed"
 
 
+def test_unique_positive_signal_ids_define_execution_progress() -> None:
+    assert signal_test_run_runner._unique_positive_signal_ids([3, 3, 0, -1, "4", "bad"]) == [3, 4]
+
+
 def test_sleep_before_restore_defers_task_cancellation(monkeypatch) -> None:
     async def cancelled_sleep(seconds: float) -> None:
         raise asyncio.CancelledError

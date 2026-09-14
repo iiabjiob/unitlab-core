@@ -628,6 +628,23 @@ def _verification_runtime_failed(runtime_snapshot) -> bool:
     )
 
 
+def _unique_positive_signal_ids(value: Any) -> list[int]:
+    if not isinstance(value, list):
+        return []
+    result: list[int] = []
+    seen: set[int] = set()
+    for item in value:
+        try:
+            signal_id = int(item)
+        except (TypeError, ValueError):
+            continue
+        if signal_id <= 0 or signal_id in seen:
+            continue
+        seen.add(signal_id)
+        result.append(signal_id)
+    return result
+
+
 def _mms_subscription_plan_blockers(runtime_context) -> list[str]:
     plan = getattr(runtime_context, "subscription_plan", None)
     groups = list(getattr(plan, "groups", ()) or ())
@@ -702,15 +719,7 @@ async def _handle_test_run(
         verification_timeout_ms = 5000
     verification_timeout_ms = max(100, min(60000, verification_timeout_ms))
 
-    requested_ids: list[int] = []
-    if isinstance(requested_ids_raw, list):
-        seen: set[int] = set()
-        for item in requested_ids_raw:
-            signal_id = int(item)
-            if signal_id <= 0 or signal_id in seen:
-                continue
-            requested_ids.append(signal_id)
-            seen.add(signal_id)
+    requested_ids = _unique_positive_signal_ids(requested_ids_raw)
 
     job_id = str(payload.get("job_id") or "").strip()
     plan_rows = await _load_immutable_plan_rows(repo, workspace_id, job_id)
@@ -2058,7 +2067,7 @@ async def _process_entries(redis, entries) -> None:
                 should_ack = True
                 raise ValueError(f"Unexpected operation for test runner: {operation}")
 
-            progress_total = len(payload.get("signal_ids") or []) if isinstance(payload.get("signal_ids"), list) else 0
+            progress_total = len(_unique_positive_signal_ids(payload.get("signal_ids")))
             toggle_mode = str(payload.get("toggle_mode") or "single").strip().lower()
             try:
                 signal_interval_ms = int(payload.get("signal_interval_ms") or 1000)
