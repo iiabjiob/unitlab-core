@@ -1235,6 +1235,9 @@ async def _handle_test_run(
             command_payload=command_payload,
             tested_at=tested_at,
         )
+        # Evidence is safety/audit data, not a best-effort UI batch. Commit it
+        # before the worker advances to the next hardware step.
+        await repo.db.commit()
         evidence_count += 1
 
     async def record_verification_evidence(capture_result) -> None:
@@ -1279,6 +1282,7 @@ async def _handle_test_run(
             evidence_kind=evidence.evidence_kind,
             diagnostics=evidence.diagnostics,
         )
+        await repo.db.commit()
 
     def verification_result_payload(*, include_report: bool = False) -> dict[str, Any]:
         payload = {

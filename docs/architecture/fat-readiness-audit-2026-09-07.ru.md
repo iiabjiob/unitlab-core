@@ -863,6 +863,13 @@ negative regression; legacy migration parsing по-прежнему сохран
 это сохраняет полноту multi-channel safety scope до commit. Добавлена negative
 regression; legacy-data migration rehearsal остаётся deployment check.
 
+**Статус slice G96 (2026-09-14): per-step durable evidence commit.** Step
+evidence и optional IEC evidence теперь commit-ятся сразу после flush, до
+перехода worker к следующему hardware step; batch `tested_at` остаётся только
+для вторичного UI/runtime patch. Это уменьшает окно потери audit evidence при
+crash, но kill worker/Redis/PostgreSQL rehearsal и rollback retention остаются
+release checks.
+
 **Статус slice G68 (2026-09-14): offline downgrade для live signal sheet.**
 Migration `9a1b2c3d4e6f` теперь генерирует детерминированный downgrade SQL для
 `signal_allocations`, `signal_sheet_presets` и `signal_sheets`, не вызывая

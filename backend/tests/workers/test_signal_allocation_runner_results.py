@@ -36,6 +36,9 @@ class FakeNoRowsRepo:
 
 
 class FakeRepoDb:
+    def __init__(self) -> None:
+        self.commit_count = 0
+
     def add(self, item) -> None:
         del item
 
@@ -43,6 +46,7 @@ class FakeRepoDb:
         return None
 
     async def commit(self) -> None:
+        self.commit_count += 1
         return None
 
     async def rollback(self) -> None:
@@ -475,6 +479,7 @@ def test_signal_test_run_resolves_current_binding_per_signal(monkeypatch) -> Non
     assert repo.evidence[0]["unit_id"] == "unit-1"
     assert repo.evidence[0]["result_state"] == "commands_enqueued"
     assert repo.evidence[0]["command_payload"]["commands"][0]["kind"] == "do_set"
+    assert repo.db.commit_count >= len(repo.evidence)
 
 
 def test_signal_test_run_requires_iec61850_report_when_verification_enabled(monkeypatch) -> None:
@@ -626,6 +631,7 @@ def test_signal_test_run_requires_iec61850_report_when_verification_enabled(monk
     assert repo.evidence[0]["status"] == "succeeded"
     assert repo.evidence[0]["result_state"] == "commands_enqueued_report_verified"
     assert repo.evidence[0]["command_payload"]["iec61850_verification"]["requested_online_orchestration_id"] == "api-orch-1"
+    assert repo.db.commit_count >= 2
     assert persisted_verification[0]["kind"] == "row"
     assert persisted_verification[-1]["kind"] == "set"
 
