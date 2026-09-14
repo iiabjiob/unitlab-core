@@ -226,6 +226,11 @@ ACK и command payload остаётся следующим шагом.
 его resolved channel-set; manual pair/all и полноценный multi-command verdict
 остаются открытыми.
 
+**Статус slice E12 (2026-09-14): частично закрыт.** Manual pair/all теперь
+передают `channel_ids`, проходят атомарный multi-channel lease и сохраняют полный
+набор каналов в command intent. Workspace/channel scope проверяется до публикации;
+multi-command ACK/verdict UI и sequence `DO_BITMASK` остаются открытыми.
+
 ## GAP-06 — Синхронное ожидание IEC 61850 блокирует event loop worker
 
 **P1 · runtime/performance · подтверждено кодом; длительности не измерены.**

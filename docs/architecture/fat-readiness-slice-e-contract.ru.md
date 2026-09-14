@@ -85,6 +85,8 @@ E9 подключает single-channel sequence steps к тому же lease, du
 barrier. E10 добавляет атомарный `acquire_many` для multi-channel операций.
 E11 подключает `DO_PAIR` sequence к multi-channel lease, одному durable intent и
 одному ACK barrier; `DO_BITMASK` остаётся отдельным случаем без resolved channel-set.
+E12 подключает manual pair/all к `channel_ids` и тому же atomic multi-channel
+lease; intent хранит primary channel и полный набор затронутых каналов.
 
 ## Состояния delivery и verdict
 
