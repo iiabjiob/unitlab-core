@@ -495,6 +495,11 @@ boundary: single-channel AO теперь передаёт channel scope в об�
 readback для manual-команд остаются отдельным runtime gap.
 Recovery lookup для физического канала теперь не ограничен workspace: `unknown`
 или `recovery_required` из другого workspace также блокирует повторное воздействие.
+Timeout ожидания hardware ACK теперь переводит обычную команду в `unknown`, а
+restore-команду — в `recovery_required`; оба состояния учитываются при проверке
+повторного допуска канала, включая ещё не завершённые `created/queued` intents.
+Это закрывает только серверный safety-barrier; kill/restart и реальный ACK-path
+на стенде всё ещё требуют проверки.
 В sequence admission исправлена передача fencing epoch атомарного lease в intent;
 sequence hardware step больше не падает из-за обращения к несуществующему `lease`.
 Manual multi-channel scope теперь отклоняет дубли каналов до atomic lease, поэтому

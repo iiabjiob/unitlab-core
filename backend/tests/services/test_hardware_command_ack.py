@@ -85,6 +85,23 @@ async def test_wait_for_command_acks_returns_terminal_states() -> None:
 
 
 @pytest.mark.anyio
+async def test_wait_timeout_marks_command_for_recovery() -> None:
+    db = AsyncMock()
+    db.execute.return_value = SimpleNamespace(all=lambda: [])
+
+    states = await wait_for_hardware_command_acks(
+        db,
+        command_ids=["cmd-do"],
+        timeout_ms=100,
+    )
+
+    assert states == {"cmd-do": "timeout"}
+    timeout_update = db.execute.await_args.args[0]
+    assert "execution_status" in str(timeout_update)
+    assert "status" in str(timeout_update)
+
+
+@pytest.mark.anyio
 async def test_late_ack_does_not_overwrite_timeout() -> None:
     intent = HardwareCommandIntent(
         command_id="cmd-timeout",
@@ -137,6 +154,17 @@ async def test_recovery_required_lookup_returns_channel_block() -> None:
 
     assert blocked is True
     db.execute.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_pending_queued_command_is_part_of_recovery_lookup() -> None:
+    db = AsyncMock()
+    db.execute.return_value = SimpleNamespace(scalar=lambda: True)
+
+    blocked = await has_hardware_recovery_required(db, workspace_id=7, channel_id=101)
+
+    assert blocked is True
+    assert "execution_status" in str(db.execute.await_args.args[0])
 
 
 @pytest.mark.anyio

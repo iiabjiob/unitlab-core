@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import exists, select, update
+from sqlalchemy import and_, exists, or_, select, update
 
 from app.models.hardware_command import HardwareCommandIntent
 
@@ -20,7 +20,13 @@ async def has_hardware_recovery_required(
         select(
             exists().where(
                 HardwareCommandIntent.channel_id == channel_id,
-                HardwareCommandIntent.status.in_(("unknown", "recovery_required")),
+                or_(
+                    HardwareCommandIntent.status.in_(("unknown", "recovery_required")),
+                    and_(
+                        HardwareCommandIntent.status.in_(("created", "queued")),
+                        HardwareCommandIntent.execution_status.in_(("unknown", "timeout")),
+                    ),
+                ),
             )
         )
     )

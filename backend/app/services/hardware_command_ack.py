@@ -4,7 +4,7 @@ import asyncio
 import time
 from datetime import datetime, timezone
 
-from sqlalchemy import select, update
+from sqlalchemy import case, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.hardware_command import HardwareCommandIntent
@@ -42,7 +42,13 @@ async def wait_for_hardware_command_acks(
                 HardwareCommandIntent.command_id.in_(pending),
                 HardwareCommandIntent.execution_status == "unknown",
             )
-            .values(execution_status="timeout")
+            .values(
+                execution_status="timeout",
+                status=case(
+                    (HardwareCommandIntent.action == "restore", "recovery_required"),
+                    else_="unknown",
+                ),
+            )
         )
         await db.commit()
         for command_id in pending:
