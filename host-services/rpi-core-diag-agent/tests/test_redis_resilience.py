@@ -12,7 +12,7 @@ from unitlab_rpi_core_diag_agent.redis_protocol import RedisProtocol
 def _config(**overrides: object) -> SimpleNamespace:
     values = {
         "redis_url": "redis://127.0.0.1:6379/0",
-        "command_block_ms": 5000,
+        "command_poll_interval_sec": 0.25,
     }
     values.update(overrides)
     return SimpleNamespace(**values)

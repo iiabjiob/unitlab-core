@@ -16,9 +16,9 @@ logger = logging.getLogger("unitlab.core_diag_agent.redis")
 class RedisProtocol:
     def __init__(self, config: AgentConfig) -> None:
         self.config = config
-        # XREADGROUP is a blocking command. Its BLOCK timeout controls normal
-        # idle reads; a socket read timeout would incorrectly turn that normal
-        # wait into a Redis outage on some redis-py/Python combinations.
+        # Keep command polling non-blocking. A socket read timeout would
+        # otherwise turn an idle command stream into a Redis outage on some
+        # redis-py/Python combinations.
         self.redis = Redis.from_url(
             config.redis_url,
             decode_responses=True,
@@ -57,12 +57,14 @@ class RedisProtocol:
         await self.redis.set(self.config.redis_state_key, json.dumps(snapshot, ensure_ascii=True))
 
     async def read_commands(self, count: int = 10) -> list[CommandEnvelope]:
+        # Do not use Redis BLOCK here. Host-side diagnostics must share the
+        # Redis connection with periodic state publishing, and blocking reads
+        # can be mistaken for socket timeouts by redis-py on some platforms.
         entries = await self.redis.xreadgroup(
             groupname=self.config.redis_consumer_group,
             consumername=self.config.redis_consumer_name,
             streams={self.config.redis_command_stream: ">"},
             count=count,
-            block=self.config.command_block_ms,
         )
         envelopes: list[CommandEnvelope] = []
         for _stream_name, stream_entries in entries:

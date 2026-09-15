@@ -69,6 +69,7 @@ class CoreDiagAgent:
                 commands = await self.redis.read_commands()
                 for cmd in commands:
                     await self._handle_command(cmd)
+                await asyncio.sleep(self.config.command_poll_interval_sec)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # noqa: BLE001

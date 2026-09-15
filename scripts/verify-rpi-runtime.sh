@@ -135,6 +135,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [[ -z "$RELEASE_VERSION" && -f "$PROJECT_DIR/RELEASE_INFO" ]]; then
+  RELEASE_VERSION="$(sed -n 's/^RELEASE_VERSION=//p' "$PROJECT_DIR/RELEASE_INFO" | head -n1)"
+fi
+
 ok() {
   echo "[OK] $*"
 }

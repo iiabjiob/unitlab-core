@@ -15,6 +15,16 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def _env_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return float(raw.strip())
+    except ValueError:
+        return default
+
+
 @dataclass(frozen=True)
 class AgentConfig:
     redis_url: str
@@ -24,7 +34,7 @@ class AgentConfig:
     redis_consumer_group: str
     redis_consumer_name: str
     redis_stream_maxlen: int
-    command_block_ms: int
+    command_poll_interval_sec: float
     status_publish_interval_sec: int
     systemctl_bin: str
     command_timeout_sec: int
@@ -42,10 +52,9 @@ def load_config() -> AgentConfig:
         redis_consumer_group=os.getenv("UNITLAB_CORE_DIAG_AGENT_CONSUMER_GROUP", "core-diag-agent"),
         redis_consumer_name=os.getenv("UNITLAB_CORE_DIAG_AGENT_CONSUMER_NAME", f"{host}-{pid}"),
         redis_stream_maxlen=max(100, _env_int("UNITLAB_CORE_DIAG_AGENT_STREAM_MAXLEN", 2000)),
-        command_block_ms=max(100, _env_int("UNITLAB_CORE_DIAG_AGENT_COMMAND_BLOCK_MS", 5000)),
+        command_poll_interval_sec=max(0.1, _env_float("UNITLAB_CORE_DIAG_AGENT_COMMAND_POLL_INTERVAL_SEC", 0.25)),
         status_publish_interval_sec=max(2, _env_int("UNITLAB_CORE_DIAG_AGENT_STATUS_PUBLISH_INTERVAL_SEC", 10)),
         systemctl_bin=os.getenv("UNITLAB_CORE_DIAG_AGENT_SYSTEMCTL_BIN", "systemctl"),
         command_timeout_sec=max(2, _env_int("UNITLAB_CORE_DIAG_AGENT_COMMAND_TIMEOUT_SEC", 6)),
         log_level=os.getenv("UNITLAB_CORE_DIAG_AGENT_LOG_LEVEL", "INFO"),
     )
-
