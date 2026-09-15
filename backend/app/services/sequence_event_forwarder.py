@@ -20,6 +20,7 @@ from app.schemas.ws.events import (
     SequenceProgressEvent,
     SequenceStartedEvent,
     SequenceStepErrorEvent,
+    SequenceStepIssueEvent,
     SequenceStoppingEvent,
     SequenceStoppedEvent,
 )
@@ -132,6 +133,20 @@ async def _forward(event_type: SequenceEventType, sequence_id: int, run_id: int,
                 step_elapsed_ms=int(data.get("step_elapsed_ms", 0)),
                 run_elapsed_ms=int(data.get("run_elapsed_ms", 0)),
                 completed_steps=list(data.get("completed_step_ids", [])),
+                runtime=data.get("runtime"),
+            )
+        )
+        return
+
+    if event_type == SequenceEventType.STEP_ISSUE:
+        await WsEventPublisher.publish(
+            SequenceStepIssueEvent(
+                sequence_id=sequence_id,
+                run_id=run_id,
+                step_index=int(data.get("step_index", 0)),
+                step_id=int(data.get("step_id", 0)),
+                status=str(data.get("status", "error")),
+                message=str(data.get("message", "Sequence step could not complete")),
                 runtime=data.get("runtime"),
             )
         )

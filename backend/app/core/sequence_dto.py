@@ -72,6 +72,7 @@ class SequenceEventType(str, Enum):
     STOPPING = "stopping"
     STEP_STARTED = "step_started"
     STEP_COMPLETED = "step_completed"
+    STEP_ISSUE = "step_issue"
     FINISHED = "finished"
     FAILED = "failed"
 

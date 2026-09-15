@@ -264,6 +264,15 @@ class SequenceStepErrorEvent(SequenceEventBase):
     runtime: SequenceRuntimeSchema | None = None
 
 
+class SequenceStepIssueEvent(SequenceEventBase):
+    event: Literal["step_issue"] = "step_issue"
+    step_index: int
+    step_id: int
+    status: Literal["blocked", "error"]
+    message: str
+    runtime: SequenceRuntimeSchema | None = None
+
+
 class SequenceErrorEvent(SequenceEventBase):
     event: Literal["error"] = "error"
     message: str
@@ -410,6 +419,7 @@ WSEvent = Union[
     SequenceStartedEvent,
     SequenceProgressEvent,
     SequenceStepErrorEvent,
+    SequenceStepIssueEvent,
     SequenceErrorEvent,
     SequenceStoppingEvent,
     SequenceStoppedEvent,

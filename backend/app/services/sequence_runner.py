@@ -1435,6 +1435,15 @@ class SequenceRunner:
                                 str(exc),
                             )
                         blocked_step_ids.append(top_step.sequence_step_id)
+                        await SequenceEventStream.step_issue(
+                            sequence_id=sequence_id,
+                            run_id=run_id,
+                            step_index=top_step.order_index,
+                            step_id=top_step.sequence_step_id,
+                            status="blocked",
+                            message=str(exc),
+                            runtime=top_runtime_cursor.to_schema(start_time=start_time),
+                        )
                         await session.execute(
                             update(SequenceRun)
                             .where(SequenceRun.id == run_id)
@@ -1452,6 +1461,15 @@ class SequenceRunner:
                                 str(exc),
                             )
                         non_terminal_failures.append(str(exc))
+                        await SequenceEventStream.step_issue(
+                            sequence_id=sequence_id,
+                            run_id=run_id,
+                            step_index=top_step.order_index,
+                            step_id=top_step.sequence_step_id,
+                            status="error",
+                            message=str(exc),
+                            runtime=top_runtime_cursor.to_schema(start_time=start_time),
+                        )
                         await session.execute(
                             update(SequenceRun)
                             .where(SequenceRun.id == run_id)

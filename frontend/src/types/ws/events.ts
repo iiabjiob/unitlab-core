@@ -433,6 +433,15 @@ export interface SequenceStepErrorEvent extends SequenceEventBase {
   runtime?: SequenceRuntimeState | null
 }
 
+export interface SequenceStepIssueEvent extends SequenceEventBase {
+  event: "step_issue"
+  step_index: number
+  step_id: number
+  status: "blocked" | "error"
+  message: string
+  runtime?: SequenceRuntimeState | null
+}
+
 export interface SequenceErrorEvent extends SequenceEventBase {
   event: "error"
   message: string
@@ -462,6 +471,7 @@ export type SequenceWsEvent =
   | SequenceStartedEvent
   | SequenceProgressEvent
   | SequenceStepErrorEvent
+  | SequenceStepIssueEvent
   | SequenceErrorEvent
   | SequenceStoppingEvent
   | SequenceStoppedEvent

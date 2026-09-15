@@ -607,6 +607,34 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
         })
         break
 
+      case "step_issue": {
+        clearRuntimeNestedProgress(event.sequence_id)
+        const blockedStepIds = event.status === "blocked"
+          ? [...new Set([...prev.blocked_step_ids, event.step_id])]
+          : [...prev.blocked_step_ids]
+        states.value[event.sequence_id] = {
+          ...prev,
+          status: prev.status,
+          current_step_index: event.step_index + 1,
+          blocked_step_ids: blockedStepIds,
+          last_error: event.message,
+          runtime: normalizeRuntime(event.runtime) ?? prev.runtime ?? null,
+        }
+
+        logStore.push(event.sequence_id, {
+          type: "error",
+          message: event.status === "blocked"
+            ? `Step ${event.step_index + 1} blocked: ${event.message}`
+            : `Step ${event.step_index + 1} failed; continuing: ${event.message}`,
+          run_id: event.run_id,
+          ...buildStepLogMeta(event.sequence_id, {
+            stepId: event.step_id,
+            stepIndex: event.step_index,
+          }),
+        })
+        break
+      }
+
       case "error":
         clearRuntimeNestedProgress(event.sequence_id)
         states.value[event.sequence_id] = {

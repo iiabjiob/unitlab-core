@@ -107,6 +107,31 @@ class SequenceEventStream:
         )
 
     @staticmethod
+    async def step_issue(
+        sequence_id: int,
+        run_id: int,
+        step_index: int,
+        step_id: int,
+        status: str,
+        message: str,
+        runtime: Optional[SequenceRuntimeSchema] = None,
+    ) -> None:
+        await SequenceEventStream._emit(
+            SequenceEvent(
+                type=SequenceEventType.STEP_ISSUE,
+                sequence_id=sequence_id,
+                run_id=run_id,
+                data={
+                    "step_index": step_index,
+                    "step_id": step_id,
+                    "status": status,
+                    "message": message,
+                    "runtime": runtime.model_dump() if runtime else None,
+                },
+            )
+        )
+
+    @staticmethod
     async def finished(
         sequence_id: int,
         run_id: int,
