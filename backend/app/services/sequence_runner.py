@@ -317,8 +317,64 @@ class SequenceRunner:
                 await asyncio.wait_for(handle.task, timeout=5)
             except asyncio.TimeoutError:
                 logger.warning("Timed out waiting for sequence %s stop", sequence_id)
+                handle.task.cancel()
+                try:
+                    await handle.task
+                except BaseException:  # noqa: BLE001
+                    pass
+                await self._finalize_orphaned_stop(sequence_id, run_id)
+        else:
+            await self._finalize_orphaned_stop(sequence_id, run_id)
 
         return await self.get_state(sequence_id)
+
+    async def _finalize_orphaned_stop(self, sequence_id: int, run_id: Optional[int]) -> None:
+        if run_id is None:
+            return
+
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(
+                    SequenceRun.status,
+                    SequenceRun.current_step_index,
+                    SequenceRun.started_at,
+                ).where(SequenceRun.id == run_id)
+            )
+            row = result.one_or_none()
+            if row is None or row[0] not in (
+                SequenceRunStatus.PENDING,
+                SequenceRunStatus.RUNNING,
+                SequenceRunStatus.CANCELLING,
+            ):
+                return
+            current_step_index = int(row[1] or 0)
+            started_at = row[2]
+            await self._record_cancellation(
+                session=session,
+                run_id=run_id,
+                current_step=None,
+                step_started_monotonic=None,
+                fallback_index=current_step_index,
+            )
+            await session.commit()
+
+        self.invalidate_state(sequence_id)
+        state = await self.get_state(sequence_id)
+        elapsed_since_start = max(
+            0.0,
+            (datetime.now(timezone.utc) - started_at).total_seconds(),
+        )
+        await self._publish_terminal_state(
+            sequence_id=sequence_id,
+            run_id=run_id,
+            status="stopped",
+            current_step_index=state.current_step_index,
+            total_steps=state.total_steps,
+            completed_step_ids=list(state.completed_step_ids),
+            started_at=started_at,
+            start_time=time.monotonic() - elapsed_since_start,
+            last_error="stopped",
+        )
 
     async def get_state(self, sequence_id: int) -> SequenceStateSchema:
         cached = self._state_cache.get(sequence_id)
