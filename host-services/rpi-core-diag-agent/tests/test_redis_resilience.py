@@ -18,7 +18,7 @@ def _config(**overrides: object) -> SimpleNamespace:
     return SimpleNamespace(**values)
 
 
-def test_redis_client_allows_blocking_read_to_finish(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_redis_client_leaves_blocking_read_without_socket_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, object] = {}
 
     class FakeRedis:
@@ -33,8 +33,8 @@ def test_redis_client_allows_blocking_read_to_finish(monkeypatch: pytest.MonkeyP
     RedisProtocol(_config())
 
     assert captured["socket_connect_timeout"] == 3
-    assert captured["socket_timeout"] == 10
-    assert captured["retry_on_timeout"] is True
+    assert "socket_timeout" not in captured
+    assert "retry_on_timeout" not in captured
     assert captured["health_check_interval"] == 30
 
 

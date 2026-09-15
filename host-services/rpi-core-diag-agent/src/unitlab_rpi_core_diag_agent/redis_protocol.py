@@ -16,15 +16,13 @@ logger = logging.getLogger("unitlab.core_diag_agent.redis")
 class RedisProtocol:
     def __init__(self, config: AgentConfig) -> None:
         self.config = config
-        # XREADGROUP blocks for command_block_ms. Keep the socket timeout a
-        # little longer so a normal empty read is not mistaken for a Redis
-        # outage, while still recovering from a wedged connection promptly.
+        # XREADGROUP is a blocking command. Its BLOCK timeout controls normal
+        # idle reads; a socket read timeout would incorrectly turn that normal
+        # wait into a Redis outage on some redis-py/Python combinations.
         self.redis = Redis.from_url(
             config.redis_url,
             decode_responses=True,
             socket_connect_timeout=3,
-            socket_timeout=max(10, (config.command_block_ms // 1000) + 5),
-            retry_on_timeout=True,
             health_check_interval=30,
         )
 
