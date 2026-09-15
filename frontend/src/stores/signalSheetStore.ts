@@ -12,6 +12,7 @@ import type {
   SignalSheetImportPreviewResponse,
   SignalSheetPreset,
 } from "@/types/signal"
+import { useTestedAtRealtimeStore } from "@/stores/testedAtRealtimeStore"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { getLogger } from "@/utils/logger"
 import { devPerfIncrement, devPerfMeasureStart } from "@/utils/devPerf"
@@ -827,6 +828,12 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
         },
       )
     }
+    // Use persisted timestamps, scoped to the workspace captured before the request.
+    useTestedAtRealtimeStore().applyPatch(workspaceId, Object.fromEntries(
+      (Array.isArray(data) ? data : [])
+        .filter(row => Boolean(row.tested_at))
+        .map(row => [String(row.signal_id), row.tested_at!]),
+    ), { flush: "microtask" })
     devPerfIncrement("signalSheet.markSignalsTested.completed")
     endMeasure({
       optimistic,

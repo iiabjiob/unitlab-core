@@ -49,7 +49,7 @@ function createGridHarness(options?: { patchRows?: boolean }) {
             batchCalls += 1
             return callback()
           },
-          patchRows: options?.patchRows === false
+          patch: options?.patchRows === false
             ? undefined
             : (patches: readonly unknown[], patchOptions?: Record<string, unknown>) => {
                 patchCalls.push({ patches: [...patches], options: patchOptions })

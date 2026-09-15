@@ -2512,17 +2512,6 @@ function applyCompletedTestRunPatch(job: SignalAllocationJob) {
       testStatusBySignal: testStatusPatch ?? {},
     })
   }
-
-  const testedIdsRaw = result.tested_signal_ids
-  const testedIds = Array.isArray(testedIdsRaw)
-    ? testedIdsRaw.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0)
-    : []
-  if (!testedIds.length) {
-    return
-  }
-  void signalSheetStore.markSignalsTested(testedIds, { optimistic: false }).catch(() => {
-    return
-  })
 }
 
 function closeTestRunReport() {
@@ -3189,7 +3178,6 @@ async function sendControl(row: SignalAllocationRow, state: boolean): Promise<bo
     return false
   }
 
-  const savedViewBeforeControl = allocationGridRef.value?.getSavedView?.() ?? null
   try {
     channelStore.sendDoCommand(target.unitId, target.channelIndex, state)
     if (!target.channel) {
@@ -3209,15 +3197,11 @@ async function sendControl(row: SignalAllocationRow, state: boolean): Promise<bo
       return false
     }
 
-    await signalSheetStore.markSignalsTested([row.signal_id], { optimistic: false }).catch(() => {
-      return
-    })
+    await signalSheetStore.markSignalsTested([row.signal_id], { optimistic: false })
     return true
   } catch (err) {
     toastStore.error(err instanceof Error ? err.message : String(err))
     return false
-  } finally {
-    await restoreSignalsGridSavedViewAfterStaticMutation(savedViewBeforeControl)
   }
 }
 
@@ -3245,7 +3229,6 @@ async function sendAoControl(row: SignalAllocationRow): Promise<boolean> {
   activeAoControlSignalId.value = null
   activeAoControlDraftValue.value = ""
   activeAoSubmittingSignalId.value = row.signal_id
-  const savedViewBeforeControl = allocationGridRef.value?.getSavedView?.() ?? null
   try {
     channelStore.sendAoCommand(target.unitId, target.channelIndex, nextValue)
 
@@ -3255,16 +3238,13 @@ async function sendAoControl(row: SignalAllocationRow): Promise<boolean> {
       return false
     }
 
-    await signalSheetStore.markSignalsTested([row.signal_id], { optimistic: false }).catch(() => {
-      return
-    })
+    await signalSheetStore.markSignalsTested([row.signal_id], { optimistic: false })
     return true
   } catch (err) {
     toastStore.error(err instanceof Error ? err.message : String(err))
     return false
   } finally {
     activeAoSubmittingSignalId.value = null
-    await restoreSignalsGridSavedViewAfterStaticMutation(savedViewBeforeControl)
   }
 }
 

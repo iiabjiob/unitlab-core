@@ -159,7 +159,7 @@ function createGridHarness() {
       getApi: () => ({
         rows: {
           batch: <TResult>(callback: () => TResult) => callback(),
-          patchRows: (patches: readonly unknown[], options?: Record<string, unknown>) => {
+          patch: (patches: readonly unknown[], options?: Record<string, unknown>) => {
             patchCalls.push({ patches, options })
           },
         },

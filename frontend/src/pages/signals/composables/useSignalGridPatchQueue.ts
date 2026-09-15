@@ -1,3 +1,5 @@
+import type { DataGridInstance } from "@affino/datagrid-vue-app"
+
 export type SignalGridRowId = string | number
 
 export type SignalGridRowPatch<TRow> = {
@@ -44,18 +46,10 @@ type DataGridPatchOptions = {
   emit?: boolean
 }
 
+type InstalledGridApi<TRow> = NonNullable<ReturnType<DataGridInstance<TRow>["getApi"]>>
 type SignalGridPatchQueueGridApi<TRow> = {
-  rows?: {
-    patchRows?: (patches: readonly DataGridRowPatch<TRow>[], options?: DataGridPatchOptions) => void | Promise<void>
-    batch?: <TResult>(callback: () => TResult) => TResult
-  }
-  view?: {
-    refreshCellsByRowKeys?: (
-      rowKeys: readonly SignalGridRowId[],
-      columnKeys: readonly string[],
-      options?: { immediate?: boolean; reason?: string },
-    ) => void
-  }
+  rows?: Partial<Pick<InstalledGridApi<TRow>["rows"], "patch" | "batch">>
+  view?: Partial<Pick<InstalledGridApi<TRow>["view"], "refreshCellsByRowKeys">>
 }
 
 type SignalGridPatchQueueGrid<TRow> = {
@@ -242,7 +236,7 @@ export function createSignalGridPatchQueue<TRow extends Record<string, unknown>>
     }
 
     const rowsApi = api?.rows
-    const patchRows = rowsApi?.patchRows
+    const patchRows = rowsApi?.patch
     if (!rowsApi || !patchRows) {
       diagnostics.droppedRowPatches += patches.length
       return

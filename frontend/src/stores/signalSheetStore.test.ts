@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { createPinia, setActivePinia } from "pinia"
+import { useTestedAtRealtimeStore } from "@/stores/testedAtRealtimeStore"
 import { isReactive } from "vue"
 
 import { useSignalSheetStore } from "@/stores/signalSheetStore"
@@ -7,6 +8,7 @@ import { useWorkspaceStore } from "@/stores/workspaceStore"
 import type { SignalAllocationRow } from "@/types/signal"
 
 const signalSheetApiMock = vi.hoisted(() => ({
+  markTested: vi.fn(),
   streamAllocations: vi.fn(),
   listAllocations: vi.fn(),
   updateAllocations: vi.fn(),
@@ -136,3 +138,16 @@ describe("signalSheetStore allocation patching", () => {
     expect(isReactive(store.allocationRows[0])).toBe(false)
   })
 })
+
+ it("publishes the persisted direct-control timestamp to the realtime store", async () => {
+    setActivePinia(createPinia())
+    useWorkspaceStore().setActiveWorkspace(7)
+    const realtime = useTestedAtRealtimeStore()
+    realtime.clearWorkspace(7)
+    const timestamp = "2026-09-15T22:46:19Z"
+    signalSheetApiMock.markTested.mockResolvedValue({ data: [buildRow({ tested_at: timestamp })] })
+    await useSignalSheetStore().markSignalsTested([1], { optimistic: false })
+    await Promise.resolve()
+    expect(realtime.getTestedAt(1, 7)).toBe(timestamp)
+    expect(realtime.activeWorkspacePatchedSignalIds).toEqual([1])
+ })
