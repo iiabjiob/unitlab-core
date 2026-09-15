@@ -155,6 +155,26 @@ async def test_wait_for_command_acks_returns_immediately_when_cancelled() -> Non
 
 
 @pytest.mark.anyio
+async def test_wait_for_command_acks_uses_shared_cancellation_probe() -> None:
+    db = AsyncMock()
+    cancel_event = asyncio.Event()
+
+    async def probe() -> None:
+        cancel_event.set()
+
+    states = await wait_for_hardware_command_acks(
+        db,
+        command_ids=["cmd-do"],
+        timeout_ms=3000,
+        cancel_event=cancel_event,
+        cancellation_probe=probe,
+    )
+
+    assert states == {"__cancelled__": "cancelled"}
+    db.execute.assert_not_awaited()
+
+
+@pytest.mark.anyio
 async def test_late_ack_does_not_overwrite_timeout() -> None:
     intent = HardwareCommandIntent(
         command_id="cmd-timeout",

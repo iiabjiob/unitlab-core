@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 from datetime import datetime, timezone
+from collections.abc import Awaitable, Callable
 
 from sqlalchemy import case, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +20,7 @@ async def wait_for_hardware_command_acks(
     command_ids: list[str],
     timeout_ms: int = 3000,
     cancel_event: asyncio.Event | None = None,
+    cancellation_probe: Callable[[], Awaitable[None]] | None = None,
 ) -> dict[str, str]:
     """Wait for terminal ACK states without treating queue publication as success."""
     pending = {str(command_id) for command_id in command_ids if str(command_id).strip()}
@@ -27,6 +29,8 @@ async def wait_for_hardware_command_acks(
     deadline = time.monotonic() + max(100, int(timeout_ms)) / 1000
     states: dict[str, str] = {}
     while pending and time.monotonic() < deadline:
+        if cancellation_probe is not None:
+            await cancellation_probe()
         if cancel_event is not None and cancel_event.is_set():
             return {**states, "__cancelled__": "cancelled"}
         result = await db.execute(
@@ -40,6 +44,10 @@ async def wait_for_hardware_command_acks(
             if state in {"acknowledged", "negative_ack"}:
                 pending.discard(str(command_id))
         if pending:
+            if cancellation_probe is not None:
+                await cancellation_probe()
+            if cancel_event is not None and cancel_event.is_set():
+                return {**states, "__cancelled__": "cancelled"}
             if cancel_event is None:
                 await asyncio.sleep(0.05)
             else:

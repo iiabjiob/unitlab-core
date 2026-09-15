@@ -4,7 +4,7 @@ import asyncio
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Set
 
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
@@ -77,12 +77,15 @@ async def _wait_for_sequence_readback(
     packet_id: int,
     timeout_ms: int = SEQUENCE_READBACK_TIMEOUT_MS,
     cancel_event: asyncio.Event | None = None,
+    cancellation_probe: Optional[Callable[[], Awaitable[None]]] = None,
 ) -> bool:
     """Require a state snapshot caused by this request before accepting a step."""
     if not targets:
         return False
     deadline = time.monotonic() + max(100, int(timeout_ms)) / 1000
     while True:
+        if cancellation_probe is not None:
+            await cancellation_probe()
         if cancel_event is not None and cancel_event.is_set():
             raise SequenceCancellationRequested()
         try:
@@ -1328,6 +1331,7 @@ class SequenceRunner:
                             command_ids=[command_id],
                             timeout_ms=3000,
                             cancel_event=cancel_event,
+                            cancellation_probe=lambda: self._probe_cancellation_from_db(run_id, cancel_event),
                         )
                         if states.get("__cancelled__") == "cancelled":
                             raise SequenceCancellationRequested()
@@ -1362,6 +1366,7 @@ class SequenceRunner:
                             analog=analog,
                             packet_id=readback_packet_id,
                             cancel_event=cancel_event,
+                            cancellation_probe=lambda: self._probe_cancellation_from_db(run_id, cancel_event),
                         ):
                             await mark_hardware_command_intent_delivery_failure(
                                 session,
@@ -1389,6 +1394,7 @@ class SequenceRunner:
                                 analog=False,
                                 packet_id=revert_packet_id,
                                 cancel_event=cancel_event,
+                                cancellation_probe=lambda: self._probe_cancellation_from_db(run_id, cancel_event),
                             ):
                                 await mark_hardware_command_intent_delivery_failure(
                                     session,
