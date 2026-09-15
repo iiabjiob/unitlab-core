@@ -75,4 +75,3 @@ def load_config() -> AgentConfig:
         log_level=os.getenv("UNITLAB_NTP_AGENT_LOG_LEVEL", "INFO"),
         dry_run=_env_bool("UNITLAB_NTP_AGENT_DRY_RUN", False),
     )
-

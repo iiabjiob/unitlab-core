@@ -54,4 +54,3 @@ def load_config() -> AgentConfig:
       project_root=os.getenv("UNITLAB_PROVISION_AGENT_PROJECT_ROOT", "/opt/unitlab/unitlab-core"),
       log_level=os.getenv("UNITLAB_PROVISION_AGENT_LOG_LEVEL", "INFO"),
     )
-

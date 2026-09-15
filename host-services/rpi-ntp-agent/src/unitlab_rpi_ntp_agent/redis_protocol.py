@@ -17,7 +17,7 @@ logger = logging.getLogger("unitlab.ntp_agent.redis")
 class RedisProtocol:
     def __init__(self, config: AgentConfig) -> None:
         self.config = config
-        self.redis = Redis.from_url(config.redis_url, decode_responses=True)
+        self.redis = Redis.from_url(config.redis_url, decode_responses=True, socket_connect_timeout=3, health_check_interval=30)
 
     async def close(self) -> None:
         await self.redis.aclose()
@@ -55,7 +55,6 @@ class RedisProtocol:
             consumername=self.config.redis_consumer_name,
             streams={self.config.redis_command_stream: ">"},
             count=count,
-            block=self.config.command_block_ms,
         )
         envelopes: list[CommandEnvelope] = []
         for _stream_name, stream_entries in entries:
@@ -90,4 +89,3 @@ class RedisProtocol:
             self.config.redis_consumer_group,
             entry_id,
         )
-

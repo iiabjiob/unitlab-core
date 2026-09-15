@@ -61,6 +61,7 @@ class CoreProvisionAgent:
             try:
                 for cmd in await self.redis.read_commands():
                     await self._handle_command(cmd)
+                await asyncio.sleep(0.25)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # noqa: BLE001
@@ -151,4 +152,3 @@ class CoreProvisionAgent:
     async def _clear_request_in_flight(self) -> None:
         self._snapshot.request_in_flight = None
         await self._publish_snapshot(last_event="command_finished")
-
