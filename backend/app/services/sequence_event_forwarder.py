@@ -140,13 +140,14 @@ async def _forward(event_type: SequenceEventType, sequence_id: int, run_id: int,
     if event_type == SequenceEventType.FINISHED:
         status = data.get("status")
         elapsed_ms = int(data.get("elapsed_ms", 0))
-        if status == "completed":
+        if status in {"completed", "completed_with_issues"}:
             _stopping_emitted_runs.discard(run_id)
             _mark_run_finished(run_id)
             await WsEventPublisher.publish(
                 SequenceCompletedEvent(
                     sequence_id=sequence_id,
                     run_id=run_id,
+                    status=status,
                     elapsed_ms=elapsed_ms,
                     runtime=data.get("runtime"),
                 )

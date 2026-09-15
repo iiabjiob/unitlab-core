@@ -640,9 +640,12 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
 
       case "completed":
         clearRuntimeNestedProgress(event.sequence_id)
+        const completedWithIssues = event.status === "completed_with_issues"
         states.value[event.sequence_id] = {
           ...prev,
-          status: SequenceStatusEnum.COMPLETED,
+          status: completedWithIssues
+            ? SequenceStatusEnum.COMPLETED_WITH_ISSUES
+            : SequenceStatusEnum.COMPLETED,
           current_step_index: prev.total_steps,
           completed_step_ids: [...prev.completed_step_ids],
           blocked_step_ids: [...prev.blocked_step_ids],
@@ -651,7 +654,9 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
 
         logStore.push(event.sequence_id, {
           type: "info",
-          message: "Instruction completed successfully",
+          message: completedWithIssues
+            ? "Instruction completed with blocked or failed steps"
+            : "Instruction completed successfully",
           run_id: event.run_id,
         })
         break

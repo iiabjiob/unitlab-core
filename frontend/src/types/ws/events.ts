@@ -453,6 +453,7 @@ export interface SequenceStoppedEvent extends SequenceEventBase {
 
 export interface SequenceCompletedEvent extends SequenceEventBase {
   event: "completed"
+  status?: "completed" | "completed_with_issues"
   elapsed_ms: number
   runtime?: SequenceRuntimeState | null
 }

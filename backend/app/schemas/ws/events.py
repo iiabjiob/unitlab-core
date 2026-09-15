@@ -284,6 +284,7 @@ class SequenceStoppedEvent(SequenceEventBase):
 
 class SequenceCompletedEvent(SequenceEventBase):
     event: Literal["completed"] = "completed"
+    status: Literal["completed", "completed_with_issues"] = "completed"
     elapsed_ms: int
     runtime: SequenceRuntimeSchema | None = None
 

@@ -26,7 +26,9 @@ from app.models.workspace import WorkspaceSequence, WorkspaceSwitchgear
 from app.schemas.sequence_run_schema import SequenceRuntimeSchema, SequenceStateSchema
 from app.services.domain_errors import (
     ChannelNotFoundError,
+    SequenceDeviceUnavailableError,
     SequenceNotApplicableError,
+    SequenceStepBlockedError,
 )
 from app.services.sequence_executor import (
     CancellationEvent,
@@ -57,6 +59,7 @@ from app.services.hardware_command_intent import (
 from app.infrastructure.redis.manager import RedisManager
 from app.infrastructure.protocol.modes import State
 from app.services.command_queue_service import enqueue_request_state
+from app.services.device_presence_service import DevicePresenceService
 from uuid import uuid4
 
 
@@ -431,6 +434,7 @@ class SequenceRunner:
         start_time: float,
         last_error: Optional[str] = None,
         runtime: Optional[SequenceRuntimeSchema] = None,
+        blocked_step_ids: Optional[List[int]] = None,
     ) -> None:
         elapsed_total = int((time.monotonic() - start_time) * 1000)
         finished_at = datetime.now(timezone.utc)
@@ -459,6 +463,7 @@ class SequenceRunner:
                 current_step_index=current_step_index,
                 total_steps=total_steps,
                 completed_step_ids=snapshot,
+                blocked_step_ids=list(blocked_step_ids or []),
                 last_error=last_error,
                 started_at=started_at,
                 finished_at=finished_at,
@@ -467,7 +472,7 @@ class SequenceRunner:
         )
         self._reset_cancellation_probe(run_id)
         self._clear_stopping_event_flag(run_id)
-        if status == "completed":
+        if status in {"completed", "completed_with_issues"}:
             logger.info(
                 "Sequence run %s completed in %sms (%s steps)",
                 run_id,
@@ -1109,6 +1114,8 @@ class SequenceRunner:
         start_time = time.monotonic()
         started_at = datetime.now(timezone.utc)
         completed_step_ids: List[int] = []
+        blocked_step_ids: List[int] = []
+        non_terminal_failures: List[str] = []
 
         try:
             async with AsyncSessionLocal() as session:
@@ -1152,6 +1159,8 @@ class SequenceRunner:
                 if workspace_id is None:
                     raise SequenceNotApplicableError("Sequence is not linked to a workspace")
                 hardware_admission = HardwareCommandAdmission(RedisManager.get_instance())
+                device_presence = DevicePresenceService()
+                unavailable_units: set[str] = set()
 
                 async def admit_sequence_command(
                     ctx: StepContext,
@@ -1164,6 +1173,19 @@ class SequenceRunner:
                 ) -> Any:
                     if channel_id is None or device_id is None:
                         raise SequenceNotApplicableError("Hardware sequence step requires a single channel")
+                    normalized_unit_id = str(unit_id).strip()
+                    if normalized_unit_id in unavailable_units:
+                        raise SequenceStepBlockedError(
+                            f"Device {normalized_unit_id} is unavailable after a previous hardware failure",
+                            unit_id=normalized_unit_id,
+                        )
+                    presence = await device_presence.get_presence(normalized_unit_id)
+                    if not presence.online:
+                        unavailable_units.add(normalized_unit_id)
+                        raise SequenceStepBlockedError(
+                            f"Device {normalized_unit_id} is offline",
+                            unit_id=normalized_unit_id,
+                        )
                     channel_ids = [channel_id] if isinstance(channel_id, int) else list(channel_id)
                     if not channel_ids or len(set(channel_ids)) != len(channel_ids):
                         raise SequenceNotApplicableError("Hardware sequence step has invalid channel set")
@@ -1217,7 +1239,7 @@ class SequenceRunner:
                             raise SequenceNotApplicableError("Hardware channel lease lost")
                         try:
                             await sender(command_id)
-                        except Exception:
+                        except Exception as exc:
                             await session.rollback()
                             await mark_hardware_command_intent_delivery_failure(
                                 session,
@@ -1225,7 +1247,11 @@ class SequenceRunner:
                                 status="unknown",
                             )
                             await session.commit()
-                            raise
+                            unavailable_units.add(normalized_unit_id)
+                            raise SequenceDeviceUnavailableError(
+                                f"Hardware command delivery failed: {exc}",
+                                unit_id=normalized_unit_id,
+                            ) from exc
                         await mark_hardware_command_intent_queued(session, command_id=command_id)
                         await session.commit()
                         states = await wait_for_hardware_command_acks(
@@ -1234,8 +1260,10 @@ class SequenceRunner:
                             timeout_ms=3000,
                         )
                         if states.get(command_id) != "acknowledged":
-                            raise SequenceNotApplicableError(
-                                f"Hardware command {states.get(command_id, 'unknown')}"
+                            unavailable_units.add(normalized_unit_id)
+                            raise SequenceDeviceUnavailableError(
+                                f"Hardware command {states.get(command_id, 'unknown')}",
+                                unit_id=normalized_unit_id,
                             )
                         readback_packet_id = await enqueue_request_state(
                             unit_id=unit_id,
@@ -1262,7 +1290,11 @@ class SequenceRunner:
                                 status="recovery_required",
                             )
                             await session.commit()
-                            raise SequenceNotApplicableError("Hardware state readback failed")
+                            unavailable_units.add(normalized_unit_id)
+                            raise SequenceDeviceUnavailableError(
+                                "Hardware state readback failed",
+                                unit_id=normalized_unit_id,
+                            )
                         if action == "do_pulse":
                             await asyncio.sleep(max(0, int(command_payload.get("pulse_ms", 0))) / 1000)
                             revert_packet_id = await enqueue_request_state(
@@ -1284,7 +1316,11 @@ class SequenceRunner:
                                     status="recovery_required",
                                 )
                                 await session.commit()
-                                raise SequenceNotApplicableError("Hardware pulse restore readback failed")
+                                unavailable_units.add(normalized_unit_id)
+                                raise SequenceDeviceUnavailableError(
+                                    "Hardware pulse restore readback failed",
+                                    unit_id=normalized_unit_id,
+                                )
                         await mark_hardware_command_intent_completed(session, command_id=command_id)
                         await session.commit()
                         return command_id
@@ -1383,6 +1419,40 @@ class SequenceRunner:
                             runtime=top_runtime_cursor.to_schema(start_time=start_time),
                         )
                         return
+                    except SequenceStepBlockedError as exc:
+                        if top_step.run_step_id is not None:
+                            await self._mark_step_status(
+                                session,
+                                top_step.run_step_id,
+                                SequenceRunStepStatus.BLOCKED,
+                                top_step_started_monotonic,
+                                str(exc),
+                            )
+                        blocked_step_ids.append(top_step.sequence_step_id)
+                        await session.execute(
+                            update(SequenceRun)
+                            .where(SequenceRun.id == run_id)
+                            .values(current_step_index=top_step.order_index + 1)
+                        )
+                        await session.commit()
+                        continue
+                    except SequenceDeviceUnavailableError as exc:
+                        if top_step.run_step_id is not None:
+                            await self._mark_step_status(
+                                session,
+                                top_step.run_step_id,
+                                SequenceRunStepStatus.ERROR,
+                                top_step_started_monotonic,
+                                str(exc),
+                            )
+                        non_terminal_failures.append(str(exc))
+                        await session.execute(
+                            update(SequenceRun)
+                            .where(SequenceRun.id == run_id)
+                            .values(current_step_index=top_step.order_index + 1, error_message=str(exc))
+                        )
+                        await session.commit()
+                        continue
                     except SequenceNotApplicableError as exc:
                         failure_runtime = self._state_cache.get(sequence_id)
                         await self._handle_step_failure(
@@ -1462,17 +1532,36 @@ class SequenceRunner:
                         runtime=top_runtime_cursor.to_schema(start_time=start_time),
                     )
 
-                await self._mark_run_completed(session, run_id)
+                final_status = "completed_with_issues" if blocked_step_ids or non_terminal_failures else "completed"
+                final_error = (
+                    non_terminal_failures[0]
+                    if non_terminal_failures
+                    else (
+                        f"{len(blocked_step_ids)} step(s) blocked by unavailable device"
+                        if blocked_step_ids
+                        else None
+                    )
+                )
+                if final_status == "completed_with_issues":
+                    await self._mark_run_completed_with_issues(
+                        session,
+                        run_id,
+                        error_message=final_error,
+                    )
+                else:
+                    await self._mark_run_completed(session, run_id)
                 await session.commit()
                 await self._publish_terminal_state(
                     sequence_id=sequence_id,
                     run_id=run_id,
-                    status="completed",
+                    status=final_status,
                     current_step_index=total_steps,
                     total_steps=total_steps,
                     completed_step_ids=completed_step_ids,
                     started_at=started_at,
                     start_time=start_time,
+                    last_error=final_error,
+                    blocked_step_ids=blocked_step_ids,
                 )
         except Exception as exc:  # noqa: BLE001
             logger.exception(
@@ -1910,6 +1999,24 @@ class SequenceRunner:
                 status=SequenceRunStatus.COMPLETED,
                 finished_at=finished_at,
                 error_message=None,
+            )
+        )
+
+    async def _mark_run_completed_with_issues(
+        self,
+        session,
+        run_id: int,
+        *,
+        error_message: Optional[str],
+    ) -> None:
+        finished_at = datetime.now(timezone.utc)
+        await session.execute(
+            update(SequenceRun)
+            .where(SequenceRun.id == run_id)
+            .values(
+                status=SequenceRunStatus.COMPLETED_WITH_ISSUES,
+                finished_at=finished_at,
+                error_message=error_message,
             )
         )
 

@@ -30,6 +30,8 @@ const statusVariant = computed(() => {
       return "warning"
     case SequenceStatusEnum.COMPLETED:
       return "info"
+    case SequenceStatusEnum.COMPLETED_WITH_ISSUES:
+      return "warning"
     default:
       return "neutral"
   }
@@ -41,7 +43,7 @@ const totalStepCount = computed(() => state.value.total_steps || 0)
 const stepLabel = computed(() => {
   const total = state.value.total_steps ?? 0
   if (total === 0) return 0
-  if (status.value === SequenceStatusEnum.COMPLETED) {
+  if (status.value === SequenceStatusEnum.COMPLETED || status.value === SequenceStatusEnum.COMPLETED_WITH_ISSUES) {
     return total
   }
   return Math.min(total, Math.max(1, Math.floor(executionProgress.value.done) + 1))
@@ -51,6 +53,7 @@ const canStart = computed(() => (
   status.value === SequenceStatusEnum.IDLE ||
   status.value === SequenceStatusEnum.STOPPED ||
   status.value === SequenceStatusEnum.COMPLETED ||
+  status.value === SequenceStatusEnum.COMPLETED_WITH_ISSUES ||
   status.value === SequenceStatusEnum.ERROR
 ))
 
@@ -147,13 +150,15 @@ const isInFlight = computed(() => (
 const showStatusBadge = computed(() => (
   isInFlight.value ||
   status.value === SequenceStatusEnum.ERROR ||
-  status.value === SequenceStatusEnum.STOPPED
+  status.value === SequenceStatusEnum.STOPPED ||
+  status.value === SequenceStatusEnum.COMPLETED_WITH_ISSUES
 ))
 
 const showProgressPercent = computed(() => (
   isInFlight.value ||
   status.value === SequenceStatusEnum.ERROR ||
-  status.value === SequenceStatusEnum.STOPPED
+  status.value === SequenceStatusEnum.STOPPED ||
+  status.value === SequenceStatusEnum.COMPLETED_WITH_ISSUES
 ))
 
 const runHeadline = computed(() => {
@@ -169,6 +174,8 @@ const runHeadline = computed(() => {
       return "Run needs attention"
     case SequenceStatusEnum.STOPPED:
       return "Run stopped"
+    case SequenceStatusEnum.COMPLETED_WITH_ISSUES:
+      return "Run completed with issues"
     default:
       return "Ready"
   }
@@ -208,6 +215,10 @@ const runSummaryText = computed(() => {
 
   if (status.value === SequenceStatusEnum.COMPLETED) {
     return "Last run finished. Ready for next run."
+  }
+
+  if (status.value === SequenceStatusEnum.COMPLETED_WITH_ISSUES) {
+    return state.value.last_error || "Run completed with blocked or failed steps"
   }
 
   return "No active run"
