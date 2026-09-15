@@ -572,63 +572,63 @@ function setFloatingContentRef(el: Element | ComponentPublicInstance | null) {
 
 .device-picker-combobox,
 .device-picker-combobox__popover {
-  --picker-surface: #ffffff;
-  --picker-surface-muted: #f8fafc;
-  --picker-border: rgba(15, 23, 42, 0.15);
-  --picker-border-hover: rgba(37, 99, 235, 0.65);
-  --picker-text: #0f172a;
-  --picker-muted: #4b5563;
-  --picker-placeholder: #6b7280;
-  --picker-accent: #2563eb;
-  --picker-accent-soft: rgba(37, 99, 235, 0.08);
-  --picker-outline: rgba(37, 99, 235, 0.35);
-  --picker-shadow: 0 18px 45px rgba(15, 23, 42, 0.14);
-  --picker-trigger-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
-  --picker-option-border: rgba(15, 23, 42, 0.08);
-  --picker-option-hover: #f5f5f5;
-  --picker-divider: rgba(15, 23, 42, 0.06);
-  --picker-status-online-bg: rgba(34, 197, 94, 0.15);
-  --picker-status-online-text: #15803d;
-  --picker-status-offline-bg: rgba(248, 113, 113, 0.2);
-  --picker-status-offline-text: #b91c1c;
-  --picker-input-bg: #ffffff;
-  --picker-input-border: rgba(15, 23, 42, 0.15);
-  --picker-input-text: #0f172a;
-  --picker-input-placeholder: #6b7280;
+  --picker-surface: var(--color-white);
+  --picker-surface-muted: var(--color-slate-50);
+  --picker-border: rgb(var(--color-slate-900-rgb) / 0.15);
+  --picker-border-hover: rgb(var(--color-blue-600-rgb) / 0.65);
+  --picker-text: var(--color-slate-900);
+  --picker-muted: var(--color-gray-600);
+  --picker-placeholder: var(--color-gray-500);
+  --picker-accent: var(--color-blue-600);
+  --picker-accent-soft: rgb(var(--color-blue-600-rgb) / 0.08);
+  --picker-outline: rgb(var(--color-blue-600-rgb) / 0.35);
+  --picker-shadow: 0 18px 45px rgb(var(--color-slate-900-rgb) / 0.14);
+  --picker-trigger-shadow: 0 1px 2px rgb(var(--color-slate-900-rgb) / 0.06);
+  --picker-option-border: rgb(var(--color-slate-900-rgb) / 0.08);
+  --picker-option-hover: var(--color-neutral-100);
+  --picker-divider: rgb(var(--color-slate-900-rgb) / 0.06);
+  --picker-status-online-bg: rgb(var(--color-green-500-rgb) / 0.15);
+  --picker-status-online-text: var(--color-green-700);
+  --picker-status-offline-bg: rgb(var(--color-red-300-rgb) / 0.2);
+  --picker-status-offline-text: var(--color-red-700);
+  --picker-input-bg: var(--color-white);
+  --picker-input-border: rgb(var(--color-slate-900-rgb) / 0.15);
+  --picker-input-text: var(--color-slate-900);
+  --picker-input-placeholder: var(--color-gray-500);
 }
 
 .device-picker-combobox.is-dark,
 .device-picker-combobox__popover.is-dark,
 :global(.dark .device-picker-combobox),
 :global(.dark .device-picker-combobox__popover){
-  --picker-surface: var(--ui-menu-bg, #1f1f1f);
-  --picker-surface-muted: var(--ui-menu-hover-bg, #2b2b2b);
-  --picker-border: var(--ui-menu-border, #333333);
-  --picker-border-hover: rgba(129, 140, 248, 0.85);
-  --picker-text: var(--ui-menu-text, #f3f3f3);
-  --picker-muted: var(--ui-menu-muted, #9a9a9a);
-  --picker-placeholder: var(--ui-menu-muted, #9a9a9a);
-  --picker-accent: #93c5fd;
-  --picker-accent-soft: rgba(147, 197, 253, 0.18);
-  --picker-outline: rgba(147, 197, 253, 0.65);
-  --picker-shadow: 0 28px 60px rgba(2, 6, 23, 0.75);
-  --picker-trigger-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
-  --picker-option-border: rgba(255, 255, 255, 0.08);
-  --picker-option-hover: #27272a;
-  --picker-divider: rgba(255, 255, 255, 0.09);
-  --picker-status-online-bg: rgba(34, 197, 94, 0.2);
-  --picker-status-online-text: #4ade80;
-  --picker-status-offline-bg: rgba(248, 113, 113, 0.2);
-  --picker-status-offline-text: #fca5a5;
-  --picker-input-bg: rgba(15, 23, 42, 0.92);
-  --picker-input-border: rgba(148, 163, 184, 0.45);
-  --picker-input-text: #f1f5f9;
-  --picker-input-placeholder: #94a3b8;
+  --picker-surface: var(--ui-menu-bg, var(--color-menu-dark));
+  --picker-surface-muted: var(--ui-menu-hover-bg, var(--color-menu-dark-muted));
+  --picker-border: var(--ui-menu-border, var(--color-menu-dark-border));
+  --picker-border-hover: rgb(var(--color-indigo-400-rgb) / 0.85);
+  --picker-text: var(--ui-menu-text, var(--color-menu-light));
+  --picker-muted: var(--ui-menu-muted, var(--color-menu-muted));
+  --picker-placeholder: var(--ui-menu-muted, var(--color-menu-muted));
+  --picker-accent: var(--color-blue-300);
+  --picker-accent-soft: rgb(var(--color-blue-300-rgb) / 0.18);
+  --picker-outline: rgb(var(--color-blue-300-rgb) / 0.65);
+  --picker-shadow: 0 28px 60px rgb(var(--color-slate-950-rgb) / 0.75);
+  --picker-trigger-shadow: 0 1px 2px rgb(var(--color-black-rgb) / 0.55);
+  --picker-option-border: rgb(var(--color-white-rgb) / 0.08);
+  --picker-option-hover: var(--color-zinc-800);
+  --picker-divider: rgb(var(--color-white-rgb) / 0.09);
+  --picker-status-online-bg: rgb(var(--color-green-500-rgb) / 0.2);
+  --picker-status-online-text: var(--color-green-400);
+  --picker-status-offline-bg: rgb(var(--color-red-300-rgb) / 0.2);
+  --picker-status-offline-text: var(--color-red-300);
+  --picker-input-bg: rgb(var(--color-slate-900-rgb) / 0.92);
+  --picker-input-border: rgb(var(--color-slate-400-rgb) / 0.45);
+  --picker-input-text: var(--color-slate-100);
+  --picker-input-placeholder: var(--color-slate-400);
 }
 
 .device-picker-combobox__trigger {
   width: 100%;
-  border-radius: 0.5rem;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--picker-border);
   background: var(--picker-surface);
   padding: 0.45rem 0.9rem;
@@ -637,7 +637,7 @@ function setFloatingContentRef(el: Element | ComponentPublicInstance | null) {
   align-items: center;
   gap: 0.75rem;
   text-align: left;
-  font-size: 0.92rem;
+  font-size: var(--text-emphasis);
   line-height: 1.2;
   color: var(--picker-text);
   transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
@@ -678,7 +678,7 @@ function setFloatingContentRef(el: Element | ComponentPublicInstance | null) {
 }
 
 .device-picker-combobox__meta {
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   color: var(--picker-muted);
 }
 
@@ -691,10 +691,10 @@ function setFloatingContentRef(el: Element | ComponentPublicInstance | null) {
 .device-picker-combobox__clear {
   border: none;
   background: transparent;
-  font-size: 0.85rem;
+  font-size: var(--text-ui);
   color: var(--picker-muted);
   padding: 0.1rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   cursor: pointer;
   transition: color 120ms ease, background 120ms ease;
 }
@@ -706,13 +706,13 @@ function setFloatingContentRef(el: Element | ComponentPublicInstance | null) {
 
 .device-picker-combobox__chevron {
   color: var(--picker-muted);
-  font-size: 0.85rem;
+  font-size: var(--text-ui);
 }
 
 .device-picker-combobox__popover {
   width: 320px;
   max-height: min(360px, 70vh);
-  border-radius: 0.5rem;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--picker-border);
   background: var(--picker-surface);
   box-shadow: var(--picker-shadow);
@@ -733,10 +733,10 @@ function setFloatingContentRef(el: Element | ComponentPublicInstance | null) {
 
 .device-picker-combobox__search {
   flex: 1;
-  border-radius: 0.65rem;
+  border-radius: var(--radius-compact);
   border: 1px solid var(--picker-input-border);
   padding: 0.5rem 0.9rem;
-  font-size: 0.85rem;
+  font-size: var(--text-ui);
   line-height: 1.3;
   background: var(--picker-input-bg);
   color: var(--picker-input-text);
@@ -762,7 +762,7 @@ function setFloatingContentRef(el: Element | ComponentPublicInstance | null) {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--picker-muted);
@@ -774,7 +774,7 @@ function setFloatingContentRef(el: Element | ComponentPublicInstance | null) {
 .device-picker-combobox__filter-checkbox input {
   width: 1rem;
   height: 1rem;
-  border-radius: 0.25rem;
+  border-radius: var(--radius-xs);
   border: 1px solid var(--picker-border);
   background: var(--picker-surface);
   accent-color: var(--picker-accent);
@@ -795,7 +795,7 @@ function setFloatingContentRef(el: Element | ComponentPublicInstance | null) {
 }
 
 .device-picker-combobox__option {
-  border-radius: 0.5rem;
+  border-radius: var(--radius-lg);
   border: 1px solid transparent;
   padding: 0 0.375rem;
   display: flex;
@@ -804,7 +804,7 @@ function setFloatingContentRef(el: Element | ComponentPublicInstance | null) {
   text-align: left;
   background: transparent;
   color: var(--picker-text);
-  font-size: 12px;
+  font-size: var(--text-xs);
   line-height: 1.2;
   cursor: pointer;
   transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
@@ -834,7 +834,7 @@ function setFloatingContentRef(el: Element | ComponentPublicInstance | null) {
 .device-picker-combobox__status-dot {
   width: 0.55rem;
   height: 0.55rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   flex-shrink: 0;
   border: 2px solid transparent;
 }
@@ -866,7 +866,7 @@ function setFloatingContentRef(el: Element | ComponentPublicInstance | null) {
 }
 
 .device-picker-combobox__option-unit {
-  font-size: 0.78rem;
+  font-size: var(--text-small);
   color: var(--picker-muted);
   white-space: nowrap;
   overflow: hidden;
@@ -874,13 +874,13 @@ function setFloatingContentRef(el: Element | ComponentPublicInstance | null) {
 }
 
 .device-picker-combobox__selected-mark {
-  font-size: 0.9rem;
+  font-size: var(--text-readable);
   color: var(--picker-accent);
   margin-left: auto;
 }
 
 .device-picker-combobox__empty {
-  font-size: 0.85rem;
+  font-size: var(--text-ui);
   color: var(--picker-muted);
   text-align: center;
   padding: 1rem 0.5rem;

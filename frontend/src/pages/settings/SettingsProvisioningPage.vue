@@ -50,7 +50,7 @@ import { SETTINGS_SERVICE_MODE_ENABLED as serviceModeEnabled } from "@/config/se
 .settings-page-shell__notice {
   padding: 1rem;
   border: 1px solid color-mix(in srgb, var(--color-neutral-200) 70%, transparent);
-  border-radius: 1rem;
+  border-radius: var(--radius-2xl);
   background: color-mix(in srgb, var(--color-white) 90%, transparent);
   color: var(--color-neutral-600);
   font-size: var(--text-xs);

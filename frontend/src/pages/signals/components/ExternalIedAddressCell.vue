@@ -36,7 +36,7 @@ const title = computed(() => {
 }
 
 .external-ied-address-cell__indicator {
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   flex: 0 0 0.375rem;
   height: 0.375rem;
   width: 0.375rem;

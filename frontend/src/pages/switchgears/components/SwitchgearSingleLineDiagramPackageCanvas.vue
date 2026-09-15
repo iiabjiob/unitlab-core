@@ -1973,7 +1973,7 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
       >
         <defs>
           <pattern id="switchgear-sld-package-grid" :width="24" :height="24" patternUnits="userSpaceOnUse">
-            <path d="M 24 0 L 0 0 0 24" fill="none" stroke="rgba(148,163,184,0.18)" stroke-width="1" />
+            <path d="M 24 0 L 0 0 0 24" fill="none" stroke="rgb(var(--color-slate-400-rgb) / 0.18)" stroke-width="1" />
           </pattern>
           <marker id="switchgear-sld-package-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
             <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" />
@@ -2262,7 +2262,7 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
             :width="MINIMAP_WIDTH"
             :height="MINIMAP_HEIGHT"
             rx="8"
-            fill="rgba(148,163,184,0.18)"
+            fill="rgb(var(--color-slate-400-rgb) / 0.18)"
           />
           <g>
             <line
@@ -2272,7 +2272,7 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
               :y1="line.y1"
               :x2="line.x2"
               :y2="line.y2"
-              :stroke="line.active ? '#38bdf8' : '#475569'"
+              :stroke="line.active ? 'var(--color-sky-400)' : 'var(--color-slate-600)'"
               :stroke-width="line.active ? (line.weight === 'bold' ? 2.4 : 1.8) : (line.weight === 'bold' ? 1.8 : 1.2)"
               stroke-linecap="round"
               :opacity="line.active ? 1 : 0.62"
@@ -2285,7 +2285,7 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
               :width="item.width"
               :height="item.height"
               rx="1.5"
-              :fill="item.active ? '#38bdf8' : '#64748b'"
+              :fill="item.active ? 'var(--color-sky-400)' : 'var(--color-slate-500)'"
               :opacity="item.active ? 1 : 0.58"
             />
             <rect
@@ -2296,7 +2296,7 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
               :width="item.width"
               :height="item.height"
               rx="1.5"
-              :fill="item.active ? '#38bdf8' : '#64748b'"
+              :fill="item.active ? 'var(--color-sky-400)' : 'var(--color-slate-500)'"
               :opacity="item.active ? 1 : 0.5"
             />
             <rect
@@ -2307,7 +2307,7 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
               :width="item.width"
               :height="item.height"
               rx="1.5"
-              :fill="item.active ? '#38bdf8' : '#334155'"
+              :fill="item.active ? 'var(--color-sky-400)' : 'var(--color-slate-700)'"
               :opacity="item.active ? 1 : 0.65"
             />
           </g>
@@ -2317,8 +2317,8 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
             :width="minimapModel.viewport.width"
             :height="minimapModel.viewport.height"
             rx="2"
-            fill="rgba(14,165,233,0.15)"
-            stroke="#0ea5e9"
+            fill="rgb(var(--color-sky-500-rgb) / 0.15)"
+            stroke="var(--color-sky-500)"
             stroke-width="1.4"
           />
         </svg>
@@ -2357,7 +2357,7 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
 .switchgear-sld-package-canvas__selection {
   padding: 0.25rem 0.5rem;
   border: 1px solid var(--color-neutral-200);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--color-white);
   color: var(--color-neutral-600);
   font-size: var(--text-xs);
@@ -2367,7 +2367,7 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
 .switchgear-sld-package-canvas__tool-tab {
   padding: 0.45rem 0.7rem;
   border: 1px solid var(--color-neutral-200);
-  border-radius: 0.5rem;
+  border-radius: var(--radius-lg);
   background: var(--color-white);
   color: var(--color-neutral-600);
   font: inherit;
@@ -2386,7 +2386,7 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
   min-height: 0;
   flex: 1 1 auto;
   border: 1px solid var(--color-neutral-200);
-  border-radius: 0.5rem;
+  border-radius: var(--radius-lg);
   background: linear-gradient(180deg, var(--color-white), color-mix(in srgb, var(--color-sky-50) 42%, var(--color-white)));
   overflow: hidden;
   outline: none;
@@ -2412,9 +2412,9 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
   overflow-x: auto;
   padding: 0.375rem;
   border: 1px solid color-mix(in srgb, var(--color-neutral-300) 70%, transparent);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-xl);
   background: color-mix(in srgb, var(--color-white) 90%, transparent);
-  box-shadow: 0 14px 30px rgb(15 23 42 / 0.14);
+  box-shadow: 0 14px 30px rgb(var(--color-slate-900-rgb) / 0.14);
   backdrop-filter: blur(10px);
 }
 
@@ -2450,14 +2450,14 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
 
 .switchgear-sld-package-canvas__switchgear-label {
   fill: var(--color-neutral-700);
-  font-size: 10px;
+  font-size: var(--text-2xs);
   font-weight: 600;
 }
 
 .switchgear-sld-package-canvas__generated-label,
 .switchgear-sld-package-canvas__text {
   fill: var(--color-neutral-600);
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 500;
 }
 
@@ -2469,7 +2469,7 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
   gap: 0.125rem;
   padding: 0.35rem;
   border: 1px solid color-mix(in srgb, var(--color-neutral-300) 82%, transparent);
-  border-radius: 0.625rem;
+  border-radius: var(--radius-card);
   background: color-mix(in srgb, var(--color-white) 94%, transparent);
   box-shadow: var(--shadow-lg);
   backdrop-filter: blur(12px);
@@ -2486,7 +2486,7 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
   gap: 0.75rem;
   padding: 0.55rem 0.7rem;
   border: 0;
-  border-radius: 0.45rem;
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--color-neutral-700);
   font: inherit;
@@ -2517,7 +2517,7 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
   bottom: 1rem;
   z-index: 2;
   border: 1px solid color-mix(in srgb, var(--color-neutral-300) 78%, transparent);
-  border-radius: 0.625rem;
+  border-radius: var(--radius-card);
   background: color-mix(in srgb, var(--color-white) 88%, transparent);
   box-shadow: var(--shadow-md);
   backdrop-filter: blur(8px);
@@ -2532,11 +2532,11 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
   position: absolute;
   padding: 0.25rem 0.375rem;
   border: 1px solid var(--color-blue-400);
-  border-radius: 0.375rem;
+  border-radius: var(--radius-md);
   background: var(--color-white);
   color: var(--color-neutral-900);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--text-xs);
   resize: none;
   outline: none;
   box-shadow: var(--shadow-md);
@@ -2563,7 +2563,7 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
 
 :global(.dark .switchgear-sld-package-canvas__stage) {
   border-color: var(--color-neutral-800);
-  background: linear-gradient(180deg, rgb(10 15 28), rgb(3 7 18));
+  background: linear-gradient(180deg, rgb(var(--color-diagram-surface-rgb)), rgb(var(--color-diagram-background-rgb)));
 }
 
 :global(.dark .switchgear-sld-package-canvas__switchgear-label) {

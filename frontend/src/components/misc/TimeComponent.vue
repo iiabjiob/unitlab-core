@@ -124,7 +124,7 @@ function handleNtpBadgeClick() {
   padding: 0.125rem 0.375rem;
   border: 1px solid;
   border-radius: var(--radius-sm);
-  font-size: 10px;
+  font-size: var(--text-2xs);
   font-weight: 600;
   letter-spacing: 0;
   line-height: 1.2;

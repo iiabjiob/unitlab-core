@@ -179,7 +179,7 @@ const flowItems = computed(() => items.filter((item) => item.section === "flow")
 
 :global(.sequence-step-add-toolbar__label) {
   color: var(--color-neutral-500);
-  font-size: 0.6875rem;
+  font-size: var(--text-compact);
   letter-spacing: 0.18em;
   text-transform: uppercase;
 }

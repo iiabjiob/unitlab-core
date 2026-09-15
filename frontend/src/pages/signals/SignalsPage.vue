@@ -3878,7 +3878,7 @@ onBeforeUnmount(() => {
   align-items: center;
   background: color-mix(in srgb, var(--color-white) 84%, transparent);
   border: 1px dashed var(--color-neutral-300);
-  border-radius: 1rem;
+  border-radius: var(--radius-2xl);
   color: var(--color-neutral-600);
   display: flex;
   flex-direction: column;
@@ -3943,7 +3943,7 @@ onBeforeUnmount(() => {
 .signals-page__error {
   background: color-mix(in srgb, var(--color-rose-300) 14%, var(--color-white));
   border: 1px solid color-mix(in srgb, var(--color-rose-300) 70%, var(--color-white));
-  border-radius: 1rem;
+  border-radius: var(--radius-2xl);
   color: var(--color-rose-700);
   font-size: var(--text-sm);
   padding: 0.75rem 1rem;
@@ -3959,7 +3959,7 @@ onBeforeUnmount(() => {
 .signals-page__skeleton {
   background: var(--color-white);
   border: 1px solid var(--color-neutral-200);
-  border-radius: 1rem;
+  border-radius: var(--radius-2xl);
   box-shadow: var(--shadow-sm);
   display: flex;
   flex-direction: column;
@@ -4049,7 +4049,7 @@ onBeforeUnmount(() => {
 .signals-page__test-status {
   align-items: center;
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   display: inline-flex;
   font-size: var(--text-xs);
   height: 1.35rem;
@@ -4125,7 +4125,7 @@ onBeforeUnmount(() => {
 .signals-page__test-report-count {
   background: color-mix(in srgb, var(--color-neutral-500) 8%, transparent);
   border: 1px solid color-mix(in srgb, var(--color-neutral-500) 22%, transparent);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   color: var(--color-neutral-700);
   font-size: var(--text-xs);
   padding: 0.25rem 0.5rem;
@@ -4236,7 +4236,7 @@ onBeforeUnmount(() => {
 .signals-page__test-report-diagnostics span {
   background: color-mix(in srgb, var(--color-rose-500) 9%, transparent);
   border: 1px solid color-mix(in srgb, var(--color-rose-500) 28%, transparent);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   color: var(--color-rose-700);
   font-size: var(--text-xs);
   padding: 0.2rem 0.45rem;

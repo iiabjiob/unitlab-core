@@ -220,10 +220,10 @@ function triggerHasFocus(): boolean {
 <style scoped>
 .inline-info-tooltip__trigger {
   align-items: center;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   color: color-mix(in srgb, var(--color-neutral-400) 80%, transparent);
   display: inline-flex;
-  font-size: 0.625rem;
+  font-size: var(--text-2xs);
   font-weight: 500;
   height: 1rem;
   justify-content: center;
@@ -248,8 +248,8 @@ function triggerHasFocus(): boolean {
   border: 1px solid color-mix(in srgb, var(--color-neutral-700) 86%, var(--runtime-accent));
   border-radius: var(--radius-md);
   box-shadow:
-    0 12px 28px rgb(15 23 42 / 0.24),
-    inset 0 1px 0 rgb(255 255 255 / 0.08);
+    0 12px 28px rgb(var(--color-slate-900-rgb) / 0.24),
+    inset 0 1px 0 rgb(var(--color-white-rgb) / 0.08);
   color: var(--color-neutral-50);
   font-size: var(--text-xs);
   font-weight: 600;
@@ -274,8 +274,8 @@ function triggerHasFocus(): boolean {
   background: color-mix(in srgb, var(--color-white) 96%, var(--color-blue-100));
   border-color: color-mix(in srgb, var(--color-blue-300) 45%, var(--color-neutral-200));
   box-shadow:
-    0 14px 30px rgb(0 0 0 / 0.36),
-    inset 0 1px 0 rgb(255 255 255 / 0.9);
+    0 14px 30px rgb(var(--color-black-rgb) / 0.36),
+    inset 0 1px 0 rgb(var(--color-white-rgb) / 0.9);
   color: var(--color-neutral-950);
 }
 </style>

@@ -113,7 +113,7 @@ watch(
 .rename-modal__input {
   background: var(--color-white);
   border: 1px solid var(--color-neutral-300);
-  border-radius: 0.25rem;
+  border-radius: var(--radius-xs);
   color: var(--color-neutral-900);
   font-size: var(--text-sm);
   line-height: 1.25rem;

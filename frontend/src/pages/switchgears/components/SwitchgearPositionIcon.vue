@@ -88,7 +88,7 @@ const sizeClass = computed(() => {
         y="8.4"
         text-anchor="middle"
         dominant-baseline="middle"
-        font-size="9"
+        font-size="var(--text-micro)"
         font-weight="700"
         fill="currentColor"
       >
@@ -107,7 +107,7 @@ const sizeClass = computed(() => {
 .switchgear-position-icon__graphic {
   display: block;
   color: var(--color-blue-600);
-  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 15%));
+  filter: drop-shadow(0 1px 1px rgb(var(--color-black-rgb) / 15%));
 }
 
 .switchgear-position-icon__plate {

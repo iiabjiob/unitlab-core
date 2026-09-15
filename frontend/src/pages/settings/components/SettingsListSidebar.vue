@@ -130,7 +130,7 @@ function handleSelect(id: string | number) {
 
 .settings-list-sidebar__eyebrow {
   color: var(--color-neutral-500);
-  font-size: 11px;
+  font-size: var(--text-compact);
   letter-spacing: 0;
   text-transform: uppercase;
 }
@@ -156,7 +156,7 @@ function handleSelect(id: string | number) {
 .settings-list-sidebar__build {
   margin-top: 0.75rem;
   color: var(--color-neutral-500);
-  font-size: 11px;
+  font-size: var(--text-compact);
 }
 
 :global(.dark .settings-list-sidebar__eyebrow),

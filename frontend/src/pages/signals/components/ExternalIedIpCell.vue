@@ -75,7 +75,7 @@ const labelClass = computed(() => {
 
 .external-ied-ip-cell__details-affordance {
   align-items: center;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   color: var(--color-neutral-500);
   cursor: pointer;
   display: inline-flex;
@@ -102,7 +102,7 @@ const labelClass = computed(() => {
 }
 
 .external-ied-ip-cell__indicator {
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   flex-shrink: 0;
   height: 0.375rem;
   width: 0.375rem;

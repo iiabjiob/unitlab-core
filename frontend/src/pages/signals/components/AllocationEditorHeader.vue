@@ -223,7 +223,7 @@ const emit = defineEmits<{
 .allocation-editor-header {
   background: var(--color-white);
   border: 1px solid var(--color-neutral-200);
-  border-radius: 1rem;
+  border-radius: var(--radius-2xl);
   padding: 0.75rem 1rem;
 }
 
@@ -263,7 +263,7 @@ const emit = defineEmits<{
   align-items: center;
   background: var(--color-neutral-50);
   border: 1px solid var(--color-neutral-200);
-  border-radius: 0.5rem;
+  border-radius: var(--radius-lg);
   color: var(--color-neutral-700);
   display: flex;
   flex-wrap: wrap;
@@ -293,7 +293,7 @@ const emit = defineEmits<{
 }
 
 .allocation-editor-header__metric-dot {
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   display: inline-block;
   height: 0.45rem;
   width: 0.45rem;

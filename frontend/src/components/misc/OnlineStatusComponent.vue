@@ -57,7 +57,7 @@ const tooltip = computed(() => props.description || null)
 
 .online-status__indicator {
   border: 1px solid color-mix(in srgb, var(--color-white) 70%, transparent);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   box-shadow: var(--shadow-sm);
   height: 0.625rem;
   width: 0.625rem;

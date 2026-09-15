@@ -112,7 +112,7 @@ const labelClass = computed(() => {
 }
 
 .allocation-channel-cell__indicator {
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   flex-shrink: 0;
   height: 0.375rem;
   width: 0.375rem;

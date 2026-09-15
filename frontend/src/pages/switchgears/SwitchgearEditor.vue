@@ -213,7 +213,7 @@ async function confirmDelete() {
 .switchgear-editor__summary-panel,
 .switchgear-editor__summary-card {
   border: 1px solid var(--color-neutral-200);
-  border-radius: 0.5rem;
+  border-radius: var(--radius-lg);
   background: var(--color-neutral-50);
   overflow: hidden;
 }

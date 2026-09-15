@@ -151,7 +151,7 @@ const statusClass = computed(() => {
   width: 0.5rem;
   height: 0.5rem;
   flex-shrink: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
 }
 
 .sequence-step-item__status--idle {

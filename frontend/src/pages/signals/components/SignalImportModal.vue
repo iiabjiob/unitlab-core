@@ -1734,7 +1734,7 @@ watch(
 .signal-import-modal__dropzone {
   align-items: center;
   border: 2px dashed;
-  border-radius: 1rem;
+  border-radius: var(--radius-2xl);
   display: flex;
   flex-direction: column;
   font-size: var(--text-sm);
@@ -1935,7 +1935,7 @@ watch(
 .signal-import-modal__verification-toggle {
   background: var(--color-neutral-50);
   border: 1px solid var(--color-neutral-200);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-xl);
   display: flex;
   flex-direction: column;
   gap: 0.375rem;
@@ -1968,7 +1968,7 @@ watch(
 .signal-import-modal__verification-row {
   background: var(--color-white);
   border: 1px solid var(--color-neutral-200);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-xl);
   display: grid;
   gap: 0.5rem;
   padding: 0.75rem;
@@ -2001,7 +2001,7 @@ watch(
 
 .signal-import-modal__verification-sample {
   background: var(--color-neutral-100);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   color: var(--color-neutral-700);
   font-size: var(--text-xs);
   padding: 0.125rem 0.5rem;
@@ -2068,7 +2068,7 @@ watch(
 .signal-import-modal__mapping-row {
   background: var(--color-white);
   border: 1px solid var(--color-neutral-200);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-xl);
   display: flex;
   flex-direction: column;
   gap: 0.5rem;

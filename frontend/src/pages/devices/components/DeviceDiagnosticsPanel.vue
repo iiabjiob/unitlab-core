@@ -1001,7 +1001,7 @@ onBeforeUnmount(() => {
 
 .device-diagnostics-panel__source {
   color: var(--color-neutral-400);
-  font-size: 0.625rem;
+  font-size: var(--text-2xs);
   letter-spacing: 0;
   text-transform: none;
 }
@@ -1034,7 +1034,7 @@ onBeforeUnmount(() => {
 .device-diagnostics-panel__empty {
   padding: 0.75rem 1rem;
   border: 1px dashed var(--color-neutral-300);
-  border-radius: 0.5rem;
+  border-radius: var(--radius-lg);
   color: var(--color-neutral-500);
   font-size: var(--text-sm);
   font-style: italic;
@@ -1089,7 +1089,7 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 0.25rem;
   color: var(--color-neutral-500);
-  font-size: 0.625rem;
+  font-size: var(--text-2xs);
   letter-spacing: 0.025em;
   text-transform: uppercase;
 }
@@ -1112,7 +1112,7 @@ onBeforeUnmount(() => {
 
 .device-diagnostics-panel__metric-hint {
   margin-top: 0.125rem;
-  font-size: 0.625rem;
+  font-size: var(--text-2xs);
   letter-spacing: 0.025em;
   text-transform: uppercase;
 }
@@ -1120,7 +1120,7 @@ onBeforeUnmount(() => {
 :global(.device-diagnostics-panel__tree-disclosure) {
   overflow: hidden;
   border: 1px solid var(--color-neutral-200);
-  border-radius: 0.5rem;
+  border-radius: var(--radius-lg);
 }
 
 :global(.device-diagnostics-panel__tree-header) {
@@ -1138,7 +1138,7 @@ onBeforeUnmount(() => {
   max-height: 18rem;
   overflow: auto;
   padding: 0.375rem;
-  font-size: 0.6875rem;
+  font-size: var(--text-compact);
 }
 
 .device-diagnostics-panel__tree-row {
@@ -1161,7 +1161,7 @@ onBeforeUnmount(() => {
 .device-diagnostics-panel__tree-toggle {
   width: 0.75rem;
   color: var(--color-neutral-500);
-  font-size: 0.625rem;
+  font-size: var(--text-2xs);
 }
 
 .device-diagnostics-panel__tree-label,
@@ -1185,7 +1185,7 @@ onBeforeUnmount(() => {
 .device-diagnostics-panel__stack-empty {
   margin-top: 0.5rem;
   color: var(--color-neutral-500);
-  font-size: 0.6875rem;
+  font-size: var(--text-compact);
 }
 
 .device-diagnostics-panel__stack-empty {
@@ -1199,7 +1199,7 @@ onBeforeUnmount(() => {
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--color-white) 80%, transparent);
   color: var(--color-neutral-700);
-  font-size: 0.6875rem;
+  font-size: var(--text-compact);
 }
 
 .device-diagnostics-panel__stale-value {
@@ -1241,7 +1241,7 @@ onBeforeUnmount(() => {
 }
 
 :global(.device-diagnostics-panel__stack-cell) {
-  font-size: 0.6875rem;
+  font-size: var(--text-compact);
 }
 
 .device-diagnostics-panel__reset {
@@ -1254,7 +1254,7 @@ onBeforeUnmount(() => {
 
 .device-diagnostics-panel__reset-values {
   color: var(--color-neutral-700);
-  font-size: 0.6875rem;
+  font-size: var(--text-compact);
 }
 
 .device-diagnostics-panel__separator {

@@ -449,7 +449,7 @@ function submitAoValue() {
 
 .device-channel-item__secondary-label {
   color: var(--color-neutral-500);
-  font-size: 0.625rem;
+  font-size: var(--text-2xs);
 }
 
 .device-channel-item__ao-controls {
@@ -477,7 +477,7 @@ function submitAoValue() {
   align-items: center;
   gap: 0.375rem;
   color: var(--color-neutral-500);
-  font-size: 0.625rem;
+  font-size: var(--text-2xs);
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -516,7 +516,7 @@ function submitAoValue() {
   flex-shrink: 0;
   padding-right: 0.375rem;
   padding-left: 0.375rem;
-  font-size: 0.625rem;
+  font-size: var(--text-2xs);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -531,7 +531,7 @@ function submitAoValue() {
 
 .device-channel-item__ao-actual-label,
 .device-channel-item__ao-actual-unit {
-  font-size: 0.5625rem;
+  font-size: var(--text-micro);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -540,7 +540,7 @@ function submitAoValue() {
   min-width: 3.25rem;
   color: var(--color-neutral-600);
   font-family: var(--font-mono);
-  font-size: 0.625rem;
+  font-size: var(--text-2xs);
   text-align: right;
 }
 
@@ -550,7 +550,7 @@ function submitAoValue() {
   padding: 0.25rem 0.375rem;
   border: 1px solid currentColor;
   border-radius: var(--radius-sm);
-  font-size: 0.625rem;
+  font-size: var(--text-2xs);
   font-weight: 500;
   cursor: default;
 }
@@ -643,13 +643,13 @@ function submitAoValue() {
   height: 1rem;
   border: 2px solid color-mix(in srgb, var(--color-white) 85%, transparent);
   border-top-color: transparent;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   animation: device-channel-spin 1s linear infinite;
 }
 
 .device-channel-item__state-mark {
   color: var(--color-white);
-  font-size: 0.6875rem;
+  font-size: var(--text-compact);
   font-weight: 600;
   line-height: 1;
 }
@@ -661,7 +661,7 @@ function submitAoValue() {
   grid-row: 1;
   margin-top: 0.125rem;
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   transition: background 200ms ease, border-color 200ms ease, opacity 200ms ease;
 }
 

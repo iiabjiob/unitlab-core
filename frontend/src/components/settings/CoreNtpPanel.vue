@@ -407,7 +407,7 @@ onUnmounted(() => {
 .core-ntp-panel {
   padding: 1rem;
   border: 1px solid color-mix(in srgb, var(--color-neutral-200) 70%, transparent);
-  border-radius: 1rem;
+  border-radius: var(--radius-2xl);
   background: color-mix(in srgb, var(--color-white) 90%, transparent);
 }
 
@@ -425,7 +425,7 @@ onUnmounted(() => {
 
 .core-ntp-panel__eyebrow {
   color: var(--color-neutral-500);
-  font-size: 11px;
+  font-size: var(--text-compact);
   letter-spacing: 0;
   text-transform: uppercase;
 }
@@ -466,7 +466,7 @@ onUnmounted(() => {
 .core-ntp-panel__card {
   padding: 0.75rem;
   border: 1px solid color-mix(in srgb, var(--color-neutral-200) 80%, transparent);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-xl);
   background: color-mix(in srgb, var(--color-neutral-50) 80%, transparent);
 }
 
@@ -495,7 +495,7 @@ onUnmounted(() => {
 .core-ntp-panel__action-meta,
 .core-ntp-panel__source-meta {
   color: var(--color-neutral-500);
-  font-size: 11px;
+  font-size: var(--text-compact);
 }
 
 .core-ntp-panel__server-list {
@@ -547,7 +547,7 @@ onUnmounted(() => {
   border-radius: var(--radius-md);
   background: var(--color-amber-50);
   color: var(--color-yellow-800);
-  font-size: 11px;
+  font-size: var(--text-compact);
 }
 
 .core-ntp-panel__manual-card,
@@ -561,7 +561,7 @@ onUnmounted(() => {
 .core-ntp-panel__section-label,
 .core-ntp-panel__sources-title {
   color: var(--color-neutral-500);
-  font-size: 11px;
+  font-size: var(--text-compact);
   font-weight: 600;
   letter-spacing: 0;
   text-transform: uppercase;
@@ -631,7 +631,7 @@ onUnmounted(() => {
   margin-right: 0.25rem;
   color: var(--color-neutral-500);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--text-2xs);
 }
 
 .core-ntp-panel__source-meta {

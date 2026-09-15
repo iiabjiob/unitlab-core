@@ -170,7 +170,7 @@ const positionState = computed(() => store.resolveSwitchgearState(props.switchge
 }
 
 .switchgear-editor-header__type {
-  font-size: 0.6875rem;
+  font-size: var(--text-compact);
   letter-spacing: 0;
   text-transform: uppercase;
 }

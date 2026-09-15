@@ -327,7 +327,7 @@ watch(() => props.workspaceId, () => {
 .signal-export-modal__card {
   background: var(--color-neutral-50);
   border: 1px solid var(--color-neutral-200);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-xl);
   padding: 0.75rem;
 }
 

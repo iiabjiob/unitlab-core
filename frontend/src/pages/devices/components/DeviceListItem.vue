@@ -143,7 +143,7 @@ function openInNewTab() {
 .device-list-item__status {
   width: 0.5rem;
   height: 0.5rem;
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   transition: background-color 120ms ease;
 }
 

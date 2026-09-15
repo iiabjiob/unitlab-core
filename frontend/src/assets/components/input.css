@@ -5,6 +5,6 @@
 }
 
 .input:focus {
-  box-shadow: 0 0 0 2px var(--color-blue-500);
+  box-shadow: var(--runtime-focus-ring);
   outline: none;
 }

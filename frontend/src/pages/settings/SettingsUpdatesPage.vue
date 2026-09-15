@@ -19,13 +19,13 @@ import { SETTINGS_SERVICE_MODE_ENABLED as serviceModeEnabled } from "@/config/se
 .settings-updates-card {
   padding: 1rem;
   border: 1px solid color-mix(in srgb, var(--color-neutral-200) 70%, transparent);
-  border-radius: 1rem;
+  border-radius: var(--radius-2xl);
   background: color-mix(in srgb, var(--color-white) 90%, transparent);
 }
 
 .settings-updates-card__eyebrow {
   color: var(--color-neutral-500);
-  font-size: 11px;
+  font-size: var(--text-compact);
   letter-spacing: 0;
   text-transform: uppercase;
 }

@@ -52,13 +52,13 @@ onMounted(async () => {
   min-width: 16rem;
   padding: 1rem 1.25rem;
   border: 1px solid color-mix(in srgb, var(--color-neutral-200) 80%, transparent);
-  border-radius: 0.9rem;
+  border-radius: var(--radius-wide);
   background: color-mix(in srgb, var(--color-white) 95%, transparent);
   box-shadow: var(--shadow-sm);
 }
 
 .app-bootstrap-placeholder__headline {
-  font-size: 0.95rem;
+  font-size: var(--text-lead);
   font-weight: 700;
   line-height: 1.25rem;
 }
@@ -66,7 +66,7 @@ onMounted(async () => {
 .app-bootstrap-placeholder__description {
   max-width: 24rem;
   text-align: center;
-  font-size: 0.78rem;
+  font-size: var(--text-small);
   line-height: 1.1rem;
   opacity: 0.82;
 }
@@ -75,15 +75,15 @@ onMounted(async () => {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 0.85rem;
+  font-size: var(--text-ui);
   font-weight: 600;
-  border-radius: 0.75rem;
+  border-radius: var(--radius-xl);
 }
 
 .app-bootstrap-placeholder__spinner {
   width: 0.9rem;
   height: 0.9rem;
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   border: 2px solid currentColor;
   border-right-color: transparent;
   animation: app-bootstrap-spin 0.9s linear infinite;

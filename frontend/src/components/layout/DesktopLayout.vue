@@ -141,8 +141,8 @@ function resolveInitialLeftAsideWidth() {
   border-right: 1px solid color-mix(in srgb, var(--color-neutral-200) 80%, transparent);
   background: color-mix(in srgb, var(--runtime-panel-bg) 96%, var(--color-white));
   box-shadow:
-    10px 0 24px rgb(15 23 42 / 0.06),
-    inset -1px 0 0 rgb(255 255 255 / 0.66);
+    10px 0 24px rgb(var(--color-slate-900-rgb) / 0.06),
+    inset -1px 0 0 rgb(var(--color-white-rgb) / 0.66);
 }
 
 .desktop-layout__aside {
@@ -173,8 +173,8 @@ function resolveInitialLeftAsideWidth() {
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--color-white) 96%, var(--runtime-accent-soft)), color-mix(in srgb, var(--color-white) 90%, var(--color-neutral-50)));
   box-shadow:
-    0 1px 0 rgb(255 255 255 / 82%) inset,
-    0 12px 24px rgb(15 23 42 / 0.06);
+    0 1px 0 rgb(var(--color-white-rgb) / 82%) inset,
+    0 12px 24px rgb(var(--color-slate-900-rgb) / 0.06);
 }
 
 .desktop-layout__brand {
@@ -251,8 +251,8 @@ function resolveInitialLeftAsideWidth() {
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--color-neutral-900) 92%, var(--runtime-accent-soft)), color-mix(in srgb, var(--color-neutral-950) 88%, var(--color-neutral-900)));
   box-shadow:
-    10px 0 28px rgb(0 0 0 / 0.24),
-    inset -1px 0 0 rgb(255 255 255 / 0.03);
+    10px 0 28px rgb(var(--color-black-rgb) / 0.24),
+    inset -1px 0 0 rgb(var(--color-white-rgb) / 0.03);
 }
 
 :global(.dark .desktop-layout__header) {
@@ -260,7 +260,7 @@ function resolveInitialLeftAsideWidth() {
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--color-neutral-900) 92%, var(--runtime-accent-soft)), color-mix(in srgb, var(--color-neutral-950) 88%, var(--color-neutral-900)));
   box-shadow:
-    0 1px 0 rgb(255 255 255 / 4%) inset,
-    0 14px 26px rgb(0 0 0 / 0.26);
+    0 1px 0 rgb(var(--color-white-rgb) / 4%) inset,
+    0 14px 26px rgb(var(--color-black-rgb) / 0.26);
 }
 </style>

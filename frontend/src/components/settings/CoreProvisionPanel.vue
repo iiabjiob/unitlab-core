@@ -175,7 +175,7 @@ const ChecksList = defineComponent({
 .core-provision-panel {
   padding: 1rem;
   border: 1px solid color-mix(in srgb, var(--color-neutral-200) 70%, transparent);
-  border-radius: 1rem;
+  border-radius: var(--radius-2xl);
   background: color-mix(in srgb, var(--color-white) 90%, transparent);
 }
 
@@ -193,7 +193,7 @@ const ChecksList = defineComponent({
 
 .core-provision-panel__eyebrow {
   color: var(--color-neutral-500);
-  font-size: 11px;
+  font-size: var(--text-compact);
   letter-spacing: 0;
   text-transform: uppercase;
 }
@@ -248,7 +248,7 @@ const ChecksList = defineComponent({
 .core-provision-panel__card {
   padding: 0.75rem;
   border: 1px solid color-mix(in srgb, var(--color-neutral-200) 80%, transparent);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-xl);
   background: color-mix(in srgb, var(--color-neutral-50) 80%, transparent);
 }
 
@@ -272,7 +272,7 @@ const ChecksList = defineComponent({
 
 .core-provision-panel__card-meta {
   color: var(--color-neutral-500);
-  font-size: 11px;
+  font-size: var(--text-compact);
 }
 
 .core-provision-panel__button-grid {
@@ -287,7 +287,7 @@ const ChecksList = defineComponent({
   border-radius: var(--radius-md);
   background: var(--color-amber-50);
   color: var(--color-yellow-800);
-  font-size: 11px;
+  font-size: var(--text-compact);
 }
 
 .core-provision-panel__last-action {
@@ -355,7 +355,7 @@ const ChecksList = defineComponent({
 :global(.core-provision-checks-list__detail) {
   overflow: hidden;
   color: var(--color-neutral-500);
-  font-size: 11px;
+  font-size: var(--text-compact);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -364,7 +364,7 @@ const ChecksList = defineComponent({
   flex-shrink: 0;
   padding: 0.125rem 0.375rem;
   border-radius: var(--radius-sm);
-  font-size: 10px;
+  font-size: var(--text-2xs);
   font-weight: 600;
 }
 

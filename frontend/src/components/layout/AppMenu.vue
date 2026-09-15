@@ -340,7 +340,7 @@ function handleKeydown(event: KeyboardEvent) {
   margin: 0 0 0.375rem;
   padding: 0 0.625rem;
   color: color-mix(in srgb, var(--color-neutral-500) 78%, transparent);
-  font-size: 0.625rem;
+  font-size: var(--text-2xs);
   font-weight: 700;
   letter-spacing: 0;
   text-transform: uppercase;
@@ -358,7 +358,7 @@ function handleKeydown(event: KeyboardEvent) {
   padding-bottom: 0.5rem;
   overflow: hidden;
   border: 1px solid transparent;
-  border-radius: 0.75rem;
+  border-radius: var(--radius-xl);
   cursor: pointer;
   color: var(--color-neutral-700);
   font-size: var(--text-sm);
@@ -446,8 +446,8 @@ function handleKeydown(event: KeyboardEvent) {
   border-color: color-mix(in srgb, var(--runtime-accent) 32%, var(--color-neutral-200));
   background:
     linear-gradient(90deg, color-mix(in srgb, var(--runtime-accent) 12%, transparent), color-mix(in srgb, var(--color-white) 92%, transparent));
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.64);
-  color: rgb(15 23 42);
+  box-shadow: inset 0 1px 0 rgb(var(--color-white-rgb) / 0.64);
+  color: var(--color-slate-900);
   font-weight: 700;
 }
 
@@ -456,7 +456,7 @@ function handleKeydown(event: KeyboardEvent) {
 }
 
 .app-menu__entry:focus-visible {
-  box-shadow: 0 0 0 2px rgb(59 130 246 / 40%);
+  box-shadow: 0 0 0 2px rgb(var(--color-blue-500-rgb) / 40%);
 }
 
 :global(.dark .app-menu__entry) {
@@ -487,11 +487,11 @@ function handleKeydown(event: KeyboardEvent) {
   border-color: color-mix(in srgb, var(--runtime-accent) 30%, var(--color-neutral-700));
   background:
     linear-gradient(90deg, color-mix(in srgb, var(--runtime-accent) 20%, transparent), color-mix(in srgb, var(--color-neutral-900) 78%, transparent));
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05);
-  color: rgb(219 234 254);
+  box-shadow: inset 0 1px 0 rgb(var(--color-white-rgb) / 0.05);
+  color: var(--color-blue-100);
 }
 
 :global(.dark .app-menu__entry:focus-visible) {
-  box-shadow: 0 0 0 2px rgb(96 165 250 / 40%);
+  box-shadow: 0 0 0 2px rgb(var(--color-blue-400-rgb) / 40%);
 }
 </style>

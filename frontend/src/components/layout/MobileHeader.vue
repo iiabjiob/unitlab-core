@@ -57,7 +57,7 @@ defineEmits<{
   align-items: center;
   justify-content: center;
   border: 0;
-  border-radius: 0.75rem;
+  border-radius: var(--radius-xl);
   background: transparent;
   color: inherit;
 }

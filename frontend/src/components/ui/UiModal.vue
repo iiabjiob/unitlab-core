@@ -291,7 +291,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .ui-modal__overlay {
-  background: rgb(0 0 0 / 0.5);
+  background: rgb(var(--color-black-rgb) / 0.5);
   display: flex;
   inset: 0;
   position: fixed;
@@ -311,7 +311,7 @@ onBeforeUnmount(() => {
 .ui-modal__dialog {
   background: var(--color-white);
   border: 1px solid var(--color-neutral-200);
-  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+  box-shadow: var(--shadow-overlay);
   color: var(--color-neutral-900);
   display: flex;
   flex-direction: column;
@@ -328,7 +328,7 @@ onBeforeUnmount(() => {
 
 .ui-modal__dialog--mobile {
   border-bottom: 0;
-  border-radius: 1rem 1rem 0 0;
+  border-radius: var(--radius-panel-top);
   max-width: none;
 }
 
@@ -340,7 +340,7 @@ onBeforeUnmount(() => {
 
 .ui-modal__drag-handle {
   background: var(--color-neutral-300);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   height: 0.375rem;
   width: 2.5rem;
 }
@@ -389,7 +389,7 @@ onBeforeUnmount(() => {
 }
 
 :global(.dark .ui-modal__overlay) {
-  background: rgb(0 0 0 / 0.7);
+  background: rgb(var(--color-black-rgb) / 0.7);
 }
 
 :global(.dark .ui-modal__dialog) {

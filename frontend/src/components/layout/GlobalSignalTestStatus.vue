@@ -477,7 +477,7 @@ function dismissCompleted() {
   min-width: 0;
   gap: 0.25rem;
   overflow: hidden;
-  font-size: 10px;
+  font-size: var(--text-2xs);
   line-height: 1.25;
   white-space: nowrap;
 }
@@ -501,7 +501,7 @@ function dismissCompleted() {
   width: 0.375rem;
   height: 0.375rem;
   flex: 0 0 0.375rem;
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   background: var(--color-neutral-400);
 }
 
@@ -541,14 +541,14 @@ function dismissCompleted() {
 .global-signal-test-status__completed--compact {
   gap: 0.25rem;
   padding: 0.25rem 0.375rem;
-  font-size: 10px;
+  font-size: var(--text-2xs);
   line-height: 1.2;
 }
 
 .global-signal-test-status__completed--regular {
   gap: 0.5rem;
   padding: 0.25rem 0.5rem;
-  font-size: 11px;
+  font-size: var(--text-compact);
   line-height: 1.25;
 }
 

@@ -126,17 +126,17 @@ const compactStatusClass = computed(() => {
 .desktop-aside__status-dot {
   width: 0.625rem;
   height: 0.625rem;
-  border: 1px solid rgb(255 255 255 / 70%);
-  border-radius: 999px;
+  border: 1px solid rgb(var(--color-white-rgb) / 70%);
+  border-radius: var(--radius-pill);
   box-shadow: var(--shadow-sm);
 }
 
 .desktop-aside__status-dot.is-online {
-  background: #4ade80;
+  background: var(--color-green-400);
 }
 
 .desktop-aside__status-dot.is-degraded {
-  background: #fbbf24;
+  background: var(--color-amber-400);
 }
 
 .desktop-aside__status-dot.is-offline {

@@ -123,7 +123,7 @@ onMounted(() => {
   margin-top: 1rem;
   padding: 1.25rem;
   border: 1px solid var(--color-neutral-200);
-  border-radius: 1rem;
+  border-radius: var(--radius-2xl);
   background: color-mix(in srgb, var(--color-white) 80%, transparent);
   box-shadow: var(--shadow-sm);
 }

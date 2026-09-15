@@ -113,7 +113,7 @@ function pulseB() { pulseChannel(props.chB, isBusyB) }
   gap: 0.5rem;
   padding: 0.75rem;
   border: 1px solid var(--color-neutral-200);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-xl);
   background: var(--color-white);
   box-shadow: var(--shadow-sm);
 }

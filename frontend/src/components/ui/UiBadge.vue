@@ -36,7 +36,7 @@ const variantClass = computed(() => {
 <style scoped>
 .ui-badge {
   align-items: center;
-  border-radius: 0.25rem;
+  border-radius: var(--radius-xs);
   display: inline-flex;
   font-size: var(--text-xs);
   font-weight: 500;

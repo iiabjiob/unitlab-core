@@ -264,7 +264,7 @@ function resolveFallbackSwitchgear(before: Switchgear[], deletedIds: number[]): 
   border-radius: var(--radius-lg);
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--runtime-accent) 8%, var(--color-white)), color-mix(in srgb, var(--color-white) 88%, var(--color-neutral-100)));
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.78);
+  box-shadow: inset 0 1px 0 rgb(var(--color-white-rgb) / 0.78);
 }
 
 .switchgear-list-sidebar__import-button {
@@ -279,7 +279,7 @@ function resolveFallbackSwitchgear(before: Switchgear[], deletedIds: number[]): 
 .switchgear-list-sidebar__workspace-hint {
   margin: 0.5rem 0 0;
   color: var(--color-neutral-500);
-  font-size: 0.6875rem;
+  font-size: var(--text-compact);
   letter-spacing: 0;
   text-transform: uppercase;
 }
@@ -290,7 +290,7 @@ function resolveFallbackSwitchgear(before: Switchgear[], deletedIds: number[]): 
   border: 1px solid color-mix(in srgb, var(--color-neutral-300) 72%, transparent);
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--color-white) 84%, var(--color-neutral-100));
-  box-shadow: inset 0 1px 2px rgb(15 23 42 / 0.04);
+  box-shadow: inset 0 1px 2px rgb(var(--color-slate-900-rgb) / 0.04);
   color: var(--color-neutral-900);
   font-size: var(--text-sm);
   outline: none;
@@ -321,7 +321,7 @@ function resolveFallbackSwitchgear(before: Switchgear[], deletedIds: number[]): 
 .switchgear-list-sidebar__empty {
   padding: 1.5rem 1rem;
   border: 1px dashed color-mix(in srgb, var(--color-neutral-300) 70%, transparent);
-  border-radius: 1rem;
+  border-radius: var(--radius-2xl);
   color: var(--color-neutral-500);
   font-size: var(--text-xs);
   text-align: center;
@@ -336,7 +336,7 @@ function resolveFallbackSwitchgear(before: Switchgear[], deletedIds: number[]): 
   border-color: color-mix(in srgb, var(--runtime-accent) 20%, var(--color-neutral-800));
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--runtime-accent) 10%, var(--color-neutral-900)), color-mix(in srgb, var(--color-neutral-950) 88%, var(--color-neutral-900)));
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  box-shadow: inset 0 1px 0 rgb(var(--color-white-rgb) / 0.04);
 }
 
 :global(.dark .switchgear-list-sidebar__search) {

@@ -127,6 +127,7 @@
 
 <script setup lang="ts">
 import { computed, watch } from "vue"
+import { storeToRefs } from "pinia"
 import { useRouter, type RouteLocationRaw } from "vue-router"
 import AppBrandStatus from "@/components/layout/AppBrandStatus.vue"
 import ThemeToggle from "@/components/ui/ThemeToggle.vue"
@@ -136,11 +137,14 @@ import { useDeviceStore } from "@/stores/deviceStore"
 import { useChannelStore } from "@/stores/channelStore"
 import { useSignalSheetStore } from "@/stores/signalSheetStore"
 import { runStoreBootstrap } from "@/composables/useStoreBootstrap"
+import { useWebSocketStore } from "@/stores/websocketStore"
 
 const workspaceStore = useWorkspaceStore()
 const deviceStore = useDeviceStore()
 const channelStore = useChannelStore()
 const signalSheetStore = useSignalSheetStore()
+const webSocketStore = useWebSocketStore()
+const { isConnected: wsIsConnected } = storeToRefs(webSocketStore)
 const router = useRouter()
 const integerFormatter = new Intl.NumberFormat()
 
@@ -312,6 +316,14 @@ watch(
   { immediate: true },
 )
 
+watch(wsIsConnected, (isConnected, wasConnected) => {
+  if (!isConnected || wasConnected) {
+    return
+  }
+
+  void workspaceStore.refresh()
+})
+
 async function refreshHomeSignalState() {
   await signalSheetStore.ensureSheetLoaded({ ttlMs: 15_000 })
   if (signalSheetStore.hasSheet) {
@@ -347,11 +359,11 @@ function goTo(route: HomeRoute) {
   inset: 0;
   z-index: 0;
   background:
-    radial-gradient(circle at 12% 20%, rgb(37 99 235 / 0.14) 0 1px, transparent 2px),
-    radial-gradient(circle at 34% 34%, rgb(23 23 23 / 0.11) 0 1px, transparent 2px),
-    radial-gradient(circle at 72% 22%, rgb(37 99 235 / 0.1) 0 1px, transparent 2px),
-    linear-gradient(90deg, rgb(37 99 235 / 0.055) 1px, transparent 1px),
-    linear-gradient(0deg, rgb(23 23 23 / 0.04) 1px, transparent 1px);
+    radial-gradient(circle at 12% 20%, rgb(var(--color-blue-600-rgb) / 0.14) 0 1px, transparent 2px),
+    radial-gradient(circle at 34% 34%, rgb(var(--color-neutral-900-rgb) / 0.11) 0 1px, transparent 2px),
+    radial-gradient(circle at 72% 22%, rgb(var(--color-blue-600-rgb) / 0.1) 0 1px, transparent 2px),
+    linear-gradient(90deg, rgb(var(--color-blue-600-rgb) / 0.055) 1px, transparent 1px),
+    linear-gradient(0deg, rgb(var(--color-neutral-900-rgb) / 0.04) 1px, transparent 1px);
   background-size:
     22rem 18rem,
     26rem 22rem,
@@ -449,7 +461,7 @@ function goTo(route: HomeRoute) {
 
 .home-page__eyebrow {
   color: var(--color-neutral-500);
-  font-size: 0.6875rem;
+  font-size: var(--text-compact);
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -481,7 +493,7 @@ function goTo(route: HomeRoute) {
   border-radius: var(--radius-lg);
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--runtime-accent) 14%, var(--color-white)), var(--color-white));
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.82);
+  box-shadow: inset 0 1px 0 rgb(var(--color-white-rgb) / 0.82);
 }
 
 .home-page__signal-progress-header {
@@ -502,7 +514,7 @@ function goTo(route: HomeRoute) {
 .home-page__signal-progress-meter {
   height: 0.5rem;
   overflow: hidden;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: color-mix(in srgb, var(--color-neutral-200) 84%, var(--color-white));
 }
 
@@ -582,7 +594,7 @@ function goTo(route: HomeRoute) {
   align-items: center;
   gap: 0.25rem;
   color: var(--color-neutral-500);
-  font-size: 0.625rem;
+  font-size: var(--text-2xs);
   font-weight: 800;
   letter-spacing: 0;
   line-height: 1;
@@ -592,7 +604,7 @@ function goTo(route: HomeRoute) {
 .home-page__metric-state::before {
   width: 0.4375rem;
   height: 0.4375rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--color-neutral-400);
   content: "";
 }
@@ -692,8 +704,8 @@ function goTo(route: HomeRoute) {
 .home-page__scenario:hover {
   border-color: color-mix(in srgb, var(--home-page-accent) 42%, var(--color-neutral-300));
   box-shadow:
-    0 18px 34px rgb(15 23 42 / 0.11),
-    inset 0 1px 0 rgb(255 255 255 / 86%);
+    0 18px 34px rgb(var(--color-slate-900-rgb) / 0.11),
+    inset 0 1px 0 rgb(var(--color-white-rgb) / 86%);
   transform: translateY(-1px);
 }
 
@@ -749,11 +761,11 @@ function goTo(route: HomeRoute) {
 
 :global(.dark .home-page::before) {
   background:
-    radial-gradient(circle at 12% 20%, rgb(96 165 250 / 0.18) 0 1px, transparent 2px),
-    radial-gradient(circle at 34% 34%, rgb(250 250 250 / 0.09) 0 1px, transparent 2px),
-    radial-gradient(circle at 72% 22%, rgb(96 165 250 / 0.12) 0 1px, transparent 2px),
-    linear-gradient(90deg, rgb(96 165 250 / 0.075) 1px, transparent 1px),
-    linear-gradient(0deg, rgb(250 250 250 / 0.035) 1px, transparent 1px);
+    radial-gradient(circle at 12% 20%, rgb(var(--color-blue-400-rgb) / 0.18) 0 1px, transparent 2px),
+    radial-gradient(circle at 34% 34%, rgb(var(--color-neutral-50-rgb) / 0.09) 0 1px, transparent 2px),
+    radial-gradient(circle at 72% 22%, rgb(var(--color-blue-400-rgb) / 0.12) 0 1px, transparent 2px),
+    linear-gradient(90deg, rgb(var(--color-blue-400-rgb) / 0.075) 1px, transparent 1px),
+    linear-gradient(0deg, rgb(var(--color-neutral-50-rgb) / 0.035) 1px, transparent 1px);
 }
 
 :global(.dark .home-page__header),
@@ -801,7 +813,7 @@ function goTo(route: HomeRoute) {
   border-color: color-mix(in srgb, var(--color-blue-400) 28%, var(--color-neutral-800));
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--runtime-accent) 14%, var(--color-neutral-900)), var(--color-neutral-900));
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  box-shadow: inset 0 1px 0 rgb(var(--color-white-rgb) / 0.04);
 }
 
 :global(.dark .home-page__signal-progress-header) {
@@ -827,8 +839,8 @@ function goTo(route: HomeRoute) {
 :global(.dark .home-page__scenario:hover) {
   border-color: color-mix(in srgb, var(--home-page-accent) 48%, var(--color-neutral-700));
   box-shadow:
-    0 20px 38px rgb(0 0 0 / 0.36),
-    inset 0 1px 0 rgb(255 255 255 / 6%);
+    0 20px 38px rgb(var(--color-black-rgb) / 0.36),
+    inset 0 1px 0 rgb(var(--color-white-rgb) / 6%);
 }
 
 :global(.dark .home-page__scenario-index) {

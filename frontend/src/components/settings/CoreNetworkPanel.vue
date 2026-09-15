@@ -319,7 +319,7 @@ onUnmounted(() => {
 
 .core-network-panel__eyebrow {
   color: var(--color-neutral-500);
-  font-size: 11px;
+  font-size: var(--text-compact);
   text-transform: uppercase;
 }
 
@@ -351,7 +351,7 @@ onUnmounted(() => {
   min-width: 0;
   padding: 1rem;
   border: 1px solid color-mix(in srgb, var(--color-neutral-200) 70%, transparent);
-  border-radius: 14px;
+  border-radius: var(--radius-wide);
   background: var(--color-white);
 }
 
@@ -368,7 +368,7 @@ onUnmounted(() => {
   margin-top: 1rem;
   padding: 0.85rem;
   border: 1px solid color-mix(in srgb, var(--color-neutral-200) 70%, transparent);
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   background: color-mix(in srgb, var(--color-neutral-50) 60%, transparent);
 }
 
@@ -380,7 +380,7 @@ onUnmounted(() => {
 
 .core-network-panel__card-meta {
   color: var(--color-neutral-500);
-  font-size: 11px;
+  font-size: var(--text-compact);
 }
 
 .core-network-panel__form-grid {
@@ -401,7 +401,7 @@ onUnmounted(() => {
 
 .core-network-panel__field-label {
   color: var(--color-neutral-500);
-  font-size: 11px;
+  font-size: var(--text-compact);
   text-transform: uppercase;
 }
 
@@ -410,7 +410,7 @@ onUnmounted(() => {
   min-width: 0;
   padding: 0.65rem 0.75rem;
   border: 1px solid var(--color-neutral-300);
-  border-radius: 10px;
+  border-radius: var(--radius-card);
   background: var(--color-white);
   color: var(--color-neutral-900);
   font-size: var(--text-sm);
@@ -432,13 +432,13 @@ onUnmounted(() => {
 
 .core-network-panel__action-meta {
   color: var(--color-neutral-500);
-  font-size: 11px;
+  font-size: var(--text-compact);
 }
 
 .core-network-panel__in-flight {
   margin-top: 0.75rem;
   color: var(--color-neutral-500);
-  font-size: 11px;
+  font-size: var(--text-compact);
 }
 
 .core-network-panel__facts {
@@ -453,13 +453,13 @@ onUnmounted(() => {
   gap: 0.2rem;
   padding: 0.55rem 0.65rem;
   border: 1px solid color-mix(in srgb, var(--color-neutral-200) 70%, transparent);
-  border-radius: 10px;
+  border-radius: var(--radius-card);
   background: var(--color-white);
 }
 
 .core-network-panel__fact-label {
   color: var(--color-neutral-500);
-  font-size: 11px;
+  font-size: var(--text-compact);
   text-transform: uppercase;
 }
 
@@ -481,7 +481,7 @@ onUnmounted(() => {
   gap: 0.35rem;
   padding: 0.75rem;
   border: 1px solid color-mix(in srgb, var(--color-neutral-200) 70%, transparent);
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   background: color-mix(in srgb, var(--color-neutral-50) 60%, transparent);
 }
 
@@ -514,28 +514,28 @@ onUnmounted(() => {
 
 .core-network-panel__interface-badge {
   padding: 0.1rem 0.45rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: color-mix(in srgb, var(--color-primary-100) 70%, transparent);
   color: var(--color-primary-700);
-  font-size: 10px;
+  font-size: var(--text-2xs);
   font-weight: 600;
   text-transform: uppercase;
 }
 
 .core-network-panel__interface-warning {
   color: var(--color-amber-700);
-  font-size: 11px;
+  font-size: var(--text-compact);
   font-weight: 600;
   text-transform: uppercase;
 }
 
 .core-network-panel__interface-operstate {
-  font-size: 11px;
+  font-size: var(--text-compact);
 }
 
 .core-network-panel__interface-meta {
   color: var(--color-neutral-500);
-  font-size: 11px;
+  font-size: var(--text-compact);
 }
 
 .core-network-panel__notes {
@@ -561,14 +561,14 @@ onUnmounted(() => {
   margin-top: 0.75rem;
   padding: 0.75rem;
   border: 1px solid color-mix(in srgb, var(--color-amber-300) 65%, transparent);
-  border-radius: 10px;
+  border-radius: var(--radius-card);
   background: color-mix(in srgb, var(--color-amber-50) 60%, transparent);
 }
 
 .core-network-panel__warnings-title {
   margin-bottom: 0.35rem;
   color: var(--color-amber-800);
-  font-size: 11px;
+  font-size: var(--text-compact);
   font-weight: 600;
   text-transform: uppercase;
 }

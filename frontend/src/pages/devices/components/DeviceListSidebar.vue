@@ -174,7 +174,7 @@ function parseLegacyBooleanFlag(raw: string): boolean {
   border: 1px solid color-mix(in srgb, var(--color-neutral-300) 72%, transparent);
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--color-white) 84%, var(--color-neutral-100));
-  box-shadow: inset 0 1px 2px rgb(15 23 42 / 0.04);
+  box-shadow: inset 0 1px 2px rgb(var(--color-slate-900-rgb) / 0.04);
   color: var(--color-neutral-900);
   font-size: var(--text-sm);
   outline: none;
@@ -196,7 +196,7 @@ function parseLegacyBooleanFlag(raw: string): boolean {
 .device-list-sidebar__empty {
   padding: 1.5rem 1rem;
   border: 1px dashed color-mix(in srgb, var(--color-neutral-300) 70%, transparent);
-  border-radius: 1rem;
+  border-radius: var(--radius-2xl);
   color: var(--color-neutral-500);
   font-size: var(--text-xs);
   text-align: center;

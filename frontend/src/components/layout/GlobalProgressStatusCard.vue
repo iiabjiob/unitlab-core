@@ -88,14 +88,14 @@ button.global-progress-card {
 .global-progress-card--compact {
   gap: 0.25rem;
   padding: 0.25rem 0.375rem;
-  font-size: 10px;
+  font-size: var(--text-2xs);
   line-height: 1.2;
 }
 
 .global-progress-card--regular {
   gap: 0.5rem;
   padding: 0.25rem 0.5rem;
-  font-size: 11px;
+  font-size: var(--text-compact);
   line-height: 1.25;
 }
 
@@ -103,7 +103,7 @@ button.global-progress-card {
   width: 0.375rem;
   height: 0.375rem;
   flex: 0 0 0.375rem;
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
 }
 
 .global-progress-card__value {
@@ -122,14 +122,14 @@ button.global-progress-card {
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  font-size: 11px;
+  font-size: var(--text-compact);
 }
 
 .global-progress-card__detail {
   margin-top: 0.125rem;
   overflow: hidden;
   color: var(--color-neutral-600);
-  font-size: 10px;
+  font-size: var(--text-2xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }

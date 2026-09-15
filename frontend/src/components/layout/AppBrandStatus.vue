@@ -78,7 +78,7 @@ const systemStatusClass = computed(() => {
   height: 0.5rem;
   flex: 0 0 auto;
   border: 1px solid color-mix(in srgb, var(--color-white) 70%, transparent);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   box-shadow: var(--shadow-sm);
 }
 

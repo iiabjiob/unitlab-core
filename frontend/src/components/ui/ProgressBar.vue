@@ -29,7 +29,7 @@ const clampedValue = computed(() => Math.min(100, Math.max(0, props.value)))
 <style scoped>
 .progress-bar {
   background: var(--color-neutral-200);
-  border-radius: 0.25rem;
+  border-radius: var(--radius-xs);
   height: 0.5rem;
   overflow: hidden;
 }

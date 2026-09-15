@@ -50,11 +50,11 @@ import { RouterLink } from "vue-router"
     linear-gradient(145deg, var(--color-neutral-950), var(--color-neutral-800)),
     var(--color-neutral-950);
   box-shadow:
-    0 10px 22px rgb(15 23 42 / 18%),
+    0 10px 22px rgb(var(--color-slate-900-rgb) / 18%),
     0 0 0 3px color-mix(in srgb, var(--color-blue-500) 10%, transparent),
-    inset 0 1px 0 rgb(255 255 255 / 14%);
+    inset 0 1px 0 rgb(var(--color-white-rgb) / 14%);
   color: var(--color-white);
-  font-size: 0.8125rem;
+  font-size: var(--text-brand);
   font-weight: 800;
   line-height: 1;
   text-align: center;
@@ -93,9 +93,9 @@ import { RouterLink } from "vue-router"
     var(--color-white);
   color: var(--color-neutral-950);
   box-shadow:
-    0 10px 22px rgb(0 0 0 / 34%),
+    0 10px 22px rgb(var(--color-black-rgb) / 34%),
     0 0 0 3px color-mix(in srgb, var(--color-blue-400) 10%, transparent),
-    inset 0 1px 0 rgb(255 255 255 / 72%);
+    inset 0 1px 0 rgb(var(--color-white-rgb) / 72%);
 }
 
 :global(.dark .app-logo__unit) {

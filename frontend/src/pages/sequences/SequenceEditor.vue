@@ -225,7 +225,7 @@ const { isDesktop } = useViewport()
 .sequence-editor__steps-card {
   padding: 1rem;
   border: 1px solid var(--color-neutral-200);
-  border-radius: 0.5rem;
+  border-radius: var(--radius-lg);
   background: var(--color-neutral-50);
 }
 

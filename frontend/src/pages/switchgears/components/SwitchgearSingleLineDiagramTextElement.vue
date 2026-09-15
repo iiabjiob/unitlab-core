@@ -126,7 +126,7 @@ function handleKeyDown(event: KeyboardEvent) {
   color: var(--color-neutral-700);
   font: inherit;
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   font-weight: 600;
   letter-spacing: 0;
   line-height: 1.2;
@@ -134,8 +134,8 @@ function handleKeyDown(event: KeyboardEvent) {
   text-align: center;
   white-space: nowrap;
   box-shadow:
-    0 8px 18px rgb(15 23 42 / 0.1),
-    inset 0 1px 0 rgb(255 255 255 / 0.72);
+    0 8px 18px rgb(var(--color-slate-900-rgb) / 0.1),
+    inset 0 1px 0 rgb(var(--color-white-rgb) / 0.72);
 }
 
 .switchgear-sld-text__button {
@@ -160,8 +160,8 @@ function handleKeyDown(event: KeyboardEvent) {
   color: var(--color-blue-800);
   box-shadow:
     0 0 0 2px color-mix(in srgb, var(--color-blue-400) 28%, transparent),
-    0 10px 22px rgb(37 99 235 / 0.14),
-    inset 0 1px 0 rgb(255 255 255 / 0.74);
+    0 10px 22px rgb(var(--color-blue-600-rgb) / 0.14),
+    inset 0 1px 0 rgb(var(--color-white-rgb) / 0.74);
 }
 
 :global(.dark .switchgear-sld-text__button),
@@ -170,8 +170,8 @@ function handleKeyDown(event: KeyboardEvent) {
   background: color-mix(in srgb, var(--color-neutral-900) 86%, transparent);
   color: var(--color-neutral-200);
   box-shadow:
-    0 10px 20px rgb(0 0 0 / 0.28),
-    inset 0 1px 0 rgb(255 255 255 / 0.05);
+    0 10px 20px rgb(var(--color-black-rgb) / 0.28),
+    inset 0 1px 0 rgb(var(--color-white-rgb) / 0.05);
 }
 
 :global(.dark .switchgear-sld-text--selected .switchgear-sld-text__button),
@@ -181,7 +181,7 @@ function handleKeyDown(event: KeyboardEvent) {
   color: var(--color-blue-100);
   box-shadow:
     0 0 0 2px color-mix(in srgb, var(--color-blue-400) 26%, transparent),
-    0 12px 24px rgb(14 165 233 / 0.14),
-    inset 0 1px 0 rgb(255 255 255 / 0.08);
+    0 12px 24px rgb(var(--color-sky-500-rgb) / 0.14),
+    inset 0 1px 0 rgb(var(--color-white-rgb) / 0.08);
 }
 </style>

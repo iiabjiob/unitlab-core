@@ -116,7 +116,7 @@ function handleClick(event: MouseEvent) {
 
 .sidebar-list-item__subtitle {
   color: var(--color-neutral-500);
-  font-size: 0.6875rem;
+  font-size: var(--text-compact);
   letter-spacing: 0.3em;
   line-height: 1rem;
   margin-top: 0.125rem;

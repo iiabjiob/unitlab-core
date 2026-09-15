@@ -479,7 +479,7 @@ function updatePanelPosition() {
   width: 100%;
   padding: 0.5rem 2.25rem 0.5rem 0.75rem;
   border: 1px solid var(--color-neutral-300);
-  border-radius: 0.5rem;
+  border-radius: var(--radius-lg);
   background: var(--color-white);
   color: var(--color-neutral-900);
   font-size: var(--text-sm);
@@ -520,9 +520,9 @@ function updatePanelPosition() {
 .ui-affino-listbox__panel {
   overflow: auto;
   border: 1px solid var(--color-neutral-200);
-  border-radius: 0.5rem;
+  border-radius: var(--radius-lg);
   background: var(--color-white);
-  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  box-shadow: var(--shadow-lg);
 }
 
 .ui-affino-listbox__option {

@@ -248,7 +248,7 @@ onBeforeUnmount(() => {
   overflow-y: auto;
   color: var(--color-neutral-700);
   font-family: var(--font-mono);
-  font-size: 0.6875rem;
+  font-size: var(--text-compact);
   line-height: 1.25;
   padding: 0.5rem 1rem;
 }
@@ -286,7 +286,7 @@ onBeforeUnmount(() => {
 
 .execution-log__time {
   flex: 0 0 auto;
-  font-size: 0.625rem;
+  font-size: var(--text-2xs);
   opacity: 0.5;
   text-align: left;
   width: 5rem;
@@ -294,7 +294,7 @@ onBeforeUnmount(() => {
 
 .execution-log__dot {
   align-self: flex-start;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   flex: 0 0 0.5rem;
   height: 0.5rem;
   margin-top: 0.1875rem;
@@ -335,7 +335,7 @@ onBeforeUnmount(() => {
 
 .execution-log__detail {
   color: var(--color-neutral-500);
-  font-size: 0.625rem;
+  font-size: var(--text-2xs);
   margin-left: 0.25rem;
 }
 

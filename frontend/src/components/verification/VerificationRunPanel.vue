@@ -172,7 +172,7 @@ const verdictToneClass = computed(() => {
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--color-white) 94%, var(--color-emerald-100)), var(--color-white));
   border: 1px solid color-mix(in srgb, var(--color-emerald-500) 18%, var(--color-neutral-200));
-  border-radius: 1rem;
+  border-radius: var(--radius-2xl);
   padding: 1rem;
 }
 
@@ -190,7 +190,7 @@ const verdictToneClass = computed(() => {
 
 .verification-run-panel__eyebrow {
   color: var(--color-neutral-500);
-  font-size: 11px;
+  font-size: var(--text-compact);
   letter-spacing: 0.16em;
   text-transform: uppercase;
 }
@@ -219,7 +219,7 @@ const verdictToneClass = computed(() => {
 }
 
 .verification-run-panel__network {
-  border-radius: 0.875rem;
+  border-radius: var(--radius-wide);
   margin-top: 0.75rem;
   padding: 0.75rem 0.875rem;
 }
@@ -275,7 +275,7 @@ const verdictToneClass = computed(() => {
 }
 
 .verification-run-panel__verdict {
-  border-radius: 0.875rem;
+  border-radius: var(--radius-wide);
   padding: 0.875rem 1rem;
 }
 
@@ -317,14 +317,14 @@ const verdictToneClass = computed(() => {
 .verification-run-panel__fact {
   background: color-mix(in srgb, var(--color-white) 92%, transparent);
   border: 1px solid color-mix(in srgb, var(--color-neutral-200) 70%, transparent);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-xl);
   padding: 0.625rem 0.75rem;
 }
 
 .verification-run-panel__fact-label {
   color: var(--color-neutral-500);
   display: block;
-  font-size: 11px;
+  font-size: var(--text-compact);
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
@@ -350,7 +350,7 @@ const verdictToneClass = computed(() => {
 .verification-run-panel__signal-card {
   background: var(--color-white);
   border: 1px solid color-mix(in srgb, var(--color-neutral-200) 78%, transparent);
-  border-radius: 0.875rem;
+  border-radius: var(--radius-wide);
   padding: 0.875rem 1rem;
 }
 
@@ -374,7 +374,7 @@ const verdictToneClass = computed(() => {
 
 .verification-run-panel__signal-label {
   color: var(--color-neutral-500);
-  font-size: 11px;
+  font-size: var(--text-compact);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -395,9 +395,9 @@ const verdictToneClass = computed(() => {
 .verification-run-panel__badge {
   background: color-mix(in srgb, var(--color-neutral-100) 84%, white);
   border: 1px solid color-mix(in srgb, var(--color-neutral-300) 72%, transparent);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   color: var(--color-neutral-700);
-  font-size: 11px;
+  font-size: var(--text-compact);
   font-weight: 600;
   letter-spacing: 0.08em;
   padding: 0.25rem 0.5rem;
@@ -406,7 +406,7 @@ const verdictToneClass = computed(() => {
 
 .verification-run-panel__diagnostics {
   background: color-mix(in srgb, var(--color-neutral-50) 90%, white);
-  border-radius: 0.875rem;
+  border-radius: var(--radius-wide);
   padding: 0.875rem 1rem;
 }
 

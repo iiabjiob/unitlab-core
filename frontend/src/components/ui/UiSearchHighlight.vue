@@ -40,7 +40,7 @@ const segments = computed(() => splitSearchHighlightText(props.text ?? "", props
 
 .ui-search-highlight__segment--matched {
   background: color-mix(in srgb, var(--runtime-accent, var(--color-blue-500)) 18%, transparent);
-  border-radius: 0.2rem;
+  border-radius: var(--radius-highlight-soft);
   color: inherit;
   font-weight: 700;
   padding: 0 0.1rem;

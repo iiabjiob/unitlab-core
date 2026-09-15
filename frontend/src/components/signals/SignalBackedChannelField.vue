@@ -402,15 +402,15 @@ async function handleSignalConfirm(rows: SignalAllocationRow[]) {
   align-items: flex-start;
   justify-content: space-between;
   gap: 0.5rem;
-  border: 1px solid rgb(229 229 229);
-  border-radius: 0.5rem;
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-lg);
   padding: 0.5rem;
-  background: rgb(250 250 250);
+  background: var(--color-neutral-50);
 }
 
 .dark .signal-backed-field__panel--signal {
-  border-color: rgb(64 64 64);
-  background: rgb(15 23 42 / 0.35);
+  border-color: var(--color-neutral-700);
+  background: rgb(var(--color-slate-900-rgb) / 0.35);
 }
 
 .signal-backed-field__signal-meta {
@@ -419,9 +419,9 @@ async function handleSignalConfirm(rows: SignalAllocationRow[]) {
 }
 
 .signal-backed-field__signal-label {
-  font-size: 0.8rem;
+  font-size: var(--text-control);
   font-weight: 700;
-  color: rgb(23 23 23);
+  color: var(--color-neutral-900);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -442,20 +442,20 @@ async function handleSignalConfirm(rows: SignalAllocationRow[]) {
 }
 
 .dark .signal-backed-field__signal-label {
-  color: rgb(245 245 245);
+  color: var(--color-neutral-100);
 }
 
 .signal-backed-field__signal-subtitle {
   margin-top: 0.1rem;
-  font-size: 0.68rem;
-  color: rgb(115 115 115);
+  font-size: var(--text-tiny);
+  color: var(--color-neutral-500);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .dark .signal-backed-field__signal-subtitle {
-  color: rgb(163 163 163);
+  color: var(--color-neutral-400);
 }
 
 .signal-backed-field__actions {

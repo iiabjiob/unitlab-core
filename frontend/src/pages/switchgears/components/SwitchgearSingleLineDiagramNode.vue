@@ -118,8 +118,8 @@ function handleLabelPointerDown(event: PointerEvent) {
   outline: none;
   overflow: hidden;
   box-shadow:
-    0 10px 22px rgb(15 23 42 / 0.12),
-    inset 0 1px 0 rgb(255 255 255 / 0.7);
+    0 10px 22px rgb(var(--color-slate-900-rgb) / 0.12),
+    inset 0 1px 0 rgb(var(--color-white-rgb) / 0.7);
   transform: translate(-50%, -50%);
   transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
 }
@@ -150,8 +150,8 @@ function handleLabelPointerDown(event: PointerEvent) {
   border-color: var(--color-blue-500);
   box-shadow:
     0 0 0 2px var(--color-blue-300),
-    0 14px 26px rgb(37 99 235 / 0.18),
-    inset 0 1px 0 rgb(255 255 255 / 0.76);
+    0 14px 26px rgb(var(--color-blue-600-rgb) / 0.18),
+    inset 0 1px 0 rgb(var(--color-white-rgb) / 0.76);
 }
 
 .switchgear-sld-node__button--connection-source {
@@ -176,14 +176,14 @@ function handleLabelPointerDown(event: PointerEvent) {
   background: var(--color-white);
   color: var(--color-neutral-700);
   cursor: grab;
-  font-size: 0.625rem;
+  font-size: var(--text-2xs);
   font-weight: 500;
   letter-spacing: 0;
   text-transform: uppercase;
   white-space: nowrap;
   box-shadow:
-    0 8px 18px rgb(15 23 42 / 0.1),
-    inset 0 1px 0 rgb(255 255 255 / 0.72);
+    0 8px 18px rgb(var(--color-slate-900-rgb) / 0.1),
+    inset 0 1px 0 rgb(var(--color-white-rgb) / 0.72);
 }
 
 .switchgear-sld-node__label--selected {
@@ -209,8 +209,8 @@ function handleLabelPointerDown(event: PointerEvent) {
   background: var(--color-neutral-900);
   color: var(--color-neutral-200);
   box-shadow:
-    0 10px 20px rgb(0 0 0 / 0.28),
-    inset 0 1px 0 rgb(255 255 255 / 0.05);
+    0 10px 20px rgb(var(--color-black-rgb) / 0.28),
+    inset 0 1px 0 rgb(var(--color-white-rgb) / 0.05);
 }
 
 :global(.dark .switchgear-sld-node__label--selected) {
@@ -226,8 +226,8 @@ function handleLabelPointerDown(event: PointerEvent) {
   border-color: var(--color-neutral-700);
   background: var(--switchgear-sld-node-button-bg);
   box-shadow:
-    0 12px 26px rgb(0 0 0 / 0.34),
-    inset 0 1px 0 rgb(255 255 255 / 0.06);
+    0 12px 26px rgb(var(--color-black-rgb) / 0.34),
+    inset 0 1px 0 rgb(var(--color-white-rgb) / 0.06);
 }
 
 :global(.dark .switchgear-sld-node__button:hover) {
@@ -238,7 +238,7 @@ function handleLabelPointerDown(event: PointerEvent) {
   border-color: var(--color-blue-300);
   box-shadow:
     0 0 0 2px var(--color-blue-500),
-    0 16px 28px rgb(14 165 233 / 0.16),
-    inset 0 1px 0 rgb(255 255 255 / 0.08);
+    0 16px 28px rgb(var(--color-sky-500-rgb) / 0.16),
+    inset 0 1px 0 rgb(var(--color-white-rgb) / 0.08);
 }
 </style>

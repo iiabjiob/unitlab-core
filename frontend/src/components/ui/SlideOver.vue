@@ -287,7 +287,7 @@ onBeforeUnmount(() => {
 }
 
 .slide-over__backdrop {
-  background: rgb(0 0 0 / 0.5);
+  background: rgb(var(--color-black-rgb) / 0.5);
   inset: 0;
   position: absolute;
 }
@@ -301,7 +301,7 @@ onBeforeUnmount(() => {
 
 .slide-over__panel--side {
   border-color: var(--color-neutral-200);
-  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  box-shadow: 0 20px 25px -5px rgb(var(--color-black-rgb) / 0.1), 0 8px 10px -6px rgb(var(--color-black-rgb) / 0.1);
   height: 100%;
   top: 0;
 }
@@ -321,9 +321,9 @@ onBeforeUnmount(() => {
 }
 
 .slide-over__panel--bottom {
-  border-radius: 1rem 1rem 0 0;
+  border-radius: var(--radius-panel-top);
   border-top: 1px solid var(--color-neutral-200);
-  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+  box-shadow: var(--shadow-overlay);
   left: 0;
   right: 0;
 }
@@ -351,7 +351,7 @@ onBeforeUnmount(() => {
 
 .slide-over__close {
   align-items: center;
-  border-radius: 0.5rem;
+  border-radius: var(--radius-lg);
   display: inline-flex;
   height: 2rem;
   justify-content: center;
@@ -387,13 +387,13 @@ onBeforeUnmount(() => {
 
 .slide-over__drag-handle {
   background: var(--color-neutral-300);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   height: 0.375rem;
   width: 2.5rem;
 }
 
 :global(.dark .slide-over__backdrop) {
-  background: rgb(0 0 0 / 0.7);
+  background: rgb(var(--color-black-rgb) / 0.7);
 }
 
 :global(.dark .slide-over__panel) {

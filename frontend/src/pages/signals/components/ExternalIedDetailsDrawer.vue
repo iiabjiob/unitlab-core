@@ -1038,7 +1038,7 @@ function onTreeScroll(event: Event) {
 
 .external-ied-details__status {
   align-items: center;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   display: inline-flex;
   font-size: var(--text-xs);
   font-weight: 700;
@@ -1047,7 +1047,7 @@ function onTreeScroll(event: Event) {
 }
 
 .external-ied-details__status-dot {
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   height: 0.5rem;
   width: 0.5rem;
 }
@@ -1071,7 +1071,7 @@ function onTreeScroll(event: Event) {
 .external-ied-details__facts {
   background: var(--color-white);
   border: 1px solid var(--color-neutral-200);
-  border-radius: 0.5rem;
+  border-radius: var(--radius-lg);
   display: grid;
   flex: 0 0 auto;
   margin: 0;
@@ -1107,7 +1107,7 @@ function onTreeScroll(event: Event) {
 .external-ied-details__error {
   background: color-mix(in srgb, var(--color-rose-50) 80%, var(--color-white));
   border: 1px solid var(--color-rose-200);
-  border-radius: 0.5rem;
+  border-radius: var(--radius-lg);
   color: var(--color-rose-700);
   flex: 0 0 auto;
   font-size: var(--text-xs);
@@ -1117,7 +1117,7 @@ function onTreeScroll(event: Event) {
 .external-ied-details__model {
   background: var(--color-white);
   border: 1px solid var(--color-neutral-200);
-  border-radius: 0.5rem;
+  border-radius: var(--radius-lg);
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
@@ -1155,7 +1155,7 @@ function onTreeScroll(event: Event) {
 .external-ied-details__tree-search {
   background: var(--color-neutral-50);
   border: 1px solid var(--color-neutral-200);
-  border-radius: 0.375rem;
+  border-radius: var(--radius-md);
   color: var(--color-neutral-900);
   flex: 1 1 auto;
   font-size: var(--text-xs);
@@ -1203,7 +1203,7 @@ function onTreeScroll(event: Event) {
 
 .external-ied-details__tree-row {
   align-items: center;
-  border-radius: 0.375rem;
+  border-radius: var(--radius-md);
   color: var(--color-neutral-700);
   cursor: pointer;
   display: flex;
@@ -1254,7 +1254,7 @@ function onTreeScroll(event: Event) {
 
 .external-ied-details__tree-highlight {
   background: color-mix(in srgb, var(--color-yellow-300) 56%, var(--color-white));
-  border-radius: 0.1875rem;
+  border-radius: var(--radius-highlight);
   color: var(--color-neutral-950);
   font: inherit;
   padding: 0 0.125rem;
@@ -1273,7 +1273,7 @@ function onTreeScroll(event: Event) {
 }
 
 .external-ied-details__tree-toggle--caret {
-  border-radius: 0.25rem;
+  border-radius: var(--radius-xs);
   color: var(--color-neutral-600);
   cursor: pointer;
 }
@@ -1286,7 +1286,7 @@ function onTreeScroll(event: Event) {
 .external-ied-details__tree-kind {
   color: var(--color-neutral-500);
   flex: 0 0 auto;
-  font-size: 0.625rem;
+  font-size: var(--text-2xs);
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1303,7 +1303,7 @@ function onTreeScroll(event: Event) {
 
 .external-ied-details__tree-enabled {
   background: var(--color-emerald-500);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-emerald-100) 80%, transparent);
   flex: 0 0 auto;
   height: 0.45rem;
@@ -1315,16 +1315,16 @@ function onTreeScroll(event: Event) {
   color: var(--color-neutral-500);
   display: inline-flex;
   flex: 0 0 auto;
-  font-size: 0.6875rem;
+  font-size: var(--text-compact);
   gap: 0.25rem;
 }
 
 .external-ied-details__tree-source {
   background: color-mix(in srgb, var(--color-emerald-500) 16%, transparent);
   border: 1px solid color-mix(in srgb, var(--color-emerald-500) 36%, transparent);
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   color: var(--color-emerald-700);
-  font-size: 0.625rem;
+  font-size: var(--text-2xs);
   font-weight: 700;
   line-height: 1;
   padding: 0.125rem 0.25rem;
@@ -1332,7 +1332,7 @@ function onTreeScroll(event: Event) {
 
 .external-ied-details__tree-time {
   color: var(--color-neutral-400);
-  font-size: 0.625rem;
+  font-size: var(--text-2xs);
 }
 
 .external-ied-details__actions {
@@ -1369,7 +1369,7 @@ function onTreeScroll(event: Event) {
 
 .external-ied-details__selected-report-state {
   color: var(--color-neutral-500);
-  font-size: 0.6875rem;
+  font-size: var(--text-compact);
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;

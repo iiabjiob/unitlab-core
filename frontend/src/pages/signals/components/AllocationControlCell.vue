@@ -180,7 +180,7 @@ withDefaults(defineProps<{
 .allocation-control-cell__switch {
   align-items: center;
   border: 1px solid;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   display: inline-flex;
   flex-shrink: 0;
   height: 1rem;
@@ -201,7 +201,7 @@ withDefaults(defineProps<{
 
 .allocation-control-cell__switch-thumb {
   background: var(--color-white);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   height: 0.875rem;
   position: absolute;
   transition: transform 0.1s ease-out;
@@ -228,7 +228,7 @@ withDefaults(defineProps<{
 }
 
 .allocation-control-cell__lamp {
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   flex-shrink: 0;
   height: 0.5rem;
   width: 0.5rem;
@@ -273,7 +273,7 @@ withDefaults(defineProps<{
 
 .allocation-control-cell__status--do {
   display: inline-flex;
-  font-size: 10px;
+  font-size: var(--text-2xs);
   justify-content: center;
   min-width: 4ch;
 }
@@ -282,7 +282,7 @@ withDefaults(defineProps<{
   border: 1px solid currentColor;
   border-radius: var(--radius-sm);
   display: inline-flex;
-  font-size: 9px;
+  font-size: var(--text-micro);
   justify-content: center;
   min-width: 3ch;
   padding: 0.125rem 0.25rem;
@@ -343,12 +343,12 @@ withDefaults(defineProps<{
 .allocation-control-cell__ao-input:focus {
   background: var(--color-white);
   border-color: var(--color-sky-500);
-  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  box-shadow: 0 4px 6px -1px rgb(var(--color-black-rgb) / 0.1), 0 2px 4px -2px rgb(var(--color-black-rgb) / 0.1);
 }
 
 .allocation-control-cell__unit {
   color: var(--color-neutral-500);
-  font-size: 10px;
+  font-size: var(--text-2xs);
   font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;

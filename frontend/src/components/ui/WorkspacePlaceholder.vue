@@ -28,7 +28,7 @@ const props = withDefaults(defineProps<{
   align-items: center;
   background: color-mix(in srgb, var(--color-white) 80%, transparent);
   border: 1px dashed color-mix(in srgb, var(--color-neutral-300) 80%, transparent);
-  border-radius: 1rem;
+  border-radius: var(--radius-2xl);
   color: var(--color-neutral-600);
   display: flex;
   flex-direction: column;
@@ -40,7 +40,7 @@ const props = withDefaults(defineProps<{
 
 .workspace-placeholder__tag {
   color: var(--color-neutral-400);
-  font-size: 0.6875rem;
+  font-size: var(--text-compact);
   letter-spacing: 0.4em;
   line-height: 1rem;
   margin: 0;

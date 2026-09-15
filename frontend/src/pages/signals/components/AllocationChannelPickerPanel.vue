@@ -800,7 +800,7 @@ function onPanelKeydownCapture(event: KeyboardEvent) {
 
 .allocation-channel-picker__eyebrow {
   color: var(--color-neutral-500);
-  font-size: 11px;
+  font-size: var(--text-compact);
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -809,7 +809,7 @@ function onPanelKeydownCapture(event: KeyboardEvent) {
 .allocation-channel-picker__current {
   background: var(--color-neutral-50);
   border: 1px solid var(--color-neutral-200);
-  border-radius: 1rem;
+  border-radius: var(--radius-2xl);
   margin-top: 1rem;
   padding: 0.75rem;
 }
@@ -837,7 +837,7 @@ function onPanelKeydownCapture(event: KeyboardEvent) {
 .allocation-channel-picker__search-input {
   background: var(--color-white);
   border: 1px solid var(--color-neutral-300);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-xl);
   color: var(--color-neutral-900);
   font-size: var(--text-sm);
   outline: none;
@@ -873,7 +873,7 @@ function onPanelKeydownCapture(event: KeyboardEvent) {
 
 .allocation-channel-picker__empty {
   border: 1px dashed var(--color-neutral-300);
-  border-radius: 1rem;
+  border-radius: var(--radius-2xl);
   color: var(--color-neutral-500);
   font-size: var(--text-sm);
   padding: 1.5rem 1rem;
@@ -882,7 +882,7 @@ function onPanelKeydownCapture(event: KeyboardEvent) {
 .allocation-channel-picker__error {
   background: color-mix(in srgb, var(--color-rose-300) 14%, var(--color-white));
   border: 1px solid color-mix(in srgb, var(--color-rose-300) 70%, var(--color-white));
-  border-radius: 1rem;
+  border-radius: var(--radius-2xl);
   color: var(--color-rose-700);
   font-size: var(--text-sm);
   padding: 0.75rem 1rem;
@@ -891,13 +891,13 @@ function onPanelKeydownCapture(event: KeyboardEvent) {
 .allocation-channel-picker__tree {
   background: var(--color-white);
   border: 1px solid var(--color-neutral-200);
-  border-radius: 1rem;
+  border-radius: var(--radius-2xl);
   padding: 0.5rem;
 }
 
 .allocation-channel-picker__tree-node {
   align-items: center;
-  border-radius: 0.75rem;
+  border-radius: var(--radius-xl);
   display: flex;
   gap: 0.5rem;
   padding: 0.5rem 0.625rem;
@@ -953,7 +953,7 @@ function onPanelKeydownCapture(event: KeyboardEvent) {
 .allocation-channel-picker__chevron {
   color: var(--color-neutral-500);
   flex-shrink: 0;
-  font-size: 10px;
+  font-size: var(--text-2xs);
   transition: transform 0.15s;
 }
 
@@ -964,7 +964,7 @@ function onPanelKeydownCapture(event: KeyboardEvent) {
 .allocation-channel-picker__spinner {
   animation: allocation-channel-picker-spin 1s linear infinite;
   border: 2px solid var(--color-sky-500);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border-top-color: transparent;
   flex-shrink: 0;
   height: 0.75rem;
@@ -972,14 +972,14 @@ function onPanelKeydownCapture(event: KeyboardEvent) {
 }
 
 .allocation-channel-picker__channel-dot {
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   flex-shrink: 0;
   height: 0.375rem;
   width: 0.375rem;
 }
 
 .allocation-channel-picker__unit-dot {
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   flex-shrink: 0;
   height: 0.5rem;
   width: 0.5rem;
@@ -1034,7 +1034,7 @@ function onPanelKeydownCapture(event: KeyboardEvent) {
   color: var(--color-amber-900);
   cursor: inherit;
   flex: 1 1 auto;
-  font-size: 10px;
+  font-size: var(--text-2xs);
   min-width: 0;
   overflow: hidden;
   padding: 0.25rem 0.5rem;
@@ -1044,7 +1044,7 @@ function onPanelKeydownCapture(event: KeyboardEvent) {
 
 .allocation-channel-picker__tag {
   flex-shrink: 0;
-  font-size: 10px;
+  font-size: var(--text-2xs);
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;

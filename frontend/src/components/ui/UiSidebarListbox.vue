@@ -221,7 +221,7 @@ function handleItemClick(index: number, event: MouseEvent) {
 
 <style scoped>
 .ui-sidebar-listbox {
-  border-radius: 0.5rem;
+  border-radius: var(--radius-lg);
   overflow-y: auto;
   padding-block: 1px;
   scroll-padding-block: 1px;
@@ -232,7 +232,7 @@ function handleItemClick(index: number, event: MouseEvent) {
 }
 
 .ui-sidebar-listbox__option {
-  border-radius: 0.5rem;
+  border-radius: var(--radius-lg);
 }
 
 .ui-sidebar-listbox__option + .ui-sidebar-listbox__option {

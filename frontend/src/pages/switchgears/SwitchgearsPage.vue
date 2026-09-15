@@ -217,7 +217,7 @@ function normalizeSwitchgearsActiveView(value: unknown): "manage" | "sld" | null
   width: fit-content;
   padding: 0.25rem;
   border: 1px solid var(--color-neutral-200);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-xl);
   background: color-mix(in srgb, var(--color-white) 85%, transparent);
   box-shadow: var(--shadow-sm);
 }
@@ -229,7 +229,7 @@ function normalizeSwitchgearsActiveView(value: unknown): "manage" | "sld" | null
 .switchgears-page__view-tab {
   padding: 0.5rem 0.75rem;
   border: 0;
-  border-radius: 0.5rem;
+  border-radius: var(--radius-lg);
   background: transparent;
   color: var(--color-neutral-500);
   font: inherit;

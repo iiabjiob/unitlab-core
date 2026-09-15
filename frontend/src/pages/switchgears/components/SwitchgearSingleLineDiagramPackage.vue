@@ -463,7 +463,7 @@ function loadStoredState() {
 .switchgear-sld-package__import-diagnostics {
   padding: 1rem;
   border: 1px solid var(--color-neutral-200);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-xl);
   background: var(--color-white);
 }
 
@@ -496,7 +496,7 @@ function loadStoredState() {
 
 .switchgear-sld-package__import-hash {
   padding: 0.25rem 0.5rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--color-neutral-100);
   font-size: var(--text-xs);
 }
@@ -511,7 +511,7 @@ function loadStoredState() {
   gap: 0.2rem;
   padding: 0.75rem;
   border: 1px solid var(--color-neutral-200);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-xl);
   background: var(--color-neutral-50);
 }
 
@@ -534,7 +534,7 @@ function loadStoredState() {
   grid-template-columns: auto 1fr;
   gap: 0.75rem;
   padding: 0.75rem;
-  border-radius: 0.75rem;
+  border-radius: var(--radius-xl);
   background: var(--color-neutral-50);
 }
 

@@ -196,7 +196,7 @@ function selectTheme(value: ThemeMode) {
 
 .theme-toggle__current {
   color: var(--color-neutral-500);
-  font-size: 0.625rem;
+  font-size: var(--text-2xs);
   letter-spacing: 0.025em;
   line-height: 1rem;
   text-transform: uppercase;

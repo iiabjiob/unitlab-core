@@ -22,7 +22,7 @@ defineProps<{
 .settings-list-item {
   user-select: none;
   padding: 0.5rem 0.75rem;
-  border-radius: 0.75rem;
+  border-radius: var(--radius-xl);
   transition: background-color 120ms ease, color 120ms ease;
 }
 
@@ -48,7 +48,7 @@ defineProps<{
 .settings-list-item__description {
   margin-top: 0.125rem;
   color: var(--color-neutral-500);
-  font-size: 11px;
+  font-size: var(--text-compact);
   line-height: 1.375;
 }
 

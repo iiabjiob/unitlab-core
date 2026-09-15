@@ -123,7 +123,7 @@ function handlePointerDown(event: PointerEvent) {
   border-color: color-mix(in srgb, var(--color-blue-400) 56%, transparent);
   box-shadow:
     0 0 0 2px color-mix(in srgb, var(--color-blue-400) 32%, transparent),
-    0 12px 24px rgb(37 99 235 / 0.14);
+    0 12px 24px rgb(var(--color-blue-600-rgb) / 0.14);
 }
 
 .switchgear-sld-static-element__graphic {
@@ -135,7 +135,7 @@ function handlePointerDown(event: PointerEvent) {
   border-color: color-mix(in srgb, var(--color-blue-400) 52%, transparent);
   box-shadow:
     0 0 0 2px color-mix(in srgb, var(--color-blue-400) 28%, transparent),
-    0 14px 26px rgb(14 165 233 / 0.14);
+    0 14px 26px rgb(var(--color-sky-500-rgb) / 0.14);
 }
 
 :global(.dark .switchgear-sld-static-element:hover) {

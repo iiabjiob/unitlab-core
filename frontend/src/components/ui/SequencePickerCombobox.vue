@@ -533,55 +533,55 @@ const hiddenInputValue = computed(() => (
 
 .sequence-picker-combobox,
 .sequence-picker-combobox__popover {
-  --picker-surface: #ffffff;
-  --picker-surface-muted: #f8fafc;
-  --picker-border: rgba(15, 23, 42, 0.15);
-  --picker-border-hover: rgba(37, 99, 235, 0.65);
-  --picker-text: #0f172a;
-  --picker-muted: #4b5563;
-  --picker-placeholder: #6b7280;
-  --picker-accent-soft: rgba(37, 99, 235, 0.08);
-  --picker-outline: rgba(37, 99, 235, 0.35);
-  --picker-shadow: 0 18px 45px rgba(15, 23, 42, 0.14);
-  --picker-trigger-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
-  --picker-option-hover: rgba(15, 23, 42, 0.04);
-  --picker-divider: rgba(15, 23, 42, 0.06);
-  --picker-input-bg: #ffffff;
-  --picker-input-border: rgba(15, 23, 42, 0.15);
-  --picker-input-text: #0f172a;
-  --picker-input-placeholder: #6b7280;
-  --picker-badge-bg: rgba(15, 23, 42, 0.06);
-  --picker-badge-text: #334155;
+  --picker-surface: var(--color-white);
+  --picker-surface-muted: var(--color-slate-50);
+  --picker-border: rgb(var(--color-slate-900-rgb) / 0.15);
+  --picker-border-hover: rgb(var(--color-blue-600-rgb) / 0.65);
+  --picker-text: var(--color-slate-900);
+  --picker-muted: var(--color-gray-600);
+  --picker-placeholder: var(--color-gray-500);
+  --picker-accent-soft: rgb(var(--color-blue-600-rgb) / 0.08);
+  --picker-outline: rgb(var(--color-blue-600-rgb) / 0.35);
+  --picker-shadow: 0 18px 45px rgb(var(--color-slate-900-rgb) / 0.14);
+  --picker-trigger-shadow: 0 1px 2px rgb(var(--color-slate-900-rgb) / 0.06);
+  --picker-option-hover: rgb(var(--color-slate-900-rgb) / 0.04);
+  --picker-divider: rgb(var(--color-slate-900-rgb) / 0.06);
+  --picker-input-bg: var(--color-white);
+  --picker-input-border: rgb(var(--color-slate-900-rgb) / 0.15);
+  --picker-input-text: var(--color-slate-900);
+  --picker-input-placeholder: var(--color-gray-500);
+  --picker-badge-bg: rgb(var(--color-slate-900-rgb) / 0.06);
+  --picker-badge-text: var(--color-slate-700);
 }
 
 .sequence-picker-combobox.is-dark,
 .sequence-picker-combobox__popover.is-dark,
 :global(.dark .sequence-picker-combobox),
 :global(.dark .sequence-picker-combobox__popover){
-  --picker-surface: rgba(9, 12, 20, 0.98);
-  --picker-surface-muted: rgba(20, 26, 38, 0.92);
-  --picker-border: rgba(148, 163, 184, 0.38);
-  --picker-border-hover: rgba(129, 140, 248, 0.85);
-  --picker-text: #f3f4f6;
-  --picker-muted: #a5b4cf;
-  --picker-placeholder: #94a3b8;
-  --picker-accent-soft: rgba(147, 197, 253, 0.18);
-  --picker-outline: rgba(147, 197, 253, 0.65);
-  --picker-shadow: 0 28px 60px rgba(2, 6, 23, 0.75);
-  --picker-trigger-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
-  --picker-option-hover: rgba(255, 255, 255, 0.04);
-  --picker-divider: rgba(255, 255, 255, 0.09);
-  --picker-input-bg: rgba(15, 23, 42, 0.92);
-  --picker-input-border: rgba(148, 163, 184, 0.45);
-  --picker-input-text: #f1f5f9;
-  --picker-input-placeholder: #94a3b8;
-  --picker-badge-bg: rgba(255, 255, 255, 0.08);
-  --picker-badge-text: #cbd5e1;
+  --picker-surface: rgb(var(--color-diagram-surface-rgb) / 0.98);
+  --picker-surface-muted: rgb(var(--color-diagram-panel-rgb) / 0.92);
+  --picker-border: rgb(var(--color-slate-400-rgb) / 0.38);
+  --picker-border-hover: rgb(var(--color-indigo-400-rgb) / 0.85);
+  --picker-text: var(--color-menu-light-text);
+  --picker-muted: var(--color-menu-dark-text);
+  --picker-placeholder: var(--color-slate-400);
+  --picker-accent-soft: rgb(var(--color-blue-300-rgb) / 0.18);
+  --picker-outline: rgb(var(--color-blue-300-rgb) / 0.65);
+  --picker-shadow: 0 28px 60px rgb(var(--color-slate-950-rgb) / 0.75);
+  --picker-trigger-shadow: 0 1px 2px rgb(var(--color-black-rgb) / 0.55);
+  --picker-option-hover: rgb(var(--color-white-rgb) / 0.04);
+  --picker-divider: rgb(var(--color-white-rgb) / 0.09);
+  --picker-input-bg: rgb(var(--color-slate-900-rgb) / 0.92);
+  --picker-input-border: rgb(var(--color-slate-400-rgb) / 0.45);
+  --picker-input-text: var(--color-slate-100);
+  --picker-input-placeholder: var(--color-slate-400);
+  --picker-badge-bg: rgb(var(--color-white-rgb) / 0.08);
+  --picker-badge-text: var(--color-slate-300);
 }
 
 .sequence-picker-combobox__trigger {
   width: 100%;
-  border-radius: 0.45rem;
+  border-radius: var(--radius-control);
   border: 1px solid var(--picker-border);
   background: var(--picker-surface);
   padding: 0.65rem 0.85rem;
@@ -590,7 +590,7 @@ const hiddenInputValue = computed(() => (
   align-items: center;
   gap: 0.75rem;
   text-align: left;
-  font-size: 0.85rem;
+  font-size: var(--text-ui);
   line-height: 1.2;
   color: var(--picker-text);
   transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
@@ -631,7 +631,7 @@ const hiddenInputValue = computed(() => (
 }
 
 .sequence-picker-combobox__meta {
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   color: var(--picker-muted);
   white-space: nowrap;
   overflow: hidden;
@@ -647,10 +647,10 @@ const hiddenInputValue = computed(() => (
 .sequence-picker-combobox__clear {
   border: none;
   background: transparent;
-  font-size: 0.85rem;
+  font-size: var(--text-ui);
   color: var(--picker-muted);
   padding: 0.1rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   cursor: pointer;
   transition: color 120ms ease, background 120ms ease;
 }
@@ -662,13 +662,13 @@ const hiddenInputValue = computed(() => (
 
 .sequence-picker-combobox__chevron {
   color: var(--picker-muted);
-  font-size: 0.85rem;
+  font-size: var(--text-ui);
 }
 
 .sequence-picker-combobox__popover {
   width: 360px;
   max-height: min(360px, 70vh);
-  border-radius: 0.65rem;
+  border-radius: var(--radius-compact);
   border: 1px solid var(--picker-border);
   background: var(--picker-surface);
   box-shadow: var(--picker-shadow);
@@ -688,10 +688,10 @@ const hiddenInputValue = computed(() => (
 
 .sequence-picker-combobox__search {
   flex: 1;
-  border-radius: 0.65rem;
+  border-radius: var(--radius-compact);
   border: 1px solid var(--picker-input-border);
   padding: 0.5rem 0.9rem;
-  font-size: 0.85rem;
+  font-size: var(--text-ui);
   line-height: 1.3;
   background: var(--picker-input-bg);
   color: var(--picker-input-text);
@@ -727,7 +727,7 @@ const hiddenInputValue = computed(() => (
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.65rem 0.7rem;
-  border-radius: 0.6rem;
+  border-radius: var(--radius-soft);
   color: var(--picker-text);
   text-align: left;
   transition: background 140ms ease, color 140ms ease;
@@ -762,7 +762,7 @@ const hiddenInputValue = computed(() => (
 }
 
 .sequence-picker-combobox__option-description {
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   line-height: 1.35;
   color: var(--picker-muted);
 }
@@ -770,9 +770,9 @@ const hiddenInputValue = computed(() => (
 .sequence-picker-combobox__badge {
   display: inline-flex;
   align-items: center;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 0.12rem 0.45rem;
-  font-size: 0.68rem;
+  font-size: var(--text-tiny);
   line-height: 1.1;
   background: var(--picker-badge-bg);
   color: var(--picker-badge-text);
@@ -784,13 +784,13 @@ const hiddenInputValue = computed(() => (
 
 .sequence-picker-combobox__selected-mark {
   padding-top: 0.05rem;
-  font-size: 0.85rem;
+  font-size: var(--text-ui);
 }
 
 .sequence-picker-combobox__empty {
   padding: 0.8rem 0.5rem;
   text-align: center;
-  font-size: 0.8rem;
+  font-size: var(--text-control);
   color: var(--picker-muted);
 }
 </style>

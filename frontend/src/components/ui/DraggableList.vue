@@ -519,7 +519,7 @@ watch(
 }
 
 .draggable-list__item:focus-visible {
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
+  box-shadow: 0 0 0 2px rgb(var(--color-blue-500-rgb) / 0.5);
 }
 
 .draggable-list__item--dragging {
@@ -528,16 +528,16 @@ watch(
 }
 
 .draggable-list__item--keyboard {
-  box-shadow: inset 0 0 0 2px rgba(59, 130, 246, 0.35);
+  box-shadow: inset 0 0 0 2px rgb(var(--color-blue-500-rgb) / 0.35);
 }
 
 /* Indicators ------------------------------------------------------- */
 
 .draggable-list__indicator {
   position: absolute;
-  background: rgba(59, 130, 246, 0.85);
+  background: rgb(var(--color-blue-500-rgb) / 0.85);
   pointer-events: none;
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
 }
 
 .draggable-list[data-axis="vertical"]

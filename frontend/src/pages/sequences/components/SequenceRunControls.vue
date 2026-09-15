@@ -356,7 +356,7 @@ async function toggleRun() {
 .sequence-run-controls {
   margin-top: 1rem;
   border: 1px solid var(--color-neutral-200);
-  border-radius: 1rem;
+  border-radius: var(--radius-2xl);
   background: color-mix(in srgb, var(--color-white) 80%, transparent);
   box-shadow: var(--shadow-sm);
   display: flex;
@@ -456,10 +456,10 @@ async function toggleRun() {
 
 .sequence-run-controls__runtime-chip {
   border: 1px solid color-mix(in srgb, var(--color-neutral-300) 70%, transparent);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: color-mix(in srgb, var(--color-white) 72%, transparent);
   color: var(--color-neutral-600);
-  font-size: 11px;
+  font-size: var(--text-compact);
   line-height: 1;
   padding: 0.25rem 0.5rem;
 }
@@ -490,7 +490,7 @@ async function toggleRun() {
   width: 10px;
   height: 10px;
   background-color: currentColor;
-  border-radius: 1px;
+  border-radius: var(--radius-xxs);
 }
 
 @media (min-width: 640px) {

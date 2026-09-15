@@ -86,7 +86,7 @@ const statusToneClass = computed(() => {
 <style scoped>
 .ui-affino-disclosure {
   border: 1px solid var(--color-neutral-200);
-  border-radius: 0.5rem;
+  border-radius: var(--radius-lg);
   padding: 0.75rem;
 }
 
@@ -133,7 +133,7 @@ const statusToneClass = computed(() => {
 .ui-affino-disclosure__status {
   align-items: center;
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   display: inline-flex;
   flex: 0 0 auto;
   font-size: var(--text-xs);
@@ -177,7 +177,7 @@ const statusToneClass = computed(() => {
   align-items: center;
   background: color-mix(in srgb, var(--color-neutral-100) 76%, var(--color-white));
   border: 1px solid color-mix(in srgb, var(--color-neutral-200) 68%, var(--color-white));
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   color: var(--color-neutral-600);
   display: inline-flex;
   font-size: var(--text-xs);

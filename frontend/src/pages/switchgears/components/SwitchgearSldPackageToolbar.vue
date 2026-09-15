@@ -125,11 +125,11 @@ const props = defineProps<{
   min-width: 2.25rem;
   padding: 0;
   border: 1px solid var(--color-neutral-200);
-  border-radius: 0.5rem;
+  border-radius: var(--radius-lg);
   background: var(--color-white);
   color: var(--color-neutral-600);
   font: inherit;
-  font-size: 1.05rem;
+  font-size: var(--text-toolbar);
   line-height: 1;
   font-weight: 600;
   cursor: pointer;
@@ -140,7 +140,7 @@ const props = defineProps<{
   height: 2.25rem;
   min-width: 2.25rem;
   padding: 0;
-  font-size: 1.05rem;
+  font-size: var(--text-toolbar);
   line-height: 1;
 }
 
@@ -149,7 +149,7 @@ const props = defineProps<{
   height: 2.25rem;
   min-width: 2.25rem;
   padding: 0;
-  font-size: 1.05rem;
+  font-size: var(--text-toolbar);
   line-height: 1;
 }
 

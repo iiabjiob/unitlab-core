@@ -278,7 +278,7 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   border: 1px solid var(--color-neutral-300);
-  border-radius: 0.5rem;
+  border-radius: var(--radius-lg);
   cursor: pointer;
   font: inherit;
   color: var(--color-neutral-900);
@@ -331,7 +331,7 @@ onMounted(() => {
 
 .workspace-switcher__label {
   color: var(--color-neutral-500);
-  font-size: 0.625rem;
+  font-size: var(--text-2xs);
   letter-spacing: 0;
   text-transform: uppercase;
 }
@@ -366,7 +366,7 @@ onMounted(() => {
   flex: 0 0 auto;
   gap: 0.75rem;
   color: var(--color-neutral-500);
-  font-size: 0.6875rem;
+  font-size: var(--text-compact);
 }
 
 .workspace-switcher__summary--toolbar {
@@ -400,7 +400,7 @@ onMounted(() => {
   padding: 0.5rem 0.75rem;
   border-bottom: 1px solid var(--color-neutral-200);
   color: var(--color-neutral-500);
-  font-size: 0.625rem;
+  font-size: var(--text-2xs);
   letter-spacing: 0;
   text-transform: uppercase;
 }
@@ -432,12 +432,12 @@ onMounted(() => {
 
 .workspace-switcher__item-meta {
   color: var(--color-neutral-500);
-  font-size: 0.6875rem;
+  font-size: var(--text-compact);
 }
 
 .workspace-switcher__active-label {
   color: var(--color-emerald-500);
-  font-size: 0.625rem;
+  font-size: var(--text-2xs);
   letter-spacing: 0;
   text-transform: uppercase;
 }

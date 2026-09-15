@@ -187,8 +187,8 @@ function positionClass(pos: ToastPosition) {
   border: 1px solid color-mix(in srgb, var(--color-neutral-700) 78%, var(--runtime-accent));
   border-radius: var(--radius-md);
   box-shadow:
-    0 16px 32px rgb(15 23 42 / 0.22),
-    inset 0 1px 0 rgb(255 255 255 / 0.07);
+    0 16px 32px rgb(var(--color-slate-900-rgb) / 0.22),
+    inset 0 1px 0 rgb(var(--color-white-rgb) / 0.07);
   color: var(--color-neutral-50);
   padding: 0.625rem;
   pointer-events: auto;
@@ -211,10 +211,10 @@ function positionClass(pos: ToastPosition) {
 .toast-card__badge {
   align-items: center;
   border: 1px solid;
-  border-radius: 0.25rem;
+  border-radius: var(--radius-xs);
   display: inline-flex;
   flex-shrink: 0;
-  font-size: 0.625rem;
+  font-size: var(--text-2xs);
   font-weight: 500;
   letter-spacing: 0.06em;
   line-height: 1rem;
@@ -267,8 +267,8 @@ function positionClass(pos: ToastPosition) {
   background: color-mix(in srgb, var(--color-white) 96%, var(--color-blue-100));
   border-color: color-mix(in srgb, var(--color-blue-300) 38%, var(--color-neutral-200));
   box-shadow:
-    0 16px 34px rgb(0 0 0 / 0.36),
-    inset 0 1px 0 rgb(255 255 255 / 0.9);
+    0 16px 34px rgb(var(--color-black-rgb) / 0.36),
+    inset 0 1px 0 rgb(var(--color-white-rgb) / 0.9);
   color: var(--color-neutral-950);
 }
 
