@@ -1,0 +1,24 @@
+{
+  "include": [
+    "backend",
+    "host-services"
+  ],
+  "executionEnvironments": [
+    {
+      "root": "host-services/rpi-net-agent",
+      "extraPaths": ["host-services/rpi-net-agent/src"]
+    },
+    {
+      "root": "host-services/rpi-ntp-agent",
+      "extraPaths": ["host-services/rpi-ntp-agent/src"]
+    },
+    {
+      "root": "host-services/rpi-core-diag-agent",
+      "extraPaths": ["host-services/rpi-core-diag-agent/src"]
+    },
+    {
+      "root": "host-services/rpi-provision-agent",
+      "extraPaths": ["host-services/rpi-provision-agent/src"]
+    }
+  ]
+}
