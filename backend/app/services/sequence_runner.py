@@ -566,6 +566,39 @@ class SequenceRunner:
                 current_step_index,
             )
 
+    async def _publish_step_issue(
+        self,
+        *,
+        sequence_id: int,
+        run_id: int,
+        step_index: int,
+        step_id: int,
+        status: str,
+        message: str,
+        runtime: Optional[SequenceRuntimeSchema],
+    ) -> None:
+        try:
+            await asyncio.wait_for(
+                SequenceEventStream.step_issue(
+                    sequence_id=sequence_id,
+                    run_id=run_id,
+                    step_index=step_index,
+                    step_id=step_id,
+                    status=status,
+                    message=message,
+                    runtime=runtime,
+                ),
+                timeout=1.0,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Failed to publish sequence step issue (sequence=%s, run=%s, step=%s): %s",
+                sequence_id,
+                run_id,
+                step_id,
+                exc,
+            )
+
     def _reset_cancellation_probe(self, run_id: int) -> None:
         tracker = getattr(self, "_last_cancellation_probe_at", None)
         if tracker is not None:
@@ -1263,7 +1296,22 @@ class SequenceRunner:
                             f"Device {normalized_unit_id} is unavailable after a previous hardware failure",
                             unit_id=normalized_unit_id,
                         )
-                    presence = await device_presence.get_presence(normalized_unit_id)
+                    try:
+                        presence = await asyncio.wait_for(
+                            device_presence.get_presence(normalized_unit_id),
+                            timeout=1.0,
+                        )
+                    except asyncio.TimeoutError:
+                        logger.warning(
+                            "Device presence check timed out (run=%s, unit=%s)",
+                            run_id,
+                            normalized_unit_id,
+                        )
+                        unavailable_units.add(normalized_unit_id)
+                        raise SequenceStepBlockedError(
+                            f"Device {normalized_unit_id} presence is unavailable",
+                            unit_id=normalized_unit_id,
+                        )
                     if not presence.online:
                         unavailable_units.add(normalized_unit_id)
                         raise SequenceStepBlockedError(
@@ -1527,7 +1575,13 @@ class SequenceRunner:
                                 str(exc),
                             )
                         blocked_step_ids.append(top_step.sequence_step_id)
-                        await SequenceEventStream.step_issue(
+                        await session.execute(
+                            update(SequenceRun)
+                            .where(SequenceRun.id == run_id)
+                            .values(current_step_index=top_step.order_index + 1)
+                        )
+                        await session.commit()
+                        await self._publish_step_issue(
                             sequence_id=sequence_id,
                             run_id=run_id,
                             step_index=top_step.order_index,
@@ -1536,12 +1590,6 @@ class SequenceRunner:
                             message=str(exc),
                             runtime=top_runtime_cursor.to_schema(start_time=start_time),
                         )
-                        await session.execute(
-                            update(SequenceRun)
-                            .where(SequenceRun.id == run_id)
-                            .values(current_step_index=top_step.order_index + 1)
-                        )
-                        await session.commit()
                         continue
                     except SequenceDeviceUnavailableError as exc:
                         if top_step.run_step_id is not None:
@@ -1553,7 +1601,13 @@ class SequenceRunner:
                                 str(exc),
                             )
                         non_terminal_failures.append(str(exc))
-                        await SequenceEventStream.step_issue(
+                        await session.execute(
+                            update(SequenceRun)
+                            .where(SequenceRun.id == run_id)
+                            .values(current_step_index=top_step.order_index + 1, error_message=str(exc))
+                        )
+                        await session.commit()
+                        await self._publish_step_issue(
                             sequence_id=sequence_id,
                             run_id=run_id,
                             step_index=top_step.order_index,
@@ -1562,12 +1616,6 @@ class SequenceRunner:
                             message=str(exc),
                             runtime=top_runtime_cursor.to_schema(start_time=start_time),
                         )
-                        await session.execute(
-                            update(SequenceRun)
-                            .where(SequenceRun.id == run_id)
-                            .values(current_step_index=top_step.order_index + 1, error_message=str(exc))
-                        )
-                        await session.commit()
                         continue
                     except SequenceNotApplicableError as exc:
                         failure_runtime = self._state_cache.get(sequence_id)
