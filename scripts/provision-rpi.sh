@@ -96,6 +96,17 @@ ensure_kernel_cgroup_args() {
   fi
 }
 
+ensure_redis_memory_overcommit() {
+  local sysctl_file="/etc/sysctl.d/99-unitlab-redis.conf"
+  if [[ ! -f "$sysctl_file" ]] || ! grep -qx 'vm.overcommit_memory = 1' "$sysctl_file"; then
+    printf '%s\n' 'vm.overcommit_memory = 1' > "$sysctl_file"
+    echo "[unitlab] Enabled Redis memory overcommit in $sysctl_file"
+  else
+    echo "[unitlab] Redis memory overcommit already configured"
+  fi
+  sysctl -w vm.overcommit_memory=1 >/dev/null
+}
+
 echo "[unitlab] Step 1/10: apt update"
 apt-get update
 
@@ -126,6 +137,7 @@ systemctl enable --now chrony
 
 echo "[unitlab] Step 5/10: ensure docker + compose plugin"
 DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates network-manager openssl rsync
+ensure_redis_memory_overcommit
 if ! command -v docker >/dev/null 2>&1; then
   curl -fsSL https://get.docker.com | sh
 fi
