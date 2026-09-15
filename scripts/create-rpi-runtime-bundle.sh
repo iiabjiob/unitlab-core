@@ -9,6 +9,7 @@ UNITLAB_WEB_IMAGE="${UNITLAB_WEB_IMAGE:-unitlab-web:${RELEASE_VERSION}}"
 PROFILE="min"
 OUT_DIR=""
 BUILD_HOST_AGENT_WHEELS="${BUILD_HOST_AGENT_WHEELS:-1}"
+PORTABLE_RPI5="${PORTABLE_RPI5:-0}"
 
 usage() {
   cat <<'EOF'
@@ -17,6 +18,7 @@ Usage:
 
 Options:
   --skip-host-agent-wheels   Skip wheelhouse build (not recommended)
+  --portable-rpi5             Prepare the bundle for the unified RPi5 archive
 
 Environment overrides:
   BUILD_HOST_AGENT_WHEELS=0|1
@@ -44,6 +46,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --skip-host-agent-wheels)
       BUILD_HOST_AGENT_WHEELS="0"
+      shift
+      ;;
+    --portable-rpi5)
+      PORTABLE_RPI5="1"
       shift
       ;;
     --help|-h)
@@ -313,14 +319,37 @@ cat > "$OUT_DIR/README_DEPLOY.md" <<'EOF'
 Rollback: rerun deploy for previous bundle (script handles symlink switch and stack up).
 EOF
 
+if [[ "$PORTABLE_RPI5" == "1" ]]; then
+  cat > "$OUT_DIR/README_DEPLOY.md" <<'EOF'
+# UnitLab RPi5 Runtime
+
+This runtime is included in the portable `unitlab-core-rpi5-<version>.tar.gz`
+release. Use the bundled `scripts/unitlab` CLI for installation and updates.
+
+```bash
+sudo scripts/unitlab install /path/to/unitlab-core-rpi5-<version>.tar.gz
+sudo unitlab update /path/to/unitlab-core-rpi5-<version>.tar.gz
+unitlab status
+sudo unitlab doctor
+```
+
+Persistent configuration is stored in `/opt/unitlab/shared`. The Compose
+project name is `unitlab`, so PostgreSQL and Redis volumes survive updates.
+EOF
+fi
+
 echo
 echo "[unitlab] Bundle created."
 echo "[unitlab] Note: frontend source is intentionally omitted (image-based frontend delivery)."
 if [[ "$PROFILE" == "service" ]]; then
   echo "[unitlab] Includes service/debug extras (docs + scripts)."
 fi
-echo "[unitlab] Next (recommended on RPi5):"
-echo "[unitlab]   1) Copy bundle to: /opt/unitlab/releases/<bundle>"
-echo "[unitlab]   2) Deploy: sudo /opt/unitlab/releases/<bundle>/scripts/deploy-rpi.sh --bundle-dir /opt/unitlab/releases/<bundle>"
-echo "[unitlab]   3) deploy-rpi.sh updates /opt/unitlab/current automatically"
-echo "[unitlab] Rollback: deploy previous bundle path with deploy-rpi.sh"
+if [[ "$PORTABLE_RPI5" == "1" ]]; then
+  echo "[unitlab] Runtime prepared for the portable RPi5 release archive."
+else
+  echo "[unitlab] Next (recommended on RPi5):"
+  echo "[unitlab]   1) Copy bundle to: /opt/unitlab/releases/<bundle>"
+  echo "[unitlab]   2) Deploy: sudo /opt/unitlab/releases/<bundle>/scripts/deploy-rpi.sh --bundle-dir /opt/unitlab/releases/<bundle>"
+  echo "[unitlab]   3) deploy-rpi.sh updates /opt/unitlab/current automatically"
+  echo "[unitlab] Rollback: deploy previous bundle path with deploy-rpi.sh"
+fi

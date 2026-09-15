@@ -346,10 +346,14 @@ else
 fi
 
 echo "[unitlab] Step 5/$TOTAL_STEPS: create runtime bundle"
+bundle_args=(--profile "$PROFILE")
+if [[ "$TARGET" == "rpi5" ]]; then
+  bundle_args+=(--portable-rpi5)
+fi
 RELEASE_VERSION="$RELEASE_VERSION" \
 UNITLAB_BACKEND_IMAGE="$BACKEND_IMAGE_TAG" \
 UNITLAB_WEB_IMAGE="$WEB_IMAGE_TAG" \
-"$ROOT_DIR/scripts/create-rpi-runtime-bundle.sh" --profile "$PROFILE" "$BUNDLE_OUT"
+"$ROOT_DIR/scripts/create-rpi-runtime-bundle.sh" "${bundle_args[@]}" "$BUNDLE_OUT"
 
 if [[ "$TARGET" == "rpi5" ]]; then
   RPI5_ARCHIVE_OUT="$RELEASE_DIR/unitlab-core-rpi5-${RELEASE_VERSION}.tar.gz"
