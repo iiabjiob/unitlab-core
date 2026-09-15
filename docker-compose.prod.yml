@@ -162,6 +162,29 @@ services:
     networks:
       - app_network
 
+  external_ied_planning:
+    image: ${UNITLAB_BACKEND_IMAGE:-unitlab-backend:${RELEASE_VERSION:-dev}}
+    container_name: unitlab-external-ied-planning
+    labels:
+      <<: *release-labels
+    command: ["python", "-m", "app.workers.external_ied_planning"]
+    restart: unless-stopped
+    mem_limit: 256m
+    cpus: 0.50
+    logging: *default-logging
+    env_file:
+      - /opt/unitlab/shared/backend.env
+      - /opt/unitlab/shared/db.env
+    environment:
+      APP_ENV: production
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - app_network
+
   sequence_runner:
     image: ${UNITLAB_BACKEND_IMAGE:-unitlab-backend:${RELEASE_VERSION:-dev}}
     container_name: unitlab-sequence-runner

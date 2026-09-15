@@ -36,15 +36,23 @@ For one-click startup in VS Code, run task `backend: start all` (Terminal → Ru
 	```bash
 	uv run python -m app.workers.external_ied_availability
 	```
-7. **Sequence runner** (consumes `sequence:commands`, emits lifecycle events to `sequence:events`):
+7. External IEC 61850 IED discovery worker (consumes `external-ied-discovery:jobs` and emits discovery results):
+	```bash
+	uv run python -m app.workers.external_ied_discovery
+	```
+8. External IEC 61850 IED planning worker (consumes `external-ied-planning:events` and persists planning results):
+	```bash
+	uv run python -m app.workers.external_ied_planning
+	```
+9. **Sequence runner** (consumes `sequence:commands`, emits lifecycle events to `sequence:events`):
 	```bash
 	uv run python -m app.workers.sequence_runner
 	```
-8. **Signal allocation runner** (consumes `signal-allocation:jobs`, executes allocation jobs in background):
+10. **Signal allocation runner** (consumes `signal-allocation:jobs`, executes allocation jobs in background):
 	```bash
 	uv run python -m app.workers.signal_allocation_runner
 	```
-9. **Signal test-run runner** (consumes `signal-test-run:jobs`, executes long-running test toggles):
+11. **Signal test-run runner** (consumes `signal-test-run:jobs`, executes long-running test toggles):
 	```bash
 	uv run python -m app.workers.signal_test_run_runner
 	```
@@ -96,7 +104,7 @@ Main REST endpoints:
 - FastAPI hosts a background task (`forward_sequence_events`) that tails `sequence:events`, translates each record back into the legacy WS payloads (`started`, `progress`, `completed`, `stopped`, `error`), and publishes them through the existing `ws:events` pub/sub channel via `WsEventPublisher`.
 - Frontend clients continue to receive real-time updates with no code changes, while the backend can scale API pods and the runner worker independently.
 
-> In `docker-compose.prod.yml` these workers are defined as separate services (`mqtt_ingress`, `inbound_processor`, `mqtt_outbound`, `device_offline`). To launch the full production stack run `docker compose -f docker-compose.prod.yml up -d`.
+> In `docker-compose.prod.yml` these workers are defined as separate services. To launch the full production stack run `docker compose -f docker-compose.prod.yml up -d`.
 
 ## Local docker-compose
 

@@ -314,6 +314,8 @@ readonly expected_running_containers=(
   unitlab-mqtt-outbound
   unitlab-device-offline
   unitlab-external-ied-availability
+  unitlab-external-ied-discovery
+  unitlab-external-ied-planning
   unitlab-sequence-runner
   unitlab-signal-allocation-runner
   unitlab-signal-test-run-runner
@@ -430,6 +432,9 @@ readonly expected_workers=(
   unitlab-inbound-processor
   unitlab-mqtt-outbound
   unitlab-device-offline
+  unitlab-external-ied-availability
+  unitlab-external-ied-discovery
+  unitlab-external-ied-planning
   unitlab-sequence-runner
   unitlab-signal-allocation-runner
   unitlab-signal-test-run-runner
