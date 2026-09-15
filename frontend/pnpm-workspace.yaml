@@ -1,2 +1,8 @@
 allowBuilds:
   esbuild: true
+minimumReleaseAgeExclude:
+  - '@affino/datagrid-core@0.6.0'
+  - '@affino/datagrid-pivot@0.2.0'
+  - '@affino/datagrid-vue-app@0.6.0'
+  - '@affino/datagrid-vue@0.6.0'
+  - '@affino/datagrid-worker@0.6.0'

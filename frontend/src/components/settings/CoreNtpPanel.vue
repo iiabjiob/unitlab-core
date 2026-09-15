@@ -20,7 +20,13 @@
         <p v-if="ntpTrackingSummary" class="core-ntp-panel__subtle">
           {{ ntpTrackingSummary }}
         </p>
-        <p v-if="ntpErrorText" class="core-ntp-panel__error">{{ ntpErrorText }}</p>
+        <p
+          v-if="ntpErrorText"
+          class="core-ntp-panel__error"
+          :class="{ 'core-ntp-panel__error--notice': ntpUnavailable }"
+        >
+          {{ ntpErrorText }}
+        </p>
       </div>
     </div>
 
@@ -211,17 +217,30 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue"
 import { useCoreNtpStore } from "@/stores/coreNtpStore"
+import { useSystemHealthStore } from "@/stores/systemHealthStore"
 
 const coreNtpStore = useCoreNtpStore()
+const systemHealthStore = useSystemHealthStore()
 
 const ntpSnapshot = computed(() => coreNtpStore.snapshot)
-const ntpModeText = computed(() => String(coreNtpStore.mode).toUpperCase())
+const ntpUnavailable = computed(() => (
+  !ntpSnapshot.value
+  && Boolean(coreNtpStore.lastError)
+  && systemHealthStore.status === "online"
+))
+const ntpModeText = computed(() => (
+  ntpUnavailable.value ? "UNAVAILABLE" : String(coreNtpStore.mode).toUpperCase()
+))
 const ntpTracking = computed(() => coreNtpStore.tracking)
 const ntpSources = computed(() => coreNtpStore.sources)
 const ntpConfiguredServers = computed(() => coreNtpStore.configuredServers)
 const ntpEffectiveServers = computed(() => coreNtpStore.effectiveServers)
 const ntpBusy = computed(() => coreNtpStore.commandPending || coreNtpStore.loading)
-const ntpErrorText = computed(() => coreNtpStore.lastError || coreNtpStore.snapshot?.last_error || null)
+const ntpErrorText = computed(() => (
+  ntpUnavailable.value
+    ? "Time synchronization is not available on this host."
+    : coreNtpStore.lastError || coreNtpStore.snapshot?.last_error || null
+))
 const ntpChronyServiceLabel = computed(() => ntpSnapshot.value?.chrony_service_name || "chrony")
 const ntpChronyServiceActiveLabel = computed(() => {
   const active = ntpSnapshot.value?.chrony_service_active
@@ -455,6 +474,10 @@ onUnmounted(() => {
   margin-top: 0.25rem;
   color: var(--color-rose-500);
   font-size: var(--text-xs);
+}
+
+.core-ntp-panel__error--notice {
+  color: var(--color-neutral-500);
 }
 
 .core-ntp-panel__grid {

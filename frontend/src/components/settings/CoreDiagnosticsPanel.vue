@@ -15,7 +15,13 @@
         <p v-if="snapshot?.os_pretty_name" class="core-diagnostics-panel__subtle">
           {{ snapshot.os_pretty_name }}
         </p>
-        <p v-if="errorText" class="core-diagnostics-panel__error">{{ errorText }}</p>
+        <p
+          v-if="errorText"
+          class="core-diagnostics-panel__error"
+          :class="{ 'core-diagnostics-panel__error--notice': diagnosticsUnavailable }"
+        >
+          {{ errorText }}
+        </p>
       </div>
     </div>
 
@@ -107,9 +113,20 @@ const systemHealthStore = useSystemHealthStore()
 const snapshot = computed(() => store.snapshot)
 const services = computed(() => store.services)
 const busy = computed(() => store.loading || store.commandPending)
-const errorText = computed(() => store.lastError || snapshot.value?.last_error || null)
-const modeText = computed(() => String(store.mode).toUpperCase())
 const systemStatusText = computed(() => String(systemHealthStore.status).toUpperCase())
+const diagnosticsUnavailable = computed(() => (
+  !snapshot.value
+  && Boolean(store.lastError)
+  && systemHealthStore.status === "online"
+))
+const errorText = computed(() => (
+  diagnosticsUnavailable.value
+    ? "Core diagnostics are not available on this host."
+    : store.lastError || snapshot.value?.last_error || null
+))
+const modeText = computed(() => (
+  diagnosticsUnavailable.value ? "UNAVAILABLE" : String(store.mode).toUpperCase()
+))
 const healthIssues = computed(() => systemHealthStore.issues)
 const healthWorkers = computed(() => systemHealthStore.workers)
 const healthyWorkersCount = computed(() => healthWorkers.value.filter(worker => worker.status === "online").length)
@@ -284,6 +301,10 @@ const Row = defineComponent({
   margin-top: 0.25rem;
   color: var(--color-rose-500);
   font-size: var(--text-xs);
+}
+
+.core-diagnostics-panel__error--notice {
+  color: var(--color-neutral-500);
 }
 
 .core-diagnostics-panel__grid {

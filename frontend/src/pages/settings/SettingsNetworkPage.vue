@@ -3,7 +3,7 @@
     <div class="settings-page-shell__header">
       <h1 class="settings-page-shell__title">Settings · Network / RJ45</h1>
       <p class="settings-page-shell__description">
-        Configure the Raspberry Pi Ethernet path for MMS / SCADA verification. The host agent owns the RJ45 settings, while the backend only proxies the command.
+        Configure the Host Ethernet path for MMS / SCADA verification. The host agent owns the RJ45 settings, while the backend only proxies the command.
       </p>
     </div>
     <CoreNetworkPanel />

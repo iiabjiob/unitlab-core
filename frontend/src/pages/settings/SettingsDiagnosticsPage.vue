@@ -3,7 +3,7 @@
     <div class="settings-page-shell__header">
       <h1 class="settings-page-shell__title">Settings · Core Diagnostics</h1>
       <p class="settings-page-shell__description">
-        Diagnostics of the central UnitLab Core host (Raspberry Pi): thermals, load, memory, disk, and host services.
+        Diagnostics of the central UnitLab Core host: thermals, load, memory, disk, and host services.
       </p>
     </div>
     <CoreDiagnosticsPanel />

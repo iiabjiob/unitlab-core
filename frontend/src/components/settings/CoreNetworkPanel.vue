@@ -28,11 +28,13 @@
         <div class="core-network-panel__form-grid">
           <label class="core-network-panel__field core-network-panel__field--wide">
             <span class="core-network-panel__field-label">Interface</span>
-            <select v-model="draft.interface" class="core-network-panel__input" @change="markDirty">
-              <option v-for="choice in interfaceChoices" :key="choice.value" :value="choice.value">
-                {{ choice.label }}
-              </option>
-            </select>
+            <UiAffinoListbox
+              :model-value="draft.interface"
+              :options="interfaceListboxOptions"
+              aria-label="Network interface"
+              @update:model-value="updateInterface"
+              @change="markDirty"
+            />
           </label>
 
           <label class="core-network-panel__field">
@@ -42,10 +44,13 @@
 
           <label class="core-network-panel__field">
             <span class="core-network-panel__field-label">IPv4 mode</span>
-            <select v-model="draft.ipv4Mode" class="core-network-panel__input" @change="markDirty">
-              <option value="auto">DHCP / auto</option>
-              <option value="manual">Manual static</option>
-            </select>
+            <UiAffinoListbox
+              :model-value="draft.ipv4Mode"
+              :options="ipv4ModeOptions"
+              aria-label="IPv4 mode"
+              @update:model-value="updateIpv4Mode"
+              @change="markDirty"
+            />
           </label>
 
           <label class="core-network-panel__field">
@@ -189,6 +194,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue"
 import { useCoreNetworkStore } from "@/stores/coreNetworkStore"
+import UiAffinoListbox from "@/components/ui/UiAffinoListbox.vue"
 import {
   buildCoreNetworkInterfaceChoices,
   buildCoreNetworkInterfaceWarnings,
@@ -231,6 +237,14 @@ function markDirty() {
   draftDirty.value = true
 }
 
+function updateInterface(value: string | number | null) {
+  draft.interface = value === null ? "" : String(value)
+}
+
+function updateIpv4Mode(value: string | number | null) {
+  draft.ipv4Mode = value === "manual" ? "manual" : "auto"
+}
+
 function resetDraft() {
   draftDirty.value = false
   syncDraftFromSnapshot()
@@ -251,6 +265,14 @@ async function applyNetworkSettings() {
 }
 
 const interfaceChoices = computed(() => buildCoreNetworkInterfaceChoices(interfaces.value, draft.interface))
+const interfaceListboxOptions = computed(() => interfaceChoices.value.map(choice => ({
+  value: choice.value,
+  label: choice.label,
+})))
+const ipv4ModeOptions = [
+  { value: "auto", label: "DHCP / auto" },
+  { value: "manual", label: "Manual static" },
+]
 const selectedInterface = computed(() => getSelectedCoreNetworkInterface(interfaces.value, draft.interface))
 const selectedInterfaceWarnings = computed(() => buildCoreNetworkInterfaceWarnings(selectedInterface.value))
 const selectedInterfaceSummary = computed(() => {
