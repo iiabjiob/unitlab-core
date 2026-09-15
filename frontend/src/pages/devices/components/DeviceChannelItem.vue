@@ -393,7 +393,7 @@ function submitAoValue() {
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
   user-select: none;
-  cursor: default;
+  cursor: default !important;
 }
 
 .device-channel-item--disabled {
