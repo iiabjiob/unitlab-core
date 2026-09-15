@@ -45,14 +45,10 @@ run() {
 }
 
 check_host() {
-  local arch os_id os_name
-  arch="$(uname -m)"
-  [[ "$arch" == "aarch64" ]] || { err "unsupported architecture: $arch (expected aarch64)"; return 1; }
-  [[ -r /etc/os-release ]] || { err "/etc/os-release is missing"; return 1; }
+  local os_id os_name
+  check_platform || return 1
   os_id="$(. /etc/os-release; echo "${ID:-}")"
   os_name="$(. /etc/os-release; echo "${PRETTY_NAME:-$os_id}")"
-  [[ "$os_id" == "raspios" || "$os_id" == "debian" ]] || { err "unsupported OS: $os_name"; return 1; }
-
   local missing=()
   for command_name in awk curl docker gzip install mktemp python3 rsync sha256sum tar; do
     command -v "$command_name" >/dev/null 2>&1 || missing+=("$command_name")
@@ -68,7 +64,17 @@ check_host() {
   available_kb="$(df -Pk "$INSTALL_ROOT" 2>/dev/null | awk 'NR==2 {print $4}')"
   [[ "$available_kb" =~ ^[0-9]+$ ]] || { err "cannot determine free disk space"; return 1; }
   (( available_kb >= 1048576 )) || { err "less than 1 GiB free on $INSTALL_ROOT"; return 1; }
-  log "host checks: $os_name, $arch, Docker/Compose/NetworkManager ready"
+  log "host checks: $os_name, $(uname -m), Docker/Compose/NetworkManager ready"
+}
+
+check_platform() {
+  local arch os_id os_name
+  arch="$(uname -m)"
+  [[ "$arch" == "aarch64" ]] || { err "unsupported architecture: $arch (expected aarch64)"; return 1; }
+  [[ -r /etc/os-release ]] || { err "/etc/os-release is missing"; return 1; }
+  os_id="$(. /etc/os-release; echo "${ID:-}")"
+  os_name="$(. /etc/os-release; echo "${PRETTY_NAME:-$os_id}")"
+  [[ "$os_id" == "raspios" || "$os_id" == "debian" ]] || { err "unsupported OS: $os_name"; return 1; }
 }
 
 extract_bundle() {
@@ -98,6 +104,9 @@ validate_bundle() {
   done
   for required in runtime/host-services runtime/host-agent-wheels; do
     [[ -d "$root/$required" ]] || { err "bundle is missing $required"; return 1; }
+  done
+  for wheel_pattern in unitlab_rpi_net_agent-*.whl unitlab_rpi_ntp_agent-*.whl unitlab_rpi_core_diag_agent-*.whl unitlab_rpi_provision_agent-*.whl redis-*.whl; do
+    compgen -G "$root/runtime/host-agent-wheels/$wheel_pattern" >/dev/null || { err "bundle is missing wheel matching $wheel_pattern"; return 1; }
   done
   RELEASE_VERSION="$version"
   log "bundle checks: version=$version platform=$manifest_platform checksums=OK"
@@ -152,6 +161,7 @@ install_release() {
   images_archive="$work_dir/images/images.tar"
   [[ -f "$images_archive" ]] || images_archive="$work_dir/images/images.tar.gz"
 
+  check_platform
   check_host || {
     if (( DRY_RUN == 1 )); then return 1; fi
     if [[ -x "$runtime_root/scripts/provision-rpi.sh" ]]; then

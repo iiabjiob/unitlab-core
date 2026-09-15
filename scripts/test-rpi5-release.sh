@@ -7,6 +7,11 @@ trap 'rm -rf "$WORK_DIR"' EXIT
 
 runtime="$WORK_DIR/runtime"
 mkdir -p "$runtime/shared" "$runtime/scripts" "$runtime/host-services" "$runtime/host-agent-wheels"
+touch "$runtime/host-agent-wheels/unitlab_rpi_net_agent-0.0.0-py3-none-any.whl"
+touch "$runtime/host-agent-wheels/unitlab_rpi_ntp_agent-0.0.0-py3-none-any.whl"
+touch "$runtime/host-agent-wheels/unitlab_rpi_core_diag_agent-0.0.0-py3-none-any.whl"
+touch "$runtime/host-agent-wheels/unitlab_rpi_provision_agent-0.0.0-py3-none-any.whl"
+touch "$runtime/host-agent-wheels/redis-0.0.0-py3-none-any.whl"
 printf 'RELEASE_VERSION=2026.09.15-test\n' > "$runtime/RELEASE_INFO"
 printf 'RELEASE_VERSION=2026.09.15-test\nUNITLAB_BACKEND_IMAGE=unitlab-backend:2026.09.15-test\nUNITLAB_WEB_IMAGE=unitlab-web:2026.09.15-test\n' > "$runtime/.env.release"
 touch "$runtime/docker-compose.prod.yml" "$runtime/shared/backend.env.example" "$runtime/shared/db.env.example"
