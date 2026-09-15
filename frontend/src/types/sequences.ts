@@ -134,6 +134,7 @@ export interface SequenceState {
   current_step_index: number
   total_steps: number
   completed_step_ids: number[]
+  blocked_step_ids: number[]
   last_error?: string | null
   started_at?: string | null
   finished_at?: string | null

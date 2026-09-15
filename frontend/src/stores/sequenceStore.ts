@@ -37,6 +37,7 @@ function createEmptyState(seqId: number, totalSteps: number): SequenceState {
     current_step_index: 0,
     total_steps: totalSteps,
     completed_step_ids: [],
+    blocked_step_ids: [],
     last_error: null,
     started_at: null,
     finished_at: null,
@@ -59,6 +60,7 @@ function cloneSequenceState(state?: SequenceState): SequenceState | undefined {
   return {
     ...state,
     completed_step_ids: [...(state.completed_step_ids ?? [])],
+    blocked_step_ids: [...(state.blocked_step_ids ?? [])],
     runtime: normalizeRuntime(state.runtime),
   }
 }
@@ -294,6 +296,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
       status: mapStatus(snapshot.status as any),
       total_steps: total,
       completed_step_ids: [...(snapshot.completed_step_ids ?? [])],
+      blocked_step_ids: [...(snapshot.blocked_step_ids ?? [])],
       runtime: normalizeRuntime(snapshot.runtime),
     }
 
@@ -520,6 +523,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
           status: SequenceStatusEnum.RUNNING,
           current_step_index: 0,
           completed_step_ids: [],
+          blocked_step_ids: [],
           last_error: null,
           runtime: normalizeRuntime(event.runtime),
         }
@@ -547,6 +551,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
           completed_step_ids: event.progress_scope === "step"
             ? [...event.completed_steps]
             : [...prev.completed_step_ids],
+          blocked_step_ids: [...prev.blocked_step_ids],
           last_error: null,
           runtime: normalizeRuntime(event.runtime) ?? prev.runtime ?? null,
         }
@@ -640,6 +645,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
           status: SequenceStatusEnum.COMPLETED,
           current_step_index: prev.total_steps,
           completed_step_ids: [...prev.completed_step_ids],
+          blocked_step_ids: [...prev.blocked_step_ids],
           runtime: normalizeRuntime(event.runtime),
         }
 

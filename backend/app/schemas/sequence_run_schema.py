@@ -65,6 +65,7 @@ class SequenceStateSchema(BaseModel):
     current_step_index: int
     total_steps: int
     completed_step_ids: List[int]
+    blocked_step_ids: List[int] = Field(default_factory=list)
     last_error: Optional[str] = None
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None

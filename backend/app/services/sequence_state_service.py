@@ -60,6 +60,11 @@ class SequenceStateService:
                 for step in run.steps
                 if step.status == SequenceRunStepStatus.COMPLETED
             ]
+            blocked_ids = [
+                step.sequence_step_id
+                for step in run.steps
+                if step.status == SequenceRunStepStatus.BLOCKED
+            ]
             status = run.status.value if isinstance(run.status, SequenceRunStatus) else str(run.status)
             return SequenceStateSchema(
                 sequence_id=sequence_id,
@@ -68,6 +73,7 @@ class SequenceStateService:
                 current_step_index=run.current_step_index,
                 total_steps=total_steps,
                 completed_step_ids=completed_ids,
+                blocked_step_ids=blocked_ids,
                 last_error=run.error_message,
                 started_at=run.started_at,
                 finished_at=run.finished_at,
