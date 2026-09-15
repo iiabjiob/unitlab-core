@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/devcontainers/base:ubuntu
+FROM mcr.microsoft.com/devcontainers/base:noble
 
 # Install basic tools
 RUN apt-get update && apt-get install -y \
@@ -15,8 +15,8 @@ RUN apt-get update && apt-get install -y \
     bubblewrap \
     && apt-get clean
 
-# Install Node.js 20 + pnpm
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+# Install Node.js 24 + pnpm
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
     && apt-get install -y nodejs \
     && npm install -g pnpm
 
