@@ -43,8 +43,8 @@
                   class="app-menu__entry-content"
                   :class="compact ? 'app-menu__entry-content--compact' : 'app-menu__entry-content--full'"
                 >
-                  <AppMenuIcon v-if="compact" :name="item.icon" class="app-menu__entry-icon" />
-                  <span v-else>{{ item.label }}</span>
+                  <AppMenuIcon :name="item.icon" class="app-menu__entry-icon" />
+                  <span v-if="!compact">{{ item.label }}</span>
                 </span>
               </a>
             </RouterLink>
@@ -84,8 +84,8 @@
                   class="app-menu__entry-content"
                   :class="compact ? 'app-menu__entry-content--compact' : 'app-menu__entry-content--full'"
                 >
-                  <AppMenuIcon v-if="compact" :name="child.icon" class="app-menu__entry-icon" />
-                  <span v-else>{{ child.label }}</span>
+                  <AppMenuIcon :name="child.icon" class="app-menu__entry-icon" />
+                  <span v-if="!compact">{{ child.label }}</span>
                 </span>
               </a>
             </template>
