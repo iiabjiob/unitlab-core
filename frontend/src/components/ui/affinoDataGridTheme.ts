@@ -46,7 +46,7 @@ export function useAffinoDataGridTheme() {
     tokenVariants: {
       light: {
         gridFontFamily: '"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-        gridFontSize: "0.78rem",
+        gridFontSize: "var(--text-small)",
         gridTextColor: "rgb(30 41 59)",
         gridTextPrimary: "rgb(24 24 27)",
         gridBackgroundColor: "rgb(255 255 255)",
@@ -151,7 +151,7 @@ export function useAffinoDataGridTheme() {
       },
       dark: {
         gridFontFamily: '"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-        gridFontSize: "0.78rem",
+        gridFontSize: "var(--text-small)",
         gridTextColor: "rgb(229 229 229)",
         gridBackgroundColor: "rgb(8 10 14)",
         gridGlassBorder: "rgba(59, 130, 246, 0.16)",

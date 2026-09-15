@@ -43,6 +43,8 @@ export const localSettingsKeys = {
     `signals.exportPresets.workspace.${normalizeSettingsSegment(workspaceId ?? "none")}`,
   signalsGridSavedView: (workspaceId: number) =>
     `signals.grid.savedView.workspace.${normalizeSettingsSegment(workspaceId)}`,
+  signalSelectionGridSavedView: (workspaceId: number, tableId: string) =>
+    `signals.selectionGrid.savedView.workspace.${normalizeSettingsSegment(workspaceId)}.${normalizeSettingsSegment(tableId)}`,
   switchgearDiagram: (workspaceId: number) =>
     `switchgears.sld.workspace.${normalizeSettingsSegment(workspaceId)}`,
 } as const

@@ -339,6 +339,7 @@ function openSignalPicker() {
 
 function clearSignalSelection() {
   selectedSignalRows.value = []
+  error.value = null
 }
 
 async function handleSignalPickerConfirm(rows: SignalAllocationRow[]) {
@@ -552,7 +553,7 @@ watch(
         </div>
       </template>
 
-      <UiAlert v-if="error" type="error" :message="error" />
+      <UiAlert v-if="error" class="switchgear-bindings-editor__error" type="error" :message="error" />
     </div>
 
     <SignalSelectionGridModal
@@ -564,6 +565,7 @@ watch(
       confirm-label="Use selected signals"
       :table-id="`switchgear-signals-${props.switchgear.id}`"
       @close="signalModalOpen = false"
+      @selection-cleared="error = null"
       @confirm="handleSignalPickerConfirm"
     />
   </div>
@@ -639,6 +641,10 @@ watch(
   margin: 0.5rem 0 0.75rem;
   color: var(--color-neutral-700);
   font-size: var(--text-sm);
+}
+
+.switchgear-bindings-editor__error {
+  font-size: var(--text-xs);
 }
 
 .switchgear-bindings-editor__actions {

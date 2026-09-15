@@ -77,7 +77,7 @@
         </div>
 
         <div v-if="file" class="signal-import-modal__step-content">
-          <div v-if="step === 'columns'" class="signal-import-modal__section-stack">
+          <div v-if="step === 'columns'" class="signal-import-modal__section-stack signal-import-modal__section-stack--columns">
             <div class="signal-import-modal__field">
               <p class="signal-import-modal__strong-label">Worksheet</p>
               <UiAffinoListbox
@@ -1643,9 +1643,10 @@ watch(
 <style scoped>
 .signal-import-modal__form {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 1rem;
-  height: 100%;
+  height: auto;
   min-height: 0;
 }
 
@@ -1900,6 +1901,7 @@ watch(
 
 .signal-import-modal__step-content {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 1rem;
   min-height: 0;
@@ -1908,6 +1910,12 @@ watch(
 .signal-import-modal__section-stack {
   flex-direction: column;
   gap: 1rem;
+}
+
+.signal-import-modal__section-stack--columns {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .signal-import-modal__columns-panel {
@@ -1919,11 +1927,13 @@ watch(
 }
 
 .signal-import-modal__option-scroll {
-  max-height: min(24rem, 42vh);
+  flex: 1 1 auto;
+  height: 0;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding-right: 0.25rem;
+  scroll-padding-bottom: 1.5rem;
 }
 
 .signal-import-modal__warning-text {
@@ -2021,6 +2031,7 @@ watch(
 .signal-import-modal__option-list {
   display: grid;
   gap: 0.5rem;
+  padding-bottom: 1.5rem;
 }
 
 .signal-import-modal__option {

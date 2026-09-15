@@ -34,13 +34,13 @@
       </div>
 
       <div v-else class="affino-native-data-grid signal-selection-grid-modal__grid-wrapper">
-        <div class="affino-native-data-grid__toolbar">
+        <div class="affino-native-data-grid__toolbar signal-selection-grid-modal__toolbar">
           <div class="affino-native-data-grid__toolbar-meta">
             <span class="affino-native-data-grid__stat">Selected: {{ selectedCount }}</span>
             <button
               v-if="selectedCount > 0"
               type="button"
-              class="affino-native-data-grid__button"
+              class="affino-native-data-grid__button signal-selection-grid-modal__clear-button"
               @click="clearSelection"
             >
               Clear selection
@@ -50,6 +50,7 @@
 
         <div class="affino-native-data-grid__shell">
           <DataGrid
+            ref="selectionGridRef"
             class="affino-native-data-grid__grid"
             :rows="gridRows"
             :columns="resolvedColumns"
@@ -64,9 +65,11 @@
             column-layout
             render-mode="virtualization"
             layout-mode="fill"
+            :advanced-filter="true"
             row-hover
             striped-rows
             @update:rowSelectionState="handleGridRowSelectionStateUpdate"
+            @update:state="handleGridStateUpdate"
           />
         </div>
       </div>
@@ -89,13 +92,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, ref, watch } from "vue"
-import { defineDataGridComponent, type DataGridAppCellRendererContext, type DataGridAppColumnInput, type DataGridProps } from "@affino/datagrid-vue-app"
+import { computed, h, nextTick, onBeforeUnmount, ref, watch } from "vue"
+import { defineDataGridComponent, parseDataGridSavedView, type DataGridAppCellRendererContext, type DataGridAppColumnInput, type DataGridProps, useDataGridRef, writeDataGridSavedViewToStorage } from "@affino/datagrid-vue-app"
 
 import UiModal from "@/components/ui/UiModal.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import { useAffinoDataGridTheme } from "@/components/ui/affinoDataGridTheme"
 import "@/components/ui/affinoDataGridNative.css"
+import { createLocalSettingsStringStorage, localSettingsKeys } from "@/services/localSettingsStorage"
 
 import type { SignalAllocationRow, SignalIODirection } from "@/types/signal"
 import { extractSourceRowFromSignalMetadata, resolveAllSourceColumnHeaders, resolveSourceColumnInitialWidth, resolveSourceColumnMinWidth } from "@/pages/signals/utils/sourceColumns"
@@ -136,6 +140,7 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   (e: "close"): void
   (e: "confirm", rows: SignalAllocationRow[]): void
+  (e: "selection-cleared"): void
 }>()
 
 const workspaceStore = useWorkspaceStore()
@@ -145,7 +150,12 @@ const DATA_FRESHNESS_WINDOW_MS = 20_000
 const loading = ref(false)
 const selectedRowKeys = ref<string[]>([])
 const rowSelectionState = ref<RowSelectionSnapshot | null>(null)
+const selectionGridRef = useDataGridRef<GridRow>()
+const restoringGridState = ref(false)
+const gridStatePersistenceReady = ref(false)
+let gridStatePersistTimer: ReturnType<typeof setTimeout> | null = null
 const { gridLines, theme } = useAffinoDataGridTheme()
+const selectionGridSavedViewStorage = createLocalSettingsStringStorage()
 
 const workspaceMissing = computed(() => !workspaceStore.activeWorkspaceId)
 
@@ -284,14 +294,17 @@ watch(
   () => props.open,
   (open) => {
     if (!open) {
+      persistGridState()
       selectedRowKeys.value = []
       loading.value = false
+      gridStatePersistenceReady.value = false
       return
     }
     if (!shouldRefreshOnOpen()) {
+      void restoreGridState()
       return
     }
-    void refreshData()
+    void refreshData().then(() => restoreGridState())
   },
 )
 
@@ -310,9 +323,16 @@ function rowKey(row: Record<string, unknown>) {
 
 function clearSelection() {
   setControlledRowSelection([])
+  emit("selection-cleared")
 }
 
 function rowKeysFromSelectionSnapshot(snapshot: RowSelectionSnapshot | null | undefined): string[] {
+  const excludedRows = new Set((snapshot?.excludedRows ?? []).map(value => String(value)))
+  if (snapshot?.mode === "all") {
+    return gridRows.value
+      .map(row => row.rowId)
+      .filter(key => !excludedRows.has(key))
+  }
   return (snapshot?.selectedRows ?? []).map(rowKey => String(rowKey))
 }
 
@@ -334,6 +354,49 @@ function syncSelectedRowKeysFromSnapshot(snapshot: RowSelectionSnapshot | null |
 
 function handleGridRowSelectionStateUpdate(snapshot: RowSelectionSnapshot | null) {
   syncSelectedRowKeysFromSnapshot(snapshot)
+}
+
+function getSavedViewStorageKey(): string | null {
+  const workspaceId = workspaceStore.activeWorkspaceId
+  if (!workspaceId) return null
+  return localSettingsKeys.signalSelectionGridSavedView(workspaceId, props.tableId)
+}
+
+function persistGridState() {
+  if (!gridStatePersistenceReady.value || restoringGridState.value) return
+  const key = getSavedViewStorageKey()
+  const savedView = selectionGridRef.value?.getSavedView?.()
+  if (key && savedView) {
+    writeDataGridSavedViewToStorage(selectionGridSavedViewStorage, key, savedView)
+  }
+}
+
+function scheduleGridStatePersist() {
+  if (gridStatePersistTimer !== null) clearTimeout(gridStatePersistTimer)
+  gridStatePersistTimer = setTimeout(() => {
+    gridStatePersistTimer = null
+    persistGridState()
+  }, 120)
+}
+
+function handleGridStateUpdate() {
+  if (!restoringGridState.value) scheduleGridStatePersist()
+}
+
+async function restoreGridState() {
+  restoringGridState.value = true
+  gridStatePersistenceReady.value = false
+  await nextTick()
+  const key = getSavedViewStorageKey()
+  const raw = key ? selectionGridSavedViewStorage.getItem(key) : null
+  const grid = selectionGridRef.value
+  if (raw && grid) {
+    const savedView = parseDataGridSavedView<GridRow>(raw, grid.migrateState)
+    if (savedView) grid.applySavedView(savedView)
+  }
+  await nextTick()
+  restoringGridState.value = false
+  gridStatePersistenceReady.value = true
 }
 
 function parseSignalId(rowKey: string): number | null {
@@ -417,6 +480,13 @@ function confirmSelection() {
   if (confirmDisabled.value) return
   emit("confirm", selectedRows.value)
 }
+
+onBeforeUnmount(() => {
+  if (gridStatePersistTimer !== null) {
+    clearTimeout(gridStatePersistTimer)
+    gridStatePersistTimer = null
+  }
+})
 </script>
 
 <style>
@@ -457,6 +527,16 @@ function confirmSelection() {
 
 .signal-selection-grid-modal__grid-wrapper {
   height: 100%;
+}
+
+.signal-selection-grid-modal__toolbar {
+  min-height: 2rem;
+}
+
+.signal-selection-grid-modal__clear-button {
+  min-height: 1.5rem;
+  padding: 0.25rem 0.5rem;
+  font-size: var(--text-2xs);
 }
 
 .signal-selection-grid-modal__cell {
