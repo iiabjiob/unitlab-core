@@ -116,14 +116,26 @@ Use the add toolbar buttons:
 5. For nested or stress instructions, watch the live runtime line for the active child instruction, iteration, and elapsed time.
 6. Click **Stop** to request cancellation when needed.
 
-Possible statuses include running, completed, cancelling, and error.
+Possible statuses include running, completed, completed with issues, cancelling, and error.
+
+### Hardware availability and partial completion
+
+Before each physical step, the backend checks the current presence of its target device.
+
+- If the device is offline, the step is recorded as **blocked** and the run continues.
+- If a command times out, cannot be delivered, or fails readback, that step is recorded as **error**. Later steps for the same device are blocked for the rest of the run.
+- Steps for other devices continue in their original sequence order.
+- The final run status becomes **completed with issues** when at least one step was blocked or failed. The run and every affected step retain their reason in the execution log.
+
+This keeps an unavailable device from stopping independent hardware checks while making the incomplete result visible for review and retry.
 
 Control-flow steps:
 - **Call** runs another instruction once as a reusable child block.
 - **Repeat** loops another instruction by fixed count, for a duration window, or until the operator stops the run.
 
 Important:
-- **Completed** means the sequence executed successfully on the UnitLab side.
+- **Completed** means every step executed successfully on the UnitLab side.
+- **Completed with issues** means the run reached the end, while one or more device steps were blocked or failed. Review the execution log before accepting the FAT result.
 - Final acceptance still requires checking the target SCADA/IED/controller reaction.
 
 ## Verify
