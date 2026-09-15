@@ -365,10 +365,16 @@ if [[ "$OFFLINE_EXPORT" == "1" ]]; then
 fi
 if [[ "$TARGET" == "rpi5" ]]; then
   echo "[unitlab] RPi5 release archive: $RPI5_ARCHIVE_OUT"
-fi
-echo "[unitlab] Next on RPi5: run deploy script (verify/cleanup live there):"
-if [[ "$OFFLINE_EXPORT" == "1" ]]; then
-  echo "[unitlab]   sudo /opt/unitlab/releases/$(basename "$BUNDLE_OUT")/scripts/deploy-rpi.sh --bundle-dir /opt/unitlab/releases/$(basename "$BUNDLE_OUT") --images-archive /opt/unitlab/$(basename "$EXPORT_IMAGES_OUT")"
+  echo "[unitlab] Bootstrap on RPi5:"
+  echo "[unitlab]   mkdir -p /tmp/unitlab-rpi5-bootstrap-${RELEASE_VERSION}"
+  echo "[unitlab]   tar -xzf /tmp/$(basename "$RPI5_ARCHIVE_OUT") -C /tmp/unitlab-rpi5-bootstrap-${RELEASE_VERSION}"
+  echo "[unitlab]   sudo /tmp/unitlab-rpi5-bootstrap-${RELEASE_VERSION}/runtime/scripts/unitlab install /tmp/$(basename "$RPI5_ARCHIVE_OUT")"
+  echo "[unitlab] After installation: unitlab status; sudo unitlab doctor"
 else
-  echo "[unitlab]   sudo /opt/unitlab/releases/$(basename "$BUNDLE_OUT")/scripts/deploy-rpi.sh --bundle-dir /opt/unitlab/releases/$(basename "$BUNDLE_OUT")"
+  echo "[unitlab] Next on RPi5: run deploy script (verify/cleanup live there):"
+  if [[ "$OFFLINE_EXPORT" == "1" ]]; then
+    echo "[unitlab]   sudo /opt/unitlab/releases/$(basename "$BUNDLE_OUT")/scripts/deploy-rpi.sh --bundle-dir /opt/unitlab/releases/$(basename "$BUNDLE_OUT") --images-archive /opt/unitlab/$(basename "$EXPORT_IMAGES_OUT")"
+  else
+    echo "[unitlab]   sudo /opt/unitlab/releases/$(basename "$BUNDLE_OUT")/scripts/deploy-rpi.sh --bundle-dir /opt/unitlab/releases/$(basename "$BUNDLE_OUT")"
+  fi
 fi
