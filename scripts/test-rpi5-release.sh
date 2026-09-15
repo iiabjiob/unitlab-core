@@ -31,4 +31,12 @@ if grep -q 'frontend/src' "$WORK_DIR/contents"; then
   exit 1
 fi
 
+if [[ "$(uname -m)" != "aarch64" ]]; then
+  if "$ROOT_DIR/scripts/unitlab" install --dry-run "$output" >"$WORK_DIR/dry-run.out" 2>&1; then
+    echo "dry-run unexpectedly passed on a non-ARM host" >&2
+    exit 1
+  fi
+  grep -q 'unsupported architecture' "$WORK_DIR/dry-run.out"
+fi
+
 echo "RPi5 release archive checks passed"

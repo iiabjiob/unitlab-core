@@ -174,6 +174,11 @@ if [[ "$TARGET" == "rpi5" && "$OFFLINE_EXPORT" != "1" ]]; then
   exit 1
 fi
 
+if [[ "$TARGET" == "rpi5" && "$PUSH_IMAGE" == "1" ]]; then
+  echo "[unitlab] ERROR: --target rpi5 requires locally loaded images; do not combine it with --push 1" >&2
+  exit 1
+fi
+
 if [[ "$OFFLINE_EXPORT" == "0" && "$COMPRESS_EXPORT" == "1" ]]; then
   echo "[unitlab] WARN: --compress-export is ignored when --offline-export=0"
 fi
