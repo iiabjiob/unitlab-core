@@ -352,6 +352,18 @@ class SequenceRunner:
                 return
             current_step_index = int(row[1] or 0)
             started_at = row[2]
+            await session.execute(
+                update(SequenceRunStep)
+                .where(
+                    SequenceRunStep.run_id == run_id,
+                    SequenceRunStep.status == SequenceRunStepStatus.RUNNING,
+                )
+                .values(
+                    status=SequenceRunStepStatus.CANCELLED,
+                    finished_at=datetime.now(timezone.utc),
+                    error_message="stopped",
+                )
+            )
             await self._record_cancellation(
                 session=session,
                 run_id=run_id,
