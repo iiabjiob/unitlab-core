@@ -197,7 +197,7 @@ const runSummaryText = computed(() => {
   }
 
   if (status.value === SequenceStatusEnum.ERROR) {
-    return state.value.last_error ? "Check execution log for failure details" : "Last run failed"
+    return state.value.last_error || "Last run failed"
   }
 
   if (status.value === SequenceStatusEnum.STOPPED) {
@@ -216,9 +216,6 @@ const runSummaryText = computed(() => {
 const runtimeFallbackText = computed(() => {
   if (isInFlight.value) {
     return "Waiting for live runtime status"
-  }
-  if (status.value === SequenceStatusEnum.ERROR) {
-    return "Failure details are kept in the execution log"
   }
   if (status.value === SequenceStatusEnum.STOPPED) {
     return "Run state is preserved for review"
@@ -347,7 +344,7 @@ async function toggleRun() {
     </div>
 
     <p v-if="state.last_error" class="sequence-run-controls__error">
-      Error: {{ state.last_error }}
+      See execution log for full details.
     </p>
   </section>
 </template>
