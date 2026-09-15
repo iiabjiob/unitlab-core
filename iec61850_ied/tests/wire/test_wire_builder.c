@@ -472,8 +472,7 @@ static void test_mms_write_request_wire_frame_builder_roundtrip(void)
     uint8_t boolean_value = 0xFFU;
     const uint8_t expected_payload[] = {
         0x02U, 0x01U, 0x09U,
-        0xA5U, 0x24U,
-        0x30U, 0x22U,
+        0xA5U, 0x22U,
         0xA0U, 0x1BU,
         0x30U, 0x19U,
         0xA0U, 0x17U,
@@ -483,7 +482,6 @@ static void test_mms_write_request_wire_frame_builder_roundtrip(void)
         0xA0U, 0x03U, 0x83U, 0x01U, 0xFFU
     };
     const uint8_t expected_service[] = {
-        0x30U, 0x22U,
         0xA0U, 0x1BU,
         0x30U, 0x19U,
         0xA0U, 0x17U,

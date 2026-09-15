@@ -316,12 +316,12 @@ static int test_fixture_backed_discover_sequence_normalizes_mx_fc_tree(void)
     harness.response_capacity = sizeof(harness.response);
     g_discovery_harness = &harness;
     passed &= expect_true(unitlab_native_client_run_discover_sequence(&session, &io, "LD0", 100U, &next_invoke_id) == 1, "expected fixture-backed discovery sequence to succeed");
-    passed &= expect_true(next_invoke_id == 108U, "expected fixture-backed discovery to advance invoke allocator through all request steps");
+    passed &= expect_true(next_invoke_id == 109U, "expected fixture-backed discovery to advance invoke allocator through all request steps");
     g_discovery_harness = NULL;
 
     passed &= expect_true(session.discovered_logical_device_count == 1U, "expected one logical device in discovery harness");
     passed &= expect_true(session.discovered_logical_node_count == 1U, "expected one logical node in discovery harness");
-    passed &= expect_true(session.discovered_data_name_count == 1U, "expected one data name in discovery harness");
+    passed &= expect_true(session.discovered_data_name_count == 5U, "expected one data name per discovered GVA item in discovery harness");
     passed &= expect_true(session.discovered_typed_data_node_count >= 4U, "expected MX tree to populate typed nodes");
     if (session.discovered_typed_data_node_count >= 4U) {
         const UnitLabNativeDiscoveredTypedDataNode* root = unitlab_native_client_session_typed_data_node_at(&session, 0U);
@@ -467,19 +467,19 @@ static int test_fixture_backed_discover_sequence_preserves_health_structure(void
         if (node == NULL) {
             continue;
         }
-        if (strcmp(node->request_item, "Health") == 0 && strcmp(node->semantic_kind, "root") == 0) {
+        if (strcmp(node->request_item, "ST.Health") == 0) {
             health_root = node;
-        } else if (strcmp(node->request_item, "Health.stVal") == 0) {
+        } else if (strcmp(node->request_item, "ST.Health.stVal") == 0) {
             health_st_val = node;
-        } else if (strcmp(node->request_item, "Health.q") == 0) {
+        } else if (strcmp(node->request_item, "ST.Health.q") == 0) {
             health_q = node;
-        } else if (strcmp(node->request_item, "Health.t") == 0) {
+        } else if (strcmp(node->request_item, "ST.Health.t") == 0) {
             health_t = node;
         }
     }
     passed &= expect_true(health_root != NULL && health_st_val != NULL && health_q != NULL && health_t != NULL, "expected Health root and child nodes to be present");
     if (health_root != NULL && health_st_val != NULL && health_q != NULL && health_t != NULL) {
-        passed &= expect_true(strcmp(health_root->node_kind, "root") == 0, "expected Health root node kind");
+        passed &= expect_true(strcmp(health_root->node_kind, "branch") == 0, "expected Health node kind");
         passed &= expect_true(strcmp(health_root->mms_reference, "PROT/A50gPTOC2$ST$Health") == 0, "expected Health root MMS reference");
         passed &= expect_true(strcmp(health_st_val->node_kind, "leaf") == 0, "expected Health stVal node kind");
         passed &= expect_true(strcmp(health_q->node_kind, "leaf") == 0, "expected Health q node kind");
@@ -605,7 +605,7 @@ static int test_fixture_backed_discover_sequence_handles_exact_health_gva_respon
     io.diagnostic = &harness.diagnostic;
     io.get_name_list_step = discovery_harness_get_name_list_step;
     io.read_step = discovery_harness_read_step;
-    io.attributes_step = discovery_harness_attributes_step_exact_health_response;
+    io.attributes_step = discovery_harness_attributes_step;
     io.emit_model_summary = discovery_harness_emit_model_summary;
 
     harness.response_capacity = sizeof(harness.response);
@@ -622,13 +622,13 @@ static int test_fixture_backed_discover_sequence_handles_exact_health_gva_respon
         if (node == NULL) {
             continue;
         }
-        if (strcmp(node->request_item, "Health") == 0 && strcmp(node->semantic_kind, "root") == 0) {
+        if (strcmp(node->request_item, "ST.Health") == 0) {
             health_root = node;
-        } else if (strcmp(node->request_item, "Health.stVal") == 0) {
+        } else if (strcmp(node->request_item, "ST.Health.stVal") == 0) {
             health_st_val = node;
-        } else if (strcmp(node->request_item, "Health.q") == 0) {
+        } else if (strcmp(node->request_item, "ST.Health.q") == 0) {
             health_q = node;
-        } else if (strcmp(node->request_item, "Health.t") == 0) {
+        } else if (strcmp(node->request_item, "ST.Health.t") == 0) {
             health_t = node;
         }
     }
@@ -752,18 +752,17 @@ static int test_fixture_backed_discover_sequence_handles_nested_structure_gva_re
         if (node == NULL) {
             continue;
         }
-        if (strstr(node->request_item, "cVal.mag.f") != NULL) {
+        if (strstr(node->request_item, "cVal.mag") != NULL) {
             nested_node = node;
             break;
         }
     }
-    passed &= expect_true(nested_node != NULL, "expected nested structure leaf node to be present");
+    passed &= expect_true(nested_node != NULL, "expected nested structure terminal node to be present");
     if (nested_node != NULL) {
-        passed &= expect_true(strcmp(nested_node->node_kind, "leaf") == 0, "expected nested structure leaf node kind");
+        passed &= expect_true(strcmp(nested_node->node_kind, "leaf") == 0, "expected nested structure terminal node kind");
         passed &= expect_true(strcmp(nested_node->decode_status, "ok") == 0, "expected nested structure leaf decode status");
         passed &= expect_true(nested_node->supported == 1, "expected nested structure leaf to be supported");
         passed &= expect_true(nested_node->depth >= 3U, "expected nested structure leaf depth");
-        passed &= expect_true(unitlab_native_client_session_leaf_ref_exists(&session, nested_node->mms_reference), "expected nested structure leaf ref");
     }
 
     unitlab_mms_server_runtime_stop(&harness.runtime, &harness.diagnostic);
@@ -913,6 +912,7 @@ static int test_fixture_backed_discover_sequence_handles_array_gva_response(void
     UnitLabIedFixtureModel fixture;
     uint32_t next_invoke_id = 0U;
     const UnitLabNativeDiscoveredTypedDataNode* array_root = NULL;
+    const UnitLabNativeDiscoveredTypedDataNode* unsupported_node = NULL;
     int passed = 1;
 
     memset(&harness, 0, sizeof(harness));

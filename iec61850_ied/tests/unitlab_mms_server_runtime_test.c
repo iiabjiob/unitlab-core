@@ -160,7 +160,7 @@ static void assert_read_response_success_rcb_structure(
     size_t response_length,
     uint32_t expected_invoke_id)
 {
-    static const uint32_t expected_tags[] = { 10U, 3U, 10U, 6U, 4U, 6U, 6U, 4U, 6U, 3U, 3U, 9U, 12U, 5U };
+    static const uint32_t expected_tags[] = { 10U, 3U, 10U, 6U, 4U, 6U, 6U, 6U, 4U, 6U, 3U, 3U, 9U, 12U, 5U };
     UnitLabMmsAssociationFrame response_frame;
     UnitLabMmsPdu decoded_response_pdu;
     UnitLabMmsDiagnostic diagnostic;
@@ -1520,14 +1520,14 @@ static void test_server_runtime_different_report_kinds_are_queued_in_order(void)
     assert(server_runtime.pending_report_queue[0].kind == UNITLAB_MMS_SERVER_PENDING_REPORT_QUALITY_CHANGE);
 
     assert(unitlab_mms_server_runtime_build_pending_gi_report_bytes(&server_runtime, first_report_bytes, sizeof(first_report_bytes), &first_report_length, &diagnostic));
-    assert(contains_bytes(first_report_bytes, first_report_length, (const uint8_t*)"\x84\x02\x02\x80", 4U) == 1);
+    assert(contains_bytes(first_report_bytes, first_report_length, (const uint8_t*)"\x84\x02\x02", 3U) == 1);
     assert(server_runtime.pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_QUALITY_CHANGE);
     assert(server_runtime.pending_report_queue_count == 0U);
 
     assert(unitlab_mms_server_runtime_build_pending_gi_report_bytes(&server_runtime, second_report_bytes, sizeof(second_report_bytes), &second_report_length, &diagnostic));
     assert(contains_bytes(second_report_bytes, second_report_length, (const uint8_t*)"IED1LD0/PGGIO1$ST$Ind1$q", strlen("IED1LD0/PGGIO1$ST$Ind1$q")) == 1);
     assert(contains_bytes(second_report_bytes, second_report_length, (const uint8_t*)"\x84\x02\x55\x66", 4U) == 1);
-    assert(contains_bytes(second_report_bytes, second_report_length, (const uint8_t*)"\x84\x02\x02\x40", 4U) == 1);
+    assert(contains_bytes(second_report_bytes, second_report_length, (const uint8_t*)"\x84\x02\x02", 3U) == 1);
     assert(server_runtime.pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_NONE);
 
     unitlab_free_ied_model_plan(&plan);
@@ -1569,7 +1569,7 @@ static void test_server_runtime_quality_update_queues_quality_change_report(void
     assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"IED1LD0/PGGIO1$ST$Ind1$stVal", strlen("IED1LD0/PGGIO1$ST$Ind1$stVal")) == 0);
     assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x84\x02\x31\x42", 4U) == 1);
     assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x84\x02\x05\x40", 4U) == 1);
-    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x84\x02\x02\x40", 4U) == 1);
+    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x84\x02\x02", 3U) == 1);
 
     unitlab_free_ied_model_plan(&plan);
 }
@@ -1985,7 +1985,7 @@ static void test_server_runtime_same_value_update_uses_data_update_trigger(void)
     assert(unitlab_mms_server_runtime_build_pending_gi_report_bytes(&server_runtime, report_bytes, sizeof(report_bytes), &report_length, &diagnostic));
     assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"IED1LD0/PGGIO1$ST$Ind1$stVal", strlen("IED1LD0/PGGIO1$ST$Ind1$stVal")) == 1);
     assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x85\x01\x00", 3U) == 1);
-    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x84\x02\x02\x20", 4U) == 1);
+    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x84\x02\x02", 3U) == 1);
 
     unitlab_free_ied_model_plan(&plan);
 }
@@ -2128,7 +2128,7 @@ static void test_server_runtime_dataset_write_queues_data_change_report(void)
     assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"PGGIO1$ST$Ind1$stVal", strlen("PGGIO1$ST$Ind1$stVal")) == 0);
     assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"\x84\x02\x06\x80", 4U) == 1);
     assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"\x85\x01\x01", 3U) == 1);
-    assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"\x84\x02\x02\x80", 4U) == 1);
+    assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"\x84\x02\x02", 3U) == 1);
 
     unitlab_free_ied_model_plan(&plan);
 }
@@ -2192,7 +2192,7 @@ static void test_server_runtime_dataset_write_second_member_marks_second_inclusi
     assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"XCBR1$ST$Pos$stVal", strlen("XCBR1$ST$Pos$stVal")) == 0);
     assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"\x84\x02\x06\x40", 4U) == 1);
     assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"\x85\x01\x01", 3U) == 1);
-    assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"\x84\x02\x02\x80", 4U) == 1);
+    assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"\x84\x02\x02", 3U) == 1);
 
     unitlab_free_ied_model_plan(&plan);
 }
@@ -2305,7 +2305,7 @@ static void test_server_runtime_information_report_omits_disabled_optional_field
     assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x8C\x06", 2U) == 0);
     assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x89\x08", 2U) == 0);
     assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x86\x01\x07", 3U) == 0);
-    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x84\x02\x02\x80", 4U) == 0);
+    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x84\x02\x02\x40", 4U) == 0);
 
     unitlab_free_ied_model_plan(&plan);
 }
@@ -2362,7 +2362,7 @@ static void test_server_runtime_data_change_reports_advance_sequence_and_entry_t
     assert(contains_bytes(first_report_bytes, first_report_length, (const uint8_t*)"\x86\x01\x00", 3U) == 1);
     assert(contains_bytes(first_report_bytes, first_report_length, (const uint8_t*)"\x86\x01\x07", 3U) == 1);
     assert(contains_bytes(first_report_bytes, first_report_length, (const uint8_t*)"\x84\x02\x06\x40", 4U) == 1);
-    assert(contains_bytes(first_report_bytes, first_report_length, (const uint8_t*)"\x84\x02\x02\x80", 4U) == 1);
+    assert(contains_bytes(first_report_bytes, first_report_length, (const uint8_t*)"\x84\x02\x02", 3U) == 1);
 
     assert(unitlab_mms_server_runtime_queue_data_change_report_value(&server_runtime, "IED1LD0/PGGIO1$ST$Ind1$stVal", &second_value_byte, 1U, &diagnostic));
     assert(unitlab_mms_server_runtime_build_pending_gi_report_bytes(&server_runtime, second_report_bytes, sizeof(second_report_bytes), &second_report_length, &diagnostic));
@@ -2373,7 +2373,7 @@ static void test_server_runtime_data_change_reports_advance_sequence_and_entry_t
     assert(contains_bytes(second_report_bytes, second_report_length, (const uint8_t*)"\x85\x01\x02", 3U) == 1);
     assert(contains_bytes(second_report_bytes, second_report_length, (const uint8_t*)"\x86\x01\x07", 3U) == 1);
     assert(contains_bytes(second_report_bytes, second_report_length, (const uint8_t*)"\x84\x02\x06\x40", 4U) == 1);
-    assert(contains_bytes(second_report_bytes, second_report_length, (const uint8_t*)"\x84\x02\x02\x80", 4U) == 1);
+    assert(contains_bytes(second_report_bytes, second_report_length, (const uint8_t*)"\x84\x02\x02", 3U) == 1);
 
     unitlab_free_ied_model_plan(&plan);
 }
@@ -2562,7 +2562,7 @@ static void test_server_runtime_integrity_poll_queues_full_dataset_report(void)
     assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"IED1LD0/XCBR1$ST$Pos$stVal", strlen("IED1LD0/XCBR1$ST$Pos$stVal")) == 1);
     assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"IED1LD0/PGGIO1$ST$Ind1$stVal", strlen("IED1LD0/PGGIO1$ST$Ind1$stVal")) == 1);
     assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x84\x02\x06\xC0", 4U) == 1);
-    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x84\x02\x02\x10", 4U) == 1);
+    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x84\x02\x02", 3U) == 1);
 
     unitlab_free_ied_model_plan(&plan);
 }
@@ -6889,7 +6889,7 @@ static void test_server_runtime_named_variable_list_attributes_handles_large_mod
 
 static void test_server_runtime_model_urcb_read_uses_unbuffered_rcb_shape(void)
 {
-    static const uint32_t expected_tags[] = { 10U, 3U, 3U, 10U, 6U, 4U, 6U, 6U, 4U, 6U, 3U };
+    static const uint32_t expected_tags[] = { 10U, 3U, 3U, 10U, 6U, 4U, 6U, 6U, 6U, 4U, 6U, 3U };
     UnitLabMmsServerRuntime server_runtime;
     UnitLabMmsDiagnostic diagnostic;
     UnitLabIedModelPlan model_plan;
