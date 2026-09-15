@@ -16,7 +16,17 @@ logger = logging.getLogger("unitlab.core_diag_agent.redis")
 class RedisProtocol:
     def __init__(self, config: AgentConfig) -> None:
         self.config = config
-        self.redis = Redis.from_url(config.redis_url, decode_responses=True)
+        # XREADGROUP blocks for command_block_ms. Keep the socket timeout a
+        # little longer so a normal empty read is not mistaken for a Redis
+        # outage, while still recovering from a wedged connection promptly.
+        self.redis = Redis.from_url(
+            config.redis_url,
+            decode_responses=True,
+            socket_connect_timeout=3,
+            socket_timeout=max(10, (config.command_block_ms // 1000) + 5),
+            retry_on_timeout=True,
+            health_check_interval=30,
+        )
 
     async def close(self) -> None:
         await self.redis.aclose()
@@ -85,4 +95,3 @@ class RedisProtocol:
 
     async def ack(self, entry_id: str) -> None:
         await self.redis.xack(self.config.redis_command_stream, self.config.redis_consumer_group, entry_id)
-

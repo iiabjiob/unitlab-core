@@ -60,7 +60,7 @@ class CoreDiagAgent:
                 raise
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Status loop failed: %s", exc)
-                await self._publish_error("status_loop_error", str(exc))
+                await self._publish_error_safely("status_loop_error", str(exc))
             await asyncio.sleep(self.config.status_publish_interval_sec)
 
     async def _command_loop(self) -> None:
@@ -73,7 +73,7 @@ class CoreDiagAgent:
                 raise
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Command loop failed: %s", exc)
-                await self._publish_error("command_loop_error", str(exc))
+                await self._publish_error_safely("command_loop_error", str(exc))
                 await asyncio.sleep(1)
 
     async def _handle_command(self, cmd: CommandEnvelope) -> None:
@@ -121,10 +121,18 @@ class CoreDiagAgent:
         await self.redis.publish_event("state", snapshot)
 
     async def _publish_error(self, event_type: str, error: str) -> None:
-        self._snapshot.mode = "error"
+        # A Redis transport interruption means diagnostics are temporarily
+        # unavailable; it does not prove that the host itself is unhealthy.
+        self._snapshot.mode = "degraded"
         self._snapshot.last_error = error
         await self._publish_snapshot(last_event=event_type)
         await self.redis.publish_event(event_type, {"error": error})
+
+    async def _publish_error_safely(self, event_type: str, error: str) -> None:
+        try:
+            await self._publish_error(event_type, error)
+        except Exception as publish_exc:  # noqa: BLE001
+            logger.warning("Could not publish %s after Redis failure: %s", event_type, publish_exc)
 
     async def _set_request_in_flight(self, cmd: CommandEnvelope) -> None:
         self._snapshot.request_in_flight = {"request_id": cmd.request_id, "entry_id": cmd.entry_id, "action": cmd.action}
@@ -133,4 +141,3 @@ class CoreDiagAgent:
     async def _clear_request_in_flight(self) -> None:
         self._snapshot.request_in_flight = None
         await self._publish_snapshot(last_event="command_finished")
-
