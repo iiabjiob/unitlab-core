@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -192,7 +194,11 @@ async def test_worker_respects_earliest_execution_at_ms(monkeypatch: pytest.Monk
     fields = {"data": json.dumps(request.to_payload())}
     sleeps: list[float] = []
     times = iter([1.0, 2.0, 2.0])
-    monkeypatch.setattr(worker.time, "time", lambda: next(times))
+    monkeypatch.setattr(
+        worker,
+        "time",
+        SimpleNamespace(time=lambda: next(times), monotonic=time.monotonic),
+    )
 
     async def _sleep(delay: float) -> None:
         sleeps.append(delay)
