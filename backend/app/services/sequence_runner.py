@@ -66,6 +66,7 @@ from uuid import uuid4
 logger = get_logger("sequence.runner")
 
 SEQUENCE_READBACK_TIMEOUT_MS = 2000
+SEQUENCE_HARDWARE_STEP_TIMEOUT_MS = 7000
 
 
 async def _wait_for_sequence_readback(
@@ -1474,6 +1475,41 @@ class SequenceRunner:
                         for lease in locals().get("leases", []) or []:
                             await hardware_admission.release(lease)
 
+                async def bounded_admit_sequence_command(
+                    ctx: StepContext,
+                    action: str,
+                    channel_id: int | list[int] | None,
+                    device_id: int | None,
+                    unit_id: str,
+                    command_payload: dict[str, Any],
+                    sender,
+                ) -> Any:
+                    try:
+                        return await asyncio.wait_for(
+                            admit_sequence_command(
+                                ctx,
+                                action,
+                                channel_id,
+                                device_id,
+                                unit_id,
+                                command_payload,
+                                sender,
+                            ),
+                            timeout=SEQUENCE_HARDWARE_STEP_TIMEOUT_MS / 1000,
+                        )
+                    except asyncio.TimeoutError as exc:
+                        normalized_unit_id = str(unit_id).strip()
+                        unavailable_units.add(normalized_unit_id)
+                        await reconcile_unfinished_hardware_command_intents(
+                            session,
+                            job_id=str(run_id),
+                        )
+                        await session.commit()
+                        raise SequenceDeviceUnavailableError(
+                            f"Hardware step timeout after {SEQUENCE_HARDWARE_STEP_TIMEOUT_MS}ms",
+                            unit_id=normalized_unit_id,
+                        ) from exc
+
                 for top_step in root_sequence.steps:
                     await self._probe_cancellation_from_db(run_id, cancel_event)
                     if cancel_event.is_set():
@@ -1541,7 +1577,7 @@ class SequenceRunner:
                             active_step=top_step,
                             execution_path=(root_sequence.name,),
                             resolved_sequences=resolved_sequences,
-                            command_admission=admit_sequence_command,
+                            command_admission=bounded_admit_sequence_command,
                         )
                     except SequenceCancellationRequested:
                         cancel_event.set()
