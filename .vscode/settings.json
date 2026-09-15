@@ -1,0 +1,13 @@
+{
+    "python.envFile": "${workspaceFolder}/.env",
+    "python.analysis.extraPaths": [
+        "${workspaceFolder}/backend",
+        "${workspaceFolder}/backend/app",
+        "${workspaceFolder}/host-services/rpi-net-agent/src",
+        "${workspaceFolder}/host-services/rpi-ntp-agent/src",
+        "${workspaceFolder}/host-services/rpi-core-diag-agent/src",
+        "${workspaceFolder}/host-services/rpi-provision-agent/src"
+    ],
+    "python.defaultInterpreterPath": "/workspace/backend/.venv/bin/python",
+    "cmake.sourceDirectory": "/workspace/simulator/iec61850_ied"
+}

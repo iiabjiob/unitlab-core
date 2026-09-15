@@ -55,5 +55,5 @@ async def _assert_publish_error_is_safe() -> None:
     agent.redis.publish_event = fail_publish  # type: ignore[method-assign]
     await agent._publish_error_safely("command_loop_error", "redis timeout")
 
-    assert agent._snapshot.mode == "degraded"
+    assert agent._snapshot.mode == "unknown"
     assert agent._snapshot.last_error == "redis timeout"

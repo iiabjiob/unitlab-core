@@ -122,8 +122,8 @@ class CoreDiagAgent:
 
     async def _publish_error(self, event_type: str, error: str) -> None:
         # A Redis transport interruption means diagnostics are temporarily
-        # unavailable; it does not prove that the host itself is unhealthy.
-        self._snapshot.mode = "degraded"
+        # unavailable; it does not prove that the host itself is degraded.
+        self._snapshot.mode = "unknown"
         self._snapshot.last_error = error
         await self._publish_snapshot(last_event=event_type)
         await self.redis.publish_event(event_type, {"error": error})
