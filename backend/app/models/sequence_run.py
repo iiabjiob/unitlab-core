@@ -38,6 +38,7 @@ class SequenceRunStepStatus(str, Enum):
     RUNNING = "running"
     COMPLETED = "completed"
     ERROR = "error"
+    BLOCKED = "blocked"
     CANCELLED = "cancelled"
 
 

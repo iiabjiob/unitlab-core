@@ -1260,6 +1260,12 @@ class SequenceRunner:
                             timeout_ms=3000,
                         )
                         if states.get(command_id) != "acknowledged":
+                            await mark_hardware_command_intent_delivery_failure(
+                                session,
+                                command_id=command_id,
+                                status=str(states.get(command_id, "unknown")),
+                            )
+                            await session.commit()
                             unavailable_units.add(normalized_unit_id)
                             raise SequenceDeviceUnavailableError(
                                 f"Hardware command {states.get(command_id, 'unknown')}",
