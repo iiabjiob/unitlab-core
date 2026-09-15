@@ -125,6 +125,7 @@ fi
 systemctl enable --now chrony
 
 echo "[unitlab] Step 5/10: ensure docker + compose plugin"
+DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates network-manager openssl rsync
 if ! command -v docker >/dev/null 2>&1; then
   curl -fsSL https://get.docker.com | sh
 fi

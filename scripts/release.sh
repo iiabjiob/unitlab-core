@@ -14,6 +14,7 @@ BUNDLE_OUT="${BUNDLE_OUT:-}"
 IMAGES_OUT="${IMAGES_OUT:-$RELEASE_DIR/release-images-${RELEASE_VERSION}.tar}"
 COMPRESS_EXPORT="${COMPRESS_EXPORT:-0}"
 SKIP_TESTS="${SKIP_TESTS:-0}"
+TARGET="${TARGET:-}"
 
 usage() {
   cat <<'EOF'
@@ -33,6 +34,7 @@ Options:
   --release-dir <path>           Directory for generated artifacts (default: ./dist-release)
   --bundle-out <path>            Exact output path for runtime bundle directory
   --images-out <path>            Exact output path for exported image archive
+  --target <rpi5>                Create a portable RPi5 release archive
   -h, --help                     Show this help
 
 Examples:
@@ -111,6 +113,11 @@ while [[ $# -gt 0 ]]; do
       IMAGES_OUT="$2"
       shift 2
       ;;
+    --target)
+      [[ $# -ge 2 ]] || { echo "[unitlab] ERROR: --target requires a value" >&2; usage; exit 1; }
+      TARGET="$2"
+      shift 2
+      ;;
     -h|--help)
       usage
       exit 0
@@ -154,6 +161,16 @@ fi
 
 if [[ "$SKIP_TESTS" != "0" && "$SKIP_TESTS" != "1" ]]; then
   echo "[unitlab] ERROR: --skip-tests must be 0 or 1" >&2
+  exit 1
+fi
+
+if [[ -n "$TARGET" && "$TARGET" != "rpi5" ]]; then
+  echo "[unitlab] ERROR: unsupported target '$TARGET' (expected rpi5)" >&2
+  exit 1
+fi
+
+if [[ "$TARGET" == "rpi5" && "$OFFLINE_EXPORT" != "1" ]]; then
+  echo "[unitlab] ERROR: --target rpi5 requires --offline-export 1" >&2
   exit 1
 fi
 
@@ -243,6 +260,13 @@ docker compose version >/dev/null 2>&1 || {
   exit 1
 }
 
+if [[ "$TARGET" == "rpi5" ]]; then
+  [[ -x "$ROOT_DIR/scripts/package-rpi5-release.sh" ]] || {
+    echo "[unitlab] ERROR: missing or non-executable: $ROOT_DIR/scripts/package-rpi5-release.sh" >&2
+    exit 1
+  }
+fi
+
 [[ -x "$ROOT_DIR/scripts/deploy-rpi.sh" ]] || {
   echo "[unitlab] ERROR: missing or non-executable: $ROOT_DIR/scripts/deploy-rpi.sh" >&2
   exit 1
@@ -272,6 +296,7 @@ echo "[unitlab] PROFILE=$PROFILE"
 echo "[unitlab] OFFLINE_EXPORT=$OFFLINE_EXPORT"
 echo "[unitlab] SKIP_TESTS=$SKIP_TESTS"
 TOTAL_STEPS=5
+if [[ "$TARGET" == "rpi5" ]]; then TOTAL_STEPS=6; fi
 
 if [[ "$SKIP_TESTS" == "1" ]]; then
   echo "[unitlab] Step 1/$TOTAL_STEPS: preflight tests skipped"
@@ -297,6 +322,15 @@ if [[ "$PUSH_IMAGE" == "1" ]]; then
 fi
 docker image inspect "$BACKEND_IMAGE_TAG" --format='[unitlab] backend={{.Id}}' 2>/dev/null || true
 docker image inspect "$WEB_IMAGE_TAG" --format='[unitlab] web={{.Id}}' 2>/dev/null || true
+if [[ "$TARGET" == "rpi5" ]]; then
+  for image in "$BACKEND_IMAGE_TAG" "$WEB_IMAGE_TAG"; do
+    image_platform="$(docker image inspect "$image" --format '{{.Os}}/{{.Architecture}}')"
+    [[ "$image_platform" == "linux/arm64" ]] || {
+      echo "[unitlab] ERROR: $image was built as $image_platform, expected linux/arm64" >&2
+      exit 1
+    }
+  done
+fi
 
 if [[ "$OFFLINE_EXPORT" == "1" ]]; then
   echo "[unitlab] Step 4/$TOTAL_STEPS: export offline image archive"
@@ -312,11 +346,20 @@ UNITLAB_BACKEND_IMAGE="$BACKEND_IMAGE_TAG" \
 UNITLAB_WEB_IMAGE="$WEB_IMAGE_TAG" \
 "$ROOT_DIR/scripts/create-rpi-runtime-bundle.sh" --profile "$PROFILE" "$BUNDLE_OUT"
 
+if [[ "$TARGET" == "rpi5" ]]; then
+  RPI5_ARCHIVE_OUT="$RELEASE_DIR/unitlab-core-rpi5-${RELEASE_VERSION}.tar.gz"
+  echo "[unitlab] Step 6/$TOTAL_STEPS: package portable RPi5 release"
+  "$ROOT_DIR/scripts/package-rpi5-release.sh" "$BUNDLE_OUT" "$EXPORT_IMAGES_OUT" "$RPI5_ARCHIVE_OUT"
+fi
+
 echo
 echo "[unitlab] Release pipeline complete"
 echo "[unitlab] Runtime bundle: $BUNDLE_OUT"
 if [[ "$OFFLINE_EXPORT" == "1" ]]; then
   echo "[unitlab] Image archive: $EXPORT_IMAGES_OUT"
+fi
+if [[ "$TARGET" == "rpi5" ]]; then
+  echo "[unitlab] RPi5 release archive: $RPI5_ARCHIVE_OUT"
 fi
 echo "[unitlab] Next on RPi5: run deploy script (verify/cleanup live there):"
 if [[ "$OFFLINE_EXPORT" == "1" ]]; then

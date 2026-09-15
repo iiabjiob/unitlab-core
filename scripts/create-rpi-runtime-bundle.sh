@@ -192,8 +192,12 @@ rsync -a \
 rsync -a \
   --exclude '.venv' \
   --exclude '__pycache__' \
+  --exclude 'build/' \
+  --exclude '.pytest_cache/' \
+  --exclude '.mypy_cache/' \
   --exclude '*.log' \
   --exclude '.DS_Store' \
+  --exclude '*.egg-info' \
   "$ROOT_DIR/host-services/" "$OUT_DIR/host-services/"
 
 # Host-agent wheelhouse (offline install source for installer)
@@ -211,12 +215,18 @@ copy "$ROOT_DIR/scripts/verify-rpi-runtime.sh" "$OUT_DIR/scripts/"
 copy "$ROOT_DIR/scripts/cleanup-rpi-releases.sh" "$OUT_DIR/scripts/"
 copy "$ROOT_DIR/scripts/install-host-agents.sh" "$OUT_DIR/scripts/"
 copy "$ROOT_DIR/scripts/verify-host-agents.sh" "$OUT_DIR/scripts/"
+copy "$ROOT_DIR/scripts/provision-rpi.sh" "$OUT_DIR/scripts/"
+copy "$ROOT_DIR/scripts/reset-database.sh" "$OUT_DIR/scripts/"
+copy "$ROOT_DIR/scripts/unitlab" "$OUT_DIR/scripts/"
 chmod +x \
   "$OUT_DIR/scripts/deploy-rpi.sh" \
   "$OUT_DIR/scripts/verify-rpi-runtime.sh" \
   "$OUT_DIR/scripts/cleanup-rpi-releases.sh" \
   "$OUT_DIR/scripts/install-host-agents.sh" \
-  "$OUT_DIR/scripts/verify-host-agents.sh"
+  "$OUT_DIR/scripts/verify-host-agents.sh" \
+  "$OUT_DIR/scripts/provision-rpi.sh" \
+  "$OUT_DIR/scripts/reset-database.sh" \
+  "$OUT_DIR/scripts/unitlab"
 
 # Optional service/debug extras
 if [[ "$PROFILE" == "service" ]]; then

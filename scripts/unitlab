@@ -1,0 +1,287 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+INSTALL_ROOT="${UNITLAB_ROOT:-/opt/unitlab}"
+RELEASES_DIR="$INSTALL_ROOT/releases"
+SHARED_DIR="$INSTALL_ROOT/shared"
+BACKUPS_DIR="$INSTALL_ROOT/backups"
+CURRENT_LINK="$INSTALL_ROOT/current"
+COMPOSE_PROJECT_NAME="unitlab"
+DRY_RUN=0
+COMMAND=""
+ARG=""
+LOG_DIR="/var/log/unitlab"
+
+usage() {
+  cat <<'EOF'
+UnitLab Core Raspberry Pi runtime CLI
+
+Usage:
+  unitlab install [--dry-run] <release-bundle.tar.gz>
+  unitlab update [--dry-run] <release-bundle.tar.gz>
+  unitlab status
+  unitlab doctor
+  unitlab logs [service]
+  unitlab version
+
+The install/update bundle must contain manifest.json, checksums.sha256,
+runtime/, and images/images.tar.
+EOF
+}
+
+log() { echo "[unitlab] $*"; }
+err() { echo "[unitlab] ERROR: $*" >&2; }
+
+need_root() {
+  (( EUID == 0 )) || { err "$COMMAND requires root; use sudo"; exit 1; }
+}
+
+run() {
+  if (( DRY_RUN == 1 )); then
+    log "DRY-RUN: $*"
+  else
+    "$@"
+  fi
+}
+
+check_host() {
+  local arch os_id os_name
+  arch="$(uname -m)"
+  [[ "$arch" == "aarch64" ]] || { err "unsupported architecture: $arch (expected aarch64)"; return 1; }
+  [[ -r /etc/os-release ]] || { err "/etc/os-release is missing"; return 1; }
+  os_id="$(. /etc/os-release; echo "${ID:-}")"
+  os_name="$(. /etc/os-release; echo "${PRETTY_NAME:-$os_id}")"
+  [[ "$os_id" == "raspios" || "$os_id" == "debian" ]] || { err "unsupported OS: $os_name"; return 1; }
+
+  local missing=()
+  for command_name in awk curl docker gzip install mktemp python3 rsync sha256sum tar; do
+    command -v "$command_name" >/dev/null 2>&1 || missing+=("$command_name")
+  done
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    err "missing required commands: ${missing[*]}"
+    return 1
+  fi
+  docker compose version >/dev/null 2>&1 || { err "Docker Compose plugin is unavailable"; return 1; }
+  command -v nmcli >/dev/null 2>&1 || { err "NetworkManager/nmcli is unavailable"; return 1; }
+
+  local available_kb
+  available_kb="$(df -Pk "$INSTALL_ROOT" 2>/dev/null | awk 'NR==2 {print $4}')"
+  [[ "$available_kb" =~ ^[0-9]+$ ]] || { err "cannot determine free disk space"; return 1; }
+  (( available_kb >= 1048576 )) || { err "less than 1 GiB free on $INSTALL_ROOT"; return 1; }
+  log "host checks: $os_name, $arch, Docker/Compose/NetworkManager ready"
+}
+
+extract_bundle() {
+  local source="$1" destination="$2"
+  [[ -f "$source" ]] || { err "release bundle not found: $source"; return 1; }
+  case "$source" in
+    *.tar.gz|*.tgz) tar -xzf "$source" -C "$destination" ;;
+    *) err "release bundle must be .tar.gz or .tgz"; return 1 ;;
+  esac
+  [[ -f "$destination/manifest.json" ]] || { err "bundle is missing manifest.json"; return 1; }
+  [[ -f "$destination/checksums.sha256" ]] || { err "bundle is missing checksums.sha256"; return 1; }
+  [[ -d "$destination/runtime" ]] || { err "bundle is missing runtime/"; return 1; }
+  [[ -f "$destination/images/images.tar" || -f "$destination/images/images.tar.gz" ]] || { err "bundle is missing images/images.tar[.gz]"; return 1; }
+}
+
+validate_bundle() {
+  local root="$1" manifest_platform version image_count image
+  manifest_platform="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("platform", ""))' "$root/manifest.json")"
+  [[ "$manifest_platform" == "linux/arm64" ]] || { err "bundle platform is '$manifest_platform', expected linux/arm64"; return 1; }
+  version="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("version", ""))' "$root/manifest.json")"
+  [[ "$version" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || { err "invalid release version in manifest"; return 1; }
+  image_count="$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1])).get("images", [])))' "$root/manifest.json")"
+  (( image_count >= 2 )) || { err "manifest must list backend and web images"; return 1; }
+  (cd "$root" && sha256sum -c checksums.sha256 >/dev/null) || { err "bundle checksum validation failed"; return 1; }
+  for required in runtime/docker-compose.prod.yml runtime/scripts/deploy-rpi.sh runtime/scripts/install-host-agents.sh runtime/scripts/verify-host-agents.sh runtime/scripts/verify-rpi-runtime.sh runtime/scripts/provision-rpi.sh runtime/scripts/unitlab; do
+    [[ -f "$root/$required" ]] || { err "bundle is missing $required"; return 1; }
+  done
+  for required in runtime/host-services runtime/host-agent-wheels; do
+    [[ -d "$root/$required" ]] || { err "bundle is missing $required"; return 1; }
+  done
+  RELEASE_VERSION="$version"
+  log "bundle checks: version=$version platform=$manifest_platform checksums=OK"
+}
+
+prepare_config() {
+  local runtime_root="$1" password backend_password db_password
+  run mkdir -p "$RELEASES_DIR" "$SHARED_DIR" "$BACKUPS_DIR"
+  if (( DRY_RUN == 1 )); then
+    log "DRY-RUN: preserve or create persistent configuration in $SHARED_DIR"
+    return 0
+  fi
+  if [[ ! -f "$SHARED_DIR/backend.env" ]]; then
+    install -m 0600 "$runtime_root/shared/backend.env.example" "$SHARED_DIR/backend.env"
+  fi
+  if [[ ! -f "$SHARED_DIR/db.env" ]]; then
+    install -m 0600 "$runtime_root/shared/db.env.example" "$SHARED_DIR/db.env"
+  fi
+  if [[ ! -f "$SHARED_DIR/runtime.env" ]]; then
+    cat > "$SHARED_DIR/runtime.env" <<'EOF'
+COMPOSE_PROJECT_NAME=unitlab
+WEB_URL=http://10.42.0.1
+EOF
+    chmod 0600 "$SHARED_DIR/runtime.env"
+  fi
+  backend_password="$(sed -n 's/^POSTGRES_PASSWORD=//p' "$SHARED_DIR/backend.env" | head -n1)"
+  db_password="$(sed -n 's/^POSTGRES_PASSWORD=//p' "$SHARED_DIR/db.env" | head -n1)"
+  if [[ -z "$backend_password" || -z "$db_password" ]]; then
+    password="$(openssl rand -hex 24 2>/dev/null || od -An -N24 -tx1 /dev/urandom | tr -d ' \n')"
+    if grep -q '^POSTGRES_PASSWORD=' "$SHARED_DIR/backend.env"; then sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$password/" "$SHARED_DIR/backend.env"; else printf '\nPOSTGRES_PASSWORD=%s\n' "$password" >> "$SHARED_DIR/backend.env"; fi
+    if grep -q '^POSTGRES_PASSWORD=' "$SHARED_DIR/db.env"; then sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$password/" "$SHARED_DIR/db.env"; else printf '\nPOSTGRES_PASSWORD=%s\n' "$password" >> "$SHARED_DIR/db.env"; fi
+  elif [[ "$backend_password" != "$db_password" ]]; then
+    err "POSTGRES_PASSWORD differs between backend.env and db.env"
+    return 1
+  fi
+  chmod 0600 "$SHARED_DIR/backend.env" "$SHARED_DIR/db.env" "$SHARED_DIR/runtime.env"
+}
+
+install_release() {
+  local action="$1" bundle="$2" work_dir runtime_root version target images_archive current_target
+  (( DRY_RUN == 1 )) || need_root
+  if (( DRY_RUN == 0 )); then
+    mkdir -p "$LOG_DIR"
+    chmod 0750 "$LOG_DIR"
+  fi
+  work_dir="$(mktemp -d "${TMPDIR:-/tmp}/unitlab-install.XXXXXX")"
+  trap 'rm -rf "${work_dir:-}"' EXIT
+  extract_bundle "$bundle" "$work_dir"
+  validate_bundle "$work_dir"
+  version="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$work_dir/manifest.json")"
+  runtime_root="$work_dir/runtime"
+  images_archive="$work_dir/images/images.tar"
+  [[ -f "$images_archive" ]] || images_archive="$work_dir/images/images.tar.gz"
+
+  check_host || {
+    if (( DRY_RUN == 1 )); then return 1; fi
+    if [[ -x "$runtime_root/scripts/provision-rpi.sh" ]]; then
+      log "host prerequisites incomplete; running bundled provision-rpi.sh"
+      "$runtime_root/scripts/provision-rpi.sh"
+      check_host
+    else
+      err "host prerequisites incomplete and bundled provision-rpi.sh is unavailable"
+      return 1
+    fi
+  }
+  prepare_config "$runtime_root"
+
+  target="$RELEASES_DIR/$version"
+  current_target=""
+  [[ -L "$CURRENT_LINK" ]] && current_target="$(readlink -f "$CURRENT_LINK")"
+  if [[ "$action" == "install" && -n "$current_target" ]]; then
+    log "existing installation found; continuing as update"
+  fi
+  [[ "$current_target" != "$target" ]] || { err "release $version is already active"; return 1; }
+  if (( DRY_RUN == 1 )); then
+    log "DRY-RUN: install release into $target"
+    log "DRY-RUN: load images, install host agents, run migrations, start Compose, verify"
+    return 0
+  fi
+
+  rm -rf "$target"
+  mkdir -p "$target"
+  rsync -a --delete "$runtime_root/" "$target/"
+  cp "$images_archive" "$target/.release-images.tar"
+  chmod -R go-rwx "$target"
+
+  log_file="$LOG_DIR/${version}.log"
+  {
+    log "loading offline images"
+    docker load -i "$target/.release-images.tar"
+    while IFS= read -r image; do
+      [[ -n "$image" ]] || continue
+      architecture="$(docker image inspect "$image" --format '{{.Os}}/{{.Architecture}}')"
+      [[ "$architecture" == "linux/arm64" ]] || { err "image $image has architecture $architecture, expected linux/arm64"; return 1; }
+    done < <(python3 -c 'import json,sys; print("\n".join(json.load(open(sys.argv[1])).get("images", [])))' "$work_dir/manifest.json")
+    log "deploying runtime release"
+    "$target/scripts/deploy-rpi.sh" \
+      --bundle-dir "$target" \
+      --images-archive "$target/.release-images${images_archive##*.tar}" \
+      --releases-dir "$RELEASES_DIR" \
+      --current-link "$CURRENT_LINK" \
+      --compose-project-name "$COMPOSE_PROJECT_NAME"
+    log "installing host agents"
+    BUNDLE_ROOT="$target" HOST_AGENTS_DIR="$target/host-services" WHEELS_DIR="$target/host-agent-wheels" \
+      "$target/scripts/install-host-agents.sh" --skip-apt --skip-pip-upgrade
+    install -m 0755 "$target/scripts/unitlab" /usr/local/bin/unitlab
+    log "release $version is healthy"
+  } 2>&1 | tee "$log_file"
+  chmod 0640 "$log_file"
+  rm -f "$target/.release-images.tar"
+  log "web UI: http://10.42.0.1"
+  log "details: unitlab status; sudo unitlab doctor; unitlab logs"
+}
+
+compose_args() {
+  printf '%s\n' --project-name "$COMPOSE_PROJECT_NAME" --project-directory "$CURRENT_LINK" -f "$CURRENT_LINK/docker-compose.prod.yml"
+}
+
+status() {
+  [[ -L "$CURRENT_LINK" ]] || { err "UnitLab is not installed ($CURRENT_LINK is missing)"; return 1; }
+  local version="unknown"
+  [[ -f "$CURRENT_LINK/RELEASE_INFO" ]] && version="$(sed -n 's/^RELEASE_VERSION=//p' "$CURRENT_LINK/RELEASE_INFO" | head -n1)"
+  echo "UnitLab Core"
+  echo "Release: ${version:-unknown}"
+  echo "Web UI: http://10.42.0.1"
+  echo
+  docker compose $(compose_args) ps --format 'table {{.Name}}\t{{.State}}\t{{.Health}}'
+  echo
+  curl -fsS http://127.0.0.1/api/v1/health >/dev/null && echo "Backend: OK" || echo "Backend: unavailable"
+  for agent_unit in unitlab-rpi-net-agent unitlab-rpi-ntp-agent unitlab-rpi-core-diag-agent unitlab-rpi-provision-agent; do
+    systemctl is-active --quiet "$agent_unit" && echo "$agent_unit: active" || echo "$agent_unit: inactive"
+  done
+  printf 'AP/STA: '; nmcli -t -f GENERAL.STATE,GENERAL.CONNECTION device show 2>/dev/null | head -n1 || echo unavailable
+  printf 'NTP sync: '; timedatectl show -p NTPSynchronized --value 2>/dev/null || chronyc tracking 2>/dev/null | awk -F: '/^System time/ {gsub(/^ +| +$/, "", $2); print $2; exit}' || echo unavailable
+  printf 'Memory: '; free -h 2>/dev/null | awk '/^Mem:/ {print $3" / "$2" used"}' || echo unavailable
+  printf 'CPU temp: '; awk '{printf "%.1f°C\n", $1/1000}' /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo unavailable
+  df -h "$INSTALL_ROOT" | awk 'NR==2 {print "Disk: "$4" free ("$5" used)"}'
+}
+
+doctor() {
+  [[ -L "$CURRENT_LINK" ]] || { err "UnitLab is not installed"; return 1; }
+  check_host
+  "$CURRENT_LINK/scripts/verify-host-agents.sh"
+  "$CURRENT_LINK/scripts/verify-rpi-runtime.sh" --project-dir "$CURRENT_LINK" --compose-file "$CURRENT_LINK/docker-compose.prod.yml"
+}
+
+logs() {
+  [[ -L "$CURRENT_LINK" ]] || { err "UnitLab is not installed"; return 1; }
+  if [[ -z "$ARG" ]]; then
+    docker compose $(compose_args) logs --tail=100 --timestamps
+  elif [[ "$ARG" == unitlab-rpi-* || "$ARG" == *.service ]]; then
+    journalctl -u "${ARG%.service}" -n 100 --no-pager
+  else
+    docker compose $(compose_args) logs --tail=100 --timestamps "$ARG"
+  fi
+}
+
+parse() {
+  [[ $# -gt 0 ]] || { usage; exit 1; }
+  COMMAND="$1"; shift
+  case "$COMMAND" in
+    install|update)
+      if [[ "${1:-}" == "--dry-run" ]]; then DRY_RUN=1; shift; fi
+      ARG="${1:-}"
+      [[ -n "$ARG" ]] || { err "$COMMAND requires a release bundle"; exit 1; }
+      ;;
+    logs) ARG="${1:-}" ;;
+    status|doctor|version) ;;
+    -h|--help) usage; exit 0 ;;
+    *) err "unknown command: $COMMAND"; usage; exit 1 ;;
+  esac
+}
+
+parse "$@"
+case "$COMMAND" in
+  install|update) install_release "$COMMAND" "$ARG" ;;
+  status) status ;;
+  doctor) need_root; doctor ;;
+  logs) logs ;;
+  version)
+    if [[ -f "$CURRENT_LINK/RELEASE_INFO" ]]; then
+      sed -n 's/^RELEASE_VERSION=/UnitLab Core /p' "$CURRENT_LINK/RELEASE_INFO"
+    else
+      echo "UnitLab Core (not installed)"
+    fi
+    ;;
+esac
