@@ -134,7 +134,7 @@ EOF
   fi
   backend_password="$(sed -n 's/^POSTGRES_PASSWORD=//p' "$SHARED_DIR/backend.env" | head -n1)"
   db_password="$(sed -n 's/^POSTGRES_PASSWORD=//p' "$SHARED_DIR/db.env" | head -n1)"
-  if [[ -z "$backend_password" || -z "$db_password" ]]; then
+  if [[ -z "$backend_password" || -z "$db_password" || "$backend_password" == "unitlab_pg_password" || "$db_password" == "unitlab_pg_password" ]]; then
     password="$(openssl rand -hex 24 2>/dev/null || od -An -N24 -tx1 /dev/urandom | tr -d ' \n')"
     if grep -q '^POSTGRES_PASSWORD=' "$SHARED_DIR/backend.env"; then sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$password/" "$SHARED_DIR/backend.env"; else printf '\nPOSTGRES_PASSWORD=%s\n' "$password" >> "$SHARED_DIR/backend.env"; fi
     if grep -q '^POSTGRES_PASSWORD=' "$SHARED_DIR/db.env"; then sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$password/" "$SHARED_DIR/db.env"; else printf '\nPOSTGRES_PASSWORD=%s\n' "$password" >> "$SHARED_DIR/db.env"; fi
