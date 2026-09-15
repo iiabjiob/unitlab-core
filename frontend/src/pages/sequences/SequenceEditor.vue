@@ -199,8 +199,10 @@ const { isDesktop } = useViewport()
 .sequence-editor {
   display: flex;
   height: 100%;
+  min-height: 0;
   flex-direction: column;
   padding-inline-end: 1rem;
+  overflow: hidden;
 }
 
 .sequence-editor__workspace {
@@ -219,7 +221,13 @@ const { isDesktop } = useViewport()
 .sequence-editor__steps-panel,
 .sequence-editor__main-column {
   display: flex;
+  min-width: 0;
   flex-direction: column;
+}
+
+.sequence-editor__main-column {
+  min-height: 0;
+  flex: 1 1 auto;
 }
 
 .sequence-editor__steps-card {
@@ -231,6 +239,7 @@ const { isDesktop } = useViewport()
 
 .sequence-editor__log {
   margin-top: 1rem;
+  display: flex;
 }
 
 @media (min-width: 640px) {
@@ -283,6 +292,22 @@ const { isDesktop } = useViewport()
 
   .sequence-editor__main-column--split .sequence-editor__log {
     margin-top: 0;
+  }
+}
+
+@media (max-width: 1023px) {
+  .sequence-editor__workspace {
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  .sequence-editor__main-column {
+    flex: 0 0 auto;
+  }
+
+  .sequence-editor__log {
+    min-height: 12rem;
+    max-height: 40vh;
   }
 }
 
