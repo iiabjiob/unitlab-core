@@ -5,8 +5,6 @@ import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 
 const affinoDataGridChunkRules: Array<[chunkName: string, packagePath: string]> = [
-  ['vendor-affino-datagrid-gantt-stage', '/node_modules/@affino/datagrid-vue-app/dist/chunks/DataGridGanttStageEntry-'],
-  ['vendor-affino-datagrid-row-model', '/node_modules/@affino/datagrid-vue-app/dist/chunks/useDataGridAppRowModel-'],
   ['vendor-affino-datagrid-app', '/node_modules/@affino/datagrid-vue-app/'],
   ['vendor-affino-datagrid-vue', '/node_modules/@affino/datagrid-vue/'],
   ['vendor-affino-datagrid-core', '/node_modules/@affino/datagrid-core/'],
