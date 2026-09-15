@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.services.domain_errors import SequenceNotApplicableError
+from app.services.sequence_executor import SequenceCancellationRequested
 from app.services.sequence_runner import (
     SequenceRunner,
     _sequence_readback_targets,
@@ -111,3 +112,25 @@ def test_sequence_readback_requires_matching_fresh_packet() -> None:
             timeout_ms=100,
         )
     ) is True
+
+
+def test_sequence_readback_stops_immediately_when_cancelled() -> None:
+    class Redis:
+        async def get(self, key: str):
+            return "0"
+
+    cancel_event = asyncio.Event()
+    cancel_event.set()
+
+    with pytest.raises(SequenceCancellationRequested):
+        asyncio.run(
+            _wait_for_sequence_readback(
+                Redis(),
+                unit_id="DO-001",
+                targets=[(2, 1)],
+                analog=False,
+                packet_id=42,
+                timeout_ms=3000,
+                cancel_event=cancel_event,
+            )
+        )

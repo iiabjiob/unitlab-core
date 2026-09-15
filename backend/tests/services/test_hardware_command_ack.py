@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -134,6 +135,23 @@ async def test_wait_timeout_marks_command_for_recovery() -> None:
     timeout_update = db.execute.await_args.args[0]
     assert "execution_status" in str(timeout_update)
     assert "status" in str(timeout_update)
+
+
+@pytest.mark.anyio
+async def test_wait_for_command_acks_returns_immediately_when_cancelled() -> None:
+    db = AsyncMock()
+    cancel_event = asyncio.Event()
+    cancel_event.set()
+
+    states = await wait_for_hardware_command_acks(
+        db,
+        command_ids=["cmd-do"],
+        timeout_ms=3000,
+        cancel_event=cancel_event,
+    )
+
+    assert states == {"__cancelled__": "cancelled"}
+    db.execute.assert_not_awaited()
 
 
 @pytest.mark.anyio

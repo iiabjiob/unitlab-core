@@ -76,12 +76,15 @@ async def _wait_for_sequence_readback(
     analog: bool,
     packet_id: int,
     timeout_ms: int = SEQUENCE_READBACK_TIMEOUT_MS,
+    cancel_event: asyncio.Event | None = None,
 ) -> bool:
     """Require a state snapshot caused by this request before accepting a step."""
     if not targets:
         return False
     deadline = time.monotonic() + max(100, int(timeout_ms)) / 1000
     while True:
+        if cancel_event is not None and cancel_event.is_set():
+            raise SequenceCancellationRequested()
         try:
             fresh = int(await redis.get(f"device:{unit_id}:last_state_packet_id")) == int(packet_id)
         except (TypeError, ValueError):
@@ -114,7 +117,13 @@ async def _wait_for_sequence_readback(
                 return True
         if time.monotonic() >= deadline:
             return False
-        await asyncio.sleep(0.05)
+        if cancel_event is None:
+            await asyncio.sleep(0.05)
+        else:
+            try:
+                await asyncio.wait_for(cancel_event.wait(), timeout=0.05)
+            except asyncio.TimeoutError:
+                pass
 
 
 def _sequence_readback_targets(
@@ -521,6 +530,10 @@ class SequenceRunner:
         step_started_monotonic: Optional[float],
         fallback_index: int,
     ) -> int:
+        await reconcile_unfinished_hardware_command_intents(
+            session,
+            job_id=str(run_id),
+        )
         if current_step and step_started_monotonic is not None:
             await self._mark_step_status(
                 session,
@@ -1258,7 +1271,10 @@ class SequenceRunner:
                             session,
                             command_ids=[command_id],
                             timeout_ms=3000,
+                            cancel_event=cancel_event,
                         )
+                        if states.get("__cancelled__") == "cancelled":
+                            raise SequenceCancellationRequested()
                         if states.get(command_id) != "acknowledged":
                             await mark_hardware_command_intent_delivery_failure(
                                 session,
@@ -1289,6 +1305,7 @@ class SequenceRunner:
                             targets=targets,
                             analog=analog,
                             packet_id=readback_packet_id,
+                            cancel_event=cancel_event,
                         ):
                             await mark_hardware_command_intent_delivery_failure(
                                 session,
@@ -1315,6 +1332,7 @@ class SequenceRunner:
                                 targets=[(int(command_payload["channel_index"]), 0)],
                                 analog=False,
                                 packet_id=revert_packet_id,
+                                cancel_event=cancel_event,
                             ):
                                 await mark_hardware_command_intent_delivery_failure(
                                     session,

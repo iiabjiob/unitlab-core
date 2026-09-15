@@ -18,6 +18,7 @@ async def wait_for_hardware_command_acks(
     *,
     command_ids: list[str],
     timeout_ms: int = 3000,
+    cancel_event: asyncio.Event | None = None,
 ) -> dict[str, str]:
     """Wait for terminal ACK states without treating queue publication as success."""
     pending = {str(command_id) for command_id in command_ids if str(command_id).strip()}
@@ -26,6 +27,8 @@ async def wait_for_hardware_command_acks(
     deadline = time.monotonic() + max(100, int(timeout_ms)) / 1000
     states: dict[str, str] = {}
     while pending and time.monotonic() < deadline:
+        if cancel_event is not None and cancel_event.is_set():
+            return {**states, "__cancelled__": "cancelled"}
         result = await db.execute(
             select(HardwareCommandIntent.command_id, HardwareCommandIntent.execution_status).where(
                 HardwareCommandIntent.command_id.in_(pending)
@@ -37,7 +40,13 @@ async def wait_for_hardware_command_acks(
             if state in {"acknowledged", "negative_ack"}:
                 pending.discard(str(command_id))
         if pending:
-            await asyncio.sleep(0.05)
+            if cancel_event is None:
+                await asyncio.sleep(0.05)
+            else:
+                try:
+                    await asyncio.wait_for(cancel_event.wait(), timeout=0.05)
+                except asyncio.TimeoutError:
+                    pass
     if pending:
         await db.execute(
             update(HardwareCommandIntent)
