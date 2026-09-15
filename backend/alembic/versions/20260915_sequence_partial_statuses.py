@@ -3,7 +3,7 @@
 from alembic import op
 
 
-revision = "20260915_sequence_partial_statuses"
+revision = "20260915_seq_partial_status"
 down_revision = "20260914_initial_schema"
 branch_labels = None
 depends_on = None
