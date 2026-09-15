@@ -30,64 +30,75 @@ After provisioning and reboot:
 
 If you already know the platform, use this exact sequence:
 
-1. Preinstall clean RPi host
-   - Run host bootstrap/provisioning once:
-   ```bash
-   sudo ./scripts/provision-rpi.sh --timezone Europe/Berlin
-   sudo reboot
-   ```
+### 1. Preinstall clean RPi host
 
-2. Build and copy runtime bundle + images
-   - On dev machine:
-   ```bash
-   ./scripts/release.sh
-   ```
-   - Copy bundle and image archive to RPi (`/tmp` first, then move with `sudo` to `/opt/unitlab/releases` and `/opt/unitlab`).
+Run host bootstrap/provisioning once:
 
-   ```bash
-   scp dist-release/release-images-<timestamp>.tar pi@<rpi-ip>:/tmp/
-   scp -r dist-release/unitlab-core-rpi-runtime-<timestamp> pi@<rpi-ip>:/tmp/
-   ```
+```bash
+sudo ./scripts/provision-rpi.sh --timezone Europe/Berlin
+sudo reboot
+```
 
-3. Configure env
-   - Create/update shared env files:
-   ```bash
-   sudo mkdir -p /opt/unitlab/shared
-   sudo cp -n /opt/unitlab/releases/unitlab-core-rpi-runtime-<timestamp>/shared/backend.env.example /opt/unitlab/shared/backend.env
-   sudo cp -n /opt/unitlab/releases/unitlab-core-rpi-runtime-<timestamp>/shared/db.env.example /opt/unitlab/shared/db.env
-   sudo nano /opt/unitlab/shared/backend.env
-   sudo nano /opt/unitlab/shared/db.env
-   ```
+### 2. Build and copy runtime bundle + images
 
-4. Deploy runtime
-   - Offline mode:
-   ```bash
-   # Option A: bundle/image already moved into /opt
-   sudo /opt/unitlab/releases/unitlab-core-rpi-runtime-<timestamp>/scripts/deploy-rpi.sh \
-     --bundle-dir /opt/unitlab/releases/unitlab-core-rpi-runtime-<timestamp> \
-     --images-archive /opt/unitlab/release-images-<timestamp>.tar
+On the dev machine:
 
-   # Option B: deploy directly from /tmp (no pre-move required)
-   sudo /tmp/unitlab-core-rpi-runtime-<timestamp>/scripts/deploy-rpi.sh \
-     --bundle-dir /tmp/unitlab-core-rpi-runtime-<timestamp> \
-     --images-archive /tmp/release-images-<timestamp>.tar
+```bash
+./scripts/release.sh
+```
 
-   ```
+Copy the bundle and image archive to RPi (`/tmp` first, then move with `sudo` to `/opt/unitlab/releases` and `/opt/unitlab`):
 
-5. Install host agents
-   ```bash
-   cd /opt/unitlab/current
-   sudo ./scripts/install-host-agents.sh --skip-apt --skip-pip-upgrade
-   ```
-   - For strict offline updates, always keep `--skip-apt --skip-pip-upgrade`.
-   - Note: during `rpi-net-agent` restart, the host can switch AP/STA mode and current SSH session may disconnect.
-     Reconnect and continue with step 6.
+```bash
+scp dist-release/release-images-<timestamp>.tar pi@<rpi-ip>:/tmp/
+scp -r dist-release/unitlab-core-rpi-runtime-<timestamp> pi@<rpi-ip>:/tmp/
+```
 
-6. Verify
-   ```bash
-   /opt/unitlab/current/scripts/verify-host-agents.sh
-   /opt/unitlab/current/scripts/verify-rpi-runtime.sh --project-dir /opt/unitlab/current --compose-file /opt/unitlab/current/docker-compose.prod.yml
-   ```
+### 3. Configure env
+
+Create or update the shared environment files:
+
+```bash
+sudo mkdir -p /opt/unitlab/shared
+sudo cp -n /opt/unitlab/releases/unitlab-core-rpi-runtime-<timestamp>/shared/backend.env.example /opt/unitlab/shared/backend.env
+sudo cp -n /opt/unitlab/releases/unitlab-core-rpi-runtime-<timestamp>/shared/db.env.example /opt/unitlab/shared/db.env
+sudo nano /opt/unitlab/shared/backend.env
+sudo nano /opt/unitlab/shared/db.env
+```
+
+### 4. Deploy runtime
+
+Offline mode:
+
+```bash
+# Option A: bundle/image already moved into /opt
+sudo /opt/unitlab/releases/unitlab-core-rpi-runtime-<timestamp>/scripts/deploy-rpi.sh \
+  --bundle-dir /opt/unitlab/releases/unitlab-core-rpi-runtime-<timestamp> \
+  --images-archive /opt/unitlab/release-images-<timestamp>.tar
+
+# Option B: deploy directly from /tmp (no pre-move required)
+sudo /tmp/unitlab-core-rpi-runtime-<timestamp>/scripts/deploy-rpi.sh \
+  --bundle-dir /tmp/unitlab-core-rpi-runtime-<timestamp> \
+  --images-archive /tmp/release-images-<timestamp>.tar
+```
+
+### 5. Install host agents
+
+```bash
+cd /opt/unitlab/current
+sudo ./scripts/install-host-agents.sh --skip-apt --skip-pip-upgrade
+```
+
+For strict offline updates, always keep `--skip-apt --skip-pip-upgrade`.
+
+During `rpi-net-agent` restart, the host can switch AP/STA mode and the current SSH session may disconnect. Reconnect and continue with step 6.
+
+### 6. Verify
+
+```bash
+/opt/unitlab/current/scripts/verify-host-agents.sh
+/opt/unitlab/current/scripts/verify-rpi-runtime.sh --project-dir /opt/unitlab/current --compose-file /opt/unitlab/current/docker-compose.prod.yml
+```
 
 ## 1. Prepare Raspberry Pi OS (Bookworm)
 

@@ -32,7 +32,7 @@ Do **not** require:
 Create a minimal runtime bundle that omits `frontend/src` entirely:
 
 ```bash
-cd /Users/anton/Projects/unitlab-core
+cd /path/to/unitlab-core
 ./scripts/create-rpi-runtime-bundle.sh
 ```
 
@@ -59,15 +59,15 @@ This produces a deployable directory under `dist-release/` containing:
 
 ## Files Added for This Flow
 
-- `/Users/anton/Projects/unitlab-core/Dockerfile.web.prod`
+- `<repo-root>/Dockerfile.web.prod`
   - runtime `nginx` image that copies:
     - `frontend/dist`
     - `config/nginx.conf`
-- `/Users/anton/Projects/unitlab-core/scripts/build-web-image.sh`
+- `<repo-root>/scripts/build-web-image.sh`
   - builds `frontend/dist` and the runtime web image
-- `/Users/anton/Projects/unitlab-core/scripts/build-backend-image.sh`
+- `<repo-root>/scripts/build-backend-image.sh`
   - builds backend runtime image for API/workers/migrations
-- `/Users/anton/Projects/unitlab-core/scripts/export-release-images.sh`
+- `<repo-root>/scripts/export-release-images.sh`
   - exports backend/web images as tar (offline transfer option)
 
 ## Build the Web Image (Dev/CI Machine)
@@ -75,20 +75,20 @@ This produces a deployable directory under `dist-release/` containing:
 ### Option A: Build frontend + image in one command
 
 ```bash
-cd /Users/anton/Projects/unitlab-core
+cd /path/to/unitlab-core
 ./scripts/build-web-image.sh unitlab-web:2026.02.23
 ```
 
 What it does:
 - runs `pnpm build` in `frontend/`
 - verifies `frontend/dist/index.html` exists
-- builds runtime image using `/Users/anton/Projects/unitlab-core/Dockerfile.web.prod`
+- builds the runtime image using `<repo-root>/Dockerfile.web.prod`
 - uses `docker buildx` with default platform `linux/arm64`
 
 ### Option B: `dist` already built
 
 ```bash
-cd /Users/anton/Projects/unitlab-core
+cd /path/to/unitlab-core
 SKIP_FRONTEND_BUILD=1 ./scripts/build-web-image.sh unitlab-web:2026.02.23
 ```
 
@@ -97,7 +97,7 @@ Use this in CI when `dist` was produced in a prior stage.
 ## Build the Backend Image (Dev/CI Machine)
 
 ```bash
-cd /Users/anton/Projects/unitlab-core
+cd /path/to/unitlab-core
 ./scripts/build-backend-image.sh unitlab-backend:2026.02.23
 ```
 
@@ -126,7 +126,7 @@ Use immutable tags (`date`, commit SHA, release number), not only `latest`.
 Export images as tar:
 
 ```bash
-cd /Users/anton/Projects/unitlab-core
+cd /path/to/unitlab-core
 BACKEND_IMAGE=unitlab-backend:latest WEB_IMAGE=unitlab-web:2026.02.23 ./scripts/export-release-images.sh /tmp/unitlab-release-images.tar
 ```
 
