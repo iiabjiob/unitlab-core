@@ -18,6 +18,7 @@ export enum SequenceStatusEnum {
   CANCELLING = "cancelling",
   STOPPED = "stopped",
   COMPLETED = "completed",
+  COMPLETED_WITH_ISSUES = "completed_with_issues",
   ERROR = "error",
 }
 
@@ -26,6 +27,7 @@ export enum SequenceRunStatusEnum {
   RUNNING = "running",
   CANCELLING = "cancelling",
   COMPLETED = "completed",
+  COMPLETED_WITH_ISSUES = "completed_with_issues",
   STOPPED = "stopped",
   ERROR = "error",
 }
@@ -35,6 +37,7 @@ export enum SequenceRunStepStatusEnum {
   RUNNING = "running",
   COMPLETED = "completed",
   ERROR = "error",
+  BLOCKED = "blocked",
   CANCELLED = "cancelled",
 }
 

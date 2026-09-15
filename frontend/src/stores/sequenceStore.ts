@@ -86,6 +86,7 @@ const mapStatus = (raw: string): SequenceStatusEnum => {
     case "cancelling": return SequenceStatusEnum.CANCELLING
     case "stopped": return SequenceStatusEnum.STOPPED
     case "completed": return SequenceStatusEnum.COMPLETED
+    case "completed_with_issues": return SequenceStatusEnum.COMPLETED_WITH_ISSUES
     case "error": return SequenceStatusEnum.ERROR
     default:
       console.warn("Unknown sequence status:", raw)

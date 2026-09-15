@@ -27,8 +27,10 @@ class SequenceRunStatus(str, Enum):
     RUNNING = "running"
     CANCELLING = "cancelling"
     COMPLETED = "completed"
+    COMPLETED_WITH_ISSUES = "completed_with_issues"
     STOPPED = "stopped"
     ERROR = "error"
+    BLOCKED = "blocked"
 
 
 class SequenceRunStepStatus(str, Enum):
@@ -45,7 +47,7 @@ class SequenceRun(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "status IN ('pending','running','cancelling','completed','stopped','error')",
+            "status IN ('pending','running','cancelling','completed','completed_with_issues','stopped','error')",
             name="ck_sequence_runs_status",
         ),
         Index("ix_sequence_runs_sequence_started", "sequence_id", "started_at"),
@@ -94,7 +96,7 @@ class SequenceRunStep(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "status IN ('pending','running','completed','error','cancelled')",
+            "status IN ('pending','running','completed','error','blocked','cancelled')",
             name="ck_sequence_run_steps_status",
         ),
         Index("ix_sequence_run_steps_run_order", "run_id", "order_index"),
