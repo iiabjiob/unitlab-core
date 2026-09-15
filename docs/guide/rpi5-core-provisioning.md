@@ -273,14 +273,28 @@ Retry note: if deploy fails due transient network/pull errors, rerunning the sam
 3. Switch `current` symlink atomically
 4. Run the one-shot `migrations` service to completion
 5. Run `docker compose up -d --remove-orphans`
+6. Run runtime verify
+7. If verify fails → rollback to previous release
+8. If verify succeeds → cleanup old releases (keep current + previous)
 
 `scripts/deploy-rpi.sh` runs the one-shot `migrations` service to completion
 before this stack start. This is required when a release adds tables used by
 the API startup recovery sweep; starting only `backend` manually can bypass
 that deployment gate and must be followed by `docker compose up migrations`.
-6. Run runtime verify
-7. If verify fails → rollback to previous release
-8. If verify succeeds → cleanup old releases (keep current + previous)
+
+For a disposable development RPi, add `--reset-database` to remove the
+PostgreSQL and Redis compose volumes before recreating the schema. This is
+destructive and must not be used on a host containing FAT evidence or reports:
+
+```bash
+sudo /opt/unitlab/releases/unitlab-core-rpi-runtime-<timestamp>/scripts/deploy-rpi.sh \
+  --bundle-dir /opt/unitlab/releases/unitlab-core-rpi-runtime-<timestamp> \
+  --images-archive /opt/unitlab/release-images-<timestamp>.tar \
+  --reset-database
+```
+
+The reset runs only when the flag is explicitly present; normal deployments
+keep the existing database volumes.
 
 Notes:
 

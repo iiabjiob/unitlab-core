@@ -9,6 +9,7 @@ COMPOSE_FILE_NAME="${COMPOSE_FILE_NAME:-docker-compose.prod.yml}"
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-unitlab}"
 VERIFY_RUNTIME="${VERIFY_RUNTIME:-1}"
 CLEANUP_RELEASES="${CLEANUP_RELEASES:-1}"
+RESET_DATABASE="0"
 
 load_release_env() {
   local release_dir="$1"
@@ -37,6 +38,7 @@ Options:
   --compose-project-name <name>  Compose project name (default: unitlab)
   --verify <0|1>                 Run runtime verification after deploy (default: 1)
   --cleanup-releases <0|1>       Cleanup old releases after successful verify (default: 1)
+  --reset-database               Delete PostgreSQL/Redis compose volumes before migrations (destructive)
   -h, --help                     Show this help
 
 Environment overrides:
@@ -85,6 +87,10 @@ while [[ $# -gt 0 ]]; do
       [[ $# -ge 2 ]] || { echo "[unitlab] ERROR: --cleanup-releases requires a value" >&2; usage; exit 1; }
       CLEANUP_RELEASES="$2"
       shift 2
+      ;;
+    --reset-database)
+      RESET_DATABASE="1"
+      shift
       ;;
     -h|--help)
       usage
@@ -212,16 +218,22 @@ echo "[unitlab] Validating compose config in target release"
 load_release_env "$target_release"
 docker compose --project-directory "$target_release" -f "$target_release/$COMPOSE_FILE_NAME" config >/dev/null
 
+target_compose_file="$target_release/$COMPOSE_FILE_NAME"
+if [[ -z "$IMAGES_ARCHIVE" ]]; then
+  echo "[unitlab] Pulling images"
+  docker compose --project-name "$COMPOSE_PROJECT_NAME" --project-directory "$target_release" -f "$target_compose_file" pull
+fi
+
+if [[ "$RESET_DATABASE" == "1" ]]; then
+  echo "[unitlab] RESET: removing PostgreSQL and Redis volumes"
+  docker compose --project-name "$COMPOSE_PROJECT_NAME" --project-directory "$target_release" -f "$target_compose_file" down --volumes --remove-orphans
+fi
+
 echo "[unitlab] Switching current symlink"
 ln -sfn "$target_release" "$CURRENT_LINK"
 
 compose_file="$CURRENT_LINK/$COMPOSE_FILE_NAME"
 load_release_env "$CURRENT_LINK"
-
-if [[ -z "$IMAGES_ARCHIVE" ]]; then
-  echo "[unitlab] Pulling images"
-  docker compose --project-name "$COMPOSE_PROJECT_NAME" --project-directory "$CURRENT_LINK" -f "$compose_file" pull
-fi
 
 echo "[unitlab] Applying database migrations before starting application services"
 docker compose --project-name "$COMPOSE_PROJECT_NAME" --project-directory "$CURRENT_LINK" -f "$compose_file" up --force-recreate migrations
