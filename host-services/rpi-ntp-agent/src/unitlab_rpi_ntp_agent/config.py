@@ -39,6 +39,7 @@ class AgentConfig:
     systemctl_bin: str
     date_bin: str
     hwclock_bin: str
+    fake_hwclock_bin: str
     command_timeout_sec: int
     status_publish_interval_sec: int
     default_servers: tuple[str, ...]
@@ -69,6 +70,7 @@ def load_config() -> AgentConfig:
         systemctl_bin="systemctl",
         date_bin="date",
         hwclock_bin="hwclock",
+        fake_hwclock_bin="fake-hwclock",
         command_timeout_sec=max(2, _env_int("UNITLAB_NTP_AGENT_COMMAND_TIMEOUT_SEC", 10)),
         status_publish_interval_sec=max(2, _env_int("UNITLAB_NTP_AGENT_STATUS_PUBLISH_INTERVAL_SEC", 10)),
         default_servers=default_servers,

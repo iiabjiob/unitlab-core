@@ -48,7 +48,7 @@ declare -A AGENT_WHEEL_GLOBS=(
 
 declare -A AGENT_APT_DEPS=(
   [rpi-net-agent]="network-manager"
-  [rpi-ntp-agent]="chrony"
+  [rpi-ntp-agent]="chrony fake-hwclock"
   [rpi-core-diag-agent]=""
   [rpi-provision-agent]="curl"
 )
@@ -443,6 +443,10 @@ fi
 if (( chrony_config_selected == 1 )); then
   log "[chrony] enable chrony service"
   run systemctl enable chrony
+  if command -v fake-hwclock >/dev/null 2>&1; then
+    log "[chrony] enable fake-hwclock persistence"
+    run systemctl enable fake-hwclock.service
+  fi
   if (( NO_RESTART == 0 )); then
     log "[chrony] restart chrony to apply local master config"
     run systemctl restart chrony

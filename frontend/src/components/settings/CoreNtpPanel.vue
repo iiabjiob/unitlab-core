@@ -235,7 +235,10 @@ const ntpTracking = computed(() => coreNtpStore.tracking)
 const ntpSources = computed(() => coreNtpStore.sources)
 const ntpConfiguredServers = computed(() => coreNtpStore.configuredServers)
 const ntpEffectiveServers = computed(() => coreNtpStore.effectiveServers)
-const ntpBusy = computed(() => coreNtpStore.commandPending || coreNtpStore.loading)
+// Background status polling must not disable native inputs: toggling disabled
+// on a focused datetime-local input makes the browser drop focus and loses
+// partially entered values. Only an actual host command should lock controls.
+const ntpBusy = computed(() => coreNtpStore.commandPending)
 const ntpErrorText = computed(() => (
   ntpUnavailable.value
     ? "Time synchronization is not available on this host."

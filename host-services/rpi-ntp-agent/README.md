@@ -43,4 +43,4 @@ sudo /opt/unitlab/install/install_rpi_ntp_agent.sh
   - `/etc/chrony/conf.d/unitlab-local-master.conf`
 - It uses `chronyc reload sources` (no full `chronyd` restart by default).
 - If upstream servers are unavailable, UI/backend can still show `NOT SYNCED`, but the host keeps serving its local clock to AP-side peripherals so all modules share the RPi time base.
-
+- The host installation enables `fake-hwclock` when available, preserving the last saved clock across a clean shutdown without upstream NTP. This is a fallback for boards without an RTC; an external hardware RTC is required for accurate time after a long power loss.

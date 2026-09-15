@@ -6,6 +6,7 @@ import ipaddress
 import logging
 import os
 import re
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -86,6 +87,8 @@ class ChronyAdapter:
         epoch_seconds = str(int(target.timestamp()))
         await self._run(self.config.date_bin, "--utc", f"--set=@{epoch_seconds}")
         await self._run(self.config.hwclock_bin, "--systohc", check=False)
+        if shutil.which(self.config.fake_hwclock_bin):
+            await self._run(self.config.fake_hwclock_bin, "save", check=False)
         return target.isoformat()
 
     async def _detect_chrony_service(self) -> tuple[bool | None, str | None]:
@@ -257,4 +260,3 @@ def _parse_float_head(value: str | None) -> float | None:
         return float(token)
     except ValueError:
         return None
-

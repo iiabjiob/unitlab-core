@@ -13,6 +13,7 @@ from app.core.events.ws_event_publisher import WsEventPublisher
 from app.core.logger import get_logger
 from app.infrastructure.redis.manager import RedisManager
 from app.schemas.ws.events import CoreNtpStateEvent
+from app.services.worker_health import mark_clock_adjustment_grace
 
 settings = get_settings()
 logger = get_logger("core.ntp.forwarder")
@@ -82,6 +83,8 @@ async def _process_entries(redis, entries) -> None:
             payload = _parse_json_field(fields)
             if not payload:
                 logger.warning("⚠️ Invalid core NTP event payload in %s", entry_id)
+            elif str(payload.get("event") or "") in {"system_time_set_started", "system_time_set_success"}:
+                await mark_clock_adjustment_grace()
             elif str(payload.get("event") or "") == "state":
                 await WsEventPublisher.publish(
                     CoreNtpStateEvent(
@@ -104,4 +107,3 @@ async def forward_core_ntp_events() -> None:
         if not entries:
             continue
         await _process_entries(redis, entries)
-

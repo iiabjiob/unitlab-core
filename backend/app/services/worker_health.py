@@ -15,6 +15,7 @@ logger = get_logger("worker.health")
 
 WorkerStatus = Literal["online", "degraded", "offline", "unknown"]
 SNAPSHOT_KEY = "system:health:snapshot"
+CLOCK_ADJUSTMENT_GRACE_KEY = "system:health:clock-adjustment-grace"
 
 
 @dataclass(frozen=True)
@@ -137,6 +138,12 @@ async def clear_worker_status(worker_name: str) -> None:
         logger.warning("Failed to clear worker status for %s: %s", worker_name, exc)
 
 
+async def mark_clock_adjustment_grace(seconds: int = 90) -> None:
+    """Suppress false worker timeouts while the host clock is being corrected."""
+    redis = RedisManager.get_instance()
+    await redis.set(CLOCK_ADJUSTMENT_GRACE_KEY, "1", ex=max(1, seconds))
+
+
 async def _worker_heartbeat_loop(worker_name: str, *, status: WorkerStatus, detail: str | None) -> None:
     interval = max(1, min(settings.worker_health_interval, max(1, settings.worker_health_ttl // 2)))
     while True:
@@ -153,17 +160,20 @@ def start_worker_heartbeat(worker_name: str, *, status: WorkerStatus = "online",
 
 async def collect_worker_health() -> list[WorkerHealth]:
     redis = RedisManager.get_instance()
-    now = datetime.now(timezone.utc)
-    ttl = settings.worker_health_ttl
+    clock_adjustment_grace = bool(await redis.exists(CLOCK_ADJUSTMENT_GRACE_KEY))
     statuses: list[WorkerHealth] = []
 
     for definition in WORKER_DEFINITIONS:
-        raw = await redis.get(_worker_key(definition.name))
+        worker_key = _worker_key(definition.name)
+        raw = await redis.get(worker_key)
+        worker_ttl = await redis.ttl(worker_key)
         status: WorkerStatus = "offline"
         detail: str | None = None
         last_seen: datetime | None = None
 
-        if raw:
+        if not raw and clock_adjustment_grace:
+            status = "online"
+        elif raw:
             try:
                 data = json.loads(raw)
                 status = _normalize_status(data.get("status"))
@@ -175,9 +185,16 @@ async def collect_worker_health() -> list[WorkerHealth]:
                 logger.warning("Failed to parse health payload for %s: %s", definition.name, exc)
                 status = "unknown"
             else:
-                if last_seen and (now - last_seen).total_seconds() > ttl:
-                    status = "offline"
-                    detail = detail or "heartbeat timeout"
+                # Redis TTL is the authoritative liveness signal. Comparing
+                # wall-clock timestamps breaks when an operator sets the RPi
+                # clock forward or backward during offline commissioning.
+                if worker_ttl == -2:
+                    if clock_adjustment_grace:
+                        status = "online"
+                        detail = None
+                    else:
+                        status = "offline"
+                        detail = detail or "heartbeat timeout"
         statuses.append(
             WorkerHealth(
                 name=definition.name,
@@ -315,6 +332,7 @@ __all__ = [
     "collect_worker_health",
     "compute_system_status",
     "build_system_snapshot",
+    "mark_clock_adjustment_grace",
     "snapshot_to_dict",
     "snapshot_from_dict",
     "diff_snapshots",

@@ -2805,7 +2805,6 @@ async function startTestRunJob(options?: { resumeFromCursor?: boolean; resumeJob
         verificationEnabled: enable61850Verification,
         verificationRuntimeVersion: enable61850Verification ? "mms" : "simulator",
         verificationOrchestrationId: null,
-        verificationSignalListRevisionId: Number(allocationRevision.value ?? 0) || null,
         verificationTimeoutMs: resolveIec61850VerificationTimeoutMs(),
       },
     )
@@ -3190,6 +3189,7 @@ async function sendControl(row: SignalAllocationRow, state: boolean): Promise<bo
     return false
   }
 
+  const savedViewBeforeControl = allocationGridRef.value?.getSavedView?.() ?? null
   try {
     channelStore.sendDoCommand(target.unitId, target.channelIndex, state)
     if (!target.channel) {
@@ -3209,13 +3209,15 @@ async function sendControl(row: SignalAllocationRow, state: boolean): Promise<bo
       return false
     }
 
-    void signalSheetStore.markSignalsTested([row.signal_id], { optimistic: false }).catch(() => {
+    await signalSheetStore.markSignalsTested([row.signal_id], { optimistic: false }).catch(() => {
       return
     })
     return true
   } catch (err) {
     toastStore.error(err instanceof Error ? err.message : String(err))
     return false
+  } finally {
+    await restoreSignalsGridSavedViewAfterStaticMutation(savedViewBeforeControl)
   }
 }
 
@@ -3243,6 +3245,7 @@ async function sendAoControl(row: SignalAllocationRow): Promise<boolean> {
   activeAoControlSignalId.value = null
   activeAoControlDraftValue.value = ""
   activeAoSubmittingSignalId.value = row.signal_id
+  const savedViewBeforeControl = allocationGridRef.value?.getSavedView?.() ?? null
   try {
     channelStore.sendAoCommand(target.unitId, target.channelIndex, nextValue)
 
@@ -3252,7 +3255,7 @@ async function sendAoControl(row: SignalAllocationRow): Promise<boolean> {
       return false
     }
 
-    void signalSheetStore.markSignalsTested([row.signal_id], { optimistic: false }).catch(() => {
+    await signalSheetStore.markSignalsTested([row.signal_id], { optimistic: false }).catch(() => {
       return
     })
     return true
@@ -3261,6 +3264,7 @@ async function sendAoControl(row: SignalAllocationRow): Promise<boolean> {
     return false
   } finally {
     activeAoSubmittingSignalId.value = null
+    await restoreSignalsGridSavedViewAfterStaticMutation(savedViewBeforeControl)
   }
 }
 

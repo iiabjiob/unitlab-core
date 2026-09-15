@@ -130,8 +130,8 @@ else
 fi
 
 echo "[unitlab] Step 4/10: ensure chrony"
-if ! dpkg -s chrony >/dev/null 2>&1; then
-  DEBIAN_FRONTEND=noninteractive apt-get install -y chrony
+if ! dpkg -s chrony >/dev/null 2>&1 || ! dpkg -s fake-hwclock >/dev/null 2>&1; then
+  DEBIAN_FRONTEND=noninteractive apt-get install -y chrony fake-hwclock
 fi
 systemctl enable --now chrony
 
