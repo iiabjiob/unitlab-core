@@ -206,7 +206,7 @@ install_release() {
     log "deploying runtime release"
     "$target/scripts/deploy-rpi.sh" \
       --bundle-dir "$target" \
-      --images-archive "$target/.release-images${images_archive##*.tar}" \
+      --images-archive "$target/.release-images.tar" \
       --releases-dir "$RELEASES_DIR" \
       --current-link "$CURRENT_LINK" \
       --compose-project-name "$COMPOSE_PROJECT_NAME"
