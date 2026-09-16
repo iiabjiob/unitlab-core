@@ -11,6 +11,25 @@
             <WorkspaceSwitcher variant="compact" />
           </div>
           <ThemeToggle />
+          <RouterLink
+            to="/settings"
+            class="btn btn-icon home-page__settings-link"
+            title="Settings"
+            aria-label="Settings"
+          >
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z" />
+              <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.36a1.7 1.7 0 0 0-1 .52V20a2 2 0 0 1-4 0v-.09a1.7 1.7 0 0 0-1-.52 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.64 15a1.7 1.7 0 0 0-.52-1H4a2 2 0 0 1 0-4h.09a1.7 1.7 0 0 0 .52-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.64a1.7 1.7 0 0 0 1-.52V4a2 2 0 0 1 4 0v.09a1.7 1.7 0 0 0 1 .52 1.7 1.7 0 0 0 1.87-.34l-.06-.06a2 2 0 0 1 2.83 2.83l.06.06A1.7 1.7 0 0 0 19.36 9a1.7 1.7 0 0 0 .52 1H20a2 2 0 0 1 0 4h-.09a1.7 1.7 0 0 0-.51 1Z" />
+            </svg>
+          </RouterLink>
         </div>
       </header>
 
@@ -416,6 +435,11 @@ function goTo(route: HomeRoute) {
   align-items: center;
   gap: 0.5rem;
   min-width: 0;
+}
+
+.home-page__settings-link {
+  flex: 0 0 auto;
+  text-decoration: none;
 }
 
 .home-page__workspace-switcher {

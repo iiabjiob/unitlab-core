@@ -402,7 +402,7 @@ class NmcliAdapter:
         out = await self._run(
             "-t",
             "-f",
-            "DEVICE,TYPE,STATE,CONNECTION,IP4.ADDRESS[1]",
+            "DEVICE,TYPE,STATE,CONNECTION",
             "device",
             "status",
             check=False,
@@ -410,20 +410,17 @@ class NmcliAdapter:
         default_route_metrics = self._read_default_route_metrics()
         statuses: list[DeviceStatus] = []
         for line in out.splitlines():
-            parts = line.split(":", 4)
+            parts = line.split(":", 3)
             if len(parts) < 3:
                 continue
             device_name = parts[0].strip()
             device_type = parts[1].strip() or None
             state_raw = parts[2].strip() if len(parts) > 2 else ""
             connection = parts[3].strip() if len(parts) > 3 else None
-            ip_cidr = parts[4].strip() if len(parts) > 4 else None
             if not device_name:
                 continue
             if connection == "--":
                 connection = None
-            if ip_cidr == "--":
-                ip_cidr = None
             state_code = None
             state_text = None
             if state_raw:
@@ -433,18 +430,9 @@ class NmcliAdapter:
                 else:
                     state_text = state_raw
                     state_code = state_raw
-            ip4 = None
-            ip4_prefix = None
-            if ip_cidr:
-                if "/" in ip_cidr:
-                    ip4, prefix_raw = ip_cidr.split("/", 1)
-                    ip4 = ip4.strip() or None
-                    try:
-                        ip4_prefix = int(prefix_raw.strip())
-                    except ValueError:
-                        ip4_prefix = None
-                else:
-                    ip4 = ip_cidr.strip() or None
+            details = await self._device_details(device_name)
+            ip_cidr = details.get("IP4.ADDRESS[1]")
+            ip4, ip4_prefix = self._parse_ipv4_cidr(ip_cidr)
             statuses.append(
                 DeviceStatus(
                     interface_name=device_name,
@@ -467,7 +455,7 @@ class NmcliAdapter:
         out = await self._run(
             "-t",
             "-f",
-            "GENERAL.STATE,GENERAL.CONNECTION,IP4.ADDRESS[1]",
+            "GENERAL.TYPE,GENERAL.STATE,GENERAL.CONNECTION,IP4.ADDRESS[1]",
             "device",
             "show",
             interface,
@@ -492,24 +480,11 @@ class NmcliAdapter:
         if connection == "--":
             connection = None
         ip_cidr = kv.get("IP4.ADDRESS[1]")
-        if ip_cidr == "--":
-            ip_cidr = None
-        ip4 = None
-        ip4_prefix = None
-        if ip_cidr:
-            if "/" in ip_cidr:
-                ip4, prefix_raw = ip_cidr.split("/", 1)
-                ip4 = ip4.strip() or None
-                try:
-                    ip4_prefix = int(prefix_raw.strip())
-                except ValueError:
-                    ip4_prefix = None
-            else:
-                ip4 = ip_cidr.strip() or None
+        ip4, ip4_prefix = self._parse_ipv4_cidr(ip_cidr)
         default_route_metrics = self._read_default_route_metrics()
         return DeviceStatus(
             interface_name=interface,
-            device_type=None,
+            device_type=kv.get("GENERAL.TYPE") or None,
             state_code=state_code,
             state_text=state_text,
             connection=connection,
@@ -521,6 +496,39 @@ class NmcliAdapter:
             is_default_route=interface in default_route_metrics,
             default_route_metric=default_route_metrics.get(interface),
         )
+
+    async def _device_details(self, interface: str) -> dict[str, str]:
+        out = await self._run(
+            "-t",
+            "-f",
+            "GENERAL.TYPE,IP4.ADDRESS[1]",
+            "device",
+            "show",
+            interface,
+            check=False,
+        )
+        details: dict[str, str] = {}
+        for line in out.splitlines():
+            if ":" not in line:
+                continue
+            key, value = line.split(":", 1)
+            value = value.strip()
+            if value and value != "--":
+                details[key.strip()] = value
+        return details
+
+    @staticmethod
+    def _parse_ipv4_cidr(value: str | None) -> tuple[str | None, int | None]:
+        if not value or value == "--":
+            return None, None
+        if "/" not in value:
+            return value.strip() or None, None
+        address, prefix_raw = value.split("/", 1)
+        try:
+            prefix = int(prefix_raw.strip())
+        except ValueError:
+            prefix = None
+        return address.strip() or None, prefix
 
     async def current_device_status(self) -> DeviceStatus:
         return await self.device_status(self.config.wifi_interface)
