@@ -10,6 +10,8 @@ import {
 } from "@/api/core_ntp.api"
 import type { CoreNtpCommandAccepted, CoreNtpSnapshot } from "@/types/coreNtp"
 import { getLogger } from "@/utils/logger"
+import { useToastStore } from "@/stores/toastStore"
+import { useSystemHealthStore } from "@/stores/systemHealthStore"
 
 const logger = getLogger("CORE-NTP")
 const DEFAULT_TTL_MS = 10_000
@@ -26,8 +28,23 @@ export const useCoreNtpStore = defineStore("coreNtpStore", () => {
   let refreshInFlight: Promise<void> | null = null
   let monitorSubscribers = 0
   let pollTimer: ReturnType<typeof setInterval> | null = null
+  let previousSampleMs: number | null = null
 
   function applySnapshot(next: CoreNtpSnapshot) {
+    const previous = snapshot.value
+    const newSample = previous?.updated_at !== next.updated_at
+    const now = performance.now()
+    const isUpstreamSynced = (value: CoreNtpSnapshot) => value.tracking?.synced === true
+      && value.sources.some(source => source.mode_mark === "^" && source.state_mark === "*")
+    const clockDelta = previous && previousSampleMs !== null
+      ? Date.parse(next.system_time_utc ?? "") - Date.parse(previous.system_time_utc ?? "") - (now - previousSampleMs)
+      : 0
+    if (newSample && previous && isUpstreamSynced(next)
+      && (!isUpstreamSynced(previous) || Math.abs(clockDelta) > 5000)) {
+      useToastStore().info("Time synchronized with NTP. Refreshing service status.")
+      void useSystemHealthStore().refresh({ force: true })
+    }
+    if (newSample) previousSampleMs = now
     snapshot.value = next
     lastLoadedAtMs.value = Date.now()
     lastError.value = null
@@ -169,4 +186,3 @@ export const useCoreNtpStore = defineStore("coreNtpStore", () => {
     setTime,
   }
 })
-

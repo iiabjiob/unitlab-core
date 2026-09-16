@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
+from functools import lru_cache
+from pathlib import Path
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Iterable, Literal
@@ -120,6 +123,14 @@ def _normalize_status(value: str | None) -> WorkerStatus:
     return "unknown"
 
 
+@lru_cache(maxsize=1)
+def _host_boot_id() -> str | None:
+    try:
+        return Path("/proc/sys/kernel/random/boot_id").read_text().strip() or None
+    except OSError:
+        return None
+
+
 async def write_worker_status(worker_name: str, *, status: WorkerStatus = "online", detail: str | None = None) -> None:
     redis = RedisManager.get_instance()
     payload = {
@@ -127,7 +138,14 @@ async def write_worker_status(worker_name: str, *, status: WorkerStatus = "onlin
         "detail": detail,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
-    await redis.set(_worker_key(worker_name), json.dumps(payload), ex=settings.worker_health_ttl)
+    boot_id = _host_boot_id()
+    if boot_id:
+        payload.update(boot_id=boot_id, monotonic_at=time.monotonic())
+        # Ten fixed registry keys: retain them across wall-clock steps. Liveness
+        # expires by monotonic age; a host reboot invalidates the boot identity.
+        await redis.set(_worker_key(worker_name), json.dumps(payload))
+    else:
+        await redis.set(_worker_key(worker_name), json.dumps(payload), ex=settings.worker_health_ttl)
 
 
 async def clear_worker_status(worker_name: str) -> None:
@@ -185,10 +203,13 @@ async def collect_worker_health() -> list[WorkerHealth]:
                 logger.warning("Failed to parse health payload for %s: %s", definition.name, exc)
                 status = "unknown"
             else:
-                # Redis TTL is the authoritative liveness signal. Comparing
-                # wall-clock timestamps breaks when an operator sets the RPi
-                # clock forward or backward during offline commissioning.
-                if worker_ttl == -2:
+                if "boot_id" in data:
+                    heartbeat_at = data.get("monotonic_at")
+                    age = time.monotonic() - heartbeat_at if isinstance(heartbeat_at, (int, float)) else -1
+                    if data["boot_id"] != _host_boot_id() or not 0 <= age <= settings.worker_health_ttl:
+                        status = "offline"
+                        detail = detail or "heartbeat timeout"
+                elif worker_ttl == -2:
                     if clock_adjustment_grace:
                         status = "online"
                         detail = None

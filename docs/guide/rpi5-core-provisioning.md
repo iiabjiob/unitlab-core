@@ -37,6 +37,23 @@ against the connected IED still requires verification on the Raspberry Pi.
 
 ## Result (What You Get)
 
+### Clock synchronization and worker health
+
+On Linux, worker heartbeats include the host boot ID and a monotonic timestamp.
+The fixed worker health keys are retained without Redis expiry; health checks
+apply `worker_health_ttl` to their monotonic age. Forward/backward NTP or manual
+clock steps therefore do not expire live workers. Stopped workers still become
+offline after the heartbeat deadline, and records from a previous host boot are
+invalid. Deploy the backend and all workers together; old heartbeat records
+continue to use their legacy TTL until their worker is updated.
+
+The UI shows an informational notice when an observed NTP state becomes
+synchronized to an upstream source, or a synchronized clock makes a large step.
+It refreshes service health without restarting workers or active test runs.
+Actual Redis connection errors and explicit worker failures remain errors.
+Validate on the Pi with forward/backward time corrections and verify that a
+stopped worker is still reported offline after the heartbeat deadline.
+
 After provisioning and reboot:
 
 - UnitLab stack is running in Docker
