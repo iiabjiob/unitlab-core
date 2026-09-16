@@ -7,7 +7,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 RUN apt-get update && apt-get install -y \
-    curl git build-essential libpq-dev \
+    curl git build-essential cmake libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv
@@ -18,7 +18,14 @@ ENV PATH="/root/.local/bin:$PATH"
 WORKDIR /app
 
 # Copy sources FIRST (important!)
-COPY . .
+COPY backend/ .
+COPY iec61850_ied /tmp/iec61850_ied
+
+# Build UnitLab's own native MMS client. The default build intentionally does
+# not link libIEC61850; external IED discovery uses this native wire client.
+RUN cmake -S /tmp/iec61850_ied -B /tmp/iec61850_ied-build \
+      -DUNITLAB_IEC61850_SIM_WITH_LIBIEC61850=OFF \
+    && cmake --build /tmp/iec61850_ied-build --target unitlab-iec61850-ied-sim -j"$(nproc)"
 
 # Create venv and install prod deps
 RUN uv venv && . .venv/bin/activate \
@@ -30,20 +37,22 @@ RUN uv venv && . .venv/bin/activate \
 # ---------------------------------------------------------
 FROM python:3.11-slim-bookworm AS runtime
 
-RUN apt-get update && apt-get install -y curl \
+RUN apt-get update && apt-get install -y curl libstdc++6 \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PATH="/app/.venv/bin:$PATH"
+    PATH="/app/.venv/bin:$PATH" \
+    IEC61850_IED_LIVE_WIRE_BINARY_PATH=/opt/unitlab/bin/unitlab-iec61850-ied-sim
 
 WORKDIR /app
 
 # Copy virtual environment from builder
 COPY --from=builder /app/.venv /app/.venv
+COPY --from=builder /tmp/iec61850_ied-build/unitlab-iec61850-ied-sim /opt/unitlab/bin/unitlab-iec61850-ied-sim
 
 # Copy application code
-COPY . .
+COPY backend/ .
 
 RUN adduser --disabled-password --gecos "" appuser \
     && chown -R appuser /app
@@ -57,4 +66,3 @@ CMD ["uvicorn", "app.main:app", \
      "--workers", "1", \
      "--loop", "uvloop", \
      "--http", "httptools"]
-

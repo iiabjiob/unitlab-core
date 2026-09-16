@@ -897,6 +897,25 @@ def test_client_control_service_surfaces_last_diagnostic_on_duplicate_open() -> 
     assert service.snapshot().last_diagnostic.code == "SESSION_EXISTS"
 
 
+def test_external_mms_uses_configured_production_binary(monkeypatch: pytest.MonkeyPatch) -> None:
+    binary = "/opt/unitlab/bin/unitlab-iec61850-ied-sim"
+    monkeypatch.setenv("IEC61850_IED_LIVE_WIRE_BINARY_PATH", binary)
+    get_settings.cache_clear()
+    try:
+        service = Iec61850ClientControlService()
+        assert service._external_probe_binary_path() == binary
+    finally:
+        get_settings.cache_clear()
+
+
+def test_external_mms_missing_binary_reports_installation_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    service = Iec61850ClientControlService(live_wire_binary_path="")
+    monkeypatch.setattr(client_control_module.Path, "is_file", lambda _path: False)
+    with pytest.raises(Iec61850ReportRuntimeError) as error:
+        service._external_probe_binary_path()
+    assert error.value.code == "EXTERNAL_MMS_BINARY_UNAVAILABLE"
+
+
 def test_client_control_service_uses_env_live_wire_binary_path(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("IEC61850_IED_LIVE_WIRE_BINARY_PATH", "/bin/true")
     get_settings.cache_clear()
@@ -1385,6 +1404,7 @@ def test_external_mms_target_can_connect_and_discover_without_scd(monkeypatch: p
     assert closed_snapshot.session_open is False
     assert closed_snapshot.ui_state["session"]["phase"] == "idle"
 
+    assert process_commands[0][0] == "/bin/true"
     assert "--ied" not in process_commands[0]
     assert process_commands[0][-5:] == (
         "--bind",
@@ -1770,7 +1790,7 @@ def test_external_mms_target_routes_discover_rptena_gi_to_external_probes(monkey
     assert disconnect_snapshot.ui_state["session"]["associated"] is False
 
     assert process_commands[0] == (
-        "/workspace/iec61850_ied/build/unitlab-iec61850-ied-sim",
+        "/bin/true",
         "--scl",
         str(scl_path),
         "--ied",

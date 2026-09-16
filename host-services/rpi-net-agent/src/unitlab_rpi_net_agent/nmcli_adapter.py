@@ -419,6 +419,8 @@ class NmcliAdapter:
             connection = parts[3].strip() if len(parts) > 3 else None
             if not device_name:
                 continue
+            if not self._is_operator_interface(device_name, device_type):
+                continue
             if connection == "--":
                 connection = None
             state_code = None
@@ -455,11 +457,11 @@ class NmcliAdapter:
         out = await self._run(
             "-t",
             "-f",
-            "GENERAL.TYPE,GENERAL.STATE,GENERAL.CONNECTION,IP4.ADDRESS[1]",
+            "GENERAL.TYPE,GENERAL.STATE,GENERAL.CONNECTION,IP4.ADDRESS",
             "device",
             "show",
             interface,
-            check=False,
+            check=True,
         )
         kv: dict[str, str] = {}
         for line in out.splitlines():
@@ -501,11 +503,11 @@ class NmcliAdapter:
         out = await self._run(
             "-t",
             "-f",
-            "GENERAL.TYPE,IP4.ADDRESS[1]",
+            "GENERAL.TYPE,IP4.ADDRESS",
             "device",
             "show",
             interface,
-            check=False,
+            check=True,
         )
         details: dict[str, str] = {}
         for line in out.splitlines():
@@ -516,6 +518,13 @@ class NmcliAdapter:
             if value and value != "--":
                 details[key.strip()] = value
         return details
+
+    @staticmethod
+    def _is_operator_interface(interface: str, device_type: str | None) -> bool:
+        name = interface.strip().lower()
+        if name in {"lo", "docker0"} or name.startswith(("br-", "veth", "p2p-dev-")):
+            return False
+        return device_type in {"ethernet", "wifi", "wifi-p2p"} or name.startswith(("eth", "en", "wl"))
 
     @staticmethod
     def _parse_ipv4_cidr(value: str | None) -> tuple[str | None, int | None]:

@@ -29,14 +29,14 @@ if [[ "$PUSH_IMAGE" == "1" ]]; then
     -f "$DOCKERFILE_PATH" \
     -t "$BACKEND_IMAGE_TAG" \
     --push \
-    "$ROOT_DIR/backend"
+    "$ROOT_DIR"
 else
   docker buildx build \
     --platform "$TARGET_PLATFORM" \
     -f "$DOCKERFILE_PATH" \
     -t "$BACKEND_IMAGE_TAG" \
     --load \
-    "$ROOT_DIR/backend"
+    "$ROOT_DIR"
 fi
 
 echo "[unitlab] OK: built $BACKEND_IMAGE_TAG"

@@ -1450,7 +1450,10 @@ class Iec61850ClientControlService:
                     close_stdin()
 
     def _external_probe_binary_path(self) -> str:
+        if self._live_wire_binary_path:
+            return self._live_wire_binary_path
         preferred_paths = (
+            Path("/opt/unitlab/bin/unitlab-iec61850-ied-sim"),
             Path("/workspace/iec61850_ied/build/unitlab-iec61850-ied-sim"),
             Path("iec61850_ied/build/unitlab-iec61850-ied-sim"),
             Path("/workspace/iec61850_ied/build-libiec61850/unitlab-iec61850-ied-sim"),
@@ -1459,7 +1462,11 @@ class Iec61850ClientControlService:
         for path in preferred_paths:
             if path.is_file():
                 return str(path)
-        return str(preferred_paths[0])
+        raise Iec61850ReportRuntimeError(
+            "EXTERNAL_MMS_BINARY_UNAVAILABLE",
+            "UnitLab native MMS client is not installed. Check the backend image and "
+            "IEC61850_IED_LIVE_WIRE_BINARY_PATH configuration.",
+        )
 
     def _run_external_probe(self, probe: str):
         if self._endpoint.host is None or not self._endpoint.host.strip():

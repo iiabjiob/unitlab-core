@@ -9,6 +9,32 @@ This guide describes the exact order to deploy a full **UnitLab Core** on a fres
 - Host provisioning service (repair actions + smoke checks)
 - Web UI access via AP (`http://10.42.0.1`)
 
+## Troubleshooting missing IPv4 or external IED discovery
+
+The network agent queries `IP4.ADDRESS` with `nmcli`; the returned keys are
+indexed (`IP4.ADDRESS[1]`). An indexed key is not a valid `--fields` selector.
+Check the observed host address with:
+
+```bash
+nmcli -t -f GENERAL.TYPE,GENERAL.STATE,GENERAL.CONNECTION,IP4.ADDRESS device show eth0
+```
+
+The production backend image includes UnitLab's native MMS client (built with
+`UNITLAB_IEC61850_SIM_WITH_LIBIEC61850=OFF`) at
+`/opt/unitlab/bin/unitlab-iec61850-ied-sim`. Both manual and automatic external
+IED discovery use `IEC61850_IED_LIVE_WIRE_BINARY_PATH` when configured. Check
+the discovery worker after an update:
+
+```bash
+sudo docker exec unitlab-external-ied-discovery sh -c 'printenv IEC61850_IED_LIVE_WIRE_BINARY_PATH; test -x /opt/unitlab/bin/unitlab-iec61850-ied-sim'
+```
+
+For these fixes, rebuild the release and apply it with `sudo unitlab update`:
+the backend/worker image and the host network-agent wheel must both be updated.
+Then check the addresses in Network settings and retry **Refresh discovery**.
+Local mock tests validate command construction and address parsing; discovery
+against the connected IED still requires verification on the Raspberry Pi.
+
 ## Result (What You Get)
 
 After provisioning and reboot:
