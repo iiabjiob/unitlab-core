@@ -24,6 +24,7 @@ from app.schemas.signal_sheet_schema import (
     SignalAllocationRejectedItemSchema,
     SignalAllocationRowSchema,
 )
+from app.services.hardware_command_intent import hardware_recovery_required_predicate
 from app.services.device_presence_service import DevicePresenceService
 from app.api.v1.signal_sheet.allocation_policy import (
     channel_auto_allocate_sort_key as _channel_auto_allocate_sort_key,
@@ -474,16 +475,10 @@ class SignalSheetRepository:
         include_recovery: bool,
     ) -> SignalExecutionBinding | None:
         recovery_expression = exists().where(
-                    HardwareCommandIntentChannel.channel_id == SignalAllocation.channel_id,
-                    HardwareCommandIntentChannel.command_id == HardwareCommandIntent.command_id,
-                    or_(
-                        HardwareCommandIntent.status.in_(("unknown", "recovery_required", "publish_failed")),
-                        and_(
-                            HardwareCommandIntent.status.in_(("created", "queued")),
-                            HardwareCommandIntent.execution_status.in_(("unknown", "timeout")),
-                        ),
-                    ),
-                ).correlate(SignalAllocation).label("recovery_required")
+            HardwareCommandIntentChannel.channel_id == SignalAllocation.channel_id,
+            HardwareCommandIntentChannel.command_id == HardwareCommandIntent.command_id,
+            hardware_recovery_required_predicate(),
+        ).correlate(SignalAllocation).label("recovery_required")
         if include_recovery:
             stmt = select(SignalAllocation, recovery_expression)
         else:

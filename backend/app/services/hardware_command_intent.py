@@ -1,15 +1,60 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import and_, exists, or_, select, update
 
 from app.models.hardware_command import HardwareCommandIntent, HardwareCommandIntentChannel
 
 RECOVERY_REQUIRED_ACTIONS = frozenset({"restore", "do_pulse"})
+HARDWARE_RETRY_DELAY_SECONDS = 60
+
+
+def hardware_retry_cutoff() -> datetime:
+    return datetime.now(timezone.utc) - timedelta(seconds=HARDWARE_RETRY_DELAY_SECONDS)
+
+
+async def hardware_command_publish_allowed(db: AsyncSession, *, command_id: str) -> bool:
+    """Never replay a timed-out, expired or completed tracked command."""
+    result = await db.execute(
+        select(HardwareCommandIntent).where(HardwareCommandIntent.command_id == command_id)
+    )
+    intent = result.scalar_one_or_none()
+    if intent is None:
+        return True
+    created_at = intent.created_at
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    return (
+        intent.status in {"created", "queued"}
+        and intent.execution_status == "unknown"
+        and created_at > hardware_retry_cutoff()
+    )
 
 
 def requires_physical_recovery(action: str | None) -> bool:
     return str(action or "").strip().lower() in RECOVERY_REQUIRED_ACTIONS
+
+
+def hardware_recovery_required_predicate():
+    """One recovery policy for manual controls, sequences and signal tests.
+
+    Missing ACK is a temporary uncertainty, not a permanent channel lock.
+    Preserve acknowledged recovery failures and all historical evidence.
+    """
+    unresolved = or_(
+        HardwareCommandIntent.status.in_(("unknown", "recovery_required", "publish_failed")),
+        and_(
+            HardwareCommandIntent.status.in_(("created", "queued")),
+            HardwareCommandIntent.execution_status.in_(("unknown", "timeout")),
+        ),
+    )
+    expired_without_ack = and_(
+        HardwareCommandIntent.execution_status.in_(("unknown", "timeout")),
+        HardwareCommandIntent.created_at <= hardware_retry_cutoff(),
+    )
+    return and_(unresolved, ~expired_without_ack)
 
 
 async def has_hardware_recovery_required(
@@ -27,15 +72,7 @@ async def has_hardware_recovery_required(
             exists().where(
                 HardwareCommandIntentChannel.channel_id == int(channel_id),
                 HardwareCommandIntentChannel.command_id == HardwareCommandIntent.command_id,
-                or_(
-                    HardwareCommandIntent.status.in_(
-                        ("unknown", "recovery_required", "publish_failed")
-                    ),
-                    and_(
-                        HardwareCommandIntent.status.in_(("created", "queued")),
-                        HardwareCommandIntent.execution_status.in_(("unknown", "timeout")),
-                    ),
-                ),
+                hardware_recovery_required_predicate(),
             )
         )
     )
@@ -52,29 +89,13 @@ async def list_hardware_recovery_required_channels(
     normalized = {int(channel_id) for channel_id in channel_ids if int(channel_id) > 0}
     if not normalized:
         return set()
-    if str(action or "").strip().lower() == "do_pair":
-        # DO_PAIR is an absolute two-bit state command. All four states are
-        # valid for BSU and can be safely re-issued after an uncertain result.
-        recovery_required = HardwareCommandIntent.status.in_(
-            ("recovery_required", "publish_failed")
-        )
-    else:
-        recovery_required = or_(
-            HardwareCommandIntent.status.in_(
-                ("unknown", "recovery_required", "publish_failed")
-            ),
-            and_(
-                HardwareCommandIntent.status.in_(("created", "queued")),
-                HardwareCommandIntent.execution_status.in_(
-                    ("unknown", "timeout")
-                ),
-            ),
-        )
+    # Keep the internal call signature compatible; all actions use one policy.
+    del action
     result = await db.execute(
         select(HardwareCommandIntentChannel.channel_id).where(
             HardwareCommandIntentChannel.channel_id.in_(normalized),
             HardwareCommandIntentChannel.command_id == HardwareCommandIntent.command_id,
-            recovery_required,
+            hardware_recovery_required_predicate(),
         ).distinct()
     )
     return {int(channel_id) for channel_id in result.scalars().all()}

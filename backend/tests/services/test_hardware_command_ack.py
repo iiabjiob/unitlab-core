@@ -301,7 +301,7 @@ async def test_bulk_recovery_lookup_returns_only_blocked_requested_channels() ->
 
 
 @pytest.mark.anyio
-async def test_pair_state_lookup_does_not_block_on_uncertain_absolute_command() -> None:
+async def test_pair_state_lookup_uses_missing_ack_cooldown() -> None:
     db = AsyncMock()
     db.execute.return_value = SimpleNamespace(
         scalars=lambda: SimpleNamespace(all=lambda: [])
@@ -317,7 +317,8 @@ async def test_pair_state_lookup_does_not_block_on_uncertain_absolute_command() 
     statement = db.execute.await_args.args[0]
     compiled = str(statement.compile(compile_kwargs={"literal_binds": True}))
     assert "recovery_required" in compiled
-    assert "unknown" not in compiled
+    assert "unknown" in compiled
+    assert "hardware_command_intents.created_at <=" in compiled
 
 
 @pytest.mark.anyio
