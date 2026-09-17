@@ -11,7 +11,7 @@ import contextlib
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Optional
 
-from gmqtt import Client as GMQTTClient
+from gmqtt import Client as GMQTTClient  # pyright: ignore[reportMissingImports]
 
 from simulator.packet_structures import (
     PacketBuilder,
@@ -165,9 +165,15 @@ class SimulatorMQTTClient:
 
     def _handle_message(self, client, topic, payload, qos, properties):  # pragma: no cover - gmqtt callback
         if self._on_message:
-            asyncio.create_task(self._on_message(topic, payload))
+            asyncio.create_task(self._dispatch_message(topic, payload))
         else:
             self._logger.debug("Dropped message from %s (no handler)", topic)
+
+    async def _dispatch_message(self, topic: str, payload: bytes) -> None:
+        """Bridge a general awaitable hook to asyncio's coroutine-only task API."""
+        handler = self._on_message
+        if handler is not None:
+            await handler(topic, payload)
 
 
 # ---------------------------------------------------------------------------

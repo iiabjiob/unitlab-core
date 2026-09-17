@@ -13,7 +13,7 @@ it('updates real Affino row data through the installed public API without resett
   const { createClientRowModel, createDataGridColumnModel, createDataGridApi } = await import(/* @vite-ignore */ coreUrl)
   const rowModel = createClientRowModel({
     rows: [{ rowId: 'signal-1', tested_at: null, test_status: '' }, { rowId: 'signal-2', tested_at: null }],
-    resolveRowId: (row) => row.rowId,
+    resolveRowId: (/** @type {{ rowId: string }} */ row) => row.rowId,
   })
   const columnModel = createDataGridColumnModel({ columns: [{ key: 'tested_at', width: 240 }, { key: 'test_status', width: 180 }] })
   const api = createDataGridApi({ rowModel, columnModel, lifecycle: { state: 'started' }, init: async () => {}, start: async () => {}, stop: async () => {}, dispose: async () => {} })

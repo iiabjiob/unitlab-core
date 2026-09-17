@@ -6,7 +6,6 @@ import type {
   Device,
   DeviceDto,
   DeviceStatus,
-  DeviceBulkDeleteResponse,
   DeviceHeartbeatFastSnapshot,
   DeviceHeartbeatDiagSnapshot,
 } from "@/types/device"

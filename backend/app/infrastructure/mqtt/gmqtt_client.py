@@ -91,6 +91,11 @@ class UnitLabMqttClient:
     def on_message(self, client, topic, payload, qos, properties):
         # Delegate to manager-provided async hook (don’t block gmqtt callback)
         if self._on_message_async:
-            asyncio.create_task(self._on_message_async(topic, payload, qos, properties))
+            asyncio.create_task(self._dispatch_message(topic, payload, qos, properties))
         else:
             logger.debug(f"📥 Received (no handler set): {topic} ({len(payload)} bytes)")
+
+    async def _dispatch_message(self, topic: str, payload: bytes, qos: int, properties: object) -> None:
+        handler = self._on_message_async
+        if handler is not None:
+            await handler(topic, payload, qos, properties)

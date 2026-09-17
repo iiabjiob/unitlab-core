@@ -1840,7 +1840,7 @@ function resolveNodeFill(id: string) {
   return "var(--color-white)"
 }
 
-function resolveNodeStroke(id: string, selected: boolean) {
+function resolveNodeStroke(_id: string, selected: boolean) {
   if (selected) return "var(--color-blue-500)"
   return "var(--color-blue-300)"
 }

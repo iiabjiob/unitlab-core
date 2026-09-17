@@ -172,7 +172,7 @@ import {
 
 import UiButton from "@/components/ui/UiButton.vue"
 
-const props = defineProps<{
+defineProps<{
   summaryText: string
   signalSummary?: {
     total: number

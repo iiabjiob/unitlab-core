@@ -33,7 +33,14 @@
           <UiAlert type="error" :message="error" />
         </div>
 
-        <div v-if="!file" class="signal-import-modal__empty-state">
+        <div
+          v-if="!file"
+          class="signal-import-modal__empty-state"
+          @dragenter="onDragEnter"
+          @dragover="onDragOver"
+          @dragleave="onDragLeave"
+          @drop="onDrop"
+        >
           <p class="signal-import-modal__ready-title">Choose a signal list file to start.</p>
           <p class="signal-import-modal__muted signal-import-modal__muted--xs">
             You can drag and drop .xls, .xlsx, or .xlsm files here.

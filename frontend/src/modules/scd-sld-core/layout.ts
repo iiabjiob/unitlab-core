@@ -732,7 +732,7 @@ function isGroundedDisconnectorElement(element: SldElement | null): boolean {
 
 function buildEndpointRoutePoints(
   element: SldElement | null,
-  point: SldRoutePoint,
+  _point: SldRoutePoint,
   pointsToAnchor: SldRoutePoint[],
 ): SldRoutePoint[] {
   const points = uniqueConsecutivePoints(pointsToAnchor)

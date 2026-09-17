@@ -190,7 +190,6 @@ export const useChannelStore = defineStore("channelStore", () => {
     },
   })
   const {
-    rebuildChannelIndexes,
     channelsByDeviceFast,
     channelByDeviceAndIndex,
     fetchAll,

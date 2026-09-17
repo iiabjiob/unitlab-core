@@ -139,11 +139,14 @@ onBeforeUnmount(() => {
 
 .device-editor__workspace {
   display: flex;
+  flex: 1 1 0;
+  min-height: 0;
   flex-direction: column;
   gap: 1rem;
   margin-top: 1.25rem;
   padding: 1rem;
   border-radius: var(--radius-md);
+  overflow: auto;
 }
 
 .device-editor__channels-column,

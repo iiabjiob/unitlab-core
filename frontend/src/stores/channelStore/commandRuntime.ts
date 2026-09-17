@@ -145,7 +145,7 @@ export function createChannelCommandRuntime(params: CreateChannelCommandRuntimeP
     return false
   }
 
-  function scheduleDoStateRefreshIfPending(deviceId: number, commandIssuedAt: number) {
+  function scheduleDoStateRefreshIfPending(deviceId: number, _commandIssuedAt: number) {
     const existing = doStateRefreshTimers.get(deviceId)
     if (existing) {
       clearTimeout(existing)

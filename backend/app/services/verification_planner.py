@@ -92,7 +92,6 @@ def build_verification_subscription_plan(
     group_buckets: dict[tuple[str, ...], list[int]] = defaultdict(list)
     group_contexts: dict[tuple[str, ...], dict[str, Any]] = {}
     uncovered_targets: list[VerificationSubscriptionPlanUncoveredTargetSchema] = []
-    planning_diagnostics: list[str] = []
     endpoints: set[str] = set()
     exact_count = 0
     partial_count = 0

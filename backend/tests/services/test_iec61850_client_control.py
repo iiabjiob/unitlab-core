@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 import io
 import os
-import subprocess
 
 import pytest
 

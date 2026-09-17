@@ -11,7 +11,6 @@ from redis.exceptions import ConnectionError as RedisConnectionError, ResponseEr
 
 from app.core.config import get_settings
 from app.core.logger import get_logger
-from app.core.mqtt_dto import InboundMqttMsg
 from app.infrastructure.mqtt.handlers import bootstrap  # noqa: F401
 from app.infrastructure.mqtt.inbound_worker import process_inbound_message
 from app.infrastructure.redis.manager import RedisManager

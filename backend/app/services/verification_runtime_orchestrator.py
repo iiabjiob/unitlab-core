@@ -12,7 +12,6 @@ from uuid import uuid4
 
 from app.core.logger import get_logger
 from app.schemas.verification_schema import (
-    SignalVerificationEvidenceSetSchema,
     VerificationExecutionContextSchema,
     VerificationEvidenceDiagnosticSchema,
     VerificationRecoveryStateSchema,

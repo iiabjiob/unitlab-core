@@ -19,7 +19,7 @@ const rootClasses = computed(() => [
   props.active ? "is-active" : null,
 ])
 
-function handleClick(event: MouseEvent) {
+function handleClick() {
   if (props.disabled) return
   emit("select")
 }

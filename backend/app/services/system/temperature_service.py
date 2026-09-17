@@ -1,4 +1,3 @@
-import platform
 import subprocess
 from app.core.logger import logger
 from app.core.utils import ensure_linux

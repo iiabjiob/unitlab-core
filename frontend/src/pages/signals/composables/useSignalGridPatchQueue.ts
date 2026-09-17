@@ -34,11 +34,6 @@ type SignalGridPatchQueueDiagnostics = {
   droppedCellRefreshes: number
 }
 
-type DataGridRowPatch<TRow> = {
-  rowId: SignalGridRowId
-  data: Partial<TRow>
-}
-
 type DataGridPatchOptions = {
   recomputeSort?: boolean
   recomputeFilter?: boolean
@@ -77,7 +72,7 @@ function defaultScheduler(): SignalGridPatchQueueScheduler {
   }
 
   return {
-    schedule: callback => globalThis.setTimeout(callback, 16),
+      schedule: callback => globalThis.setTimeout(callback, 16) as unknown as number,
     cancel: handle => globalThis.clearTimeout(handle),
   }
 }

@@ -1763,7 +1763,7 @@ class SequenceRunner:
                     last_error=final_error,
                     blocked_step_ids=blocked_step_ids,
                 )
-        except Exception as exc:  # noqa: BLE001
+        except Exception:  # noqa: BLE001
             logger.exception(
                 "Sequence run crashed (sequence=%s, run=%s)",
                 sequence_id,

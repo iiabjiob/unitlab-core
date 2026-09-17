@@ -18,7 +18,7 @@ defineOptions({
   inheritAttrs: false,
 })
 
-const props = defineProps<{
+defineProps<{
   modelValue: number | null
   channelType: ChannelType
   name?: string

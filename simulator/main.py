@@ -7,9 +7,9 @@ import asyncio
 import logging
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Any, Iterable, Optional
 
-import yaml
+import yaml  # pyright: ignore[reportMissingModuleSource]
 
 from simulator.devices.ao_device import SimulatedAODevice
 from simulator.devices.di_device import SimulatedDIDevice
@@ -51,7 +51,7 @@ def _is_gmqtt_close_task(task: object | None) -> bool:
     return "MQTTConnection.close" in qualname and "gmqtt" in filename
 
 
-def _should_suppress_gmqtt_close_broken_pipe(context: dict) -> bool:
+def _should_suppress_gmqtt_close_broken_pipe(context: dict[str, Any]) -> bool:
     exc = context.get("exception")
     if not _is_broken_pipe_error(exc):
         return False
@@ -134,7 +134,7 @@ def load_config(path: Path) -> SimulatorConfig:
     return _parse_config_dict(data)
 
 
-def _parse_config_dict(data: dict) -> SimulatorConfig:
+def _parse_config_dict(data: dict[str, Any]) -> SimulatorConfig:
     broker = data.get("broker") or {}
     devices = data.get("devices") or {}
     behavior = data.get("behavior") or {}
@@ -216,7 +216,7 @@ async def run_simulator(args: argparse.Namespace) -> None:
     loop = asyncio.get_running_loop()
     previous_exception_handler = loop.get_exception_handler()
 
-    def _loop_exception_handler(loop: asyncio.AbstractEventLoop, context: dict) -> None:
+    def _loop_exception_handler(loop: asyncio.AbstractEventLoop, context: dict[str, Any]) -> None:
         if _should_suppress_gmqtt_close_broken_pipe(context):
             logger.debug("Suppressed gmqtt close broken-pipe during reconnect/shutdown")
             return

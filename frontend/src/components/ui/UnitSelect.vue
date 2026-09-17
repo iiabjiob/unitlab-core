@@ -20,7 +20,7 @@ import { computed } from "vue"
 import { useDeviceStore } from "@/stores/deviceStore"
 import UiSelect from "./UiSelect.vue";
 
-const props = defineProps<{
+defineProps<{
   modelValue: number | null   // ✅ now strictly device_id from DB
   name?: string
 }>()

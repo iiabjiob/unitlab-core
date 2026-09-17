@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
-import pytest
 
 from app.schemas.verification_schema import VerificationExecutionContextSchema
 from app.services.iec61850.mms_adapter import Iec61850MmsEndpointCatalogEntry, build_mms_endpoint_catalog
@@ -15,10 +14,8 @@ from app.services.iec61850.report_runtime import (
     Iec61850ReportEvent,
     Iec61850ReportEventValue,
     Iec61850ReportKind,
-    Iec61850RuntimeMode,
     Iec61850RuntimeStatus,
     Iec61850RuntimeTriggerOptions,
-    Iec61850SelectedSignal,
     to_report_control_ref,
     Iec61850ReportReason,
 )

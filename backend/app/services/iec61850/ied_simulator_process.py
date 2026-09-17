@@ -588,7 +588,6 @@ def _read_process_stdout_line(process: subprocess.Popen[str], *, timeout_deadlin
             raw_fd = fileno()
 
     if raw_fd is None:
-        expected_prefix = "native-wire-client: state=associated"
         while True:
             line = stdout.readline()
             if not line:

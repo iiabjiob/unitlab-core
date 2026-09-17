@@ -15,7 +15,7 @@ from app.models.device import Device
 from app.models.signal_sheet import SignalAllocation
 from app.infrastructure.protocol.modes import State
 from app.services.command_queue_service import enqueue_ao_command, enqueue_do_command, enqueue_request_state
-from app.services.hardware_command_admission import HardwareChannelLease, HardwareCommandAdmission
+from app.services.hardware_command_admission import HardwareCommandAdmission
 from app.services.hardware_command_intent import (
     mark_hardware_command_intent_delivery_failure,
     mark_hardware_command_intent_completed,

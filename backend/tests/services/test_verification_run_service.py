@@ -23,7 +23,7 @@ from app.schemas.verification_schema import (
 )
 from app.services.iec61850.mms_adapter import Iec61850MmsEndpointCatalogEntry, build_mms_endpoint_catalog
 from app.services.iec61850.report_runtime import Iec61850DeviceEndpoint, Iec61850RuntimeMode
-from app.services.iec61850.report_runtime import Iec61850ReportControlRef, Iec61850ReportEvent, Iec61850ReportEventValue, Iec61850ReportReason, to_report_control_ref
+from app.services.iec61850.report_runtime import Iec61850ReportEvent, Iec61850ReportEventValue, Iec61850ReportReason, to_report_control_ref
 from app.services import verification_run_service as run_service
 from app.services.verification_run_service import (
     execute_single_signal_verification_run,

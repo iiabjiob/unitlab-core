@@ -274,7 +274,7 @@ const manualReportBusy = ref(false)
 const manualGiBusy = ref(false)
 const treeItemElements = new Map<NodeValue, HTMLElement>()
 const treeViewportRef = ref<HTMLElement | null>(null)
-let manualReportLeaseHeartbeatTimer: ReturnType<typeof window.setInterval> | null = null
+let manualReportLeaseHeartbeatTimer: number | null = null
 let treeViewportResizeObserver: ResizeObserver | null = null
 const tree = useVirtualTreeviewController<NodeValue>({
   nodes: [],

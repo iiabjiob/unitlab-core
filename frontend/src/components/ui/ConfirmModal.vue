@@ -34,7 +34,7 @@ const props = defineProps<{
   enterConfirms?: boolean
 }>()
 
-const emit = defineEmits<{
+defineEmits<{
   (e: "cancel"): void
   (e: "confirm"): void
 }>()

@@ -10,5 +10,17 @@ dependencies = [
     "pyyaml",
 ]
 
-[tool.uv]
-project-root = true
+[dependency-groups]
+dev = [
+    "basedpyright>=1.40.1",
+]
+
+[tool.basedpyright]
+include = ["."]
+exclude = [".venv", "__pycache__"]
+typeCheckingMode = "basic"
+reportArgumentType = "error"
+reportOptionalCall = "error"
+reportOptionalMemberAccess = "error"
+reportMissingImports = false
+reportMissingModuleSource = false

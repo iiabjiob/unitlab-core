@@ -38,6 +38,7 @@ from app.services.iec61850.client_control import Iec61850ClientControlService
 from app.services.verification_evidence import VerificationEvidenceRepository
 from app.services.verification_execution import execute_verification_run
 from app.services.verification_planner import (
+    VerificationTargetSource,
     build_verification_subscription_plan,
     build_verification_target_sources,
 )

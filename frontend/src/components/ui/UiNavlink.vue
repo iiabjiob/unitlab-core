@@ -8,7 +8,7 @@
 import type { RouteLocationRaw } from 'vue-router'
 
 // Типизация пропса `to`
-const props = defineProps<{
+defineProps<{
   to: RouteLocationRaw
 }>()
 </script>

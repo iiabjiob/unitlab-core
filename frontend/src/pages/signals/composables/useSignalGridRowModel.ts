@@ -9,14 +9,14 @@ import {
   type SignalGridRowPatch,
 } from "./useSignalGridPatchQueue"
 
-type SignalGridRowModelOptions<TRow> = {
+type SignalGridRowModelOptions = {
   scheduler?: SignalGridPatchQueueScheduler
   defaultReason?: string
 }
 
 export function createSignalGridRowModel<TRow extends Record<string, unknown>>(
   gridRef: SignalGridPatchQueueGridRef<TRow>,
-  options: SignalGridRowModelOptions<TRow>,
+  options: SignalGridRowModelOptions,
 ) {
   const rows = shallowRef<TRow[]>([])
   let pendingRows: readonly TRow[] = rows.value
@@ -74,7 +74,7 @@ export function createSignalGridRowModel<TRow extends Record<string, unknown>>(
 
 export function useSignalGridRowModel<TRow extends Record<string, unknown>>(
   gridRef: SignalGridPatchQueueGridRef<TRow>,
-  options: SignalGridRowModelOptions<TRow>,
+  options: SignalGridRowModelOptions,
 ) {
   const model = createSignalGridRowModel(gridRef, options)
   watch(

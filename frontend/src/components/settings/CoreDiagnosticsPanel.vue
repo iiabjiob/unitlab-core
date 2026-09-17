@@ -112,7 +112,6 @@ const systemHealthStore = useSystemHealthStore()
 
 const snapshot = computed(() => store.snapshot)
 const services = computed(() => store.services)
-const busy = computed(() => store.loading || store.commandPending)
 const systemStatusText = computed(() => String(systemHealthStore.status).toUpperCase())
 const diagnosticsUnavailable = computed(() => (
   !snapshot.value

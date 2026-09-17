@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeVar
 
 import pytest
 
@@ -78,7 +78,10 @@ class FakeRepo:
         self.events.append(dict(kwargs))
 
 
-def run_async[T](awaitable: Any) -> T:
+T = TypeVar("T")
+
+
+def run_async(awaitable: Any) -> T:
     return asyncio.run(awaitable)
 
 

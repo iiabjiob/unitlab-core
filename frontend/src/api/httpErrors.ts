@@ -12,7 +12,7 @@ export type HttpErrorContext = {
 }
 
 export class HttpRequestError extends Error {
-  readonly name = "HttpRequestError"
+  override readonly name = "HttpRequestError"
   readonly status: number | null
   readonly detail: string
   readonly url: string

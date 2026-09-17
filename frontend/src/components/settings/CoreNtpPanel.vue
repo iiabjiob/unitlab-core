@@ -38,7 +38,7 @@
 
         <div class="core-ntp-panel__server-list">
           <div
-            v-for="(server, idx) in draftServers"
+            v-for="(_, idx) in draftServers"
             :key="`ntp-server-${idx}`"
             class="core-ntp-panel__server-row"
           >
@@ -372,10 +372,6 @@ function addServer() {
 function removeServer(index: number) {
   draftServers.value = draftServers.value.filter((_, idx) => idx !== index)
   ntpDirty.value = true
-}
-
-function resetDraftServers() {
-  syncDraftFromSnapshot()
 }
 
 function resetManualTimeDraft() {

@@ -174,6 +174,18 @@ function onSetAo({ channel, value }: { channel: Channel; value: number }) {
   row-gap: 0.5rem;
 }
 
+@media (max-width: 1023px) {
+  .device-channels-list {
+    height: auto;
+    flex: 0 0 auto;
+  }
+
+  .device-channels-list__items {
+    flex: 0 1 auto;
+    max-height: min(45vh, 24rem);
+  }
+}
+
 :global(.dark .device-channels-list__header) {
   color: var(--color-neutral-400);
 }

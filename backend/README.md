@@ -59,6 +59,20 @@ For one-click startup in VS Code, run task `backend: start all` (Terminal → Ru
 
 FastAPI subscribes to `ws:events` and forwards every payload to connected WebSocket clients.
 
+### Backend quality gate
+
+Run the same checks used before production changes:
+
+```bash
+uv run ruff check app tests
+uv run pytest -q
+uv build
+```
+
+`ruff` is configured to report syntax errors, undefined names, unused imports, and other
+fundamental Python defects for both application code and tests. The gate must pass before
+merging runtime or hardware-facing changes.
+
 ### Signal allocation + test run pipeline
 
 - REST endpoints enqueue allocation jobs into `signal-allocation:jobs` and test-run jobs into `signal-test-run:jobs`.
