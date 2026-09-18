@@ -7,12 +7,11 @@ import { useDeviceStore } from "@/stores/deviceStore"
 import { useChannelStore } from "@/stores/channelStore"
 import { useSelectionStore } from "@/stores/selectionStore"
 import { useRealtimeScopeStore } from "@/stores/realtimeScopeStore"
-import { useViewport } from "@/composables/useViewport"
 
 import DeviceEditorHeader from "./components/DeviceEditorHeader.vue"
 import DeviceExecutionLog from "./components/DeviceExecutionLog.vue"
 import DeviceDiagnosticsPanel from "./components/DeviceDiagnosticsPanel.vue"
-import ResizablePanel from "@/components/ui/ResizablePanel.vue"
+import EditorWorkspaceLayout from "@/components/layout/EditorWorkspaceLayout.vue"
 import DeviceChannelsList from "./components/DeviceChannelsList.vue"
 
 const route = useRoute()
@@ -56,9 +55,6 @@ watch(
   { immediate: true }
 )
 
-const { width, isDesktop } = useViewport()
-const isWideDesktop = computed(() => isDesktop.value && width.value >= 1500)
-
 onBeforeUnmount(() => {
   realtimeScopeStore.clearRealtimeUnitScope(scopeId)
 })
@@ -72,60 +68,45 @@ onBeforeUnmount(() => {
       :device="device"
     />
 
-    <div class="device-editor__workspace workspace-surface">
-      <div
-        v-if="device"
-        class="device-editor__channels-column"
-      >
-        <ResizablePanel
-          v-if="isWideDesktop"
-          class="device-editor__channels-panel"
-          :device="device"
-          placement="left"
-          storageKey="device-channels-list-width"
-          :minSize="380"
-          :defaultSize="380"
-          :maxSize="800"
-        >
+    <EditorWorkspaceLayout
+      storage-key="device-channels-list-width"
+      :min-size="380"
+      :default-size="380"
+      :max-size="800"
+    >
+      <template #sidebar>
+        <template v-if="device">
           <DeviceChannelsList :device="device" />
-        </ResizablePanel>
+        </template>
+      </template>
 
-        <div
-          v-else
-          class="device-editor__channels-card"
-        >
-          <div>
-            <DeviceChannelsList :device="device" />
+      <template #main>
+        <div v-if="device" class="device-editor__detail-panel">
+          <div class="device-editor__tabs">
+            <button
+              type="button"
+              class="device-editor__tab"
+              :class="{ 'is-active': activeDetailTab === 'log' }"
+              @click="detailTabs.select('log')"
+            >
+              Log
+            </button>
+            <button
+              type="button"
+              class="device-editor__tab"
+              :class="{ 'is-active': activeDetailTab === 'diag' }"
+              @click="detailTabs.select('diag')"
+            >
+              Diagnostics
+            </button>
+          </div>
+          <div class="device-editor__detail-content">
+            <DeviceExecutionLog v-if="activeDetailTab === 'log'" :device="device" />
+            <DeviceDiagnosticsPanel v-else :device="device" />
           </div>
         </div>
-      </div>
-
-      <div v-if="device" class="device-editor__detail-panel">
-        <div class="device-editor__tabs">
-          <button
-            type="button"
-            class="device-editor__tab"
-            :class="{ 'is-active': activeDetailTab === 'log' }"
-            @click="detailTabs.select('log')"
-          >
-            Log
-          </button>
-          <button
-            type="button"
-            class="device-editor__tab"
-            :class="{ 'is-active': activeDetailTab === 'diag' }"
-            @click="detailTabs.select('diag')"
-          >
-            Diagnostics
-          </button>
-        </div>
-        <div class="device-editor__detail-content">
-          <DeviceExecutionLog v-if="activeDetailTab === 'log'" :device="device" />
-          <DeviceDiagnosticsPanel v-else :device="device" />
-        </div>
-      </div>
-
-    </div>
+      </template>
+    </EditorWorkspaceLayout>
 
   </div>
 </template>
@@ -138,33 +119,10 @@ onBeforeUnmount(() => {
   padding-inline-end: 1rem;
 }
 
-.device-editor__workspace {
-  display: flex;
-  flex: 1 1 0;
-  min-height: 0;
-  flex-direction: column;
-  gap: 1rem;
-  margin-top: 1.25rem;
-  padding: 1rem;
-  border-radius: var(--radius-md);
-  overflow: auto;
-}
-
-.device-editor__channels-column,
-.device-editor__channels-panel {
-  display: flex;
-  flex-direction: column;
-}
-
-.device-editor__channels-card,
 .device-editor__detail-panel {
   border: 1px solid var(--color-neutral-200);
   border-radius: var(--radius-lg);
   background: var(--color-neutral-50);
-}
-
-.device-editor__channels-card {
-  padding: 1rem;
 }
 
 .device-editor__detail-panel {
@@ -214,38 +172,9 @@ onBeforeUnmount(() => {
   color: var(--color-neutral-900);
 }
 
-@media (min-width: 640px) {
-  .device-editor__workspace {
-    padding: 1.25rem;
-  }
-}
-
 @media (min-width: 1500px) {
   .device-editor {
     min-height: 0;
-    overflow: hidden;
-  }
-
-  .device-editor__workspace {
-    min-height: 0;
-    flex: 1 1 0;
-    flex-direction: row;
-    gap: 1.25rem;
-    overflow: hidden;
-  }
-
-  .device-editor__channels-column {
-    min-height: 0;
-    flex: 0 0 auto;
-    align-self: stretch;
-    height: 100%;
-    overflow: hidden;
-  }
-
-  .device-editor__channels-panel {
-    min-height: 0;
-    flex: 1 1 0;
-    height: 100%;
     overflow: hidden;
   }
 
@@ -263,21 +192,8 @@ onBeforeUnmount(() => {
   }
 }
 
-@media (min-width: 1024px) and (max-width: 1499px) {
-  .device-editor__workspace {
-    gap: 1rem;
-  }
-
-  .device-editor__channels-column {
-    flex: 0 0 auto;
-  }
-
-  .device-editor__channels-card {
-    padding: 0;
-  }
-
+@media (max-width: 1499px) {
   .device-editor__detail-panel {
-    flex: 1 1 0;
     min-height: 18rem;
     overflow: hidden;
   }
@@ -287,7 +203,6 @@ onBeforeUnmount(() => {
   }
 }
 
-:global(.dark .device-editor__channels-card),
 :global(.dark .device-editor__detail-panel) {
   border-color: var(--color-neutral-700);
   background: color-mix(in srgb, var(--color-neutral-900) 60%, transparent);

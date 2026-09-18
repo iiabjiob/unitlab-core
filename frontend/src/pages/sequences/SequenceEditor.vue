@@ -6,14 +6,13 @@ import { useSequenceStore } from "@/stores/sequenceStore"
 import { useSequenceStepStore } from "@/stores/sequenceStepStore"
 import { useSelectionStore } from "@/stores/selectionStore"
 import { useToastStore } from "@/stores/toastStore"
-import { useViewport } from "@/composables/useViewport"
 
 import SequenceEditorHeader from "./components/SequenceEditorHeader.vue"
 import SequenceStepsList from "./components/SequenceStepsList.vue"
 import SequenceExecutionLog from "./components/SequenceExecutionLog.vue"
 import SequenceStepEditor from "./components/SequenceStepEditor.vue"
 import SequenceRunControls from "./components/SequenceRunControls.vue"
-import ResizablePanel from "@/components/ui/ResizablePanel.vue"
+import EditorWorkspaceLayout from "@/components/layout/EditorWorkspaceLayout.vue"
 import ConfirmModal from "@/components/ui/ConfirmModal.vue"
 
 const route = useRoute()
@@ -115,7 +114,6 @@ function exitStepEdit() {
   stepStore.setActiveStep(null)
 }
 
-const { isDesktop } = useViewport()
 </script>
 
 <template>
@@ -134,53 +132,35 @@ const { isDesktop } = useViewport()
       :state="state"
     />
 
-    <div class="sequence-editor__workspace workspace-surface">
-      <div
-        v-if="sequence"
-        class="sequence-editor__steps-column"
-      >
-        <ResizablePanel
-          v-if="isDesktop"
-          class="sequence-editor__steps-panel"
-          :sequence="sequence"
-          placement="left"
-          storageKey="sequence-steps-list-width"
-          :minSize="380"
-          :defaultSize="380"
-          :maxSize="800"
-        >
-          <SequenceStepsList :sequence="sequence" />
-        </ResizablePanel>
+    <EditorWorkspaceLayout
+      storage-key="sequence-steps-list-width"
+      :min-size="380"
+      :default-size="380"
+      :max-size="800"
+    >
+      <template #sidebar>
+        <SequenceStepsList v-if="sequence" :sequence="sequence" />
+      </template>
 
+      <template #main>
         <div
-          v-else
-          class="sequence-editor__steps-card"
+          v-if="sequence && state"
+          class="sequence-editor__main-column"
+          :class="{ 'sequence-editor__main-column--split': selectedStep }"
         >
-          <div>
-            <SequenceStepsList :sequence="sequence" />
+          <SequenceStepEditor
+            class="sequence-editor__step-editor"
+            :sequence="sequence"
+            :step="selectedStep"
+            @close="exitStepEdit"
+          />
+
+          <div class="sequence-editor__log">
+            <SequenceExecutionLog :sequence="sequence" :state="state" />
           </div>
         </div>
-      </div>
-
-      <div
-        v-if="sequence && state"
-        class="sequence-editor__main-column"
-        :class="{ 'sequence-editor__main-column--split': selectedStep }"
-      >
-        <SequenceStepEditor
-          class="sequence-editor__step-editor"
-          :sequence="sequence"
-          :step="selectedStep"
-          @close="exitStepEdit"
-        />
-
-        <div class="sequence-editor__log">
-          <SequenceExecutionLog :sequence="sequence" :state="state" />
-        </div>
-
-      </div>
-
-    </div>
+      </template>
+    </EditorWorkspaceLayout>
 
     <ConfirmModal
       v-if="sequence"
@@ -205,20 +185,6 @@ const { isDesktop } = useViewport()
   overflow: hidden;
 }
 
-.sequence-editor__workspace {
-  display: flex;
-  min-height: 0;
-  flex-direction: column;
-  flex: 1 1 0;
-  gap: 1rem;
-  margin-top: 1.25rem;
-  overflow: hidden;
-  padding: 1rem;
-  border-radius: var(--radius-md);
-}
-
-.sequence-editor__steps-column,
-.sequence-editor__steps-panel,
 .sequence-editor__main-column {
   display: flex;
   min-width: 0;
@@ -230,47 +196,15 @@ const { isDesktop } = useViewport()
   flex: 1 1 auto;
 }
 
-.sequence-editor__steps-card {
-  padding: 1rem;
-  border: 1px solid var(--color-neutral-200);
-  border-radius: var(--radius-lg);
-  background: var(--color-neutral-50);
-}
-
 .sequence-editor__log {
   margin-top: 1rem;
   display: flex;
 }
 
-@media (min-width: 640px) {
-  .sequence-editor__workspace {
-    padding: 1.25rem;
-  }
-}
-
-@media (min-width: 1024px) {
+@media (min-width: 1500px) {
   .sequence-editor {
     min-height: 0;
     overflow: hidden;
-  }
-
-  .sequence-editor__workspace {
-    flex: 1 1 0;
-    flex-direction: row;
-    gap: 1.25rem;
-  }
-
-  .sequence-editor__steps-column {
-    align-self: stretch;
-    height: 100%;
-    min-height: 0;
-    flex: 0 0 auto;
-  }
-
-  .sequence-editor__steps-panel {
-    flex: 1 1 auto;
-    min-height: 0;
-    height: 100%;
   }
 
   .sequence-editor__main-column,
@@ -295,12 +229,7 @@ const { isDesktop } = useViewport()
   }
 }
 
-@media (max-width: 1023px) {
-  .sequence-editor__workspace {
-    overflow-x: hidden;
-    overflow-y: auto;
-  }
-
+@media (max-width: 1499px) {
   .sequence-editor__main-column {
     flex: 0 0 auto;
   }
@@ -311,8 +240,4 @@ const { isDesktop } = useViewport()
   }
 }
 
-:global(.dark .sequence-editor__steps-card) {
-  border-color: var(--color-neutral-700);
-  background: var(--color-neutral-900);
-}
 </style>

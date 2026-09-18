@@ -4,22 +4,19 @@ import { useRoute, useRouter } from "vue-router"
 
 import { useSwitchgearStore } from "@/stores/switchgearStore"
 import { useSelectionStore } from "@/stores/selectionStore"
-import { useViewport } from "@/composables/useViewport"
 
 import SwitchgearEditorHeader from "./components/SwitchgearEditorHeader.vue"
 import SwitchgearExecutionLog from "./components/SwitchgearExecutionLog.vue"
 import SwitchgearControlToolbar from "./components/SwitchgearControlToolbar.vue"
 import SwitchgearBindingsEditor from "./components/SwitchgearBindingsEditor.vue"
 import SwitchgearBindingsSummary from "./components/SwitchgearBindingsSummary.vue"
-import ResizablePanel from "@/components/ui/ResizablePanel.vue"
+import EditorWorkspaceLayout from "@/components/layout/EditorWorkspaceLayout.vue"
 import ConfirmModal from "@/components/ui/ConfirmModal.vue"
 
 const route = useRoute()
 const router = useRouter()
 const store = useSwitchgearStore()
 const selectionStore = useSelectionStore()
-const { isDesktop } = useViewport()
-
 const switchgearId = computed(() => Number(route.params.id))
 const switchgear = computed(() => (
   store.switchgears.find(item => item.id === switchgearId.value) ?? null
@@ -129,44 +126,31 @@ async function confirmDelete() {
 
       <SwitchgearControlToolbar :switchgear="switchgear" />
 
-      <div class="switchgear-editor__workspace workspace-surface">
-        <div class="switchgear-editor__summary-column">
-          <ResizablePanel
-            v-if="isDesktop"
-            class="switchgear-editor__summary-panel"
-            :switchgear="switchgear"
-            placement="left"
-            storageKey="switchgear-summary-width"
-            :minSize="320"
-            :defaultSize="360"
-            :maxSize="800"
-          >
-            <SwitchgearBindingsSummary :switchgear="switchgear" @edit="bindingsEditorOpen = true" />
-          </ResizablePanel>
+      <EditorWorkspaceLayout
+        storage-key="switchgear-summary-width"
+        :min-size="320"
+        :default-size="360"
+        :max-size="800"
+      >
+        <template #sidebar>
+          <SwitchgearBindingsSummary :switchgear="switchgear" @edit="bindingsEditorOpen = true" />
+        </template>
 
-          <div
-            v-else
-            class="switchgear-editor__summary-card"
-          >
-            <div>
-              <SwitchgearBindingsSummary :switchgear="switchgear" @edit="bindingsEditorOpen = true" />
+        <template #main>
+          <div class="switchgear-editor__main-column">
+            <SwitchgearBindingsEditor
+              v-if="bindingsEditorOpen"
+              class="switchgear-editor__bindings-editor"
+              :switchgear="switchgear"
+              @close="bindingsEditorOpen = false"
+            />
+
+            <div class="switchgear-editor__log">
+              <SwitchgearExecutionLog :switchgear="switchgear" />
             </div>
           </div>
-        </div>
-
-        <div class="switchgear-editor__main-column">
-          <SwitchgearBindingsEditor
-            v-if="bindingsEditorOpen"
-            class="switchgear-editor__bindings-editor"
-            :switchgear="switchgear"
-            @close="bindingsEditorOpen = false"
-          />
-
-          <div class="switchgear-editor__log">
-            <SwitchgearExecutionLog :switchgear="switchgear" />
-          </div>
-        </div>
-      </div>
+        </template>
+      </EditorWorkspaceLayout>
     </template>
 
     <div v-else class="switchgear-editor__not-found">
@@ -194,32 +178,17 @@ async function confirmDelete() {
   padding-inline-end: 1rem;
 }
 
-.switchgear-editor__workspace {
+.switchgear-editor__main-column {
   display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  margin-top: 1.25rem;
-  padding: 1rem;
-  border-radius: var(--radius-md);
-}
-
-.switchgear-editor__summary-column,
-.switchgear-editor__main-column,
-.switchgear-editor__summary-panel {
-  display: flex;
+  min-width: 0;
+  min-height: 0;
   flex-direction: column;
 }
 
-.switchgear-editor__summary-panel,
-.switchgear-editor__summary-card {
-  border: 1px solid var(--color-neutral-200);
-  border-radius: var(--radius-lg);
-  background: var(--color-neutral-50);
-  overflow: hidden;
-}
-
-.switchgear-editor__summary-card {
-  padding: 0;
+.switchgear-editor__log {
+  display: flex;
+  min-height: 12rem;
+  max-height: 40vh;
 }
 
 .switchgear-editor__bindings-editor {
@@ -234,37 +203,10 @@ async function confirmDelete() {
   color: var(--color-neutral-500);
 }
 
-@media (min-width: 640px) {
-  .switchgear-editor__workspace {
-    padding: 1.25rem;
-  }
-}
-
-@media (min-width: 1024px) {
+@media (min-width: 1500px) {
   .switchgear-editor {
     min-height: 0;
     overflow: hidden;
-  }
-
-  .switchgear-editor__workspace {
-    min-height: 0;
-    flex: 1 1 0;
-    flex-direction: row;
-    gap: 1.25rem;
-    overflow: hidden;
-  }
-
-  .switchgear-editor__summary-column {
-    align-self: stretch;
-    height: 100%;
-    min-height: 0;
-    flex: 0 0 auto;
-  }
-
-  .switchgear-editor__summary-panel {
-    flex: 1 1 auto;
-    min-height: 0;
-    height: 100%;
   }
 
   .switchgear-editor__main-column,
@@ -281,9 +223,4 @@ async function confirmDelete() {
   }
 }
 
-:global(.dark .switchgear-editor__summary-panel),
-:global(.dark .switchgear-editor__summary-card) {
-  border-color: transparent;
-  background: var(--color-neutral-900);
-}
 </style>

@@ -169,6 +169,9 @@ const menuEntries = computed(() =>
 
 const activeRoute = computed(() => {
   const currentPath = normalizePath(route.path)
+  if (isSettingsPath(currentPath)) {
+    return null
+  }
   const exact = menuEntries.value.find(entry => currentPath === normalizePath(entry.to))
   if (exact) {
     return exact.to
@@ -215,12 +218,23 @@ function entryDomId(to: string): string {
 
 function isRouteActive(to: string): boolean {
   const currentPath = normalizePath(route.path)
+  if (isSettingsPath(currentPath)) {
+    return false
+  }
   const targetPath = normalizePath(to)
   return currentPath === targetPath || currentPath.startsWith(targetPath + "/")
 }
 
 function isRouteHighlighted(to: string): boolean {
+  if (isSettingsPath(route.path)) {
+    return false
+  }
   return isRouteActive(to) || normalizePath(pendingRoute.value ?? "") === normalizePath(to)
+}
+
+function isSettingsPath(path: string): boolean {
+  const normalizedPath = normalizePath(path)
+  return normalizedPath === "/settings" || normalizedPath.startsWith("/settings/")
 }
 
 function isEntryFocused(to: string): boolean {
