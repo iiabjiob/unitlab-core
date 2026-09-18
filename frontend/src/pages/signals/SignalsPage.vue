@@ -727,13 +727,15 @@ const externalIedHostSourceColumnKey = computed(() => {
 })
 const externalIedAddressSourceColumnKey = computed(() => {
   const verification = activeSignalSheet.value?.import_meta?.verification
-  const addressColumn = verification?.enabled === true
+  const configuredAddressColumn = verification?.enabled === true
     ? String(verification.iec61850_address_column ?? "").trim()
-    : null
+    : ""
+  const addressColumn = configuredAddressColumn || resolveExternalIedAddressColumnFromRows(signalAllocationProjectionRows())
   if (!addressColumn) {
     return null
   }
-  const index = sourceHeaders.value.findIndex(header => header === addressColumn)
+  const normalizedAddressColumn = normalizeSignalSourceColumnKey(addressColumn)
+  const index = sourceHeaders.value.findIndex(header => normalizeSignalSourceColumnKey(header) === normalizedAddressColumn)
   return index >= 0 ? signalGridSourceColumnKey(index) : null
 })
 
@@ -756,6 +758,32 @@ function resolveExternalIedHostColumnFromRows(rows: readonly SignalAllocationRow
     }
   }
   return null
+}
+
+function resolveExternalIedAddressColumnFromRows(rows: readonly SignalAllocationRow[]): string | null {
+  for (const row of rows) {
+    const metadata = row.signal_metadata
+    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+      continue
+    }
+    const verification = (metadata as Record<string, unknown>).verification
+    if (!verification || typeof verification !== "object" || Array.isArray(verification)) {
+      continue
+    }
+    const verificationRecord = verification as Record<string, unknown>
+    const addressColumn = String(verificationRecord.iec61850_address_column ?? "").trim()
+    if (addressColumn) {
+      return addressColumn
+    }
+  }
+  return null
+}
+
+function normalizeSignalSourceColumnKey(value: unknown): string {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "")
 }
 const signalGridPatchIngress = createSignalGridPatchIngress({
   cache: signalAllocationProjectionCache,
@@ -3587,8 +3615,10 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
       presentation: { align: "left", headerAlign: "left" },
       capabilities: { editable: false, sortable: false, filterable: false },
       cellInteraction: {
-        click: true,
-        keyboard: ["enter", "space"],
+        // The command is an explicit control inside the cell. Clicking the
+        // surrounding cell must remain a normal grid selection action.
+        click: false,
+        keyboard: ["enter"],
         role: "button",
         label: ({ row }) => {
           const controlRow = resolveLiveAllocationCellRow(asAllocationRow((row ?? {}) as GridRow))
