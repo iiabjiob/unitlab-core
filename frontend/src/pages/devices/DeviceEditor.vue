@@ -56,7 +56,8 @@ watch(
   { immediate: true }
 )
 
-const { isDesktop } = useViewport()
+const { width, isDesktop } = useViewport()
+const isWideDesktop = computed(() => isDesktop.value && width.value >= 1500)
 
 onBeforeUnmount(() => {
   realtimeScopeStore.clearRealtimeUnitScope(scopeId)
@@ -77,7 +78,7 @@ onBeforeUnmount(() => {
         class="device-editor__channels-column"
       >
         <ResizablePanel
-          v-if="isDesktop"
+          v-if="isWideDesktop"
           class="device-editor__channels-panel"
           :device="device"
           placement="left"
@@ -168,7 +169,20 @@ onBeforeUnmount(() => {
 
 .device-editor__detail-panel {
   display: flex;
+  min-height: 18rem;
   flex-direction: column;
+}
+
+.device-editor__detail-content {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.device-editor__detail-content > :deep(.device-execution-log) {
+  flex: 1 1 0;
+  min-height: 0;
 }
 
 .device-editor__tabs {
@@ -206,7 +220,7 @@ onBeforeUnmount(() => {
   }
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1500px) {
   .device-editor {
     min-height: 0;
     overflow: hidden;
@@ -246,6 +260,30 @@ onBeforeUnmount(() => {
     display: flex;
     flex-direction: column;
     min-height: 0;
+  }
+}
+
+@media (min-width: 1024px) and (max-width: 1499px) {
+  .device-editor__workspace {
+    gap: 1rem;
+  }
+
+  .device-editor__channels-column {
+    flex: 0 0 auto;
+  }
+
+  .device-editor__channels-card {
+    padding: 0;
+  }
+
+  .device-editor__detail-panel {
+    flex: 1 1 0;
+    min-height: 18rem;
+    overflow: hidden;
+  }
+
+  .device-editor__detail-content {
+    flex: 1 1 0;
   }
 }
 

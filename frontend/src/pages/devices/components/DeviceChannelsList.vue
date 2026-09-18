@@ -174,7 +174,7 @@ function onSetAo({ channel, value }: { channel: Channel; value: number }) {
   row-gap: 0.5rem;
 }
 
-@media (max-width: 1023px) {
+@media (max-width: 1499px) {
   .device-channels-list {
     height: auto;
     flex: 0 0 auto;
@@ -182,7 +182,7 @@ function onSetAo({ channel, value }: { channel: Channel; value: number }) {
 
   .device-channels-list__items {
     flex: 0 1 auto;
-    max-height: min(45vh, 24rem);
+    max-height: min(38vh, 28rem);
   }
 }
 

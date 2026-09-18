@@ -232,13 +232,14 @@ onBeforeUnmount(() => {
 .device-execution-log__body {
   box-sizing: border-box;
   flex: 1 1 0;
+  height: 0;
   min-height: 0;
   overflow-y: auto;
   padding: 0.5rem 1rem;
   color: var(--color-neutral-700);
   font-family: var(--font-mono);
   font-size: var(--text-compact);
-  line-height: 1.25;
+  line-height: 1.4;
 }
 
 .device-execution-log__virtual-window {
@@ -251,6 +252,9 @@ onBeforeUnmount(() => {
 }
 
 .device-execution-log__action-heading {
+  box-sizing: border-box;
+  min-height: 1.25rem;
+  line-height: 1.25rem;
   margin-top: 0.25rem;
   color: color-mix(in srgb, var(--color-blue-400) 80%, transparent);
   font-size: var(--text-2xs);
@@ -259,10 +263,12 @@ onBeforeUnmount(() => {
 }
 
 .device-execution-log__row {
+  box-sizing: border-box;
   display: flex;
   align-items: flex-start;
   gap: 0.5rem;
-  padding: 1px 0.25rem;
+  min-height: 1.5rem;
+  padding: 0.25rem;
   border-radius: var(--radius-sm);
   transition: background 150ms ease;
 }
@@ -324,6 +330,7 @@ onBeforeUnmount(() => {
   min-width: 0;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+  line-height: 1.4;
 }
 
 .device-execution-log__message--cmd {
