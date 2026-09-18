@@ -104,6 +104,19 @@ describe("signalGridProjection", () => {
     expect(row.test_status).toBe("late")
   })
 
+  it("projects the visible fallback test status so value filters have values", () => {
+    const [iecRow] = createSignalGridRows([buildRow({
+      tested_at: "2026-01-01T00:00:00Z",
+    })], [])
+    const [normalRow] = createSignalGridRows([buildRow({
+      signal_metadata: { row: { Cabinet: "A1" } },
+      tested_at: "2026-01-01T00:00:00Z",
+    })], [])
+
+    expect(iecRow.test_status).toBe("not_validated")
+    expect(normalRow.test_status).toBe("tested")
+  })
+
   it("applies external IED status through the runtime overlay", () => {
     const source = buildRow({
       signal_metadata: {

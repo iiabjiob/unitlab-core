@@ -60,9 +60,20 @@
 
         <div v-else class="signal-import-modal__ready-card">
           <div class="signal-import-modal__ready-row">
-            <div>
-              <p class="signal-import-modal__ready-title">File ready</p>
-              <p class="signal-import-modal__muted signal-import-modal__muted--xs">{{ fileName }}</p>
+            <div class="signal-import-modal__file-state">
+              <span
+                v-if="parsing"
+                class="signal-import-modal__spinner"
+                aria-hidden="true"
+              />
+              <div>
+                <p class="signal-import-modal__ready-title">
+                  {{ parsing ? "Loading signal list…" : "File ready" }}
+                </p>
+                <p class="signal-import-modal__muted signal-import-modal__muted--xs">
+                  {{ parsing ? "Reading worksheets and preparing the import wizard." : fileName }}
+                </p>
+              </div>
             </div>
             <UiButton
               type="button"
@@ -83,7 +94,48 @@
           />
         </div>
 
-        <div v-if="file" class="signal-import-modal__step-content">
+        <div
+          v-if="file && parsing"
+          class="signal-import-modal__parsing-card"
+          role="status"
+          aria-live="polite"
+        >
+          <span class="signal-import-modal__parsing-spinner" aria-hidden="true" />
+          <div>
+            <p class="signal-import-modal__section-title">Loading workbook</p>
+            <p class="signal-import-modal__muted signal-import-modal__muted--xs">
+              Please wait while worksheets and headers are detected.
+            </p>
+          </div>
+          <div class="signal-import-modal__parsing-progress" aria-hidden="true">
+            <span />
+          </div>
+        </div>
+
+        <div
+          v-if="file && loading"
+          class="signal-import-modal__parsing-card signal-import-modal__importing-card"
+          role="status"
+          aria-live="polite"
+        >
+          <span class="signal-import-modal__parsing-spinner" aria-hidden="true" />
+          <div>
+            <p class="signal-import-modal__section-title">Importing signal list</p>
+            <p class="signal-import-modal__muted signal-import-modal__muted--xs">{{ importPhase }}</p>
+          </div>
+          <div class="signal-import-modal__importing-meta">
+            <span>Elapsed: {{ formatImportDuration(importElapsedSeconds) }}</span>
+            <span v-if="importRemainingSeconds !== null">
+              Estimated remaining: ~{{ formatImportDuration(importRemainingSeconds) }}
+            </span>
+            <span v-else>Still processing…</span>
+          </div>
+          <div class="signal-import-modal__parsing-progress" aria-hidden="true">
+            <span />
+          </div>
+        </div>
+
+        <div v-else-if="file" class="signal-import-modal__step-content">
           <div v-if="step === 'columns'" class="signal-import-modal__section-stack signal-import-modal__section-stack--columns">
             <div class="signal-import-modal__field">
               <p class="signal-import-modal__strong-label">Worksheet</p>
@@ -459,7 +511,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue"
+import { computed, nextTick, onUnmounted, ref, watch } from "vue"
 
 import { getHttpErrorContext } from "@/api/httpErrors"
 import ConfirmModal from "@/components/ui/ConfirmModal.vue"
@@ -519,6 +571,10 @@ const error = ref<string | null>(null)
 const errorAnchorRef = ref<HTMLElement | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 const parsing = ref(false)
+const importPhase = ref("Preparing workbook…")
+const importElapsedSeconds = ref(0)
+let importStartedAtMs: number | null = null
+let importElapsedTimer: ReturnType<typeof setInterval> | null = null
 const dropActive = ref(false)
 const dragCounter = ref(0)
 type SheetColumn = {
@@ -552,6 +608,21 @@ const networkSummary = ref<{
   unknown: string[]
   currentConfig: string
 } | null>(null)
+
+const selectedImportRowCount = computed(() => {
+  if (!selectedSheetName.value) return 0
+  return Math.max(0, (sheetRows.value[selectedSheetName.value]?.length ?? 0) - 1)
+})
+const estimatedImportSeconds = computed(() => {
+  const fileSizeMb = (file.value?.size ?? 0) / (1024 * 1024)
+  return Math.max(3, Math.ceil(2 + selectedImportRowCount.value / 2_000 + fileSizeMb / 2))
+})
+const importRemainingSeconds = computed(() => {
+  if (!loading.value || importElapsedSeconds.value >= estimatedImportSeconds.value) {
+    return loading.value ? null : 0
+  }
+  return Math.max(1, estimatedImportSeconds.value - importElapsedSeconds.value)
+})
 
 const stepItems = computed(() => [...BASE_STEP_ITEMS, VERIFICATION_STEP_ITEM, NETWORK_STEP_ITEM])
 const stepOrder = computed<WizardStep[]>(() => stepItems.value.map(item => item.id))
@@ -751,10 +822,13 @@ async function onFileChange(e: Event) {
 }
 
 function resetWorkflowState(options: { preserveError?: boolean } = {}) {
+  stopImportElapsedTimer()
   clearWorkbookState()
   resetNetworkState()
   file.value = null
   fileName.value = ""
+  importPhase.value = "Preparing workbook…"
+  importElapsedSeconds.value = 0
   terminalColumnIndex.value = null
   typeColumnIndex.value = null
   typeMapping.value = {}
@@ -769,6 +843,33 @@ function resetWorkflowState(options: { preserveError?: boolean } = {}) {
   }
   dropActive.value = false
   dragCounter.value = 0
+}
+
+function startImportElapsedTimer() {
+  stopImportElapsedTimer()
+  importStartedAtMs = Date.now()
+  importElapsedSeconds.value = 0
+  importElapsedTimer = setInterval(() => {
+    if (importStartedAtMs === null) return
+    importElapsedSeconds.value = Math.floor((Date.now() - importStartedAtMs) / 1000)
+  }, 250)
+}
+
+function stopImportElapsedTimer() {
+  if (importElapsedTimer !== null) {
+    clearInterval(importElapsedTimer)
+    importElapsedTimer = null
+  }
+  importStartedAtMs = null
+}
+
+onUnmounted(stopImportElapsedTimer)
+
+function formatImportDuration(seconds: number): string {
+  const normalized = Math.max(0, Math.round(seconds))
+  if (normalized < 60) return `${normalized}s`
+  const minutes = Math.floor(normalized / 60)
+  return `${minutes}m ${String(normalized % 60).padStart(2, "0")}s`
 }
 
 function clearWorkbookState() {
@@ -792,9 +893,12 @@ function resetNetworkState() {
 async function handleSubmit() {
   if (!canSubmitFinal.value || loading.value || parsing.value || !isFinalStep.value) return
   loading.value = true
+  importPhase.value = "Preparing workbook…"
+  startImportElapsedTimer()
   error.value = null
   try {
     const payload = await buildPreparedImportPayload()
+    importPhase.value = "Uploading and saving signal rows…"
     const sheet = await signalSheetStore.importSheet(payload.file, {
       metadata: payload.metadata,
       presetId: selectedPresetId.value,
@@ -809,6 +913,7 @@ async function handleSubmit() {
     errorAnchorRef.value?.scrollIntoView({ behavior: "smooth", block: "nearest" })
   } finally {
     loading.value = false
+    stopImportElapsedTimer()
   }
 }
 
@@ -1871,6 +1976,69 @@ watch(
   gap: 0.5rem;
 }
 
+.signal-import-modal__file-state {
+  align-items: center;
+  display: flex;
+  gap: 0.625rem;
+  min-width: 0;
+}
+
+.signal-import-modal__spinner,
+.signal-import-modal__parsing-spinner {
+  animation: signal-import-modal-spin 0.8s linear infinite;
+  border: 2px solid var(--color-neutral-200);
+  border-radius: var(--radius-pill);
+  border-top-color: var(--color-blue-500);
+  display: inline-block;
+  flex: 0 0 auto;
+  height: 1rem;
+  width: 1rem;
+}
+
+.signal-import-modal__parsing-card {
+  align-items: center;
+  background: color-mix(in srgb, var(--color-blue-500) 7%, var(--color-white));
+  border: 1px solid color-mix(in srgb, var(--color-blue-500) 32%, var(--color-neutral-200));
+  border-radius: var(--radius-lg);
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: auto minmax(0, 1fr);
+  padding: 1rem;
+}
+
+.signal-import-modal__parsing-spinner {
+  border-width: 3px;
+  height: 1.5rem;
+  width: 1.5rem;
+}
+
+.signal-import-modal__parsing-progress {
+  background: color-mix(in srgb, var(--color-blue-500) 14%, transparent);
+  border-radius: var(--radius-pill);
+  grid-column: 1 / -1;
+  height: 0.25rem;
+  overflow: hidden;
+  width: 100%;
+}
+
+.signal-import-modal__parsing-progress span {
+  animation: signal-import-modal-progress 1.4s ease-in-out infinite;
+  background: var(--color-blue-500);
+  border-radius: inherit;
+  display: block;
+  height: 100%;
+  width: 38%;
+}
+
+.signal-import-modal__importing-meta {
+  color: var(--color-neutral-600);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--text-xs);
+  gap: 0.75rem 1rem;
+  grid-column: 1 / -1;
+}
+
 .signal-import-modal__ready-title,
 .signal-import-modal__section-title,
 .signal-import-modal__mapping-title {
@@ -1893,6 +2061,16 @@ watch(
 
 .signal-import-modal__card-alert {
   margin-top: 0.75rem;
+}
+
+@keyframes signal-import-modal-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes signal-import-modal-progress {
+  0% { transform: translateX(-110%); }
+  50% { transform: translateX(170%); }
+  100% { transform: translateX(290%); }
 }
 
 .signal-import-modal__empty-state {
@@ -2215,12 +2393,28 @@ watch(
 
 :global(.dark .signal-import-modal__dropzone--idle),
 :global(.dark .signal-import-modal__ready-card),
+:global(.dark .signal-import-modal__parsing-card),
 :global(.dark .signal-import-modal__option),
 :global(.dark .signal-import-modal__mapping-row),
 :global(.dark .signal-import-modal__network-fact),
 :global(.dark .signal-import-modal__input) {
   background: var(--color-neutral-900);
   border-color: var(--color-neutral-700);
+}
+
+:global(.dark .signal-import-modal__parsing-card) {
+  background: color-mix(in srgb, var(--color-blue-500) 14%, var(--color-neutral-900));
+  border-color: color-mix(in srgb, var(--color-blue-400) 42%, var(--color-neutral-700));
+}
+
+:global(.dark .signal-import-modal__spinner),
+:global(.dark .signal-import-modal__parsing-spinner) {
+  border-color: var(--color-neutral-700);
+  border-top-color: var(--color-blue-400);
+}
+
+:global(.dark .signal-import-modal__importing-meta) {
+  color: var(--color-neutral-400);
 }
 
 :global(.dark .signal-import-modal__network-summary) {

@@ -69,7 +69,21 @@ function applySignalGridRuntimeOverlay(
 }
 
 function resolveRuntimeTestStatus(row: SignalAllocationRow, runtime?: SignalGridRuntimeOverlay): string {
-  return String(runtime?.getTestStatus?.(row.signal_id, runtime.workspaceId) ?? "").trim()
+  const runtimeStatus = String(runtime?.getTestStatus?.(row.signal_id, runtime.workspaceId) ?? "").trim()
+  if (runtimeStatus) {
+    return runtimeStatus
+  }
+
+  if (!String(row.tested_at ?? "").trim()) {
+    return ""
+  }
+
+  const sourceRow = extractSourceRowFromSignalMetadata(row.signal_metadata)
+  const hasIec61850Metadata = Boolean(
+    String(sourceRow.iec61850_address ?? sourceRow.iec61850Address ?? "").trim()
+    || resolveOnline61850TransportHost(row) !== null,
+  )
+  return hasIec61850Metadata ? "not_validated" : "tested"
 }
 
 function resolveExternalIedIp(row: SignalAllocationRow): string {
