@@ -436,6 +436,8 @@ const testRunReport = ref<TestRunResultReport | null>(null)
 const activeAoControlSignalId = ref<number | null>(null)
 const activeAoControlDraftValue = ref("")
 const activeAoSubmittingSignalId = ref<number | null>(null)
+const aoCommandStatusBySignalId = ref(new Map<number, "ok" | "error">())
+const controlCellRenderVersion = computed(() => `${activeAoControlSignalId.value ?? "idle"}:${activeAoSubmittingSignalId.value ?? "idle"}`)
 const { gridLines, theme } = useAffinoDataGridTheme()
 
 const SIGNAL_GRID_SKELETON_FIXED_HEIGHT = 88
@@ -452,8 +454,6 @@ let signalListDropCounter = 0
 
 type RowSelectionSnapshot = NonNullable<DataGridProps<GridRow>["rowSelectionState"]>
 type DataGridStateUpdate = NonNullable<DataGridProps<Record<string, unknown>>["state"]>
-type GridCellInteractiveContext = DataGridAppCellRendererContext<GridRow>["interactive"]
-
 type TestRunResultReport = {
   title: string
   subtitle: string
@@ -1717,13 +1717,6 @@ const channelUnitById = computed(() => {
   })
   return map
 })
-
-function invokeRenderedCellAction(interactive: GridCellInteractiveContext) {
-  if (!interactive?.enabled) {
-    return
-  }
-  interactive.activate("click")
-}
 
 function handleAllocationGridStateUpdate(state: DataGridStateUpdate | null) {
   if (!signalsGridStatePersistenceReady.value || restoringSignalsGridState.value || loading.value) {
@@ -3016,12 +3009,13 @@ function controlStatusTag(row: SignalAllocationRow): string {
   if (target.kind === "ao") {
     if (!target.online) return ""
     if (activeAoSubmittingSignalId.value === row.signal_id) return "PEND"
+    const commandStatus = aoCommandStatusBySignalId.value.get(row.signal_id)
+    if (commandStatus === "ok") return "OK"
+    if (commandStatus === "error") return "ERR"
     if (!target.channel) return "UNKN"
     if (target.channel.diagnostics?.hasError) return "ERR"
     const quality = target.channel.diagnostics?.quality
-    if (quality === "pending") return "PEND"
     if (quality === "fault") return "FAULT"
-    if (quality === "valid") return "OK"
     return ""
   }
   if (!target.channel) return target.online ? "UNKN" : ""
@@ -3038,11 +3032,11 @@ function controlStatusTone(row: SignalAllocationRow): string {
   if (target.kind === "ao") {
     if (!target.channel) return "allocation-control-cell__status--unknown"
     if (activeAoSubmittingSignalId.value === row.signal_id) return "allocation-control-cell__status--pending"
+    const commandStatus = aoCommandStatusBySignalId.value.get(row.signal_id)
+    if (commandStatus === "ok") return "allocation-control-cell__status--ao"
+    if (commandStatus === "error") return "allocation-control-cell__status--error"
     if (target.channel.diagnostics?.hasError || target.channel.diagnostics?.quality === "fault") {
       return "allocation-control-cell__status--error"
-    }
-    if (target.channel.diagnostics?.quality === "pending") {
-      return "allocation-control-cell__status--pending"
     }
     return "allocation-control-cell__status--ao"
   }
@@ -3086,6 +3080,9 @@ function aoStatusTitle(row: SignalAllocationRow): string {
   if (activeAoSubmittingSignalId.value === row.signal_id) {
     return "Waiting for AO confirmation from device"
   }
+  const commandStatus = aoCommandStatusBySignalId.value.get(row.signal_id)
+  if (commandStatus === "ok") return "AO command confirmed for this output"
+  if (commandStatus === "error") return "AO command was not confirmed for this output"
   if (target.channel.diagnostics?.hasError) {
     return "AO backend error is latched"
   }
@@ -3251,6 +3248,9 @@ async function sendAoControl(row: SignalAllocationRow): Promise<boolean> {
     return false
   }
 
+  const nextCommandStatuses = new Map(aoCommandStatusBySignalId.value)
+  nextCommandStatuses.delete(row.signal_id)
+  aoCommandStatusBySignalId.value = nextCommandStatuses
   activeAoControlSignalId.value = null
   activeAoControlDraftValue.value = ""
   activeAoSubmittingSignalId.value = row.signal_id
@@ -3259,12 +3259,21 @@ async function sendAoControl(row: SignalAllocationRow): Promise<boolean> {
 
     const confirmed = await waitForAoControlResult(target, nextValue)
     if (!confirmed) {
+      const failedStatuses = new Map(aoCommandStatusBySignalId.value)
+      failedStatuses.set(row.signal_id, "error")
+      aoCommandStatusBySignalId.value = failedStatuses
       return false
     }
 
+    const confirmedStatuses = new Map(aoCommandStatusBySignalId.value)
+    confirmedStatuses.set(row.signal_id, "ok")
+    aoCommandStatusBySignalId.value = confirmedStatuses
     await signalSheetStore.markSignalsTested([row.signal_id], { optimistic: false })
     return true
   } catch (err) {
+    const failedStatuses = new Map(aoCommandStatusBySignalId.value)
+    failedStatuses.set(row.signal_id, "error")
+    aoCommandStatusBySignalId.value = failedStatuses
     toastStore.error(err instanceof Error ? err.message : String(err))
     return false
   } finally {
@@ -3530,7 +3539,6 @@ function renderTestStatusCell(context: DataGridAppCellRendererContext<GridRow>) 
 }
 
 const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
-  const controlCellRenderVersion = `${activeAoControlSignalId.value ?? "idle"}:${activeAoSubmittingSignalId.value ?? "idle"}`
   const sourceColumns: DataGridAppColumnInput<GridRow>[] = sourceHeaders.value.map((header, index) => ({
     key: signalGridSourceColumnKey(index),
     label: header,
@@ -3665,7 +3673,7 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
         const isOn = controlStateIsOn(controlRow)
 
         return h(AllocationControlCell, {
-          key: `${controlRow.signal_id}:${controlCellRenderVersion}`,
+          key: `${controlRow.signal_id}:${controlCellRenderVersion.value}`,
           mode: target?.kind ?? "none",
           lampTone: controlLampTone(controlRow),
           statusTone: controlStatusTone(controlRow),
@@ -3675,7 +3683,9 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
           disabled: interactive?.enabled !== true,
           isOn,
           activate: () => {
-            invokeRenderedCellAction(interactive)
+            if (target?.kind === "do") {
+              void sendControl(controlRow, !isOn)
+            }
           },
           ariaLabel: interactive?.ariaLabel ?? (target?.kind === "ao"
             ? `Click to edit analog output for ${controlRow.signal_name || controlRow.signal_key}`
@@ -3687,7 +3697,7 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
           aoInputValue: aoControlActive(controlRow) ? activeAoControlDraftValue.value : aoValueLabel(controlRow),
           aoOpenHint: "Click to edit",
           beginAoEdit: () => {
-            invokeRenderedCellAction(interactive)
+            beginAoControlEdit(controlRow)
           },
           cancelAoEdit: () => {
             cancelAoControlEdit(controlRow.signal_id)
@@ -3764,6 +3774,18 @@ watch(
   sourceHeaders,
   () => {
     rebuildSignalGridRows()
+  },
+  { flush: "post" },
+)
+
+watch(
+  [activeAoControlSignalId, activeAoSubmittingSignalId],
+  () => {
+    signalGridRowModel.enqueueCellRefresh(
+      signalAllocationProjectionRows().map(row => row.signal_id),
+      ["control"],
+      { reason: "ao-control-state" },
+    )
   },
   { flush: "post" },
 )

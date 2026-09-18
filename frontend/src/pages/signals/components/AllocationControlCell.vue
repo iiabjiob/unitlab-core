@@ -36,11 +36,8 @@
       @keydown.stop
     >
       <template v-if="aoActive">
-        <span class="allocation-control-cell__inline-status allocation-control-cell__inline-status--compact">
-          <span class="allocation-control-cell__lamp" :class="lampTone"></span>
-          <span v-if="statusTag" class="allocation-control-cell__status allocation-control-cell__status--badge" :class="statusTone" :title="statusTitle">{{ statusTag }}</span>
-        </span>
         <input
+          ref="aoInputRef"
           :value="aoInputValue"
           type="number"
           inputmode="decimal"
@@ -113,7 +110,9 @@
 </template>
 
 <script setup lang="ts">
-withDefaults(defineProps<{
+import { nextTick, ref, watch } from "vue"
+
+const props = withDefaults(defineProps<{
   mode: "none" | "do" | "ao"
   lampTone?: string
   statusTone?: string
@@ -152,6 +151,23 @@ withDefaults(defineProps<{
   commitAoEdit: () => {},
   updateAoInput: () => {},
 })
+
+const aoInputRef = ref<HTMLInputElement | null>(null)
+
+async function focusAndSelectAoInput() {
+  await nextTick()
+  aoInputRef.value?.focus({ preventScroll: true })
+  aoInputRef.value?.select()
+}
+
+watch(
+  () => props.aoActive,
+  (active) => {
+    if (active) {
+      void focusAndSelectAoInput()
+    }
+  },
+)
 </script>
 
 <style scoped>
@@ -344,6 +360,11 @@ withDefaults(defineProps<{
   background: var(--color-white);
   border-color: var(--color-sky-500);
   box-shadow: 0 4px 6px -1px rgb(var(--color-black-rgb) / 0.1), 0 2px 4px -2px rgb(var(--color-black-rgb) / 0.1);
+}
+
+.allocation-control-cell__ao-input::selection {
+  background: var(--color-sky-600);
+  color: var(--color-white);
 }
 
 .allocation-control-cell__unit {
