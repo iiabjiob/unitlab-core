@@ -8,7 +8,7 @@ from sqlalchemy import and_, exists, or_, select, update
 from app.models.hardware_command import HardwareCommandIntent, HardwareCommandIntentChannel
 
 RECOVERY_REQUIRED_ACTIONS = frozenset({"restore", "do_pulse"})
-HARDWARE_RETRY_DELAY_SECONDS = 60
+HARDWARE_RETRY_DELAY_SECONDS = 10
 
 
 def hardware_retry_cutoff() -> datetime:
@@ -40,8 +40,10 @@ def requires_physical_recovery(action: str | None) -> bool:
 def hardware_recovery_required_predicate():
     """One recovery policy for manual controls, sequences and signal tests.
 
-    Missing ACK is a temporary uncertainty, not a permanent channel lock.
-    Preserve acknowledged recovery failures and all historical evidence.
+    A missing ACK is a temporary uncertainty, not a permanent channel lock.
+    Once the ACK wait has timed out, an explicit new command is allowed to
+    create a new intent/packet. Preserve the timed-out intent as historical
+    evidence; this predicate only controls admission of the next command.
     """
     unresolved = or_(
         HardwareCommandIntent.status.in_(("unknown", "recovery_required", "publish_failed")),
@@ -54,7 +56,11 @@ def hardware_recovery_required_predicate():
         HardwareCommandIntent.execution_status.in_(("unknown", "timeout")),
         HardwareCommandIntent.created_at <= hardware_retry_cutoff(),
     )
-    return and_(unresolved, ~expired_without_ack)
+    # A timeout is the retry boundary for every command type, including
+    # pulses and commands that were marked recovery_required by the timeout
+    # handler. Do not let a lost ACK prevent an operator from explicitly
+    # sending a fresh command with a fresh command_id.
+    return and_(unresolved, HardwareCommandIntent.execution_status != "timeout", ~expired_without_ack)
 
 
 async def has_hardware_recovery_required(

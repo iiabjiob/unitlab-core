@@ -67,6 +67,14 @@ Typical reasons:
 - WebSocket is disconnected;
 - command timed out waiting for feedback.
 
+Offline/online transitions generate a short-lived global toast. Command
+timeouts remain visible in the device/channel UI and execution log without
+generating a toast.
+
+After an ACK timeout, sending the command again is allowed for all command
+forms. The retry creates a new command record and packet; the timed-out
+attempt remains in the execution history.
+
 ## Next
 
 - [Signals](/guide/signals)

@@ -636,7 +636,8 @@ export function handleWsEvent(event: WSEvent) {
     }
     case WSChannel.HARDWARE_COMMAND_RESULT: {
       const result = channelEvent as HardwareCommandResultEvent
-      if (result.delivery === "rejected") {
+      const reason = String(result.reason ?? "").toLowerCase()
+      if (result.delivery === "rejected" && !reason.includes("timeout")) {
         toastStore.error(`Hardware command rejected${result.reason ? `: ${result.reason}` : ""}`)
       }
       break

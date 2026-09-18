@@ -56,7 +56,7 @@ def add_intent(session, *, age=61, command_id="old", **overrides):
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("age,blocked", [(59, True), (60, False), (61, False), (86400, False)])
+@pytest.mark.parametrize("age,blocked", [(59, False), (60, False), (61, False), (86400, False)])
 async def test_manual_latch_retry_boundary_preserves_timeout_evidence(db, age, blocked):
     session, adapter = db
     old = add_intent(session, age=age)
@@ -85,12 +85,13 @@ async def test_all_control_paths_share_missing_ack_cooldown(
 ):
     session, adapter = db
     add_intent(session, owner_kind=owner, action=old_action, status=status, age=age, execution_status=execution)
+    expected_blocked = blocked and execution != "timeout"
     assert await service.list_hardware_recovery_required_channels(
         adapter, channel_ids=[5], action=new_action,
-    ) == ({5} if blocked else set())
+    ) == ({5} if expected_blocked else set())
     assert await service.has_hardware_recovery_required(
         adapter, workspace_id=99, channel_id=5,
-    ) is blocked
+    ) is expected_blocked
 
 
 @pytest.mark.anyio
@@ -104,13 +105,13 @@ async def test_confirmed_failure_is_not_treated_as_missing_ack(db, execution):
 
 
 @pytest.mark.anyio
-async def test_recent_failure_still_blocks_after_an_older_failure_expires(db):
+async def test_recent_timeout_does_not_block_after_an_older_timeout_expires(db):
     session, adapter = db
     add_intent(session)
     add_intent(session, command_id="new", age=5)
     assert await service.list_hardware_recovery_required_channels(
         adapter, channel_ids=[5], action="do_set",
-    ) == {5}
+    ) == set()
 
 
 @pytest.mark.anyio
@@ -168,7 +169,7 @@ async def test_database_failure_does_not_publish_or_discard_the_command(monkeypa
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("age,blocked", [(59, True), (60, False), (86400, False)])
+@pytest.mark.parametrize("age,blocked", [(59, False), (60, False), (86400, False)])
 async def test_signal_test_binding_applies_cooldown_in_its_correlated_sql(db, monkeypatch, age, blocked):
     session, _ = db
     add_intent(session, age=age, action="do_pulse", owner_kind="fat", status="recovery_required")

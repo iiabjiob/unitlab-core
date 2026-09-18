@@ -206,7 +206,6 @@ export function useSwitchgearCommandActions(
         type: "error",
         message: `${actionLabel(action)} rejected: target unit is offline`,
       })
-      toastStore.warning("Cannot send pair command: unit is offline")
       return
     }
     if (doOpenChannel.value.type !== "do" || doCloseChannel.value.type !== "do") {

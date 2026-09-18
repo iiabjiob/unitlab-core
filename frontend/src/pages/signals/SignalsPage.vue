@@ -3162,7 +3162,6 @@ async function sendControl(row: SignalAllocationRow, state: boolean): Promise<bo
     return false
   }
   if (!target.online) {
-    toastStore.error("Device is offline")
     return false
   }
   if (target.kind !== "do") {
@@ -3193,7 +3192,6 @@ async function sendControl(row: SignalAllocationRow, state: boolean): Promise<bo
 
     const succeeded = await waitForControlResult(target, state)
     if (!succeeded) {
-      toastStore.warning("Command not confirmed by device")
       return false
     }
 
@@ -3212,7 +3210,6 @@ async function sendAoControl(row: SignalAllocationRow): Promise<boolean> {
     return false
   }
   if (!target.online) {
-    toastStore.error("Device is offline")
     return false
   }
   if (controlBusy(row)) {
@@ -3234,7 +3231,6 @@ async function sendAoControl(row: SignalAllocationRow): Promise<boolean> {
 
     const confirmed = await waitForAoControlResult(target, nextValue)
     if (!confirmed) {
-      toastStore.warning("AO command not confirmed by device")
       return false
     }
 
