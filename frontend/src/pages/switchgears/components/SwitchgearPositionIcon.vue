@@ -5,8 +5,10 @@ import type { SwitchgearState } from "@/constants/switchgear"
 const props = withDefaults(defineProps<{
   state: SwitchgearState
   size?: "sm" | "md" | "lg"
+  offline?: boolean
 }>(), {
   size: "sm",
+  offline: false,
 })
 
 const label = computed(() => {
@@ -40,7 +42,7 @@ const sizeClass = computed(() => {
       viewBox="0 0 16 16"
       fill="none"
       class="switchgear-position-icon__graphic"
-      :class="sizeClass"
+      :class="[sizeClass, { 'switchgear-position-icon__graphic--offline': props.offline }]"
     >
       <rect
         x="2.5"
@@ -129,7 +131,16 @@ const sizeClass = computed(() => {
   height: 3rem;
 }
 
+.switchgear-position-icon__graphic--offline {
+  color: var(--color-neutral-400);
+  filter: none;
+}
+
 :global(.dark .switchgear-position-icon__graphic) {
   color: var(--color-blue-400);
+}
+
+:global(.dark .switchgear-position-icon__graphic--offline) {
+  color: var(--color-neutral-500);
 }
 </style>

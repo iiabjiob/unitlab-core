@@ -1,18 +1,20 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
+import { screenToWorld, zoomViewportAt, zoomViewportCentered } from "@affino/diagram-core"
 import { getSvgEntityProps, useDiagramEngine, useDiagramPointerController, useDiagramSelection, useDiagramTextEditor, useDiagramViewport, useDiagramVisibleEntities } from "@affino/diagram-vue"
 import type { DiagramEdge } from "@affino/diagram-core"
 
 import SwitchgearControlToolbar from "./SwitchgearControlToolbar.vue"
 import SwitchgearSldPackageToolbar from "./SwitchgearSldPackageToolbar.vue"
+import SwitchgearSldObjectBrowser from "./SwitchgearSldObjectBrowser.vue"
 import { useToastStore } from "@/stores/toastStore"
 import { writeLocalSetting } from "@/services/localSettingsStorage"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
 
 import type { DiagramStaticKind, DiagramStaticSize, StoredDiagramState } from "../utils/switchgearSldDiagramTypes"
 import type { SwitchgearSldPackageSceneModel } from "../utils/switchgearSldPackageScene"
-import { buildDefaultSwitchgearSldLayout, serializeSwitchgearSldPackageScene } from "../utils/switchgearSldPackageScene"
+import { serializeSwitchgearSldPackageScene } from "../utils/switchgearSldPackageScene"
 
 const GRID_STEP = 24
 const COPY_PASTE_OFFSET = GRID_STEP
@@ -56,6 +58,12 @@ type EdgeDragState = {
   endpoint: "source" | "target"
   draft: DraftEndpoint
 }
+type EdgeMoveState = {
+  pointerId: number
+  edgeIds: string[]
+  startPoint: { x: number; y: number }
+  delta: { x: number; y: number }
+}
 type LabelDragState = {
   pointerId: number
   nodeId: string
@@ -97,6 +105,21 @@ type DiagramClipboardSelection = {
   staticElements: DiagramClipboardStaticElement[]
   textElements: DiagramClipboardTextElement[]
 }
+type BrowserObject = {
+  id: string
+  label: string
+  kind: "line" | "symbol" | "text"
+  selected: boolean
+}
+type MinimapDragState = {
+  pointerId: number
+  offsetX: number
+  offsetY: number
+}
+type SelectionDragSnapState = {
+  pointerId: number
+  ids: string[]
+}
 
 const props = defineProps<{
   model: SwitchgearSldPackageSceneModel
@@ -121,15 +144,21 @@ const editableText = ref("")
 const lastStoredState = ref<StoredDiagramState | null>(props.initialStoredState)
 const draftLine = ref<DraftLine | null>(null)
 const draggedEdge = ref<EdgeDragState | null>(null)
+const movedEdges = ref<EdgeMoveState | null>(null)
 const labelDrag = ref<LabelDragState | null>(null)
+const minimapDrag = ref<MinimapDragState | null>(null)
+const selectionDragSnap = ref<SelectionDragSnapState | null>(null)
+const panObjectPointerId = ref<number | null>(null)
 const lineKind = ref<EdgeStyle>("line")
 const lineWeight = ref<EdgeWeight>("normal")
 const contextMenu = ref<ContextMenuState | null>(null)
+const objectBrowserOpen = ref(false)
 const localClipboardSelection = ref<DiagramClipboardSelection | null>(null)
 const clipboardPasteCount = ref(0)
 let persistTimer: ReturnType<typeof setTimeout> | null = null
 let entityIdSequence = 0
 let hasLocalStateChanges = false
+const initialFitDone = ref(false)
 
 const diagram = useDiagramEngine(props.model.scene)
 const viewport = useDiagramViewport(diagram, { element: stageRef })
@@ -149,14 +178,34 @@ const pointer = useDiagramPointerController(diagram, {
 const textEditor = useDiagramTextEditor(diagram, { viewport: viewport.viewport })
 
 const activeTool = ref<PackageTool>("select")
+const svgPointerProps = pointer.getSvgPointerProps()
+const renderedViewport = computed(() => {
+  const current = viewport.viewport.value
+  const snapshot = pointer.state.value
+  if (snapshot.tool !== "pan" || !snapshot.active || !snapshot.previewDelta) {
+    return current
+  }
+  return {
+    ...current,
+    x: current.x - snapshot.previewDelta.x,
+    y: current.y - snapshot.previewDelta.y,
+  }
+})
+const gridStepWorld = computed(() => {
+  const zoom = renderedViewport.value.zoom > 0 ? renderedViewport.value.zoom : 1
+  return GRID_STEP / zoom
+})
+const gridStrokeWidthWorld = computed(() => {
+  const zoom = renderedViewport.value.zoom > 0 ? renderedViewport.value.zoom : 1
+  return 1 / zoom
+})
 const viewportBox = computed(() => {
-  const value = viewport.viewport.value
-  const zoom = value.zoom > 0 ? value.zoom : 1
+  const value = renderedViewport.value
   return {
     x: value.x,
     y: value.y,
-    width: Math.max(1, value.width / zoom),
-    height: Math.max(1, value.height / zoom),
+    width: Math.max(1, value.width),
+    height: Math.max(1, value.height),
   }
 })
 const zoomLabel = computed(() => `${Math.round((viewport.viewport.value.zoom > 0 ? viewport.viewport.value.zoom : 1) * 100)}%`)
@@ -167,6 +216,7 @@ const toolbarActions = {
   setLineWeight: (weight: EdgeWeight) => activeTool.value === "line" ? lineWeight.value = weight : setSelectedEdgesWeight(weight),
   rotateEdges: rotateSelectedEdges90,
   addStatic,
+  addLine,
   addText,
   editText: () => {
     const id = selectedTextIds.value[0]
@@ -185,10 +235,10 @@ const toolbarActions = {
   undo,
   redo,
   fit: fitScene,
-  autoArrange,
   clear: clearSelection,
   duplicate: duplicateSelection,
   delete: deleteSelection,
+  toggleObjectBrowser: () => { objectBrowserOpen.value = !objectBrowserOpen.value },
 }
 const selectedShapeIds = computed(() => selection.selection.value.ids.filter(id => diagram.scene.value.entities.shapesById.has(id)))
 const selectedEdgeIds = computed(() => selection.selection.value.ids.filter(id => diagram.scene.value.entities.edgesById.has(id)))
@@ -198,6 +248,26 @@ const selectedStaticCount = computed(() => selectedShapeIds.value.length)
 const selectedEdgeCount = computed(() => selectedEdgeIds.value.length)
 const selectedNodeCount = computed(() => selectedNodeIds.value.length)
 const selectedTextCount = computed(() => selectedTextIds.value.length)
+const browserObjects = computed<BrowserObject[]>(() => [
+  ...diagram.scene.value.order.edgeIds.map((id, index) => ({
+    id,
+    label: `Line ${index + 1}`,
+    kind: "line" as const,
+    selected: selection.isSelected(id),
+  })),
+  ...diagram.scene.value.order.shapeIds.map((id, index) => ({
+    id,
+    label: `${resolveStaticMeta(id).kind === "transformer" ? "Transformer" : "Ground"} ${index + 1}`,
+    kind: "symbol" as const,
+    selected: selection.isSelected(id),
+  })),
+  ...diagram.scene.value.order.textIds.map((id, index) => ({
+    id,
+    label: diagram.scene.value.entities.textsById.get(id)?.text?.trim() || `Text ${index + 1}`,
+    kind: "text" as const,
+    selected: selection.isSelected(id),
+  })),
+])
 const singleSelectedSwitchgearId = computed(() => {
   if (selectedNodeIds.value.length !== 1 || selectedEdgeIds.value.length > 0 || selectedShapeIds.value.length > 0 || selectedTextIds.value.length > 0) {
     return null
@@ -248,7 +318,6 @@ const canUndo = computed(() => diagram.engine.canUndo())
 const canRedo = computed(() => diagram.engine.canRedo())
 const canDelete = computed(() => diagram.engine.canDelete(selection.selection.value.ids))
 const canDuplicateSelection = computed(() => selectedNodeIds.value.length === 0 && (selectedEdgeIds.value.length > 0 || selectedShapeIds.value.length > 0 || selectedTextIds.value.length > 0))
-const svgPointerProps = computed(() => activeTool.value === "line" ? {} : pointer.getSvgPointerProps())
 const marqueeRect = computed(() => {
   const rect = pointer.state.value.marquee
   if (!rect) {
@@ -266,7 +335,18 @@ const selectionPreviewDelta = computed(() => {
   if (snapshot.tool !== "drag-selection" || !snapshot.active || !snapshot.previewDelta) {
     return null
   }
-  return snapshot.previewDelta
+  return snapSelectionDelta(snapshot.previewDelta)
+})
+const canvasCursorClass = computed(() => {
+  if (minimapDrag.value) return "is-minimap-dragging"
+  if (movedEdges.value || draggedEdge.value || labelDrag.value) return "is-dragging"
+
+  const snapshot = pointer.state.value
+  if (snapshot.active && snapshot.tool === "pan") return "is-panning"
+  if (snapshot.active && snapshot.tool === "drag-selection") return "is-dragging"
+  if (activeTool.value === "pan") return "is-pan"
+  if (activeTool.value === "line") return "is-crosshair"
+  return "is-select"
 })
 const edgeContextLabel = computed(() => selectedEdgeIds.value.length > 1 ? "selected lines" : "line")
 const staticContextLabel = computed(() => selectedShapeIds.value.length > 1 ? "selected symbols" : "symbol")
@@ -278,9 +358,10 @@ const selectedEdgeHandles = computed(() => selectedEdgeIds.value.flatMap((id) =>
   }
   const source = resolveEdgeEndpointPosition(edge.source)
   const target = resolveEdgeEndpointPosition(edge.target)
+  const move = movedEdges.value?.edgeIds.includes(id) ? movedEdges.value.delta : null
   return [
-    { id: `${id}:source`, edgeId: id, endpoint: "source" as const, point: source },
-    { id: `${id}:target`, edgeId: id, endpoint: "target" as const, point: target },
+    { id: `${id}:source`, edgeId: id, endpoint: "source" as const, point: move ? { x: source.x + move.x, y: source.y + move.y } : source },
+    { id: `${id}:target`, edgeId: id, endpoint: "target" as const, point: move ? { x: target.x + move.x, y: target.y + move.y } : target },
   ]
 }))
 const edgePreview = computed(() => {
@@ -310,19 +391,18 @@ const snapPreviewPoint = computed(() => {
   return null
 })
 const minimapModel = computed(() => {
-  if (pointer.state.value.active || draggedEdge.value || labelDrag.value) {
+  if (draggedEdge.value || labelDrag.value) {
     return null
   }
-  const current = viewport.viewport.value
-  const zoom = current.zoom > 0 ? current.zoom : 1
+  const current = renderedViewport.value
   if (current.width <= 0 || current.height <= 0) {
     return null
   }
 
   const worldViewportX = current.x
   const worldViewportY = current.y
-  const worldViewportWidth = current.width / zoom
-  const worldViewportHeight = current.height / zoom
+  const worldViewportWidth = current.width
+  const worldViewportHeight = current.height
 
   const nodeRects = [...diagram.scene.value.entities.nodesById.values()].map(node => ({
     id: node.id,
@@ -445,6 +525,15 @@ onMounted(() => {
   })
 })
 
+watch(
+  () => [viewport.viewport.value.width, viewport.viewport.value.height] as const,
+  ([width, height]) => {
+    if (width > 0 && height > 0) {
+      ensureSceneVisible()
+    }
+  },
+)
+
 watch(() => route.params.id, () => {
   syncRouteSelection()
 })
@@ -479,6 +568,7 @@ watch(() => props.selectionRequestKey, (next, previous) => {
     return
   }
   selection.setSelection(nodeIds, nodeIds[0] ?? null)
+  centerEntityInViewport(nodeIds[0] ?? null)
 })
 
 diagram.engine.subscribe((scene) => {
@@ -528,7 +618,37 @@ function syncRouteSelection() {
   const node = diagram.scene.value.entities.nodesById.get(nodeId)
   if (node) {
     selection.setSelection([nodeId], nodeId)
+    centerEntityInViewport(nodeId)
   }
+}
+
+function centerEntityInViewport(id: string | null) {
+  if (!id) {
+    return
+  }
+  void nextTick(() => {
+    requestAnimationFrame(() => {
+      const geometry = diagram.engine.getGeometrySnapshot(id)
+      if (!geometry) {
+        return
+      }
+      const current = viewport.viewport.value
+      if (current.width <= 0 || current.height <= 0) {
+        return
+      }
+      const isVisible = geometry.bounds.x < current.x + current.width
+        && geometry.bounds.x + geometry.bounds.width > current.x
+        && geometry.bounds.y < current.y + current.height
+        && geometry.bounds.y + geometry.bounds.height > current.y
+      if (isVisible) {
+        return
+      }
+      viewport.setViewport({
+        x: geometry.bounds.x + geometry.bounds.width / 2 - current.width / 2,
+        y: geometry.bounds.y + geometry.bounds.height / 2 - current.height / 2,
+      })
+    })
+  })
 }
 
 function setTool(tool: PackageTool) {
@@ -536,6 +656,8 @@ function setTool(tool: PackageTool) {
   draftLine.value = null
   draggedEdge.value = null
   labelDrag.value = null
+  selectionDragSnap.value = null
+  panObjectPointerId.value = null
   closeContextMenu()
   if (tool === "line") {
     pointer.setTool("select")
@@ -548,16 +670,70 @@ function setTool(tool: PackageTool) {
 
 function fitScene() {
   closeContextMenu()
-  diagram.engine.fitScene(96)
+  const currentViewport = viewport.viewport.value
+  if (currentViewport.width <= 0 || currentViewport.height <= 0) {
+    requestAnimationFrame(fitScene)
+    return
+  }
+  const scene = diagram.scene.value
+  const primaryIds = [
+    ...scene.order.nodeIds,
+    ...scene.order.shapeIds,
+    ...scene.order.textIds,
+  ]
+  const primaryBounds = unionEntityBounds(primaryIds)
+  const edgeIds = scene.order.edgeIds.filter((id) => {
+    const edge = scene.entities.edgesById.get(id)
+    const metadata = edge?.metadata
+    return !primaryBounds || (metadata?.startBindingValid !== false && metadata?.endBindingValid !== false)
+  })
+  const bounds = unionEntityBounds([...primaryIds, ...edgeIds])
+  if (bounds) {
+    diagram.engine.fitBounds(bounds, 96)
+  } else {
+    diagram.engine.fitScene(96)
+  }
   focusStage()
 }
 
+function unionEntityBounds(ids: ReadonlyArray<string>) {
+  const bounds = ids
+    .map(id => diagram.engine.getGeometrySnapshot(id)?.bounds)
+    .filter((value): value is { x: number; y: number; width: number; height: number } => Boolean(value))
+  if (bounds.length === 0) {
+    return null
+  }
+  const minX = Math.min(...bounds.map(value => value.x))
+  const minY = Math.min(...bounds.map(value => value.y))
+  const maxX = Math.max(...bounds.map(value => value.x + value.width))
+  const maxY = Math.max(...bounds.map(value => value.y + value.height))
+  return {
+    x: minX,
+    y: minY,
+    width: Math.max(1, maxX - minX),
+    height: Math.max(1, maxY - minY),
+  }
+}
+
 function ensureSceneVisible() {
+  if (initialFitDone.value || hasPersistedViewport()) {
+    return
+  }
+  const currentViewport = viewport.viewport.value
+  if (currentViewport.width <= 0 || currentViewport.height <= 0) {
+    return
+  }
+  initialFitDone.value = true
   const visibleIds = new Set(diagram.engine.queryVisible(diagram.scene.value.viewport))
   const hasVisibleSwitchgear = [...visibleIds].some(id => diagram.scene.value.entities.nodesById.has(id))
   if (!hasVisibleSwitchgear) {
     fitScene()
   }
+}
+
+function hasPersistedViewport() {
+  const viewState = props.initialStoredState?.viewState
+  return Number.isFinite(viewState?.x) && Number.isFinite(viewState?.y) && Number.isFinite(viewState?.zoom) && Number(viewState?.zoom) > 0
 }
 
 function toggleSnapEnabled() {
@@ -577,42 +753,19 @@ function zoomBy(delta: number) {
   const current = viewport.viewport.value
   const currentZoom = current.zoom > 0 ? current.zoom : 1
   const nextZoom = clampZoom(currentZoom + delta)
-  const centerX = current.x + current.width / currentZoom / 2
-  const centerY = current.y + current.height / currentZoom / 2
-  viewport.setViewport({
-    x: centerX - current.width / nextZoom / 2,
-    y: centerY - current.height / nextZoom / 2,
-    zoom: nextZoom,
-  })
+  viewport.setViewport(withZoomedWorldExtent(current, zoomViewportCentered(current, nextZoom), nextZoom))
   focusStage()
 }
 
-function autoArrange() {
-  closeContextMenu()
-  const nodeIds = [...diagram.scene.value.order.nodeIds]
-  if (nodeIds.length === 0) {
-    return
+function withZoomedWorldExtent(current: typeof viewport.viewport.value, next: typeof viewport.viewport.value, nextZoom: number) {
+  const screenWidth = current.width * (current.zoom > 0 ? current.zoom : 1)
+  const screenHeight = current.height * (current.zoom > 0 ? current.zoom : 1)
+  return {
+    ...next,
+    width: Math.max(1, screenWidth / nextZoom),
+    height: Math.max(1, screenHeight / nextZoom),
+    zoom: nextZoom,
   }
-  diagram.engine.transact(() => {
-    const serialized = diagram.engine.serialize()
-    const indexById = new Map(nodeIds.map((id, index) => [id, index]))
-    return {
-      ...serialized,
-      nodes: serialized.nodes.map((node) => {
-        const index = indexById.get(node.id)
-        if (index == null) {
-          return node
-        }
-        const layout = buildDefaultSwitchgearSldLayout(index)
-        return {
-          ...node,
-          x: layout.x,
-          y: layout.y,
-        }
-      }),
-    }
-  })
-  fitScene()
 }
 
 function undo() {
@@ -677,12 +830,200 @@ function openContextMenu(event: MouseEvent, kind: ContextMenuState["kind"], node
 
 function handleStagePointerDownCapture(event: PointerEvent) {
   const target = event.target as HTMLElement | null
+  if (target?.closest(".switchgear-sld-object-browser, .switchgear-sld-package-canvas__selected-controls, .switchgear-sld-package-canvas__context-menu, .switchgear-sld-package-canvas__minimap")) {
+    return
+  }
   if (target?.closest(".switchgear-sld-package-canvas__context-menu")) {
     return
   }
   if (contextMenu.value) {
     closeContextMenu()
   }
+  if (activeTool.value === "pan") {
+    const hit = diagram.engine.hitTest(mapPointerToWorld(event), { radius: 2 })
+    if (hit && hit.kind !== "port") {
+      panObjectPointerId.value = event.pointerId
+      pointer.setTool("select")
+    }
+    return
+  }
+  if (activeTool.value !== "select") {
+    return
+  }
+  const hit = diagram.engine.hitTest(mapPointerToWorld(event), { radius: 2, kinds: ["edge"] })
+  if (!hit || hit.kind !== "edge") {
+    return
+  }
+  const edge = diagram.scene.value.entities.edgesById.get(hit.id)
+  const selectedIds = selectedEdgeIds.value.includes(hit.id) ? selectedEdgeIds.value : [hit.id]
+  const movableIds = selectedIds.filter((id) => {
+    const candidate = diagram.scene.value.entities.edgesById.get(id)
+    return candidate?.source.kind === "point" && candidate.target.kind === "point"
+  })
+  selection.setSelection(selectedIds, hit.id)
+  if (movableIds.length === 0 || !edge) {
+    return
+  }
+  movedEdges.value = {
+    pointerId: event.pointerId,
+    edgeIds: movableIds,
+    startPoint: mapPointerToWorld(event),
+    delta: { x: 0, y: 0 },
+  }
+  stageRef.value?.setPointerCapture?.(event.pointerId)
+  event.preventDefault()
+  event.stopPropagation()
+}
+
+function onStagePointerMove(event: PointerEvent) {
+  const snapshot = pointer.state.value
+  if (snapshot.active && snapshot.tool === "drag-selection" && snapshot.previewDelta && !selectionDragSnap.value) {
+    selectionDragSnap.value = {
+      pointerId: event.pointerId,
+      ids: [...selection.selection.value.ids],
+    }
+  }
+  const drag = movedEdges.value
+  if (!drag || drag.pointerId !== event.pointerId) {
+    return
+  }
+  const rawDelta = {
+    x: mapPointerToWorld(event).x - drag.startPoint.x,
+    y: mapPointerToWorld(event).y - drag.startPoint.y,
+  }
+  drag.delta = snapEdgeMoveDelta(drag.edgeIds, rawDelta)
+}
+
+function snapSelectionDelta(delta: { x: number; y: number }) {
+  if (!snapEnabled.value) {
+    return delta
+  }
+  const id = selection.selection.value.ids[0]
+  const bounds = id ? diagram.engine.getGeometrySnapshot(id)?.bounds : null
+  if (!bounds) {
+    return delta
+  }
+  const snapped = snapWorldPoint({ x: bounds.x + delta.x, y: bounds.y + delta.y })
+  return {
+    x: delta.x + snapped.x - (bounds.x + delta.x),
+    y: delta.y + snapped.y - (bounds.y + delta.y),
+  }
+}
+
+function snapCommittedSelection(ids: string[]) {
+  const id = ids.find(candidate => diagram.scene.value.entities.nodesById.has(candidate)
+    || diagram.scene.value.entities.shapesById.has(candidate)
+    || diagram.scene.value.entities.edgesById.has(candidate)
+    || diagram.scene.value.entities.textsById.has(candidate))
+  const bounds = id ? diagram.engine.getGeometrySnapshot(id)?.bounds : null
+  if (!bounds) {
+    return
+  }
+  const snapped = snapWorldPoint({ x: bounds.x, y: bounds.y })
+  const correction = {
+    x: snapped.x - bounds.x,
+    y: snapped.y - bounds.y,
+  }
+  if (correction.x === 0 && correction.y === 0) {
+    return
+  }
+  diagram.dispatch({
+    type: "moveEntities",
+    ids,
+    delta: correction,
+    historyKey: "snap-selection",
+  })
+}
+
+function snapEdgeMoveDelta(ids: string[], delta: { x: number; y: number }) {
+  if (!snapEnabled.value) {
+    return delta
+  }
+  const edge = ids.map(id => diagram.scene.value.entities.edgesById.get(id)).find(candidate => candidate?.source.kind === "point")
+  if (!edge || edge.source.kind !== "point") {
+    return delta
+  }
+  const snapped = snapWorldPoint({
+    x: edge.source.point.x + delta.x,
+    y: edge.source.point.y + delta.y,
+  })
+  return {
+    x: delta.x + snapped.x - (edge.source.point.x + delta.x),
+    y: delta.y + snapped.y - (edge.source.point.y + delta.y),
+  }
+}
+
+function onStagePointerUp(event: PointerEvent) {
+  const drag = movedEdges.value
+  if (drag && drag.pointerId === event.pointerId) {
+    stageRef.value?.releasePointerCapture?.(event.pointerId)
+    if (drag.delta.x !== 0 || drag.delta.y !== 0) {
+      const edgeIds = new Set(drag.edgeIds)
+      diagram.engine.transact(() => {
+        const serialized = diagram.engine.serialize()
+        return {
+          ...serialized,
+          edges: serialized.edges.map((edge) => edgeIds.has(edge.id)
+            ? {
+                ...edge,
+                source: edge.source.kind === "point"
+                  ? { kind: "point" as const, point: { x: edge.source.point.x + drag.delta.x, y: edge.source.point.y + drag.delta.y } }
+                  : edge.source,
+                target: edge.target.kind === "point"
+                  ? { kind: "point" as const, point: { x: edge.target.point.x + drag.delta.x, y: edge.target.point.y + drag.delta.y } }
+                  : edge.target,
+                points: edge.points?.map(point => ({ x: point.x + drag.delta.x, y: point.y + drag.delta.y })),
+              }
+            : edge),
+        }
+      })
+    }
+    movedEdges.value = null
+  }
+  const selectionDrag = selectionDragSnap.value
+  if (selectionDrag?.pointerId === event.pointerId) {
+    if (snapEnabled.value) {
+      snapCommittedSelection(selectionDrag.ids)
+    }
+    selectionDragSnap.value = null
+  }
+  if (panObjectPointerId.value === event.pointerId) {
+    pointer.setTool("pan")
+    panObjectPointerId.value = null
+  }
+}
+
+function onStagePointerCancel(event: PointerEvent) {
+  if (movedEdges.value?.pointerId !== event.pointerId) {
+    return
+  }
+  stageRef.value?.releasePointerCapture?.(event.pointerId)
+  movedEdges.value = null
+  selectionDragSnap.value = null
+  if (panObjectPointerId.value === event.pointerId) {
+    pointer.setTool("pan")
+    panObjectPointerId.value = null
+  }
+}
+
+function handleBrowserSelect(id: string, event: MouseEvent) {
+  if (event.metaKey || event.ctrlKey) {
+    diagram.dispatch({
+      type: "setSelection",
+      selection: { ids: [id], primaryId: id },
+      mode: "toggle",
+    })
+  } else if (event.shiftKey) {
+    diagram.dispatch({
+      type: "setSelection",
+      selection: { ids: [id], primaryId: id },
+      mode: "add",
+    })
+  } else {
+    selection.setSelection([id], id)
+  }
+  centerEntityInViewport(id)
+  focusStage()
 }
 
 function openEdgeContextMenu(event: MouseEvent, edgeId: string) {
@@ -1013,8 +1354,8 @@ function addText() {
       texts: [{
         id,
         kind: "text",
-        x: center.x,
-        y: center.y,
+        x: center.x - 48,
+        y: center.y - 14,
         text: DEFAULT_TEXT_LABEL,
         width: 96,
         height: 28,
@@ -1029,6 +1370,8 @@ function addText() {
     offset: { x: 0, y: 0 },
     historyKey: "add-text",
   })
+  editableText.value = DEFAULT_TEXT_LABEL
+  beginTextEdit(id)
   focusStage()
 }
 
@@ -1255,20 +1598,10 @@ function onWheel(event: WheelEvent) {
     }
     const rect = stage.getBoundingClientRect()
     const nextZoom = clampZoom(current.zoom * (event.deltaY < 0 ? 1.1 : 0.9))
-    const relativeX = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0.5
-    const relativeY = rect.height > 0 ? (event.clientY - rect.top) / rect.height : 0.5
-    const worldWidth = current.width / current.zoom
-    const worldHeight = current.height / current.zoom
-    const focusX = current.x + worldWidth * relativeX
-    const focusY = current.y + worldHeight * relativeY
-    const nextWorldWidth = current.width / nextZoom
-    const nextWorldHeight = current.height / nextZoom
-
-    viewport.setViewport({
-      x: focusX - nextWorldWidth * relativeX,
-      y: focusY - nextWorldHeight * relativeY,
-      zoom: nextZoom,
-    })
+    viewport.setViewport(withZoomedWorldExtent(current, zoomViewportAt(current, nextZoom, {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+    }), nextZoom))
     return
   }
 
@@ -1510,6 +1843,19 @@ function cancelPointerInteraction(event: PointerEvent) {
   if (labelDrag.value?.pointerId === event.pointerId) {
     labelDrag.value = null
   }
+  if (minimapDrag.value?.pointerId === event.pointerId) {
+    minimapDrag.value = null
+  }
+  if (movedEdges.value?.pointerId === event.pointerId) {
+    movedEdges.value = null
+  }
+  if (selectionDragSnap.value?.pointerId === event.pointerId) {
+    selectionDragSnap.value = null
+  }
+  if (panObjectPointerId.value === event.pointerId) {
+    pointer.setTool("pan")
+    panObjectPointerId.value = null
+  }
   if (activeTool.value === "line") {
     draftLine.value = null
   }
@@ -1598,7 +1944,7 @@ function finishLabelDrag(event: PointerEvent) {
 function createLine(start: DraftEndpoint, end: DraftEndpoint) {
   if (Math.hypot(end.point.x - start.point.x, end.point.y - start.point.y) < 1) {
     toastStore.info("Line needs two different points")
-    return
+    return null
   }
   const seed = createEntityId("edge")
   diagram.dispatch({
@@ -1616,6 +1962,16 @@ function createLine(start: DraftEndpoint, end: DraftEndpoint) {
     },
     historyKey: "create-edge",
   })
+  selection.setSelection([seed], seed)
+  return seed
+}
+
+function addLine() {
+  const center = getViewportCenter()
+  const start = snapDraftEndpoint({ x: center.x - 60, y: center.y })
+  const end = snapDraftEndpoint({ x: center.x + 60, y: center.y })
+  createLine(start, end)
+  focusStage()
 }
 
 function updateEdgeEndpoint(edgeId: string, endpoint: "source" | "target", draft: DraftEndpoint) {
@@ -1668,7 +2024,7 @@ function snapDraftEndpoint(point: { x: number; y: number }): DraftEndpoint {
   const entity = diagram.scene.value.entities.portsById.get(port.id)
   return entity
     ? { point: { x: entity.x, y: entity.y }, portId: port.id }
-    : { point, portId: null }
+    : { point: snapWorldPoint(point), portId: null }
 }
 
 function resolveConstrainedLinePoint(anchor: { x: number; y: number }, point: { x: number; y: number }, constrain: boolean) {
@@ -1751,20 +2107,9 @@ function mapPointerToWorld(event: PointerEvent) {
     return { x: current.x, y: current.y }
   }
   const rect = stage.getBoundingClientRect()
-  const relativeX = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0
-  const relativeY = rect.height > 0 ? (event.clientY - rect.top) / rect.height : 0
-  return {
-    x: current.x + (current.width / current.zoom) * relativeX,
-    y: current.y + (current.height / current.zoom) * relativeY,
-  }
-}
-
-function centerViewportAtWorldPoint(worldX: number, worldY: number) {
-  const current = viewport.viewport.value
-  const zoom = current.zoom > 0 ? current.zoom : 1
-  viewport.setViewport({
-    x: worldX - current.width / zoom / 2,
-    y: worldY - current.height / zoom / 2,
+  return screenToWorld(current, {
+    x: event.clientX - rect.left,
+    y: event.clientY - rect.top,
   })
 }
 
@@ -1779,15 +2124,60 @@ function handleMinimapPointerDown(event: PointerEvent) {
   const localY = event.clientY - rect.top
   const worldX = model.contentMinX + (localX - model.offsetX) / model.scale
   const worldY = model.contentMinY + (localY - model.offsetY) / model.scale
-  centerViewportAtWorldPoint(worldX, worldY)
+  const current = viewport.viewport.value
+  const insideViewport = localX >= model.viewport.x
+    && localX <= model.viewport.x + model.viewport.width
+    && localY >= model.viewport.y
+    && localY <= model.viewport.y + model.viewport.height
+  minimapDrag.value = {
+    pointerId: event.pointerId,
+    offsetX: insideViewport ? worldX - current.x : current.width / 2,
+    offsetY: insideViewport ? worldY - current.y : current.height / 2,
+  }
+  target.setPointerCapture?.(event.pointerId)
+  moveViewportFromMinimapPointer(event, model, rect)
+  focusStage()
+}
+
+function moveViewportFromMinimapPointer(event: PointerEvent, model: NonNullable<typeof minimapModel.value>, rect: DOMRect) {
+  const drag = minimapDrag.value
+  if (!drag || drag.pointerId !== event.pointerId || model.scale <= 0) {
+    return
+  }
+  const localX = event.clientX - rect.left
+  const localY = event.clientY - rect.top
+  const worldX = model.contentMinX + (localX - model.offsetX) / model.scale
+  const worldY = model.contentMinY + (localY - model.offsetY) / model.scale
+  viewport.setViewport({
+    x: worldX - drag.offsetX,
+    y: worldY - drag.offsetY,
+  })
+}
+
+function handleMinimapPointerMove(event: PointerEvent) {
+  const target = event.currentTarget as SVGElement | null
+  const model = minimapModel.value
+  if (!target || !model || !minimapDrag.value) {
+    return
+  }
+  moveViewportFromMinimapPointer(event, model, target.getBoundingClientRect())
+}
+
+function handleMinimapPointerUp(event: PointerEvent) {
+  const target = event.currentTarget as SVGElement | null
+  if (minimapDrag.value?.pointerId !== event.pointerId) {
+    return
+  }
+  target?.releasePointerCapture?.(event.pointerId)
+  minimapDrag.value = null
   focusStage()
 }
 
 function getViewportCenter() {
   const current = viewport.viewport.value
   return {
-    x: current.x + current.width / current.zoom / 2,
-    y: current.y + current.height / current.zoom / 2,
+    x: current.x + current.width / 2,
+    y: current.y + current.height / 2,
   }
 }
 
@@ -1810,6 +2200,10 @@ function inferStaticSize(id: string): DiagramStaticSize {
 }
 
 function resolveSelectionPreviewTransform(id: string) {
+  const edgeMove = movedEdges.value
+  if (edgeMove?.edgeIds.includes(id)) {
+    return `translate(${edgeMove.delta.x} ${edgeMove.delta.y})`
+  }
   const delta = selectionPreviewDelta.value
   if (!delta || !selection.isSelected(id)) {
     return undefined
@@ -1817,9 +2211,9 @@ function resolveSelectionPreviewTransform(id: string) {
   return `translate(${delta.x} ${delta.y})`
 }
 
-function resolveHandlePreviewPoint(handle: { id: string; point: { x: number; y: number } }) {
+function resolveHandlePreviewPoint(handle: { ownerId: string; point: { x: number; y: number } }) {
   const delta = selectionPreviewDelta.value
-  const ownerId = handle.id.split(":")[0] ?? ""
+  const ownerId = handle.ownerId
   if (!delta || (ownerId !== "__selection__" && !selection.isSelected(ownerId))) {
     return handle.point
   }
@@ -1830,6 +2224,9 @@ function resolveHandlePreviewPoint(handle: { id: string; point: { x: number; y: 
 }
 
 function resolveNodeFill(id: string) {
+  if (isNodeOffline(id)) {
+    return "var(--color-neutral-100)"
+  }
   const node = diagram.scene.value.entities.nodesById.get(id)
   const switchgearId = Number(node?.metadata?.switchgearId)
   const switchgear = Number.isFinite(switchgearId) ? switchgearStore.getById(switchgearId) : null
@@ -1840,9 +2237,16 @@ function resolveNodeFill(id: string) {
   return "var(--color-white)"
 }
 
-function resolveNodeStroke(_id: string, selected: boolean) {
+function resolveNodeStroke(id: string, selected: boolean) {
   if (selected) return "var(--color-blue-500)"
+  if (isNodeOffline(id)) return "var(--color-neutral-400)"
   return "var(--color-blue-300)"
+}
+
+function isNodeOffline(id: string) {
+  const switchgearId = Number(diagram.scene.value.entities.nodesById.get(id)?.metadata?.switchgearId)
+  const switchgear = Number.isFinite(switchgearId) ? switchgearStore.getById(switchgearId) : null
+  return Boolean(switchgear && !switchgearStore.isUnitOnline(switchgear))
 }
 
 function resolveNodeLabel(id: string) {
@@ -1938,17 +2342,31 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
       :can-delete="canDelete"
       :can-duplicate="canDuplicateSelection"
       :selection-count="selection.selection.value.ids.length"
+      :object-browser-open="objectBrowserOpen"
       :actions="toolbarActions"
     />
 
     <div
       ref="stageRef"
       class="switchgear-sld-package-canvas__stage"
+      :class="canvasCursorClass"
       tabindex="0"
       @keydown="onStageKeydown"
       @pointerdown.capture="handleStagePointerDownCapture"
+      @pointermove="onStagePointerMove"
+      @pointerup="onStagePointerUp"
+      @pointercancel="onStagePointerCancel"
       @wheel.prevent="onWheel"
     >
+      <SwitchgearSldObjectBrowser
+        v-if="objectBrowserOpen"
+        :objects="browserObjects"
+        :selection-count="selection.selection.value.ids.length"
+        :can-delete="canDelete"
+        @select="handleBrowserSelect"
+        @delete="deleteSelection"
+        @close="objectBrowserOpen = false"
+      />
       <div
         v-if="singleSelectedSwitchgear"
         class="switchgear-sld-package-canvas__selected-controls"
@@ -1957,13 +2375,14 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
         <SwitchgearControlToolbar
           :switchgear="singleSelectedSwitchgear"
           compact
+          @open-settings="openNodeDetail(selectedNodeIds[0] ?? '')"
         />
       </div>
 
       <svg
         class="switchgear-sld-package-canvas__svg"
         :viewBox="`${viewportBox.x} ${viewportBox.y} ${viewportBox.width} ${viewportBox.height}`"
-        v-bind="svgPointerProps"
+        v-bind="activeTool === 'line' ? {} : svgPointerProps"
         @click="onSvgClick"
         @pointermove="onSvgPointerMove"
         @pointerup="onSvgPointerUp"
@@ -1972,8 +2391,18 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
         @contextmenu.prevent="closeContextMenu"
       >
         <defs>
-          <pattern id="switchgear-sld-package-grid" :width="24" :height="24" patternUnits="userSpaceOnUse">
-            <path d="M 24 0 L 0 0 0 24" fill="none" stroke="rgb(var(--color-slate-400-rgb) / 0.18)" stroke-width="1" />
+          <pattern
+            id="switchgear-sld-package-grid"
+            :width="gridStepWorld"
+            :height="gridStepWorld"
+            patternUnits="userSpaceOnUse"
+          >
+            <path
+              :d="`M ${gridStepWorld} 0 L 0 0 0 ${gridStepWorld}`"
+              fill="none"
+              stroke="rgb(var(--color-slate-400-rgb) / 0.18)"
+              :stroke-width="gridStrokeWidthWorld"
+            />
           </pattern>
           <marker id="switchgear-sld-package-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
             <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" />
@@ -1990,6 +2419,7 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
         <polyline
           v-for="edge in visible.projection.value.edges"
           :key="edge.id"
+          class="switchgear-sld-package-canvas__edge"
           v-bind="getSvgEntityProps(edge)"
           :transform="resolveSelectionPreviewTransform(edge.id)"
           fill="none"
@@ -2038,7 +2468,7 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
           pointer-events="none"
         />
 
-        <g v-for="shape in visible.projection.value.shapes" :key="shape.id" :transform="resolveSelectionPreviewTransform(shape.id)">
+        <g v-for="shape in visible.projection.value.shapes" :key="shape.id" class="switchgear-sld-package-canvas__static" :transform="resolveSelectionPreviewTransform(shape.id)">
           <g
             v-if="resolveStaticMeta(shape.id).kind === 'transformer'"
             @contextmenu.stop.prevent="openStaticContextMenu($event, shape.id)"
@@ -2079,6 +2509,7 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
           v-for="node in visible.projection.value.nodes"
           :key="node.id"
           v-bind="getSvgEntityProps(node)"
+          class="switchgear-sld-package-canvas__node"
           :transform="resolveSelectionPreviewTransform(node.id)"
           rx="8"
           :fill="resolveNodeFill(node.id)"
@@ -2095,6 +2526,7 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
           :transform="resolveSelectionPreviewTransform(node.id)"
           :y="resolveNodeLabelPosition(node.id).y"
           class="switchgear-sld-package-canvas__switchgear-label"
+          :class="{ 'switchgear-sld-package-canvas__switchgear-label--offline': isNodeOffline(node.id) }"
           text-anchor="middle"
           dominant-baseline="middle"
           @pointerdown="beginLabelDrag($event, node.id)"
@@ -2112,11 +2544,14 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
           v-for="text in visible.projection.value.texts"
           :key="text.id"
           v-bind="getSvgEntityProps(text)"
+          :x="text.geometry.bounds.x + text.geometry.bounds.width / 2"
+          :y="text.geometry.bounds.y + text.geometry.bounds.height / 2"
+          class="switchgear-sld-package-canvas__text-entity"
           :transform="resolveSelectionPreviewTransform(text.id)"
           :class="resolveTextClass(text.id)"
           text-anchor="middle"
           dominant-baseline="middle"
-          @dblclick.stop="beginTextEdit(text.id)"
+          @dblclick.stop.prevent="beginTextEdit(text.id)"
           @contextmenu.stop.prevent="openTextContextMenu($event, text.id)"
         >
           {{ diagram.scene.value.entities.textsById.get(text.id)?.text }}
@@ -2125,6 +2560,7 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
         <circle
           v-for="handle in selectedEdgeHandles"
           :key="handle.id"
+          class="switchgear-sld-package-canvas__edge-handle"
           :cx="handle.point.x"
           :transform="resolveSelectionPreviewTransform(handle.edgeId)"
           :cy="handle.point.y"
@@ -2244,7 +2680,8 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
         v-model="editableText"
         class="switchgear-sld-package-canvas__editor"
         :style="textEditor.activeEditor.value.style"
-        @keydown.enter.exact.prevent="commitTextEdit"
+        @pointerdown.stop
+        @keydown.enter.exact.prevent.stop="commitTextEdit"
         @keydown.esc.prevent="cancelTextEdit"
         @blur="commitTextEdit"
       />
@@ -2255,6 +2692,10 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
           :height="MINIMAP_HEIGHT"
           class="switchgear-sld-package-canvas__minimap-svg"
           @pointerdown.stop.prevent="handleMinimapPointerDown"
+          @pointermove.stop.prevent="handleMinimapPointerMove"
+          @pointerup.stop.prevent="handleMinimapPointerUp"
+          @pointercancel.stop.prevent="handleMinimapPointerUp"
+          @lostpointercapture="handleMinimapPointerUp"
         >
           <rect
             x="0"
@@ -2394,6 +2835,55 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
   user-select: none;
 }
 
+.switchgear-sld-package-canvas__stage.is-select,
+.switchgear-sld-package-canvas__stage.is-select .switchgear-sld-package-canvas__node,
+.switchgear-sld-package-canvas__stage.is-select .switchgear-sld-package-canvas__static,
+.switchgear-sld-package-canvas__stage.is-select .switchgear-sld-package-canvas__edge,
+.switchgear-sld-package-canvas__stage.is-select .switchgear-sld-package-canvas__text-entity,
+.switchgear-sld-package-canvas__stage.is-select .switchgear-sld-package-canvas__switchgear-label {
+  cursor: grab;
+}
+
+.switchgear-sld-package-canvas__stage.is-select {
+  cursor: default;
+}
+
+.switchgear-sld-package-canvas__stage.is-pan,
+.switchgear-sld-package-canvas__stage.is-pan .switchgear-sld-package-canvas__svg {
+  cursor: grab;
+}
+
+.switchgear-sld-package-canvas__stage.is-panning,
+.switchgear-sld-package-canvas__stage.is-panning .switchgear-sld-package-canvas__svg,
+.switchgear-sld-package-canvas__stage.is-dragging,
+.switchgear-sld-package-canvas__stage.is-dragging .switchgear-sld-package-canvas__svg,
+.switchgear-sld-package-canvas__stage.is-minimap-dragging,
+.switchgear-sld-package-canvas__stage.is-minimap-dragging .switchgear-sld-package-canvas__minimap-svg,
+.switchgear-sld-package-canvas__stage.is-select .switchgear-sld-package-canvas__node:active,
+.switchgear-sld-package-canvas__stage.is-select .switchgear-sld-package-canvas__static:active,
+.switchgear-sld-package-canvas__stage.is-select .switchgear-sld-package-canvas__edge:active,
+.switchgear-sld-package-canvas__stage.is-select .switchgear-sld-package-canvas__text-entity:active,
+.switchgear-sld-package-canvas__stage.is-select .switchgear-sld-package-canvas__switchgear-label:active {
+  cursor: grabbing;
+}
+
+.switchgear-sld-package-canvas__stage.is-crosshair,
+.switchgear-sld-package-canvas__stage.is-crosshair .switchgear-sld-package-canvas__svg {
+  cursor: crosshair;
+}
+
+.switchgear-sld-package-canvas__edge-handle {
+  cursor: crosshair;
+}
+
+.switchgear-sld-package-canvas__minimap-svg {
+  cursor: pointer;
+}
+
+.switchgear-sld-package-canvas__stage.is-minimap-dragging .switchgear-sld-package-canvas__minimap-svg {
+  cursor: grabbing;
+}
+
 .switchgear-sld-package-canvas__stage:focus-visible {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-blue-500) 35%, transparent);
 }
@@ -2452,6 +2942,10 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
   fill: var(--color-neutral-700);
   font-size: var(--text-2xs);
   font-weight: 600;
+}
+
+.switchgear-sld-package-canvas__switchgear-label--offline {
+  fill: var(--color-neutral-500);
 }
 
 .switchgear-sld-package-canvas__generated-label,

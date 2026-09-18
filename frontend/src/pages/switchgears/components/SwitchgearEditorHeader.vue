@@ -67,12 +67,13 @@ const unitStatusDescription = computed(() => {
   return "Unit is offline. Control commands are disabled until reconnect.\nCheck power, wiring and Wi-Fi link to the AP."
 })
 const positionState = computed(() => store.resolveSwitchgearState(props.switchgear))
+const isOffline = computed(() => !store.isUnitOnline(props.switchgear))
 </script>
 
 <template>
   <div class="switchgear-editor-header">
     <div class="switchgear-editor-header__left">
-      <SwitchgearPositionIcon :state="positionState" size="lg" />
+      <SwitchgearPositionIcon :state="positionState" size="lg" :offline="isOffline" />
       <div class="switchgear-editor-header__main">
         <div class="switchgear-editor-header__title">
           {{ switchgear.name }}

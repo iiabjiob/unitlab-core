@@ -37,36 +37,7 @@
     </ResizablePanel>
 
     <section class="switchgears-page__content">
-      <div class="switchgears-page__view-tabs">
-        <button
-          type="button"
-          class="switchgears-page__view-tab"
-          :class="{ 'is-active': activeView === 'manage' }"
-          @click="setActiveView('manage')"
-        >
-          Manage
-        </button>
-        <button
-          type="button"
-          class="switchgears-page__view-tab"
-          :class="{ 'is-active': activeView === 'sld' }"
-          @click="setActiveView('sld')"
-        >
-          Single Line Diagram
-        </button>
-      </div>
-
-      <div v-if="activeView === 'manage'" class="switchgears-page__manage-view">
-        <router-view />
-      </div>
-
-      <div v-else class="switchgears-page__sld-view">
-        <SwitchgearSingleLineDiagramPackage
-          ref="packageDiagramRef"
-          :active="activeView === 'sld'"
-          @edit-switchgear-bindings="openSwitchgearBindingsEditor"
-        />
-      </div>
+      <router-view />
     </section>
 
     <SlideOver
@@ -86,40 +57,25 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
+import { onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 
 import ResizablePanel from "@/components/ui/ResizablePanel.vue"
 import SlideOver from "@/components/ui/SlideOver.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import { useViewport } from "@/composables/useViewport"
-import { localSettingsKeys, readLocalSetting, writeLocalSetting } from "@/services/localSettingsStorage"
 import { useRealtimeScopeStore } from "@/stores/realtimeScopeStore"
 
-import SwitchgearSingleLineDiagramPackage from "./components/SwitchgearSingleLineDiagramPackage.vue"
 import DeviceListSidebar from "./components/SwitchgearListSidebar.vue"
 
 const { isDesktop } = useViewport()
 const sidebarOpen = ref(false)
-const activeView = ref<"manage" | "sld">("manage")
-const packageDiagramRef = ref<InstanceType<typeof SwitchgearSingleLineDiagramPackage> | null>(null)
 const route = useRoute()
 const router = useRouter()
 const realtimeScopeStore = useRealtimeScopeStore()
 const scopeId = "switchgears:page"
-const LEGACY_ACTIVE_VIEW_STORAGE_KEY = "unitlab.switchgears.active-view"
-
 onMounted(() => {
   realtimeScopeStore.setGlobalRealtimeScope(scopeId, true)
-  activeView.value = readLocalSetting<"manage" | "sld">(
-    localSettingsKeys.switchgearsActiveView,
-    "manage",
-    {
-      legacyKeys: [LEGACY_ACTIVE_VIEW_STORAGE_KEY],
-      parseLegacy: raw => raw,
-      validate: normalizeSwitchgearsActiveView,
-    },
-  )
 })
 
 onBeforeUnmount(() => {
@@ -137,34 +93,9 @@ watch(
   },
 )
 
-function setActiveView(view: "manage" | "sld") {
-  activeView.value = view
-  writeLocalSetting(localSettingsKeys.switchgearsActiveView, view, {
-    legacyKeys: [LEGACY_ACTIVE_VIEW_STORAGE_KEY],
-  })
-}
-
-function openSwitchgearBindingsEditor(id: number) {
-  setActiveView("manage")
-  void router.push({
-    name: "switchgears.detail",
-    params: { id },
-    query: {
-      ...route.query,
-      bindings: "edit",
-    },
-  })
-}
-
 async function requestScdImport() {
-  setActiveView("sld")
   sidebarOpen.value = false
-  await nextTick()
-  packageDiagramRef.value?.openScdFileDialog()
-}
-
-function normalizeSwitchgearsActiveView(value: unknown): "manage" | "sld" | null {
-  return value === "manage" || value === "sld" ? value : null
+  await router.push({ name: "switchgears.sld", query: { import: "1" } })
 }
 
 </script>
@@ -210,68 +141,6 @@ function normalizeSwitchgearsActiveView(value: unknown): "manage" | "sld" | null
   flex: 1 1 auto;
   flex-direction: column;
   padding: 0.75rem;
-}
-
-.switchgears-page__view-tabs {
-  display: inline-flex;
-  width: fit-content;
-  padding: 0.25rem;
-  border: 1px solid var(--color-neutral-200);
-  border-radius: var(--radius-xl);
-  background: color-mix(in srgb, var(--color-white) 85%, transparent);
-  box-shadow: var(--shadow-sm);
-}
-
-.switchgears-page__view-tabs {
-  margin-bottom: 0.75rem;
-}
-
-.switchgears-page__view-tab {
-  padding: 0.5rem 0.75rem;
-  border: 0;
-  border-radius: var(--radius-lg);
-  background: transparent;
-  color: var(--color-neutral-500);
-  font: inherit;
-  font-size: var(--text-sm);
-  font-weight: 500;
-  transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
-}
-
-.switchgears-page__view-tab:hover {
-  color: var(--color-neutral-900);
-}
-
-.switchgears-page__view-tab.is-active {
-  background: var(--color-neutral-100);
-  color: var(--color-neutral-900);
-  box-shadow: var(--shadow-sm);
-}
-
-.switchgears-page__manage-view,
-.switchgears-page__sld-view {
-  min-height: 0;
-  flex: 1 1 auto;
-}
-
-.switchgears-page__manage-view {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  overflow-y: auto;
-}
-
-.switchgears-page__manage-view > :deep(*) {
-  min-height: 0;
-  flex: 1 1 auto;
-}
-
-.switchgears-page__sld-view {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 0.75rem;
-  overflow: hidden;
 }
 
 .switchgears-page__drawer-content {

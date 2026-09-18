@@ -26,7 +26,24 @@ function isActive(id: number) {
 }
 
 function openSwitchgear(id: number) {
-  router.push({ name: "switchgears.detail", params: { id } })
+  router.push({
+    name: route.name === "switchgears.sld" ? "switchgears.sld" : "switchgears.detail",
+    params: { id },
+  })
+}
+
+function openSettingsView() {
+  const id = selectedId.value
+  void router.push(id == null
+    ? { name: "switchgears.list" }
+    : { name: "switchgears.detail", params: { id } })
+}
+
+function openSldView() {
+  const id = selectedId.value
+  void router.push(id == null
+    ? { name: "switchgears.sld" }
+    : { name: "switchgears.sld", params: { id } })
 }
 
 async function addSwitchgear() {
@@ -47,6 +64,7 @@ function requestScdImport() {
 // SEARCH
 const query = ref("")
 const workspaceMissing = computed(() => !workspaceStore.activeWorkspaceId)
+const isSldView = computed(() => route.name === "switchgears.sld")
 
 const filteredSwitchgears = computed(() => {
   if (workspaceMissing.value) return []
@@ -129,7 +147,7 @@ async function confirmSelectedDelete() {
     const deletion = store.removeMany(ids)
     if (deletedActive) {
       if (fallback) {
-        await router.push({ name: "switchgears.detail", params: { id: fallback.id } })
+        openSwitchgear(fallback.id)
       } else {
         await router.push({ name: "switchgears.list" })
       }
@@ -181,6 +199,28 @@ function resolveFallbackSwitchgear(before: Switchgear[], deletedIds: number[]): 
       >
         Import SCD
       </UiButton>
+      <div class="switchgear-list-sidebar__view-switcher" role="tablist" aria-label="Switchgear view">
+        <button
+          type="button"
+          role="tab"
+          class="switchgear-list-sidebar__view-tab"
+          :class="{ 'is-active': !isSldView }"
+          :aria-selected="!isSldView"
+          @click="openSettingsView"
+        >
+          Settings
+        </button>
+        <button
+          type="button"
+          role="tab"
+          class="switchgear-list-sidebar__view-tab"
+          :class="{ 'is-active': isSldView }"
+          :aria-selected="isSldView"
+          @click="openSldView"
+        >
+          SLD
+        </button>
+      </div>
       <p
         v-if="workspaceMissing"
         class="switchgear-list-sidebar__workspace-hint"
@@ -269,6 +309,35 @@ function resolveFallbackSwitchgear(before: Switchgear[], deletedIds: number[]): 
 
 .switchgear-list-sidebar__import-button {
   margin-top: 0.5rem;
+}
+
+.switchgear-list-sidebar__view-switcher {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding: 0.2rem;
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-lg);
+  background: var(--color-neutral-50);
+}
+
+.switchgear-list-sidebar__view-tab {
+  min-height: 2.15rem;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-neutral-500);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.switchgear-list-sidebar__view-tab.is-active {
+  background: var(--color-white);
+  color: var(--color-neutral-900);
+  box-shadow: var(--shadow-sm);
 }
 
 .switchgear-list-sidebar__search {

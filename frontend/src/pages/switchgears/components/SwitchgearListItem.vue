@@ -144,7 +144,10 @@ function openInNewTab() {
       </span>
       <template #suffix>
         <span class="switchgear-list-item__position">
-          <SwitchgearPositionIcon :state="positionState" />
+          <SwitchgearPositionIcon
+            :state="positionState"
+            :offline="!switchgearStore.isUnitOnline(switchgear)"
+          />
         </span>
       </template>
       <template #subtitle>

@@ -132,7 +132,11 @@ const baseSections: MenuSection[] = [
     title: "DESIGN",
     items: [
       { to: "/signals", label: "Signals", icon: "signals" },
-      { to: "/switchgears", label: "Switchgears", icon: "switchgears" },
+      {
+        to: "/switchgears",
+        label: "Switchgears",
+        icon: "switchgears",
+      },
     ],
   },
   {

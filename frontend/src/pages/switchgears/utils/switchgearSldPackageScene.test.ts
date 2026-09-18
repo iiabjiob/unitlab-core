@@ -136,7 +136,19 @@ describe("switchgearSldPackageScene", () => {
       startBinding: { ownerType: "node", ownerId: 7, portId: "right" },
       kind: "line",
     })
-    expect(serialized.viewState).toEqual({ x: -1040, y: -520, zoom: 2 })
+    expect(serialized.viewState).toEqual({ x: 520, y: 260, zoom: 2, coordinateSpace: "world" })
+  })
+
+  it("restores viewport coordinates written by diagram-core 0.2", () => {
+    const result = buildSwitchgearSldPackageSceneModel([], {
+      viewState: { x: 320, y: 180, zoom: 1.5, coordinateSpace: "world" },
+    })
+
+    expect(result.scene.viewport).toMatchObject({
+      x: 320,
+      y: 180,
+      zoom: 1.5,
+    })
   })
 
   it("keeps a binding when its port is temporarily missing", () => {
@@ -164,5 +176,47 @@ describe("switchgearSldPackageScene", () => {
     })
 
     expect(serialized.edges?.[0]?.startBinding).toEqual({ ownerType: "node", ownerId: 7, portId: "right" })
+  })
+
+  it("round-trips static symbols and free text without dropping their properties", () => {
+    const storedState: StoredDiagramState = {
+      staticElements: [{
+        id: "transformer-1",
+        kind: "transformer",
+        size: "lg",
+        x: 420,
+        y: 280,
+        rotation: 90,
+      }, {
+        id: "ground-1",
+        kind: "ground",
+        size: "sm",
+        x: 560,
+        y: 320,
+        rotation: 0,
+      }],
+      textElements: [{
+        id: "label-1",
+        text: "Incoming feeder",
+        size: "md",
+        x: 680,
+        y: 360,
+      }],
+    }
+
+    const model = buildSwitchgearSldPackageSceneModel([], storedState)
+    const serialized = serializeSwitchgearSldPackageScene({
+      ...model.scene,
+      nodes: model.scene.nodes ?? [],
+      ports: model.scene.ports ?? [],
+      edges: model.scene.edges ?? [],
+      shapes: model.scene.shapes ?? [],
+      texts: model.scene.texts ?? [],
+      viewport: { x: 0, y: 0, width: 800, height: 600, zoom: 1 },
+      selection: { ids: [], primaryId: null },
+    })
+
+    expect(serialized.staticElements).toEqual(storedState.staticElements)
+    expect(serialized.textElements).toEqual(storedState.textElements)
   })
 })

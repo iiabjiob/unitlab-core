@@ -17,12 +17,16 @@ const props = withDefaults(defineProps<{
   disabled?: boolean
   ariaLabel?: string
   name?: string
+  panelWidth?: string
+  compactOptions?: boolean
 }>(), {
   modelValue: null,
   placeholder: "Select",
   disabled: false,
   ariaLabel: "Listbox",
   name: undefined,
+  panelWidth: undefined,
+  compactOptions: false,
 })
 
 const emit = defineEmits<{
@@ -391,7 +395,7 @@ function updatePanelPosition() {
     position: "fixed",
     left: `${left}px`,
     top: `${top}px`,
-    width: `${rect.width}px`,
+    width: props.panelWidth ?? `${rect.width}px`,
     maxHeight: `${maxHeight}px`,
     zIndex: "1105",
   }
@@ -439,6 +443,7 @@ function updatePanelPosition() {
         :aria-labelledby="triggerId"
         tabindex="-1"
         class="ui-affino-listbox__panel"
+        :class="{ 'ui-affino-listbox__panel--compact': compactOptions }"
         :style="panelStyle"
       >
         <button
@@ -537,6 +542,11 @@ function updatePanelPosition() {
   font-size: var(--text-sm);
   text-align: left;
   transition: background 150ms ease, color 150ms ease;
+}
+
+.ui-affino-listbox__panel--compact .ui-affino-listbox__option {
+  padding-block: 0.35rem;
+  font-size: var(--text-xs);
 }
 
 .ui-affino-listbox__option:hover,

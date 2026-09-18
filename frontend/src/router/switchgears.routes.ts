@@ -48,6 +48,27 @@ export const switchgearsRoutes: RouteRecordRaw[] = [
         },
       },
       {
+        path: "sld/:id?",
+        name: "switchgears.sld",
+        component: () => import("@/pages/switchgears/SwitchgearSldPage.vue"),
+        beforeEnter: (to) => {
+          const store = useSwitchgearStore()
+          const requestedId = Number(to.params.id)
+          if (Number.isFinite(requestedId) && store.switchgears.some(sw => sw.id === requestedId)) {
+            return true
+          }
+          if (to.params.id !== undefined) {
+            return { name: "switchgears.sld" }
+          }
+          const selectionStore = useSelectionStore()
+          selectionStore.restore()
+          const fallbackId = selectionStore.lastSwitchgearId ?? store.switchgears[0]?.id
+          return fallbackId == null
+            ? true
+            : { name: "switchgears.sld", params: { id: fallbackId } }
+        },
+      },
+      {
         path: ":id",
         name: "switchgears.detail",
         component: () => import("@/pages/switchgears/SwitchgearEditor.vue"),

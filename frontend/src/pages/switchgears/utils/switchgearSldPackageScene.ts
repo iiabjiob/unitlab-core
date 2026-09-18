@@ -228,9 +228,10 @@ export function serializeSwitchgearSldPackageScene(
     }),
     snapEnabled: options.snapEnabled ?? options.baseState?.snapEnabled ?? true,
     viewState: {
-      x: Math.round(-(scene.viewport.x * scene.viewport.zoom)),
-      y: Math.round(-(scene.viewport.y * scene.viewport.zoom)),
+      x: Math.round(scene.viewport.x),
+      y: Math.round(scene.viewport.y),
       zoom: scene.viewport.zoom,
+      coordinateSpace: "world",
     },
   }
 }
@@ -501,13 +502,19 @@ function gridSnapWorldValue(value: number): number {
 function resolveViewportX(storedState: StoredDiagramState | null): number {
   const x = storedState?.viewState?.x
   const zoom = resolveViewportZoom(storedState)
-  return Number.isFinite(x) ? -Number(x) / zoom : SWITCHGEAR_SLD_DEFAULT_VIEW.x
+  if (!Number.isFinite(x)) {
+    return SWITCHGEAR_SLD_DEFAULT_VIEW.x
+  }
+  return storedState?.viewState?.coordinateSpace === "world" ? Number(x) : -Number(x) / zoom
 }
 
 function resolveViewportY(storedState: StoredDiagramState | null): number {
   const y = storedState?.viewState?.y
   const zoom = resolveViewportZoom(storedState)
-  return Number.isFinite(y) ? -Number(y) / zoom : SWITCHGEAR_SLD_DEFAULT_VIEW.y
+  if (!Number.isFinite(y)) {
+    return SWITCHGEAR_SLD_DEFAULT_VIEW.y
+  }
+  return storedState?.viewState?.coordinateSpace === "world" ? Number(y) : -Number(y) / zoom
 }
 
 function resolveViewportZoom(storedState: StoredDiagramState | null): number {

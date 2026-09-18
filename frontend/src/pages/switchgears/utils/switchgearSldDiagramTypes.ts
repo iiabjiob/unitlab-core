@@ -50,6 +50,7 @@ export type DiagramViewState = {
   x: number
   y: number
   zoom: number
+  coordinateSpace?: "world"
 }
 
 export type StoredDiagramState = {

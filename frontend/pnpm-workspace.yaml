@@ -6,3 +6,5 @@ minimumReleaseAgeExclude:
   - '@affino/datagrid-vue-app@0.6.0'
   - '@affino/datagrid-vue@0.6.0'
   - '@affino/datagrid-worker@0.6.0'
+  - '@affino/diagram-core@0.2.0'
+  - '@affino/diagram-vue@0.2.0'

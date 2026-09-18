@@ -12,6 +12,10 @@ const props = defineProps<{
   compact?: boolean
 }>()
 
+const emit = defineEmits<{
+  (event: "openSettings"): void
+}>()
+
 const channelStore = useChannelStore()
 const {
   acting,
@@ -113,6 +117,16 @@ onMounted(() => {
           {{ positionStateLabel }}
         </UiBadge>
       </div>
+
+      <UiButton
+        v-if="props.compact"
+        size="sm"
+        variant="secondary"
+        class="switchgear-control-toolbar__settings-button"
+        @click="emit('openSettings')"
+      >
+        Params
+      </UiButton>
     </div>
   </section>
 </template>
@@ -179,6 +193,10 @@ onMounted(() => {
 .switchgear-control-toolbar__command-button--compact {
   min-width: 88px;
   width: auto;
+}
+
+.switchgear-control-toolbar__settings-button {
+  margin-left: auto;
 }
 
 .switchgear-control-toolbar__warning {

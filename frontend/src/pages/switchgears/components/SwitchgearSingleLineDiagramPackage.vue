@@ -33,6 +33,7 @@ import type {
 
 const props = defineProps<{
   active?: boolean
+  selectedSwitchgearId?: number | null
 }>()
 
 const emit = defineEmits<{
@@ -122,6 +123,15 @@ watch(
       return
     }
     loadStoredState()
+  },
+  { immediate: true },
+)
+
+watch(
+  () => props.selectedSwitchgearId,
+  (id) => {
+    requestedSelectionIds.value = id == null ? [] : [`switchgear:${id}`]
+    selectionRequestKey.value += 1
   },
   { immediate: true },
 )
