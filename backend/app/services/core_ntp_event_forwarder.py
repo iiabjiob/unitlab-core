@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import socket
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -21,6 +22,8 @@ logger = get_logger("core.ntp.forwarder")
 STREAM_NAME = settings.core_ntp_event_stream
 GROUP_NAME = "core-ntp-events"
 CONSUMER_NAME = f"{socket.gethostname()}-{os.getpid()}"
+_last_state_system_time: datetime | None = None
+_last_state_monotonic: float | None = None
 
 
 def _parse_json_field(fields: dict[str, Any]) -> dict[str, Any] | None:
@@ -78,6 +81,7 @@ async def _drain_pending(redis) -> None:
 
 
 async def _process_entries(redis, entries) -> None:
+    global _last_state_system_time, _last_state_monotonic
     for entry_id, fields in entries:
         try:
             payload = _parse_json_field(fields)
@@ -86,6 +90,15 @@ async def _process_entries(redis, entries) -> None:
             elif str(payload.get("event") or "") in {"system_time_set_started", "system_time_set_success"}:
                 await mark_clock_adjustment_grace()
             elif str(payload.get("event") or "") == "state":
+                current_system_time = _parse_changed_at(payload)
+                current_monotonic = time.monotonic()
+                if _last_state_system_time is not None and _last_state_monotonic is not None:
+                    wall_delta = (current_system_time - _last_state_system_time).total_seconds()
+                    monotonic_delta = current_monotonic - _last_state_monotonic
+                    if abs(wall_delta - monotonic_delta) > 5:
+                        await mark_clock_adjustment_grace()
+                _last_state_system_time = current_system_time
+                _last_state_monotonic = current_monotonic
                 await WsEventPublisher.publish(
                     CoreNtpStateEvent(
                         snapshot=payload,

@@ -54,3 +54,20 @@ async def test_stale_worker_is_offline_even_during_clock_grace(monkeypatch):
     monkeypatch.setattr(health, "_host_boot_id", lambda: "boot")
     monkeypatch.setattr(health.time, "monotonic", lambda: 100)
     assert all(worker.status == "offline" for worker in await health.collect_worker_health())
+
+
+@pytest.mark.anyio
+async def test_clock_adjustment_grace_uses_monotonic_deadline(monkeypatch):
+    redis = AsyncMock()
+    monkeypatch.setattr(health.RedisManager, "get_instance", lambda: redis)
+    monkeypatch.setattr(health, "_host_boot_id", lambda: "boot")
+    monkeypatch.setattr(health.time, "monotonic", lambda: 100)
+
+    await health.mark_clock_adjustment_grace(seconds=90)
+    payload = json.loads(redis.set.call_args.args[1])
+    assert payload == {"boot_id": "boot", "expires_monotonic": 190}
+
+    redis.get.return_value = redis.set.call_args.args[1]
+    assert await health.is_clock_adjustment_grace_active(redis) is True
+    monkeypatch.setattr(health.time, "monotonic", lambda: 190)
+    assert await health.is_clock_adjustment_grace_active(redis) is False

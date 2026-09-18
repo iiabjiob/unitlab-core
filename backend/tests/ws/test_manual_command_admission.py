@@ -14,6 +14,14 @@ def run_async(awaitable):
     return asyncio.run(awaitable)
 
 
+async def _ttl(_key: str):
+    return 30
+
+
+async def _ttl_zero(_key: str):
+    return 0
+
+
 @pytest.fixture(autouse=True)
 def manual_recovery_barrier_default(monkeypatch):
     async def no_blocked_channels(*args, **kwargs):
@@ -38,7 +46,7 @@ def test_manual_ao_passes_single_channel_as_channel_ids(monkeypatch) -> None:
     async def online_status(key: str):
         return "online" if key.endswith(":status") else str(int(time.time() * 1000))
 
-    redis = SimpleNamespace(get=online_status)
+    redis = SimpleNamespace(get=online_status, ttl=_ttl)
 
     monkeypatch.setattr(manual_command_admission, "_channel", channel)
     monkeypatch.setattr(manual_command_admission, "_enqueue_manual", enqueue_manual)
@@ -70,7 +78,7 @@ def test_manual_device_status_must_be_online(monkeypatch) -> None:
     monkeypatch.setattr(
         manual_command_admission,
         "RedisManager",
-        SimpleNamespace(get_instance=lambda: SimpleNamespace(get=status)),
+        SimpleNamespace(get_instance=lambda: SimpleNamespace(get=status, ttl=_ttl)),
     )
 
     assert run_async(manual_command_admission._device_is_online("unit-1")) is False
@@ -83,7 +91,7 @@ def test_manual_device_with_stale_last_seen_is_not_online(monkeypatch) -> None:
     monkeypatch.setattr(
         manual_command_admission,
         "RedisManager",
-        SimpleNamespace(get_instance=lambda: SimpleNamespace(get=status)),
+        SimpleNamespace(get_instance=lambda: SimpleNamespace(get=status, ttl=_ttl_zero)),
     )
 
     assert run_async(manual_command_admission._device_is_online("unit-1")) is False

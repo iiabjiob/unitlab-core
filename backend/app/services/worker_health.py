@@ -157,9 +157,40 @@ async def clear_worker_status(worker_name: str) -> None:
 
 
 async def mark_clock_adjustment_grace(seconds: int = 90) -> None:
-    """Suppress false worker timeouts while the host clock is being corrected."""
+    """Suppress false liveness transitions while the host clock is being corrected."""
     redis = RedisManager.get_instance()
+    boot_id = _host_boot_id()
+    if boot_id:
+        await redis.set(
+            CLOCK_ADJUSTMENT_GRACE_KEY,
+            json.dumps({
+                "boot_id": boot_id,
+                "expires_monotonic": time.monotonic() + max(1, seconds),
+            }),
+        )
+        return
     await redis.set(CLOCK_ADJUSTMENT_GRACE_KEY, "1", ex=max(1, seconds))
+
+
+async def is_clock_adjustment_grace_active(redis=None) -> bool:
+    """Return whether wall-clock based liveness transitions are temporarily unsafe."""
+    redis = redis or RedisManager.get_instance()
+    raw = await redis.get(CLOCK_ADJUSTMENT_GRACE_KEY)
+    if not raw:
+        return False
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8", errors="ignore")
+    if raw == "1":
+        return True
+    try:
+        payload = json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        return False
+    return (
+        payload.get("boot_id") == _host_boot_id()
+        and isinstance(payload.get("expires_monotonic"), (int, float))
+        and time.monotonic() < payload["expires_monotonic"]
+    )
 
 
 async def _worker_heartbeat_loop(worker_name: str, *, status: WorkerStatus, detail: str | None) -> None:
@@ -178,7 +209,7 @@ def start_worker_heartbeat(worker_name: str, *, status: WorkerStatus = "online",
 
 async def collect_worker_health() -> list[WorkerHealth]:
     redis = RedisManager.get_instance()
-    clock_adjustment_grace = bool(await redis.exists(CLOCK_ADJUSTMENT_GRACE_KEY))
+    clock_adjustment_grace = await is_clock_adjustment_grace_active(redis)
     statuses: list[WorkerHealth] = []
 
     for definition in WORKER_DEFINITIONS:
@@ -354,6 +385,7 @@ __all__ = [
     "compute_system_status",
     "build_system_snapshot",
     "mark_clock_adjustment_grace",
+    "is_clock_adjustment_grace_active",
     "snapshot_to_dict",
     "snapshot_from_dict",
     "diff_snapshots",

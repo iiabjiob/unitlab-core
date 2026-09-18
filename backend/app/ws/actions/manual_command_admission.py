@@ -7,7 +7,6 @@ from fastapi import WebSocket
 from sqlalchemy import exists, select
 
 from app.core.config import get_settings
-from app.core.utils import to_int
 from app.infrastructure.db.database import AsyncSessionLocal
 from app.infrastructure.redis.manager import RedisManager
 from app.models.channel import Channel
@@ -162,11 +161,13 @@ async def _device_is_online(unit_id: str) -> bool:
         status = status.decode("utf-8", errors="ignore")
     if str(status or "").strip().lower() != "online":
         return False
-    last_seen = to_int(await redis.get(f"device:{unit_id}:last_seen"))
-    if last_seen is None:
+    last_seen_key = f"device:{unit_id}:last_seen"
+    if not await redis.get(last_seen_key):
         return False
-    age_ms = int(time.time() * 1000) - last_seen
-    return 0 <= age_ms <= max(int(settings.heartbeat_ttl or 30), 1) * 1000
+    # Redis TTL is independent of the application wall clock. Comparing the
+    # stored epoch timestamp with time.time() rejects healthy devices after a
+    # host clock step.
+    return await redis.ttl(last_seen_key) > 0
 
 
 async def _enqueue_manual(

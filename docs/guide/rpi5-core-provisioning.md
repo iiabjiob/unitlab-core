@@ -47,6 +47,12 @@ offline after the heartbeat deadline, and records from a previous host boot are
 invalid. Deploy the backend and all workers together; old heartbeat records
 continue to use their legacy TTL until their worker is updated.
 
+Device presence uses the same monotonic clock-adjustment grace. The offline
+checker ignores missing heartbeat TTLs during that grace and requires two
+consecutive missing checks before declaring a device offline. Manual command
+admission relies on the Redis TTL rather than comparing heartbeat timestamps
+with the application wall clock.
+
 The UI shows an informational notice when an observed NTP state becomes
 synchronized to an upstream source, or a synchronized clock makes a large step.
 It refreshes service health without restarting workers or active test runs.
