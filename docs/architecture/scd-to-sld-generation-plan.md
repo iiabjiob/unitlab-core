@@ -690,6 +690,10 @@ Implemented 2026-09-19 - SLD switchgear selection:
 - Edge drag previews apply the movement delta once to both the line and its selection handles, keeping the highlight synchronized during long moves.
 - SLD layout documents are persisted per workspace with revision checks; localStorage is used only to migrate existing layouts and keep a local recovery copy.
 - Rapid viewport and object manipulations are coalesced into the latest document before persistence, avoiding one network update per wheel tick or pointer move.
+- Imported SLD connections use `edges` as the canonical field; `lines` remains a legacy fallback so existing documents stay readable.
+- Line endpoint handles take pointer ownership before the canvas drag controller, so line selection follows the rendered path and endpoint editing remains available.
+- Undo and redo execute one engine history step and preserve element movement history, including custom line dragging.
+- The SLD toolbar reserves two rows so responsive button wrapping does not move the canvas vertically.
 - Minimap rendering is paused during viewport panning to avoid recomputing the full minimap model on every pointer move.
 
 Known gap:

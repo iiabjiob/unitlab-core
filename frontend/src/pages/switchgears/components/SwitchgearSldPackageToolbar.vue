@@ -147,6 +147,8 @@ function onAlignmentChange(value: string | number | null) {
 .switchgear-sld-package-canvas__actions {
   flex: 1 1 32rem;
   min-width: 0;
+  min-height: calc(2 * 2.25rem + 0.35rem);
+  align-content: flex-start;
 }
 
 .switchgear-sld-package-canvas__tool-tab {

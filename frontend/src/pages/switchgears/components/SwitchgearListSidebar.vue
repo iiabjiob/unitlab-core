@@ -384,6 +384,33 @@ function resolveFallbackSwitchgear(before: Switchgear[], deletedIds: number[]): 
   color: var(--color-neutral-500);
 }
 
+:global(.dark .switchgear-list-sidebar__header) {
+  border-color: color-mix(in srgb, var(--runtime-accent) 22%, var(--color-neutral-800));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--runtime-accent) 14%, var(--color-neutral-900)), var(--color-neutral-900));
+  box-shadow: inset 0 1px 0 rgb(var(--color-white-rgb) / 0.04);
+}
+
+:global(.dark .switchgear-list-sidebar__view-switcher) {
+  border-color: var(--color-neutral-800);
+  background: var(--color-neutral-950);
+}
+
+:global(.dark .switchgear-list-sidebar__view-tab) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .switchgear-list-sidebar__view-tab.is-active) {
+  background: var(--color-neutral-800);
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .switchgear-list-sidebar__search-input) {
+  border-color: var(--color-neutral-700);
+  background: var(--color-neutral-900);
+  color: var(--color-neutral-100);
+}
+
 .switchgear-list-sidebar__search-input:disabled {
   opacity: 0.6;
 }

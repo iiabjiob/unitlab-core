@@ -155,4 +155,24 @@ const emit = defineEmits<{
   color: var(--color-neutral-500);
   font-size: var(--text-xs);
 }
+
+:global(.dark .switchgear-sld-object-browser) {
+  border-color: var(--color-neutral-700);
+  background: color-mix(in srgb, var(--color-neutral-950) 94%, transparent);
+}
+
+:global(.dark .switchgear-sld-object-browser__header) {
+  border-bottom-color: var(--color-neutral-800);
+  color: var(--color-neutral-300);
+}
+
+:global(.dark .switchgear-sld-object-browser__item) {
+  color: var(--color-neutral-300);
+}
+
+:global(.dark .switchgear-sld-object-browser__item:hover),
+:global(.dark .switchgear-sld-object-browser__item.is-selected) {
+  background: color-mix(in srgb, var(--color-blue-900) 72%, var(--color-neutral-900));
+  color: var(--color-blue-100);
+}
 </style>

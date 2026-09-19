@@ -523,10 +523,10 @@ function resolveViewportZoom(storedState: StoredDiagramState | null): number {
 }
 
 function normalizeEdges(storedState: StoredDiagramState | null) {
-  const source = Array.isArray(storedState?.lines)
-    ? storedState?.lines
-    : Array.isArray(storedState?.edges)
-      ? storedState?.edges
+  const source = Array.isArray(storedState?.edges)
+    ? storedState?.edges
+    : Array.isArray(storedState?.lines)
+      ? storedState?.lines
       : []
 
   return source.filter((edge): edge is LegacyDiagramEdge => (

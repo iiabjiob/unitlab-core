@@ -27,6 +27,7 @@ const EDGE_PORT_SNAP_RADIUS = 18
 const PERSIST_DEBOUNCE_MS = 500
 const MINIMAP_WIDTH = 180
 const MINIMAP_HEIGHT = 124
+const TEXT_HIT_TOLERANCE_PX = 10
 const LABEL_MIN_OFFSET = -220
 const LABEL_MAX_OFFSET = 220
 const STATIC_DIMENSIONS: Record<DiagramStaticKind, Record<DiagramStaticSize, { width: number; height: number }>> = {
@@ -142,6 +143,8 @@ const selectionStore = useSelectionStore()
 const switchgearStore = useSwitchgearStore()
 const toastStore = useToastStore()
 const stageRef = ref<HTMLElement | null>(null)
+const svgRef = ref<SVGSVGElement | null>(null)
+const textEditorRef = ref<HTMLTextAreaElement | null>(null)
 const editableText = ref("")
 const lastStoredState = ref<StoredDiagramState | null>(props.initialStoredState)
 const draftLine = ref<DraftLine | null>(null)
@@ -170,6 +173,7 @@ let lastPersistedStateFingerprint = persistedStateFingerprint(props.initialStore
 let pendingPersistedStateFingerprint: string | null = null
 let suppressNextViewportPersistence = false
 const initialFitDone = ref(false)
+const EDGE_HIT_TOLERANCE_PX = 8
 
 const diagram = useDiagramEngine(props.model.scene)
 const viewport = useDiagramViewport(diagram, { element: stageRef })
@@ -331,8 +335,14 @@ const selectedEdgeWeight = computed<EdgeWeight | "mixed" | null>(() => {
   }
   return weights.size === 1 ? [...weights][0] : "mixed"
 })
-const canUndo = computed(() => diagram.engine.canUndo())
-const canRedo = computed(() => diagram.engine.canRedo())
+const canUndo = computed(() => {
+  void diagram.scene.value.revision
+  return diagram.engine.canUndo()
+})
+const canRedo = computed(() => {
+  void diagram.scene.value.revision
+  return diagram.engine.canRedo()
+})
 const canDelete = computed(() => diagram.engine.canDelete(selection.selection.value.ids))
 const canDuplicateSelection = computed(() => selectedNodeIds.value.length === 0 && (selectedEdgeIds.value.length > 0 || selectedShapeIds.value.length > 0 || selectedTextIds.value.length > 0))
 const marqueeRect = computed(() => {
@@ -562,8 +572,14 @@ watch(
   },
 )
 
-watch(() => textEditor.activeEditor.value, (next) => {
+watch(() => textEditor.activeEditor.value, async (next) => {
   editableText.value = next?.text ?? ""
+  if (!next) {
+    return
+  }
+  await nextTick()
+  textEditorRef.value?.focus({ preventScroll: true })
+  textEditorRef.value?.select()
 })
 
 watch(() => props.initialStoredState, (next) => {
@@ -932,7 +948,7 @@ function openContextMenu(event: MouseEvent, kind: ContextMenuState["kind"], node
 
 function handleStagePointerDownCapture(event: PointerEvent) {
   const target = event.target as HTMLElement | null
-  if (target?.closest(".switchgear-sld-object-browser, .switchgear-sld-package-canvas__selected-controls, .switchgear-sld-package-canvas__context-menu, .switchgear-sld-package-canvas__minimap")) {
+  if (target?.closest(".switchgear-sld-object-browser, .switchgear-sld-package-canvas__selected-controls, .switchgear-sld-package-canvas__context-menu, .switchgear-sld-package-canvas__minimap, .switchgear-sld-package-canvas__edge-handle")) {
     return
   }
   if (target?.closest(".switchgear-sld-package-canvas__context-menu")) {
@@ -952,7 +968,11 @@ function handleStagePointerDownCapture(event: PointerEvent) {
   if (activeTool.value !== "select") {
     return
   }
-  const hit = diagram.engine.hitTest(mapPointerToWorld(event), { radius: 2, kinds: ["edge"] })
+  const zoom = viewport.viewport.value.zoom > 0 ? viewport.viewport.value.zoom : 1
+  const hit = diagram.engine.hitTest(mapPointerToWorld(event), {
+    radius: EDGE_HIT_TOLERANCE_PX / zoom,
+    kinds: ["edge"],
+  })
   if (!hit || hit.kind !== "edge") {
     return
   }
@@ -1062,25 +1082,7 @@ function onStagePointerUp(event: PointerEvent) {
   if (drag && drag.pointerId === event.pointerId) {
     stageRef.value?.releasePointerCapture?.(event.pointerId)
     if (drag.delta.x !== 0 || drag.delta.y !== 0) {
-      const edgeIds = new Set(drag.edgeIds)
-      diagram.engine.transact(() => {
-        const serialized = diagram.engine.serialize()
-        return {
-          ...serialized,
-          edges: serialized.edges.map((edge) => edgeIds.has(edge.id)
-            ? {
-                ...edge,
-                source: edge.source.kind === "point"
-                  ? { kind: "point" as const, point: { x: edge.source.point.x + drag.delta.x, y: edge.source.point.y + drag.delta.y } }
-                  : edge.source,
-                target: edge.target.kind === "point"
-                  ? { kind: "point" as const, point: { x: edge.target.point.x + drag.delta.x, y: edge.target.point.y + drag.delta.y } }
-                  : edge.target,
-                points: edge.points?.map(point => ({ x: point.x + drag.delta.x, y: point.y + drag.delta.y })),
-              }
-            : edge),
-        }
-      })
+      moveEdgesWithHistory(drag.edgeIds, drag.delta)
     }
     movedEdges.value = null
   }
@@ -1096,6 +1098,42 @@ function onStagePointerUp(event: PointerEvent) {
     panObjectPointerId.value = null
   }
   restoreSelectionAfterPointerRelease(selectedIdsBeforeRelease, primaryIdBeforeRelease)
+}
+
+function moveEdgesWithHistory(ids: string[], delta: { x: number; y: number }) {
+  const edges = ids
+    .map(id => diagram.scene.value.entities.edgesById.get(id))
+    .filter((edge): edge is NonNullable<typeof edge> => Boolean(edge))
+
+  for (const edge of edges) {
+    if (edge.source.kind === "point") {
+      diagram.dispatch({
+        type: "moveEdgeEndpoint",
+        id: edge.id,
+        endpoint: "source",
+        point: { x: edge.source.point.x + delta.x, y: edge.source.point.y + delta.y },
+        historyKey: "move-edges",
+      })
+    }
+    if (edge.target.kind === "point") {
+      diagram.dispatch({
+        type: "moveEdgeEndpoint",
+        id: edge.id,
+        endpoint: "target",
+        point: { x: edge.target.point.x + delta.x, y: edge.target.point.y + delta.y },
+        historyKey: "move-edges",
+      })
+    }
+    edge.points?.forEach((point, index) => {
+      diagram.dispatch({
+        type: "moveEdgeWaypoint",
+        id: edge.id,
+        index,
+        point: { x: point.x + delta.x, y: point.y + delta.y },
+        historyKey: "move-edges",
+      })
+    })
+  }
 }
 
 function onStagePointerCancel(event: PointerEvent) {
@@ -1905,6 +1943,21 @@ function onSvgClick(event: MouseEvent) {
   draftLine.value = null
 }
 
+function onSvgDoubleClick(event: MouseEvent) {
+  if (activeTool.value !== "select") {
+    return
+  }
+  const zoom = viewport.viewport.value.zoom > 0 ? viewport.viewport.value.zoom : 1
+  const hit = diagram.engine.hitTest(mapPointerToWorld(event as unknown as PointerEvent), {
+    radius: TEXT_HIT_TOLERANCE_PX / zoom,
+    kinds: ["text"],
+  })
+  if (hit?.kind === "text") {
+    event.preventDefault()
+    beginTextEdit(hit.id)
+  }
+}
+
 function onSvgPointerMove(event: PointerEvent) {
   if (activeTool.value === "line" && draftLine.value) {
     draftLine.value = {
@@ -1971,6 +2024,7 @@ function cancelPointerInteraction(event: PointerEvent) {
 
 function startEdgeEndpointDrag(event: PointerEvent, edgeId: string, endpoint: "source" | "target") {
   event.stopPropagation()
+  event.preventDefault()
   const target = event.currentTarget as Element | null
   target?.setPointerCapture?.(event.pointerId)
   draggedEdge.value = {
@@ -2233,8 +2287,16 @@ function clampZoom(value: number) {
 }
 
 function mapPointerToWorld(event: PointerEvent) {
-  const stage = stageRef.value
   const current = viewport.viewport.value
+  const svg = svgRef.value
+  if (svg) {
+    const matrix = svg.getScreenCTM()
+    if (matrix) {
+      const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse())
+      return { x: point.x, y: point.y }
+    }
+  }
+  const stage = stageRef.value
   if (!stage || current.width <= 0 || current.height <= 0) {
     return { x: current.x, y: current.y }
   }
@@ -2357,22 +2419,22 @@ function resolveHandlePreviewPoint(handle: { ownerId: string; point: { x: number
 
 function resolveNodeFill(id: string) {
   if (isNodeOffline(id)) {
-    return "var(--color-neutral-100)"
+    return "var(--sld-node-fill-offline)"
   }
   const node = diagram.scene.value.entities.nodesById.get(id)
   const switchgearId = Number(node?.metadata?.switchgearId)
   const switchgear = Number.isFinite(switchgearId) ? switchgearStore.getById(switchgearId) : null
   const state = switchgear ? switchgearStore.resolveSwitchgearState(switchgear) : "UNKNOWN"
-  if (state === "CLOSED") return "var(--color-emerald-100)"
-  if (state === "OPEN") return "var(--color-amber-100)"
-  if (state === "INTERMEDIATE") return "var(--color-orange-100)"
-  return "var(--color-white)"
+  if (state === "CLOSED") return "var(--sld-node-fill-closed)"
+  if (state === "OPEN") return "var(--sld-node-fill-open)"
+  if (state === "INTERMEDIATE") return "var(--sld-node-fill-intermediate)"
+  return "var(--sld-node-fill-default)"
 }
 
 function resolveNodeStroke(id: string, selected: boolean) {
   if (selected) return "var(--color-blue-500)"
-  if (isNodeOffline(id)) return "var(--color-neutral-400)"
-  return "var(--color-blue-300)"
+  if (isNodeOffline(id)) return "var(--sld-node-stroke-offline)"
+  return "var(--sld-node-stroke-default)"
 }
 
 function isNodeOffline(id: string) {
@@ -2426,8 +2488,8 @@ function resolveEdgeStroke(id: string) {
     return "var(--color-rose-600)"
   }
   return resolveEdgeKind(id) === "arrow"
-    ? "var(--color-blue-700)"
-    : "var(--color-neutral-700)"
+    ? "var(--sld-edge-stroke-arrow)"
+    : "var(--sld-edge-stroke)"
 }
 
 function isBrokenEdge(id: string) {
@@ -2524,10 +2586,12 @@ function resolveTransformerCircleOffset(id: string): number {
       </div>
 
       <svg
+        ref="svgRef"
         class="switchgear-sld-package-canvas__svg"
         :viewBox="`${viewportBox.x} ${viewportBox.y} ${viewportBox.width} ${viewportBox.height}`"
         v-bind="activeTool === 'line' ? {} : svgPointerProps"
         @click="onSvgClick"
+        @dblclick="onSvgDoubleClick"
         @pointermove="onSvgPointerMove"
         @pointerup="onSvgPointerUp"
         @pointercancel="cancelPointerInteraction"
@@ -2623,7 +2687,7 @@ function resolveTransformerCircleOffset(id: string): number {
               cy="0"
               :r="resolveTransformerCircleRadius(shape.id)"
               fill="none"
-              stroke="var(--color-neutral-700)"
+              stroke="var(--sld-symbol-stroke)"
               stroke-width="2"
             />
             <circle
@@ -2631,7 +2695,7 @@ function resolveTransformerCircleOffset(id: string): number {
               cy="0"
               :r="resolveTransformerCircleRadius(shape.id)"
               fill="none"
-              stroke="var(--color-neutral-700)"
+              stroke="var(--sld-symbol-stroke)"
               stroke-width="2"
             />
           </g>
@@ -2640,10 +2704,10 @@ function resolveTransformerCircleOffset(id: string): number {
             @contextmenu.stop.prevent="openStaticContextMenu($event, shape.id)"
             :transform="`translate(${shape.geometry.bounds.x + shape.geometry.bounds.width / 2} ${shape.geometry.bounds.y + shape.geometry.bounds.height / 2}) rotate(${resolveStaticMeta(shape.id).rotation})`"
           >
-            <line x1="0" :y1="-shape.geometry.bounds.height * 0.5" x2="0" y2="0" stroke="var(--color-neutral-700)" stroke-width="2" />
-            <line :x1="-shape.geometry.bounds.width * 0.4" y1="0" :x2="shape.geometry.bounds.width * 0.4" y2="0" stroke="var(--color-neutral-700)" stroke-width="2" />
-            <line :x1="-shape.geometry.bounds.width * 0.26" :y1="shape.geometry.bounds.height * 0.18" :x2="shape.geometry.bounds.width * 0.26" :y2="shape.geometry.bounds.height * 0.18" stroke="var(--color-neutral-700)" stroke-width="2" />
-            <line :x1="-shape.geometry.bounds.width * 0.14" :y1="shape.geometry.bounds.height * 0.34" :x2="shape.geometry.bounds.width * 0.14" :y2="shape.geometry.bounds.height * 0.34" stroke="var(--color-neutral-700)" stroke-width="2" />
+            <line x1="0" :y1="-shape.geometry.bounds.height * 0.5" x2="0" y2="0" stroke="var(--sld-symbol-stroke)" stroke-width="2" />
+            <line :x1="-shape.geometry.bounds.width * 0.4" y1="0" :x2="shape.geometry.bounds.width * 0.4" y2="0" stroke="var(--sld-symbol-stroke)" stroke-width="2" />
+            <line :x1="-shape.geometry.bounds.width * 0.26" :y1="shape.geometry.bounds.height * 0.18" :x2="shape.geometry.bounds.width * 0.26" :y2="shape.geometry.bounds.height * 0.18" stroke="var(--sld-symbol-stroke)" stroke-width="2" />
+            <line :x1="-shape.geometry.bounds.width * 0.14" :y1="shape.geometry.bounds.height * 0.34" :x2="shape.geometry.bounds.width * 0.14" :y2="shape.geometry.bounds.height * 0.34" stroke="var(--sld-symbol-stroke)" stroke-width="2" />
           </g>
         </g>
 
@@ -2693,7 +2757,6 @@ function resolveTransformerCircleOffset(id: string): number {
           :class="resolveTextClass(text.id)"
           text-anchor="middle"
           dominant-baseline="middle"
-          @dblclick.stop.prevent="beginTextEdit(text.id)"
           @contextmenu.stop.prevent="openTextContextMenu($event, text.id)"
         >
           {{ diagram.scene.value.entities.textsById.get(text.id)?.text }}
@@ -2710,7 +2773,7 @@ function resolveTransformerCircleOffset(id: string): number {
           fill="var(--color-white)"
           stroke="var(--color-blue-500)"
           stroke-width="2"
-          @pointerdown="startEdgeEndpointDrag($event, handle.edgeId, handle.endpoint)"
+          @pointerdown.capture="startEdgeEndpointDrag($event, handle.edgeId, handle.endpoint)"
           @pointerup="finishEdgeEndpointDrag"
           @pointercancel="cancelPointerInteraction"
           @lostpointercapture="cancelPointerInteraction"
@@ -2819,6 +2882,7 @@ function resolveTransformerCircleOffset(id: string): number {
 
       <textarea
         v-if="textEditor.activeEditor.value"
+        ref="textEditorRef"
         v-model="editableText"
         class="switchgear-sld-package-canvas__editor"
         :style="textEditor.activeEditor.value.style"
@@ -2984,6 +3048,16 @@ function resolveTransformerCircleOffset(id: string): number {
   outline: none;
   touch-action: none;
   user-select: none;
+  --sld-symbol-stroke: var(--color-neutral-700);
+  --sld-edge-stroke: var(--color-neutral-700);
+  --sld-edge-stroke-arrow: var(--color-blue-700);
+  --sld-node-fill-default: var(--color-white);
+  --sld-node-fill-offline: var(--color-neutral-100);
+  --sld-node-fill-closed: var(--color-emerald-100);
+  --sld-node-fill-open: var(--color-amber-100);
+  --sld-node-fill-intermediate: var(--color-orange-100);
+  --sld-node-stroke-default: var(--color-blue-300);
+  --sld-node-stroke-offline: var(--color-neutral-400);
 }
 
 .switchgear-sld-package-canvas__stage.is-select,
@@ -3209,6 +3283,16 @@ function resolveTransformerCircleOffset(id: string): number {
 :global(.dark .switchgear-sld-package-canvas__stage) {
   border-color: var(--color-neutral-800);
   background: linear-gradient(180deg, rgb(var(--color-diagram-surface-rgb)), rgb(var(--color-diagram-background-rgb)));
+  --sld-symbol-stroke: var(--color-neutral-200);
+  --sld-edge-stroke: var(--color-neutral-200);
+  --sld-edge-stroke-arrow: var(--color-blue-300);
+  --sld-node-fill-default: var(--color-neutral-800);
+  --sld-node-fill-offline: var(--color-neutral-900);
+  --sld-node-fill-closed: color-mix(in srgb, var(--color-emerald-900) 72%, var(--color-neutral-800));
+  --sld-node-fill-open: color-mix(in srgb, var(--color-amber-900) 72%, var(--color-neutral-800));
+  --sld-node-fill-intermediate: color-mix(in srgb, var(--color-orange-900) 72%, var(--color-neutral-800));
+  --sld-node-stroke-default: var(--color-blue-400);
+  --sld-node-stroke-offline: var(--color-neutral-500);
 }
 
 :global(.dark .switchgear-sld-package-canvas__switchgear-label) {
