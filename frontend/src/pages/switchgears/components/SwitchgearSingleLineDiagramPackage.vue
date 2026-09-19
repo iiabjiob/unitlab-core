@@ -235,6 +235,7 @@ async function applyScdImportPreview() {
       labelOffsetById: base.labelOffsetById ?? {},
       viewState: base.viewState,
     }
+    storedState.value = nextState
     await persistDocument(nextState, "import")
     requestedSelectionIds.value = createdIds.map(item => `switchgear:${item.id}`)
     selectionRequestKey.value += 1
@@ -358,7 +359,6 @@ function persistDocument(state: StoredDiagramState, changeKind: "edit" | "import
       change_kind: changeKind,
     })
     backendRevision.value = response.data.revision
-    storedState.value = normalizeStoredDiagramState(response.data.document)
     writeLocalSetting(storageKey.value ?? localSettingsKeys.switchgearDiagram(workspace), state, {
       legacyKeys: [`unitlab.switchgears.sld.${workspace}`],
     })

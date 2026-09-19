@@ -24,7 +24,7 @@ const NUDGE_LARGE_STEP = GRID_STEP * 4
 const DIAGRAM_CLIPBOARD_KIND = "unitlab.switchgear-sld-selection"
 const DEFAULT_TEXT_LABEL = "TEXT"
 const EDGE_PORT_SNAP_RADIUS = 18
-const PERSIST_DEBOUNCE_MS = 160
+const PERSIST_DEBOUNCE_MS = 500
 const MINIMAP_WIDTH = 180
 const MINIMAP_HEIGHT = 124
 const LABEL_MIN_OFFSET = -220
@@ -164,6 +164,11 @@ let persistTimer: ReturnType<typeof setTimeout> | null = null
 let entityIdSequence = 0
 let hasLocalStateChanges = false
 let persistenceArmed = false
+let pendingPersistedState: StoredDiagramState | null = null
+let persistedStateRequestInFlight = false
+let lastPersistedStateFingerprint = persistedStateFingerprint(props.initialStoredState)
+let pendingPersistedStateFingerprint: string | null = null
+let suppressNextViewportPersistence = false
 const initialFitDone = ref(false)
 
 const diagram = useDiagramEngine(props.model.scene)
@@ -564,6 +569,7 @@ watch(() => textEditor.activeEditor.value, (next) => {
 watch(() => props.initialStoredState, (next) => {
   if (!hasLocalStateChanges) {
     lastStoredState.value = next
+    lastPersistedStateFingerprint = persistedStateFingerprint(next)
   }
 })
 
@@ -594,6 +600,10 @@ diagram.engine.subscribe((scene) => {
   if (scene.revision === 0 || !persistenceArmed) {
     return
   }
+  if (suppressNextViewportPersistence) {
+    suppressNextViewportPersistence = false
+    return
+  }
   const nextState = serializeSwitchgearSldPackageScene(diagram.engine.serialize(), {
     workspaceId: props.workspaceId,
     snapEnabled: lastStoredState.value?.snapEnabled ?? true,
@@ -606,21 +616,60 @@ diagram.engine.subscribe((scene) => {
 })
 
 function schedulePersistedState(state: StoredDiagramState) {
+  const fingerprint = persistedStateFingerprint(state)
+  if (fingerprint === lastPersistedStateFingerprint || fingerprint === pendingPersistedStateFingerprint) {
+    return
+  }
+  pendingPersistedState = state
+  pendingPersistedStateFingerprint = fingerprint
   if (persistTimer != null) clearTimeout(persistTimer)
   persistTimer = setTimeout(() => {
     persistTimer = null
-    void props.persistDocument?.(state).catch((error) => {
-      toastStore.error(error instanceof Error ? error.message : "Unable to save SLD")
-    })
+    void persistLatestState()
   }, PERSIST_DEBOUNCE_MS)
 }
 
 function flushPersistedState() {
-  if (persistTimer == null || !lastStoredState.value) return
-  clearTimeout(persistTimer)
+  if (!lastStoredState.value) return
+  pendingPersistedState = lastStoredState.value
+  pendingPersistedStateFingerprint = persistedStateFingerprint(lastStoredState.value)
+  if (persistTimer != null) clearTimeout(persistTimer)
   persistTimer = null
-  void props.persistDocument?.(lastStoredState.value).catch((error) => {
-    toastStore.error(error instanceof Error ? error.message : "Unable to save SLD")
+  void persistLatestState()
+}
+
+async function persistLatestState() {
+  if (persistedStateRequestInFlight || !props.persistDocument) {
+    return
+  }
+  persistedStateRequestInFlight = true
+  try {
+    while (pendingPersistedState) {
+      const state = pendingPersistedState
+      pendingPersistedState = null
+      pendingPersistedStateFingerprint = null
+      try {
+        await props.persistDocument(state)
+        lastPersistedStateFingerprint = persistedStateFingerprint(state)
+      } catch (error) {
+        toastStore.error(error instanceof Error ? error.message : "Unable to save SLD")
+        pendingPersistedState = null
+      }
+    }
+  } finally {
+    persistedStateRequestInFlight = false
+  }
+}
+
+function persistedStateFingerprint(state: StoredDiagramState | null): string {
+  return JSON.stringify({
+    layoutById: state?.layoutById ?? {},
+    labelOffsetById: state?.labelOffsetById ?? {},
+    edges: state?.edges ?? state?.lines ?? [],
+    staticElements: state?.staticElements ?? [],
+    textElements: state?.textElements ?? [],
+    snapEnabled: state?.snapEnabled ?? true,
+    viewState: state?.viewState ?? null,
   })
 }
 
@@ -653,6 +702,7 @@ function centerEntityInViewport(id: string | null) {
       if (isVisible) {
         return
       }
+      suppressNextViewportPersistence = true
       viewport.setViewport({
         x: geometry.bounds.x + geometry.bounds.width / 2 - current.width / 2,
         y: geometry.bounds.y + geometry.bounds.height / 2 - current.height / 2,
@@ -1006,6 +1056,8 @@ function snapEdgeMoveDelta(ids: string[], delta: { x: number; y: number }) {
 }
 
 function onStagePointerUp(event: PointerEvent) {
+  const selectedIdsBeforeRelease = [...selection.selection.value.ids]
+  const primaryIdBeforeRelease = selection.selection.value.primaryId
   const drag = movedEdges.value
   if (drag && drag.pointerId === event.pointerId) {
     stageRef.value?.releasePointerCapture?.(event.pointerId)
@@ -1043,6 +1095,7 @@ function onStagePointerUp(event: PointerEvent) {
     pointer.setTool("pan")
     panObjectPointerId.value = null
   }
+  restoreSelectionAfterPointerRelease(selectedIdsBeforeRelease, primaryIdBeforeRelease)
 }
 
 function onStagePointerCancel(event: PointerEvent) {
@@ -1882,8 +1935,11 @@ function onSvgPointerUp(event: PointerEvent) {
   if (!drag || drag.pointerId !== event.pointerId) {
     return
   }
+  const selectedIdsBeforeRelease = [...selection.selection.value.ids]
+  const primaryIdBeforeRelease = selection.selection.value.primaryId
   updateEdgeEndpoint(drag.edgeId, drag.endpoint, drag.draft)
   draggedEdge.value = null
+  restoreSelectionAfterPointerRelease(selectedIdsBeforeRelease, primaryIdBeforeRelease)
 }
 
 function cancelPointerInteraction(event: PointerEvent) {
@@ -1974,6 +2030,8 @@ function finishLabelDrag(event: PointerEvent) {
   if (!drag || drag.pointerId !== event.pointerId) {
     return
   }
+  const selectedIdsBeforeRelease = [...selection.selection.value.ids]
+  const primaryIdBeforeRelease = selection.selection.value.primaryId
   diagram.engine.transact(() => {
     const serialized = diagram.engine.serialize()
     return {
@@ -1991,6 +2049,26 @@ function finishLabelDrag(event: PointerEvent) {
     }
   })
   labelDrag.value = null
+  restoreSelectionAfterPointerRelease(selectedIdsBeforeRelease, primaryIdBeforeRelease)
+}
+
+function restoreSelectionAfterPointerRelease(ids: string[], primaryId: string | null) {
+  if (ids.length === 0) {
+    return
+  }
+  requestAnimationFrame(() => {
+    const validIds = ids.filter((id) => (
+      diagram.scene.value.entities.nodesById.has(id)
+      || diagram.scene.value.entities.edgesById.has(id)
+      || diagram.scene.value.entities.shapesById.has(id)
+      || diagram.scene.value.entities.textsById.has(id)
+    ))
+    if (validIds.length === 0) {
+      return
+    }
+    const validPrimaryId = primaryId && validIds.includes(primaryId) ? primaryId : validIds[0]
+    selection.setSelection(validIds, validPrimaryId)
+  })
 }
 
 function createLine(start: DraftEndpoint, end: DraftEndpoint) {
