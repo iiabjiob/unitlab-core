@@ -121,6 +121,8 @@ type MinimapDragState = {
 type SelectionDragSnapState = {
   pointerId: number
   ids: string[]
+  origin: { x: number; y: number }
+  delta: { x: number; y: number }
 }
 
 const props = defineProps<{
@@ -999,10 +1001,20 @@ function handleStagePointerDownCapture(event: PointerEvent) {
 
 function onStagePointerMove(event: PointerEvent) {
   const snapshot = pointer.state.value
-  if (snapshot.active && snapshot.tool === "drag-selection" && snapshot.previewDelta && !selectionDragSnap.value) {
-    selectionDragSnap.value = {
-      pointerId: event.pointerId,
-      ids: [...selection.selection.value.ids],
+  if (snapshot.active && snapshot.tool === "drag-selection" && snapshot.previewDelta) {
+    const primaryId = selection.selection.value.ids[0]
+    const bounds = primaryId ? diagram.engine.getGeometrySnapshot(primaryId)?.bounds : null
+    if (bounds) {
+      if (!selectionDragSnap.value) {
+        selectionDragSnap.value = {
+          pointerId: event.pointerId,
+          ids: [...selection.selection.value.ids],
+          origin: { x: bounds.x, y: bounds.y },
+          delta: snapshot.previewDelta,
+        }
+      } else if (selectionDragSnap.value.pointerId === event.pointerId) {
+        selectionDragSnap.value.delta = snapshot.previewDelta
+      }
     }
   }
   const drag = movedEdges.value
@@ -1032,28 +1044,27 @@ function snapSelectionDelta(delta: { x: number; y: number }) {
   }
 }
 
-function snapCommittedSelection(ids: string[]) {
-  const id = ids.find(candidate => diagram.scene.value.entities.nodesById.has(candidate)
-    || diagram.scene.value.entities.shapesById.has(candidate)
-    || diagram.scene.value.entities.edgesById.has(candidate)
-    || diagram.scene.value.entities.textsById.has(candidate))
-  const bounds = id ? diagram.engine.getGeometrySnapshot(id)?.bounds : null
-  if (!bounds) {
+function commitSnappedSelection(drag: SelectionDragSnapState) {
+  const snapped = snapWorldPoint({
+    x: drag.origin.x + drag.delta.x,
+    y: drag.origin.y + drag.delta.y,
+  })
+  const snappedDelta = {
+    x: drag.delta.x + snapped.x - (drag.origin.x + drag.delta.x),
+    y: drag.delta.y + snapped.y - (drag.origin.y + drag.delta.y),
+  }
+  if (snappedDelta.x === drag.delta.x && snappedDelta.y === drag.delta.y) {
     return
   }
-  const snapped = snapWorldPoint({ x: bounds.x, y: bounds.y })
-  const correction = {
-    x: snapped.x - bounds.x,
-    y: snapped.y - bounds.y,
-  }
-  if (correction.x === 0 && correction.y === 0) {
-    return
-  }
+  // The diagram pointer controller has already committed the raw drag by the
+  // time the stage receives pointerup. Replace that commit with the snapped
+  // delta so one gesture produces one history entry.
+  diagram.dispatch({ type: "undo" })
   diagram.dispatch({
     type: "moveEntities",
-    ids,
-    delta: correction,
-    historyKey: "snap-selection",
+    ids: drag.ids,
+    delta: snappedDelta,
+    historyKey: "drag-selection",
   })
 }
 
@@ -1089,7 +1100,7 @@ function onStagePointerUp(event: PointerEvent) {
   const selectionDrag = selectionDragSnap.value
   if (selectionDrag?.pointerId === event.pointerId) {
     if (snapEnabled.value) {
-      snapCommittedSelection(selectionDrag.ids)
+      commitSnappedSelection(selectionDrag)
     }
     selectionDragSnap.value = null
   }
