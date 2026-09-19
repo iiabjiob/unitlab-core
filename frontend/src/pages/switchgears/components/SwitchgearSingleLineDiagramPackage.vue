@@ -34,6 +34,7 @@ import type {
 const props = defineProps<{
   active?: boolean
   selectedSwitchgearId?: number | null
+  selectionVersion?: number
 }>()
 
 const emit = defineEmits<{
@@ -128,9 +129,10 @@ watch(
 )
 
 watch(
-  () => props.selectedSwitchgearId,
+  () => [props.selectedSwitchgearId, props.selectionVersion] as const,
   (id) => {
-    requestedSelectionIds.value = id == null ? [] : [`switchgear:${id}`]
+    const selectedId = id[0]
+    requestedSelectionIds.value = selectedId == null ? [] : [`switchgear:${selectedId}`]
     selectionRequestKey.value += 1
   },
   { immediate: true },

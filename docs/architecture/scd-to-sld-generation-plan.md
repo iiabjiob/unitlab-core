@@ -670,6 +670,12 @@ Implemented 2026-05-28:
 
 - SLD editor grid rendering was moved from the 100k world stage to a viewport-sized overlay to avoid repainting a huge background layer during pan/zoom.
 - SLD editor now culls off-viewport nodes, lines, static symbols, and text with overscan while preserving selected objects.
+
+Implemented 2026-09-19 - SLD switchgear selection:
+
+- Selecting a switchgear from the SLD sidebar updates the selected diagram object through the shared selection state without changing the current route.
+- Selecting a switchgear on the diagram updates the active sidebar item; selecting the same sidebar item again reapplies the diagram selection.
+- The canonical SLD URL is `/switchgears/sld`; a switchgear ID is kept as selection state rather than a route parameter.
 - Minimap rendering is paused during viewport panning to avoid recomputing the full minimap model on every pointer move.
 
 Known gap:

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
-import { useRoute, useRouter } from "vue-router"
+import { useRouter } from "vue-router"
 import { screenToWorld, zoomViewportAt, zoomViewportCentered } from "@affino/diagram-core"
 import { getSvgEntityProps, useDiagramEngine, useDiagramPointerController, useDiagramSelection, useDiagramTextEditor, useDiagramViewport, useDiagramVisibleEntities } from "@affino/diagram-vue"
 import type { DiagramEdge } from "@affino/diagram-core"
@@ -10,6 +10,7 @@ import SwitchgearSldPackageToolbar from "./SwitchgearSldPackageToolbar.vue"
 import SwitchgearSldObjectBrowser from "./SwitchgearSldObjectBrowser.vue"
 import { useToastStore } from "@/stores/toastStore"
 import { writeLocalSetting } from "@/services/localSettingsStorage"
+import { useSelectionStore } from "@/stores/selectionStore"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
 
 import type { DiagramStaticKind, DiagramStaticSize, StoredDiagramState } from "../utils/switchgearSldDiagramTypes"
@@ -135,8 +136,8 @@ const emit = defineEmits<{
   (event: "editSwitchgearBindings", id: number): void
 }>()
 
-const route = useRoute()
 const router = useRouter()
+const selectionStore = useSelectionStore()
 const switchgearStore = useSwitchgearStore()
 const toastStore = useToastStore()
 const stageRef = ref<HTMLElement | null>(null)
@@ -281,6 +282,12 @@ const singleSelectedSwitchgearId = computed(() => {
 const singleSelectedSwitchgear = computed(() => {
   const switchgearId = singleSelectedSwitchgearId.value
   return switchgearId == null ? null : switchgearStore.getById(switchgearId)
+})
+
+watch(singleSelectedSwitchgearId, (id) => {
+  if (id != null && selectionStore.lastSwitchgearId !== id) {
+    selectionStore.selectSwitchgear(id)
+  }
 })
 const selectedStaticSize = computed<DiagramStaticSize | "mixed" | null>(() => {
   if (selectedShapeIds.value.length === 0) {
@@ -517,7 +524,6 @@ const minimapModel = computed(() => {
 })
 
 pointer.setTool("select")
-syncRouteSelection()
 
 onMounted(() => {
   void nextTick(() => {
@@ -533,10 +539,6 @@ watch(
     }
   },
 )
-
-watch(() => route.params.id, () => {
-  syncRouteSelection()
-})
 
 watch(() => textEditor.activeEditor.value, (next) => {
   editableText.value = next?.text ?? ""
@@ -607,19 +609,6 @@ function createEntityId(prefix: string) {
     ? crypto.randomUUID()
     : `${Date.now()}-${entityIdSequence}`
   return `${prefix}:${randomPart}`
-}
-
-function syncRouteSelection() {
-  const switchgearId = Number(route.params.id)
-  if (!Number.isFinite(switchgearId)) {
-    return
-  }
-  const nodeId = `switchgear:${switchgearId}`
-  const node = diagram.scene.value.entities.nodesById.get(nodeId)
-  if (node) {
-    selection.setSelection([nodeId], nodeId)
-    centerEntityInViewport(nodeId)
-  }
 }
 
 function centerEntityInViewport(id: string | null) {

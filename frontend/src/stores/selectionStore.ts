@@ -18,6 +18,7 @@ export const useSelectionStore = defineStore("selection", () => {
   // --- STATE ---------------------------------------------------------
   const lastDeviceId = ref<number | null>(null)
   const lastSwitchgearId = ref<number | null>(null)
+  const switchgearSelectionVersion = ref(0)
   const lastSequenceId = ref<number | null>(null)
   const lastSettingsRouteName = ref<string | null>(null)
   let restored = false
@@ -69,6 +70,7 @@ export const useSelectionStore = defineStore("selection", () => {
 
   function selectSwitchgear(id: number | null) {
     setSelection(lastSwitchgearId, id)
+    switchgearSelectionVersion.value += 1
   }
 
   function selectSequence(id: number | null) {
@@ -107,6 +109,7 @@ export const useSelectionStore = defineStore("selection", () => {
     lastDeviceId,
     lastSequenceId,
     lastSwitchgearId,
+    switchgearSelectionVersion,
     lastSettingsRouteName,
 
     // actions

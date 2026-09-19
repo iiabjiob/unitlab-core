@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from "vue"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
+import { useSelectionStore } from "@/stores/selectionStore"
 import { useRouter, useRoute } from "vue-router"
 import SwitchgearListItem from "./SwitchgearListItem.vue"
 import ConfirmModal from "@/components/ui/ConfirmModal.vue"
@@ -12,6 +13,7 @@ import { useSidebarBulkSelection } from "@/composables/useSidebarBulkSelection"
 import type { Switchgear } from "@/types/switchgear"
 
 const store = useSwitchgearStore()
+const selectionStore = useSelectionStore()
 const router = useRouter()
 const route = useRoute()
 const workspaceStore = useWorkspaceStore()
@@ -41,9 +43,10 @@ function openSettingsView() {
 
 function openSldView() {
   const id = selectedId.value
-  void router.push(id == null
-    ? { name: "switchgears.sld" }
-    : { name: "switchgears.sld", params: { id } })
+  if (id != null) {
+    selectionStore.selectSwitchgear(id)
+  }
+  void router.push({ name: "switchgears.sld" })
 }
 
 async function addSwitchgear() {
@@ -79,6 +82,9 @@ const filteredSwitchgears = computed(() => {
 })
 
 const selectedId = computed<number | null>(() => {
+  if (isSldView.value) {
+    return selectionStore.lastSwitchgearId
+  }
   const parsed = Number(route.params.id)
   return Number.isFinite(parsed) ? parsed : null
 })
@@ -107,7 +113,11 @@ function handleSelect(id: string | number, event?: MouseEvent | KeyboardEvent) {
   if (!Number.isFinite(parsed)) return
   const action = handleSelection(parsed, event)
   if (action === "navigate") {
-    openSwitchgear(parsed)
+    if (isSldView.value) {
+      selectionStore.selectSwitchgear(parsed)
+    } else {
+      openSwitchgear(parsed)
+    }
   }
 }
 

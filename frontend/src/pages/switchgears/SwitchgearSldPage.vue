@@ -2,14 +2,15 @@
 import { computed, nextTick, onMounted, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 
+import { useSelectionStore } from "@/stores/selectionStore"
 import SwitchgearSingleLineDiagramPackage from "./components/SwitchgearSingleLineDiagramPackage.vue"
 
 const route = useRoute()
 const router = useRouter()
+const selectionStore = useSelectionStore()
 const packageRef = ref<InstanceType<typeof SwitchgearSingleLineDiagramPackage> | null>(null)
 const selectedSwitchgearId = computed(() => {
-  const id = Number(route.params.id)
-  return Number.isFinite(id) ? id : null
+  return selectionStore.lastSwitchgearId
 })
 
 async function openImportFromQuery() {
@@ -41,6 +42,7 @@ function openSwitchgearSettings(id: number) {
     <SwitchgearSingleLineDiagramPackage
       ref="packageRef"
       :selected-switchgear-id="selectedSwitchgearId"
+      :selection-version="selectionStore.switchgearSelectionVersion"
       @edit-switchgear-bindings="openSwitchgearSettings"
     />
   </div>
