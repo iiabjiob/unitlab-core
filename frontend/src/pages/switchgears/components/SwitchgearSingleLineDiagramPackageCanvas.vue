@@ -413,7 +413,7 @@ const snapPreviewPoint = computed(() => {
   return null
 })
 const minimapModel = computed(() => {
-  if (draggedEdge.value || labelDrag.value) {
+  if (draggedEdge.value) {
     return null
   }
   const current = renderedViewport.value
@@ -1999,6 +1999,7 @@ function beginLabelDrag(event: PointerEvent, nodeId: string) {
   selection.setSelection([nodeId], nodeId)
   const target = event.currentTarget as Element | null
   target?.setPointerCapture?.(event.pointerId)
+  const pointerWorld = mapPointerToWorld(event)
   labelDrag.value = {
     pointerId: event.pointerId,
     nodeId,
@@ -2006,8 +2007,8 @@ function beginLabelDrag(event: PointerEvent, nodeId: string) {
     originY: Number(node.metadata?.labelOffsetY ?? 22),
     currentX: Number(node.metadata?.labelOffsetX ?? 0),
     currentY: Number(node.metadata?.labelOffsetY ?? 22),
-    startX: event.clientX,
-    startY: event.clientY,
+    startX: pointerWorld.x,
+    startY: pointerWorld.y,
   }
 }
 
@@ -2016,10 +2017,11 @@ function onLabelPointerMove(event: PointerEvent) {
   if (!drag || drag.pointerId !== event.pointerId) {
     return
   }
+  const pointerWorld = mapPointerToWorld(event)
   labelDrag.value = {
     ...drag,
-    currentX: clampLabelOffset(drag.originX + event.clientX - drag.startX),
-    currentY: clampLabelOffset(drag.originY + event.clientY - drag.startY),
+    currentX: clampLabelOffset(drag.originX + pointerWorld.x - drag.startX),
+    currentY: clampLabelOffset(drag.originY + pointerWorld.y - drag.startY),
   }
 }
 
