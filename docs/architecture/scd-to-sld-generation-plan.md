@@ -690,6 +690,11 @@ Implemented 2026-09-19 - SLD switchgear selection:
 - Edge drag previews apply the movement delta once to both the line and its selection handles, keeping the highlight synchronized during long moves.
 - SLD layout documents are persisted per workspace with revision checks; localStorage is used only to migrate existing layouts and keep a local recovery copy.
 - Rapid viewport and object manipulations are coalesced into the latest document before persistence, avoiding one network update per wheel tick or pointer move.
+- SLD entity z-index values are persisted with the workspace document; switchgear nodes start above static symbols, and layer controls use the diagram engine history.
+- Switchgear orientation is persisted per node and can be rotated in 90 degree steps from the SLD toolbar.
+- Magic grid snapping aligns switchgear, static symbols, and moved lines by their geometric centers, keeping line axes centered on square symbols.
+- Arrow lines use the same stroke color as regular lines; broken bindings keep their diagnostic color.
+- Clicking an arrow line returns focus to the SLD canvas so Delete and Backspace remove it like other diagram entities.
 - Imported SLD connections use `edges` as the canonical field; `lines` remains a legacy fallback so existing documents stay readable.
 - Line endpoint handles take pointer ownership before the canvas drag controller, so line selection follows the rendered path and endpoint editing remains available.
 - Undo and redo execute one engine history step and preserve element movement history, including custom line dragging.

@@ -13,6 +13,7 @@ import { useToastStore } from "@/stores/toastStore"
 import { useSelectionStore } from "@/stores/selectionStore"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
 
+import type { SwitchgearType } from "@/types/switchgear"
 import type { DiagramStaticKind, DiagramStaticSize, StoredDiagramState } from "../utils/switchgearSldDiagramTypes"
 import type { SwitchgearSldPackageSceneModel } from "../utils/switchgearSldPackageScene"
 import { serializeSwitchgearSldPackageScene } from "../utils/switchgearSldPackageScene"
@@ -121,7 +122,7 @@ type MinimapDragState = {
 type SelectionDragSnapState = {
   pointerId: number
   ids: string[]
-  origin: { x: number; y: number }
+  originCenter: { x: number; y: number }
   delta: { x: number; y: number }
 }
 
@@ -241,12 +242,23 @@ const toolbarActions = {
   },
   setStaticSize: setSelectedStaticSize,
   rotateStatic: rotateSelectedStatic,
+  setSwitchgearType: (type: SwitchgearType) => {
+    const nodeId = selectedNodeIds.value[0]
+    const switchgearId = nodeId ? resolveSwitchgearId(nodeId) : null
+    if (switchgearId == null) return
+    void switchgearStore.updateField(switchgearId, { switchgear_type: type }).catch((error: unknown) => {
+      toastStore.error(error instanceof Error ? error.message : "Unable to update switchgear type")
+    })
+  },
+  rotateSwitchgear: rotateSelectedSwitchgear,
   align: (edge: "left" | "top" | "right" | "bottom") => {
     if (edge === "left") alignSelectedNodesLeft()
     if (edge === "top") alignSelectedNodesTop()
     if (edge === "right") alignSelectedNodesRight()
     if (edge === "bottom") alignSelectedNodesBottom()
   },
+  bringToFront: () => changeSelectionLayer("front"),
+  sendToBack: () => changeSelectionLayer("back"),
   toggleSnap: toggleSnapEnabled,
   zoom: zoomBy,
   undo,
@@ -264,7 +276,17 @@ const selectedTextIds = computed(() => selection.selection.value.ids.filter(id =
 const selectedStaticCount = computed(() => selectedShapeIds.value.length)
 const selectedEdgeCount = computed(() => selectedEdgeIds.value.length)
 const selectedNodeCount = computed(() => selectedNodeIds.value.length)
+const selectedSwitchgearType = computed<SwitchgearType | null>(() => {
+  const nodeId = selectedNodeIds.value[0]
+  const node = nodeId ? diagram.scene.value.entities.nodesById.get(nodeId) : null
+  return typeof node?.metadata?.switchgearType === "string" ? node.metadata.switchgearType as SwitchgearType : null
+})
 const selectedTextCount = computed(() => selectedTextIds.value.length)
+const maxSwitchgearZIndex = computed(() => Math.max(0, ...[...diagram.scene.value.entities.nodesById.values()].map(node => Number(node.metadata?.zIndex) || 0)))
+const edgesBelowSwitchgears = computed(() => visible.projection.value.edges.filter(edge => !isEdgeAboveSwitchgears(edge.id)))
+const edgesAboveSwitchgears = computed(() => visible.projection.value.edges.filter(edge => isEdgeAboveSwitchgears(edge.id)))
+const shapesBelowSwitchgears = computed(() => visible.projection.value.shapes.filter(shape => !isShapeAboveSwitchgears(shape.id)))
+const shapesAboveSwitchgears = computed(() => visible.projection.value.shapes.filter(shape => isShapeAboveSwitchgears(shape.id)))
 const browserObjects = computed<BrowserObject[]>(() => [
   ...diagram.scene.value.order.edgeIds.map((id, index) => ({
     id,
@@ -612,7 +634,7 @@ watch(() => props.selectionRequestKey, (next, previous) => {
   }
   selection.setSelection(nodeIds, nodeIds[0] ?? null)
   centerEntityInViewport(nodeIds[0] ?? null)
-})
+}, { immediate: true })
 
 diagram.engine.subscribe((scene) => {
   if (scene.revision === 0 || !persistenceArmed) {
@@ -959,6 +981,7 @@ function handleStagePointerDownCapture(event: PointerEvent) {
   if (contextMenu.value) {
     closeContextMenu()
   }
+  focusStage()
   if (activeTool.value === "pan") {
     const hit = diagram.engine.hitTest(mapPointerToWorld(event), { radius: 2 })
     if (hit && hit.kind !== "port") {
@@ -984,7 +1007,15 @@ function handleStagePointerDownCapture(event: PointerEvent) {
     const candidate = diagram.scene.value.entities.edgesById.get(id)
     return candidate?.source.kind === "point" && candidate.target.kind === "point"
   })
-  selection.setSelection(selectedIds, hit.id)
+  if (event.shiftKey || event.metaKey || event.ctrlKey) {
+    diagram.dispatch({
+      type: "setSelection",
+      selection: { ids: [hit.id], primaryId: hit.id },
+      mode: "toggle",
+    })
+  } else {
+    selection.setSelection(selectedIds, hit.id)
+  }
   if (movableIds.length === 0 || !edge) {
     return
   }
@@ -1009,7 +1040,7 @@ function onStagePointerMove(event: PointerEvent) {
         selectionDragSnap.value = {
           pointerId: event.pointerId,
           ids: [...selection.selection.value.ids],
-          origin: { x: bounds.x, y: bounds.y },
+          originCenter: getBoundsCenter(bounds),
           delta: snapshot.previewDelta,
         }
       } else if (selectionDragSnap.value.pointerId === event.pointerId) {
@@ -1037,21 +1068,22 @@ function snapSelectionDelta(delta: { x: number; y: number }) {
   if (!bounds) {
     return delta
   }
-  const snapped = snapWorldPoint({ x: bounds.x + delta.x, y: bounds.y + delta.y })
+  const currentCenter = getBoundsCenter(bounds)
+  const snapped = snapWorldPoint({ x: currentCenter.x + delta.x, y: currentCenter.y + delta.y })
   return {
-    x: delta.x + snapped.x - (bounds.x + delta.x),
-    y: delta.y + snapped.y - (bounds.y + delta.y),
+    x: delta.x + snapped.x - (currentCenter.x + delta.x),
+    y: delta.y + snapped.y - (currentCenter.y + delta.y),
   }
 }
 
 function commitSnappedSelection(drag: SelectionDragSnapState) {
   const snapped = snapWorldPoint({
-    x: drag.origin.x + drag.delta.x,
-    y: drag.origin.y + drag.delta.y,
+    x: drag.originCenter.x + drag.delta.x,
+    y: drag.originCenter.y + drag.delta.y,
   })
   const snappedDelta = {
-    x: drag.delta.x + snapped.x - (drag.origin.x + drag.delta.x),
-    y: drag.delta.y + snapped.y - (drag.origin.y + drag.delta.y),
+    x: drag.delta.x + snapped.x - (drag.originCenter.x + drag.delta.x),
+    y: drag.delta.y + snapped.y - (drag.originCenter.y + drag.delta.y),
   }
   if (snappedDelta.x === drag.delta.x && snappedDelta.y === drag.delta.y) {
     return
@@ -1073,16 +1105,18 @@ function snapEdgeMoveDelta(ids: string[], delta: { x: number; y: number }) {
     return delta
   }
   const edge = ids.map(id => diagram.scene.value.entities.edgesById.get(id)).find(candidate => candidate?.source.kind === "point")
-  if (!edge || edge.source.kind !== "point") {
+  const bounds = edge ? diagram.engine.getGeometrySnapshot(edge.id)?.bounds : null
+  if (!edge || !bounds) {
     return delta
   }
+  const currentCenter = getBoundsCenter(bounds)
   const snapped = snapWorldPoint({
-    x: edge.source.point.x + delta.x,
-    y: edge.source.point.y + delta.y,
+    x: currentCenter.x + delta.x,
+    y: currentCenter.y + delta.y,
   })
   return {
-    x: delta.x + snapped.x - (edge.source.point.x + delta.x),
-    y: delta.y + snapped.y - (edge.source.point.y + delta.y),
+    x: delta.x + snapped.x - (currentCenter.x + delta.x),
+    y: delta.y + snapped.y - (currentCenter.y + delta.y),
   }
 }
 
@@ -1532,6 +1566,7 @@ function addText() {
 function addStatic(kind: DiagramStaticKind) {
   const center = getViewportCenter()
   const dims = STATIC_DIMENSIONS[kind].md
+  const snappedCenter = snapWorldPoint(center)
   const seed = createEntityId(`static-${kind}`)
   const id = createEntityId("shape")
   diagram.dispatch({
@@ -1543,8 +1578,8 @@ function addStatic(kind: DiagramStaticKind) {
       shapes: [{
         id,
         kind: "shape",
-        x: center.x - dims.width / 2,
-        y: center.y - dims.height / 2,
+        x: snappedCenter.x - dims.width / 2,
+        y: snappedCenter.y - dims.height / 2,
         width: dims.width,
         height: dims.height,
         rotation: 0,
@@ -1738,6 +1773,38 @@ function alignSelectedNodesBottom() {
     ids: selectedNodeIds.value,
     edge: "bottom",
     historyKey: "align-nodes-bottom",
+  })
+  focusStage()
+}
+
+function changeSelectionLayer(direction: "front" | "back") {
+  const ids = selection.selection.value.ids
+  if (ids.length === 0) {
+    return
+  }
+  diagram.dispatch({
+    type: direction === "front" ? "bringToFront" : "sendToBack",
+    ids,
+    historyKey: `layer-${direction}`,
+  })
+  focusStage()
+}
+
+function rotateSelectedSwitchgear() {
+  const entries = selectedNodeIds.value.map((id) => {
+    const node = diagram.scene.value.entities.nodesById.get(id)
+    return {
+      id,
+      rotation: ((Number(node?.rotation ?? 0) + 90) % 360 + 360) % 360,
+    }
+  })
+  if (entries.length === 0) {
+    return
+  }
+  diagram.dispatch({
+    type: "rotateEntities",
+    entries,
+    historyKey: "rotate-switchgear",
   })
   focusStage()
 }
@@ -2058,6 +2125,16 @@ function beginLabelDrag(event: PointerEvent, nodeId: string) {
   }
   const node = diagram.scene.value.entities.nodesById.get(nodeId)
   if (!node) {
+    return
+  }
+  if (event.shiftKey || event.metaKey || event.ctrlKey) {
+    event.preventDefault()
+    event.stopPropagation()
+    diagram.dispatch({
+      type: "setSelection",
+      selection: { ids: [nodeId], primaryId: nodeId },
+      mode: "toggle",
+    })
     return
   }
   event.stopPropagation()
@@ -2386,6 +2463,13 @@ function getViewportCenter() {
   }
 }
 
+function getBoundsCenter(bounds: { x: number; y: number; width: number; height: number }) {
+  return {
+    x: bounds.x + bounds.width / 2,
+    y: bounds.y + bounds.height / 2,
+  }
+}
+
 function inferStaticSize(id: string): DiagramStaticSize {
   const shape = diagram.scene.value.entities.shapesById.get(id)
   const meta = resolveStaticMeta(id)
@@ -2414,6 +2498,20 @@ function resolveSelectionPreviewTransform(id: string) {
     return undefined
   }
   return `translate(${delta.x} ${delta.y})`
+}
+
+function resolveNodeSymbolTransform(id: string, bounds: { x: number; y: number; width: number; height: number }) {
+  const transforms: string[] = []
+  const preview = resolveSelectionPreviewTransform(id)
+  if (preview) {
+    transforms.push(preview)
+  }
+  const node = diagram.scene.value.entities.nodesById.get(id)
+  const rotation = Number(node?.rotation ?? 0)
+  if (rotation !== 0) {
+    transforms.push(`rotate(${rotation} ${bounds.x + bounds.width / 2} ${bounds.y + bounds.height / 2})`)
+  }
+  return transforms.length > 0 ? transforms.join(" ") : undefined
 }
 
 function resolveHandlePreviewPoint(handle: { ownerId: string; point: { x: number; y: number } }) {
@@ -2463,6 +2561,11 @@ function resolveSwitchgearId(id: string) {
   return Number.isFinite(value) ? value : null
 }
 
+function resolveSwitchgearType(id: string): SwitchgearType {
+  const value = diagram.scene.value.entities.nodesById.get(id)?.metadata?.switchgearType
+  return value === "disconnector" || value === "earthing" ? value : "switchgear"
+}
+
 function resolveNodeLabelPosition(id: string) {
   const node = diagram.scene.value.entities.nodesById.get(id)
   if (!node) {
@@ -2498,9 +2601,17 @@ function resolveEdgeStroke(id: string) {
   if (isBrokenEdge(id)) {
     return "var(--color-rose-600)"
   }
-  return resolveEdgeKind(id) === "arrow"
-    ? "var(--sld-edge-stroke-arrow)"
-    : "var(--sld-edge-stroke)"
+  return "var(--sld-edge-stroke)"
+}
+
+function isEdgeAboveSwitchgears(id: string) {
+  const edge = diagram.scene.value.entities.edgesById.get(id)
+  return Number(edge?.metadata?.zIndex) > maxSwitchgearZIndex.value
+}
+
+function isShapeAboveSwitchgears(id: string) {
+  const shape = diagram.scene.value.entities.shapesById.get(id)
+  return Number(shape?.metadata?.zIndex) > maxSwitchgearZIndex.value
 }
 
 function isBrokenEdge(id: string) {
@@ -2551,6 +2662,7 @@ function resolveTransformerCircleOffset(id: string): number {
       :selected-static-count="selectedStaticCount"
       :selected-static-size="selectedStaticSize"
       :selected-node-count="selectedNodeCount"
+      :selected-switchgear-type="selectedSwitchgearType"
       :selected-text-count="selectedTextCount"
       :snap-enabled="snapEnabled"
       :zoom-label="zoomLabel"
@@ -2624,7 +2736,7 @@ function resolveTransformerCircleOffset(id: string): number {
             />
           </pattern>
           <marker id="switchgear-sld-package-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-            <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" />
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" pointer-events="none" />
           </marker>
         </defs>
         <rect
@@ -2636,7 +2748,7 @@ function resolveTransformerCircleOffset(id: string): number {
         />
 
         <polyline
-          v-for="edge in visible.projection.value.edges"
+          v-for="edge in edgesBelowSwitchgears"
           :key="edge.id"
           class="switchgear-sld-package-canvas__edge"
           v-bind="getSvgEntityProps(edge)"
@@ -2687,7 +2799,7 @@ function resolveTransformerCircleOffset(id: string): number {
           pointer-events="none"
         />
 
-        <g v-for="shape in visible.projection.value.shapes" :key="shape.id" class="switchgear-sld-package-canvas__static" :transform="resolveSelectionPreviewTransform(shape.id)">
+        <g v-for="shape in shapesBelowSwitchgears" :key="shape.id" class="switchgear-sld-package-canvas__static" :transform="resolveSelectionPreviewTransform(shape.id)">
           <g
             v-if="resolveStaticMeta(shape.id).kind === 'transformer'"
             @contextmenu.stop.prevent="openStaticContextMenu($event, shape.id)"
@@ -2736,6 +2848,32 @@ function resolveTransformerCircleOffset(id: string): number {
           @contextmenu.stop.prevent="openNodeContextMenu($event, node.id)"
         />
 
+        <g
+          v-for="node in visible.projection.value.nodes"
+          :key="`${node.id}:symbol`"
+          class="switchgear-sld-package-canvas__node-symbol"
+          :class="`switchgear-sld-package-canvas__node-symbol--${resolveSwitchgearType(node.id)}`"
+          :transform="resolveNodeSymbolTransform(node.id, node.geometry.bounds)"
+          pointer-events="none"
+        >
+          <template v-if="resolveSwitchgearType(node.id) === 'disconnector'">
+            <circle :cx="node.geometry.bounds.x + 12" :cy="node.geometry.bounds.y + node.geometry.bounds.height / 2" r="2" />
+            <circle :cx="node.geometry.bounds.x + node.geometry.bounds.width - 12" :cy="node.geometry.bounds.y + node.geometry.bounds.height / 2" r="2" />
+            <line :x1="node.geometry.bounds.x + 14" :y1="node.geometry.bounds.y + node.geometry.bounds.height / 2" :x2="node.geometry.bounds.x + node.geometry.bounds.width - 14" :y2="node.geometry.bounds.y + node.geometry.bounds.height / 2 - 9" />
+          </template>
+          <template v-else-if="resolveSwitchgearType(node.id) === 'earthing'">
+            <line :x1="node.geometry.bounds.x + node.geometry.bounds.width / 2" :y1="node.geometry.bounds.y + 9" :x2="node.geometry.bounds.x + node.geometry.bounds.width / 2" :y2="node.geometry.bounds.y + 25" />
+            <line :x1="node.geometry.bounds.x + 11" :y1="node.geometry.bounds.y + 26" :x2="node.geometry.bounds.x + node.geometry.bounds.width - 11" :y2="node.geometry.bounds.y + 26" />
+            <line :x1="node.geometry.bounds.x + 14" :y1="node.geometry.bounds.y + 30" :x2="node.geometry.bounds.x + node.geometry.bounds.width - 14" :y2="node.geometry.bounds.y + 30" />
+            <line :x1="node.geometry.bounds.x + 17" :y1="node.geometry.bounds.y + 34" :x2="node.geometry.bounds.x + node.geometry.bounds.width - 17" :y2="node.geometry.bounds.y + 34" />
+          </template>
+          <template v-else>
+            <line :x1="node.geometry.bounds.x + 11" :y1="node.geometry.bounds.y + node.geometry.bounds.height / 2" :x2="node.geometry.bounds.x + 17" :y2="node.geometry.bounds.y + node.geometry.bounds.height / 2" />
+            <rect :x="node.geometry.bounds.x + 17" :y="node.geometry.bounds.y + node.geometry.bounds.height / 2 - 5" width="6" height="10" rx="1" />
+            <line :x1="node.geometry.bounds.x + 23" :y1="node.geometry.bounds.y + node.geometry.bounds.height / 2" :x2="node.geometry.bounds.x + node.geometry.bounds.width - 11" :y2="node.geometry.bounds.y + node.geometry.bounds.height / 2" />
+          </template>
+        </g>
+
         <text
           v-for="node in visible.projection.value.nodes"
           :key="`${node.id}:label`"
@@ -2756,6 +2894,58 @@ function resolveTransformerCircleOffset(id: string): number {
         >
           {{ resolveNodeLabel(node.id) }}
         </text>
+
+        <g v-for="shape in shapesAboveSwitchgears" :key="`${shape.id}:above-switchgears`" class="switchgear-sld-package-canvas__static" :transform="resolveSelectionPreviewTransform(shape.id)">
+          <g
+            v-if="resolveStaticMeta(shape.id).kind === 'transformer'"
+            @contextmenu.stop.prevent="openStaticContextMenu($event, shape.id)"
+            :transform="`translate(${shape.geometry.bounds.x + shape.geometry.bounds.width / 2} ${shape.geometry.bounds.y + shape.geometry.bounds.height / 2}) rotate(${resolveStaticMeta(shape.id).rotation})`"
+          >
+            <circle
+              :cx="-resolveTransformerCircleOffset(shape.id)"
+              cy="0"
+              :r="resolveTransformerCircleRadius(shape.id)"
+              fill="none"
+              stroke="var(--sld-symbol-stroke)"
+              stroke-width="2"
+            />
+            <circle
+              :cx="resolveTransformerCircleOffset(shape.id)"
+              cy="0"
+              :r="resolveTransformerCircleRadius(shape.id)"
+              fill="none"
+              stroke="var(--sld-symbol-stroke)"
+              stroke-width="2"
+            />
+          </g>
+          <g
+            v-else
+            @contextmenu.stop.prevent="openStaticContextMenu($event, shape.id)"
+            :transform="`translate(${shape.geometry.bounds.x + shape.geometry.bounds.width / 2} ${shape.geometry.bounds.y + shape.geometry.bounds.height / 2}) rotate(${resolveStaticMeta(shape.id).rotation})`"
+          >
+            <line x1="0" :y1="-shape.geometry.bounds.height * 0.5" x2="0" y2="0" stroke="var(--sld-symbol-stroke)" stroke-width="2" />
+            <line :x1="-shape.geometry.bounds.width * 0.4" y1="0" :x2="shape.geometry.bounds.width * 0.4" y2="0" stroke="var(--sld-symbol-stroke)" stroke-width="2" />
+            <line :x1="-shape.geometry.bounds.width * 0.26" :y1="shape.geometry.bounds.height * 0.18" :x2="shape.geometry.bounds.width * 0.26" :y2="shape.geometry.bounds.height * 0.18" stroke="var(--sld-symbol-stroke)" stroke-width="2" />
+            <line :x1="-shape.geometry.bounds.width * 0.14" :y1="shape.geometry.bounds.height * 0.34" :x2="shape.geometry.bounds.width * 0.14" :y2="shape.geometry.bounds.height * 0.34" stroke="var(--sld-symbol-stroke)" stroke-width="2" />
+          </g>
+        </g>
+
+        <polyline
+          v-for="edge in edgesAboveSwitchgears"
+          :key="`${edge.id}:above-switchgears`"
+          class="switchgear-sld-package-canvas__edge"
+          v-bind="getSvgEntityProps(edge)"
+          :transform="resolveSelectionPreviewTransform(edge.id)"
+          fill="none"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          :stroke="resolveEdgeStroke(edge.id)"
+          :stroke-width="resolveEdgeWidth(edge.id)"
+          :opacity="edgePreview?.edgeId === edge.id ? 0.2 : edge.selected ? 1 : 0.92"
+          :marker-end="resolveEdgeKind(edge.id) === 'arrow' ? 'url(#switchgear-sld-package-arrow)' : undefined"
+          :style="resolveEdgeKind(edge.id) === 'arrow' ? { color: resolveEdgeStroke(edge.id) } : undefined"
+          @contextmenu.stop.prevent="openEdgeContextMenu($event, edge.id)"
+        />
 
         <text
           v-for="text in visible.projection.value.texts"
@@ -3178,6 +3368,14 @@ function resolveTransformerCircleOffset(id: string): number {
   fill: var(--color-neutral-700);
   font-size: var(--text-2xs);
   font-weight: 600;
+}
+
+.switchgear-sld-package-canvas__node-symbol {
+  fill: none;
+  stroke: var(--sld-symbol-stroke);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
 }
 
 .switchgear-sld-package-canvas__switchgear-label--offline {

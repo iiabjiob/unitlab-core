@@ -35,6 +35,10 @@ const GRID_STEP = 24
 const LABEL_DEFAULT_OFFSET = Object.freeze({ x: 0, y: 22 })
 const DEFAULT_TEXT_LABEL = "TEXT"
 const GENERATED_IMPORT_LABEL_ID_PREFIX = "sld-import-label:"
+const DEFAULT_SWITCHGEAR_Z_INDEX = 100
+const DEFAULT_EDGE_Z_INDEX = 50
+const DEFAULT_STATIC_Z_INDEX = 0
+const DEFAULT_TEXT_Z_INDEX = 150
 const TEXT_WIDTH_BY_SIZE = {
   md: 96,
 } as const
@@ -90,6 +94,8 @@ export function buildSwitchgearSldPackageSceneModel(
   const labelOffsetById = storedState?.labelOffsetById ?? {}
   const staticElements = normalizeStaticElements(storedState?.staticElements)
   const textElements = normalizeTextElements(storedState?.textElements)
+  const zIndexById = storedState?.zIndexById ?? {}
+  const rotationById = storedState?.rotationById ?? {}
   const ports = switchgears.flatMap((switchgear, index) => buildNodePortsForLayout(
     switchgear.id,
     resolveLayout(layoutById, switchgear.id, index),
@@ -115,6 +121,8 @@ export function buildSwitchgearSldPackageSceneModel(
           name: switchgear.name,
           labelOffsetX: labelOffset.x,
           labelOffsetY: labelOffset.y,
+          zIndex: resolveZIndex(zIndexById, toSwitchgearNodeId(switchgear.id), DEFAULT_SWITCHGEAR_Z_INDEX),
+          rotation: resolveRotation(rotationById, toSwitchgearNodeId(switchgear.id)),
         },
       }
     }),
@@ -132,9 +140,9 @@ export function buildSwitchgearSldPackageSceneModel(
         portId: port.portId,
       },
     })),
-    edges: normalizeEdges(storedState).map((edge) => createDiagramEdge(edge, edgePorts)),
-    shapes: staticElements.map((element) => createStaticShape(element)),
-    texts: textElements.map(createLooseText),
+    edges: normalizeEdges(storedState).map((edge) => createDiagramEdge(edge, edgePorts, resolveZIndex(zIndexById, edge.id, DEFAULT_EDGE_Z_INDEX))),
+    shapes: staticElements.map((element) => createStaticShape(element, resolveZIndex(zIndexById, toStaticShapeId(element.id), DEFAULT_STATIC_Z_INDEX))),
+    texts: textElements.map((element) => createLooseText(element, resolveZIndex(zIndexById, element.id, DEFAULT_TEXT_Z_INDEX))),
     viewport: {
       x: resolveViewportX(storedState),
       y: resolveViewportY(storedState),
@@ -155,6 +163,8 @@ export function buildSwitchgearSldPackageSceneModel(
       edges: storedState?.edges ?? storedState?.lines ?? [],
       staticElements,
       textElements,
+      zIndexById,
+      rotationById,
       viewState: storedState?.viewState ?? null,
     }),
     stats: {
@@ -186,6 +196,19 @@ export function serializeSwitchgearSldPackageScene(
 
   return {
     workspaceId: options.workspaceId ?? options.baseState?.workspaceId,
+    zIndexById: Object.fromEntries([
+      ...scene.nodes,
+      ...scene.edges,
+      ...scene.shapes,
+      ...scene.texts,
+    ].flatMap((entity) => {
+      const zIndex = entity.metadata?.zIndex
+      return typeof zIndex === "number" && Number.isFinite(zIndex) ? [[entity.id, zIndex]] : []
+    })),
+    rotationById: Object.fromEntries(scene.nodes.flatMap((node) => {
+      const rotation = normalizeRotation(node.rotation)
+      return rotation === 0 ? [] : [[node.id, rotation]]
+    })),
     layoutById: Object.fromEntries(scene.nodes.flatMap((node) => {
       const switchgearId = Number(node.metadata?.switchgearId)
       if (!Number.isFinite(switchgearId)) {
@@ -242,7 +265,7 @@ export function normalizeStoredDiagramState(value: unknown): StoredDiagramState 
     : null
 }
 
-function createLooseText(element: DiagramTextElement): DiagramText {
+function createLooseText(element: DiagramTextElement, zIndex: number): DiagramText {
   return {
     id: element.id,
     kind: "text",
@@ -257,11 +280,12 @@ function createLooseText(element: DiagramTextElement): DiagramText {
     fontSize: 12,
     metadata: {
       entityType: element.id.startsWith(GENERATED_IMPORT_LABEL_ID_PREFIX) ? "generated-label" : "text",
+      zIndex,
     },
   }
 }
 
-function createStaticShape(element: DiagramStaticElement): DiagramShape {
+function createStaticShape(element: DiagramStaticElement, zIndex: number): DiagramShape {
   const bounds = getStaticElementBounds(element)
   return {
     id: toStaticShapeId(element.id),
@@ -278,6 +302,7 @@ function createStaticShape(element: DiagramStaticElement): DiagramShape {
       staticKind: element.kind,
       staticSize: element.size,
       rotation: element.rotation,
+      zIndex,
     },
   }
 }
@@ -285,6 +310,7 @@ function createStaticShape(element: DiagramStaticElement): DiagramShape {
 function createDiagramEdge(
   edge: LegacyDiagramEdge,
   ports: ReadonlyArray<LegacyPortPoint>,
+  zIndex: number,
 ): DiagramEdge {
   const startBinding = edge.startBinding ?? null
   const endBinding = edge.endBinding ?? null
@@ -301,8 +327,18 @@ function createDiagramEdge(
       endBinding,
       startBindingValid: !startBinding || Boolean(resolvePortBinding(startBinding, ports)),
       endBindingValid: !endBinding || Boolean(resolvePortBinding(endBinding, ports)),
+      zIndex,
     },
   }
+}
+
+function resolveZIndex(zIndexById: Record<string, number>, id: string, fallback: number): number {
+  const value = Number(zIndexById[id])
+  return Number.isFinite(value) ? value : fallback
+}
+
+function resolveRotation(rotationById: Record<string, 0 | 90 | 180 | 270>, id: string): 0 | 90 | 180 | 270 {
+  return normalizeRotation(rotationById[id])
 }
 
 function serializeEdge(

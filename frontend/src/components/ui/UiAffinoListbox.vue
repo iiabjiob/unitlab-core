@@ -421,12 +421,15 @@ function updatePanelPosition() {
       @click="toggleList"
       @keydown="onTriggerKeydown"
     >
-      <span
-        class="ui-affino-listbox__label"
-        :class="{ 'ui-affino-listbox__label--selected': selectedOption }"
-      >
-        {{ selectedOption?.label ?? placeholder }}
-      </span>
+      <slot name="trigger">
+        <span
+          class="ui-affino-listbox__label"
+          :class="{ 'ui-affino-listbox__label--selected': selectedOption }"
+        >
+          <template v-if="selectedOption">{{ selectedOption.label }}</template>
+          <slot v-else name="placeholder">{{ placeholder }}</slot>
+        </span>
+      </slot>
       <span class="ui-affino-listbox__chevron" aria-hidden="true">
         ▾
       </span>

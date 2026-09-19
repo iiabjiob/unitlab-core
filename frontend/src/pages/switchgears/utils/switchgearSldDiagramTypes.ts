@@ -55,6 +55,8 @@ export type DiagramViewState = {
 
 export type StoredDiagramState = {
   workspaceId?: number
+  zIndexById?: Record<string, number>
+  rotationById?: Record<string, 0 | 90 | 180 | 270>
   layoutById?: Record<string, DiagramNodeLayout>
   labelOffsetById?: Record<string, { x: number; y: number }>
   edges?: DiagramEdge[]
