@@ -126,7 +126,14 @@ Current UnitLab integration mounts the package-based SLD editor as the sole Swit
 
 ### Backend
 
-Backend persistence is needed once generated SLDs must survive workspace reloads across browsers/users.
+The SLD editor stores its document in the backend at workspace scope. The current
+document is held in `workspace_sld_documents`; each successful update also appends an
+immutable row to `workspace_sld_document_revisions`. Updates use `base_revision` and
+return `409 Conflict` when another user has saved a newer revision. The `unitlab.sld.v1`
+JSON document contains the viewport, static symbols, texts, edges, snap settings,
+dynamic switchgear layout, and label offsets. Switchgear names, types, and bindings
+remain owned by switchgear records; the SLD document stores their visual layout.
+Existing localStorage state is imported once when the backend document has revision zero.
 
 Backend should eventually own:
 
@@ -676,6 +683,12 @@ Implemented 2026-09-19 - SLD switchgear selection:
 - Selecting a switchgear from the SLD sidebar updates the selected diagram object through the shared selection state without changing the current route.
 - Selecting a switchgear on the diagram updates the active sidebar item; selecting the same sidebar item again reapplies the diagram selection.
 - The canonical SLD URL is `/switchgears/sld`; a switchgear ID is kept as selection state rather than a route parameter.
+- SCD import diagnostics use a bounded scrollable panel so long warning and error logs do not push the modal actions out of view.
+- The SLD object browser stops wheel propagation so its list scrolls independently from the diagram canvas.
+- Removing a switchgear node from the SLD uses the persisted switchgear deletion workflow, including cascade removal of its channel bindings.
+- Transformer symbols use two equal-radius, horizontally overlapping circles so their proportions remain stable when the symbol is resized.
+- Edge drag previews apply the movement delta once to both the line and its selection handles, keeping the highlight synchronized during long moves.
+- SLD layout documents are persisted per workspace with revision checks; localStorage is used only to migrate existing layouts and keep a local recovery copy.
 - Minimap rendering is paused during viewport panning to avoid recomputing the full minimap model on every pointer move.
 
 Known gap:

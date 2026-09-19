@@ -8,8 +8,8 @@ import type { DiagramEdge } from "@affino/diagram-core"
 import SwitchgearControlToolbar from "./SwitchgearControlToolbar.vue"
 import SwitchgearSldPackageToolbar from "./SwitchgearSldPackageToolbar.vue"
 import SwitchgearSldObjectBrowser from "./SwitchgearSldObjectBrowser.vue"
+import ConfirmModal from "@/components/ui/ConfirmModal.vue"
 import { useToastStore } from "@/stores/toastStore"
-import { writeLocalSetting } from "@/services/localSettingsStorage"
 import { useSelectionStore } from "@/stores/selectionStore"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
 
@@ -130,6 +130,7 @@ const props = defineProps<{
   fitRequestKey?: number
   selectionRequestKey?: number
   requestedSelectionIds?: string[]
+  persistDocument?: (state: StoredDiagramState) => Promise<unknown>
 }>()
 
 const emit = defineEmits<{
@@ -153,12 +154,16 @@ const panObjectPointerId = ref<number | null>(null)
 const lineKind = ref<EdgeStyle>("line")
 const lineWeight = ref<EdgeWeight>("normal")
 const contextMenu = ref<ContextMenuState | null>(null)
+const switchgearDeleteConfirmOpen = ref(false)
+const pendingSwitchgearDeleteIds = ref<number[]>([])
+const switchgearDeleteBusy = ref(false)
 const objectBrowserOpen = ref(false)
 const localClipboardSelection = ref<DiagramClipboardSelection | null>(null)
 const clipboardPasteCount = ref(0)
 let persistTimer: ReturnType<typeof setTimeout> | null = null
 let entityIdSequence = 0
 let hasLocalStateChanges = false
+let persistenceArmed = false
 const initialFitDone = ref(false)
 
 const diagram = useDiagramEngine(props.model.scene)
@@ -358,6 +363,12 @@ const canvasCursorClass = computed(() => {
 const edgeContextLabel = computed(() => selectedEdgeIds.value.length > 1 ? "selected lines" : "line")
 const staticContextLabel = computed(() => selectedShapeIds.value.length > 1 ? "selected symbols" : "symbol")
 const textContextLabel = computed(() => selectedTextIds.value.length > 1 ? "selected text" : "text")
+const switchgearDeleteMessage = computed(() => {
+  const count = pendingSwitchgearDeleteIds.value.length
+  return count === 1
+    ? "The switchgear and its channel bindings will be deleted."
+    : `${count} switchgears and their channel bindings will be deleted.`
+})
 const selectedEdgeHandles = computed(() => selectedEdgeIds.value.flatMap((id) => {
   const edge = diagram.scene.value.entities.edgesById.get(id)
   if (!edge) {
@@ -365,10 +376,9 @@ const selectedEdgeHandles = computed(() => selectedEdgeIds.value.flatMap((id) =>
   }
   const source = resolveEdgeEndpointPosition(edge.source)
   const target = resolveEdgeEndpointPosition(edge.target)
-  const move = movedEdges.value?.edgeIds.includes(id) ? movedEdges.value.delta : null
   return [
-    { id: `${id}:source`, edgeId: id, endpoint: "source" as const, point: move ? { x: source.x + move.x, y: source.y + move.y } : source },
-    { id: `${id}:target`, edgeId: id, endpoint: "target" as const, point: move ? { x: target.x + move.x, y: target.y + move.y } : target },
+    { id: `${id}:source`, edgeId: id, endpoint: "source" as const, point: source },
+    { id: `${id}:target`, edgeId: id, endpoint: "target" as const, point: target },
   ]
 }))
 const edgePreview = computed(() => {
@@ -527,7 +537,14 @@ pointer.setTool("select")
 
 onMounted(() => {
   void nextTick(() => {
-    requestAnimationFrame(ensureSceneVisible)
+    requestAnimationFrame(() => {
+      ensureSceneVisible()
+      // Affino emits scene revisions while it hydrates the initial scene and viewport.
+      // Those revisions describe loading, not an operator edit.
+      requestAnimationFrame(() => {
+        persistenceArmed = true
+      })
+    })
   })
 })
 
@@ -574,7 +591,7 @@ watch(() => props.selectionRequestKey, (next, previous) => {
 })
 
 diagram.engine.subscribe((scene) => {
-  if (scene.revision === 0) {
+  if (scene.revision === 0 || !persistenceArmed) {
     return
   }
   const nextState = serializeSwitchgearSldPackageScene(diagram.engine.serialize(), {
@@ -592,7 +609,9 @@ function schedulePersistedState(state: StoredDiagramState) {
   if (persistTimer != null) clearTimeout(persistTimer)
   persistTimer = setTimeout(() => {
     persistTimer = null
-    writeLocalSetting(props.storageKey, state, { legacyKeys: [`unitlab.switchgears.sld.${props.workspaceId}`] })
+    void props.persistDocument?.(state).catch((error) => {
+      toastStore.error(error instanceof Error ? error.message : "Unable to save SLD")
+    })
   }, PERSIST_DEBOUNCE_MS)
 }
 
@@ -600,7 +619,9 @@ function flushPersistedState() {
   if (persistTimer == null || !lastStoredState.value) return
   clearTimeout(persistTimer)
   persistTimer = null
-  writeLocalSetting(props.storageKey, lastStoredState.value, { legacyKeys: [`unitlab.switchgears.sld.${props.workspaceId}`] })
+  void props.persistDocument?.(lastStoredState.value).catch((error) => {
+    toastStore.error(error instanceof Error ? error.message : "Unable to save SLD")
+  })
 }
 
 function createEntityId(prefix: string) {
@@ -771,8 +792,50 @@ function redo() {
 
 function deleteSelection() {
   closeContextMenu()
+  const switchgearIds = [...new Set(
+    selectedNodeIds.value
+      .map(resolveSwitchgearId)
+      .filter((id): id is number => id != null),
+  )]
+  if (switchgearIds.length > 0) {
+    pendingSwitchgearDeleteIds.value = switchgearIds
+    switchgearDeleteConfirmOpen.value = true
+    return
+  }
   diagram.engine.dispatchKeyboardCommand("delete")
   focusStage()
+}
+
+function cancelSwitchgearDeletion() {
+  if (switchgearDeleteBusy.value) {
+    return
+  }
+  switchgearDeleteConfirmOpen.value = false
+  pendingSwitchgearDeleteIds.value = []
+}
+
+async function confirmSwitchgearDeletion() {
+  const ids = [...pendingSwitchgearDeleteIds.value]
+  if (ids.length === 0 || switchgearDeleteBusy.value) {
+    return
+  }
+
+  switchgearDeleteBusy.value = true
+  try {
+    await switchgearStore.removeMany(ids)
+    diagram.engine.dispatchKeyboardCommand("delete")
+    selection.clearSelection()
+    if (selectionStore.lastSwitchgearId != null && ids.includes(selectionStore.lastSwitchgearId)) {
+      selectionStore.selectSwitchgear(null)
+    }
+    toastStore.success(ids.length === 1 ? "Switchgear deleted" : `${ids.length} switchgears deleted`)
+    switchgearDeleteConfirmOpen.value = false
+    pendingSwitchgearDeleteIds.value = []
+  } catch (error) {
+    toastStore.error(error instanceof Error ? error.message : "Failed to delete switchgears")
+  } finally {
+    switchgearDeleteBusy.value = false
+  }
 }
 
 function duplicateSelection() {
@@ -2309,6 +2372,18 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
     rotation,
   }
 }
+
+function resolveTransformerCircleRadius(id: string): number {
+  const shape = diagram.scene.value.entities.shapesById.get(id)
+  if (!shape) {
+    return 0
+  }
+  return Math.min(Number(shape.width ?? 0), Number(shape.height ?? 0)) * 0.25
+}
+
+function resolveTransformerCircleOffset(id: string): number {
+  return resolveTransformerCircleRadius(id) * 0.75
+}
 </script>
 
 <template>
@@ -2463,20 +2538,18 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
             @contextmenu.stop.prevent="openStaticContextMenu($event, shape.id)"
             :transform="`translate(${shape.geometry.bounds.x + shape.geometry.bounds.width / 2} ${shape.geometry.bounds.y + shape.geometry.bounds.height / 2}) rotate(${resolveStaticMeta(shape.id).rotation})`"
           >
-            <ellipse
-              :cx="-shape.geometry.bounds.width * 0.18"
+            <circle
+              :cx="-resolveTransformerCircleOffset(shape.id)"
               cy="0"
-              :rx="shape.geometry.bounds.width * 0.22"
-              :ry="shape.geometry.bounds.height * 0.3"
+              :r="resolveTransformerCircleRadius(shape.id)"
               fill="none"
               stroke="var(--color-neutral-700)"
               stroke-width="2"
             />
-            <ellipse
-              :cx="shape.geometry.bounds.width * 0.18"
+            <circle
+              :cx="resolveTransformerCircleOffset(shape.id)"
               cy="0"
-              :rx="shape.geometry.bounds.width * 0.22"
-              :ry="shape.geometry.bounds.height * 0.3"
+              :r="resolveTransformerCircleRadius(shape.id)"
               fill="none"
               stroke="var(--color-neutral-700)"
               stroke-width="2"
@@ -2755,6 +2828,15 @@ function resolveStaticMeta(id: string): { kind: DiagramStaticKind; rotation: num
       </div>
     </div>
   </section>
+  <ConfirmModal
+    :open="switchgearDeleteConfirmOpen"
+    title="Delete switchgear"
+    :message="switchgearDeleteMessage"
+    confirm-label="Delete"
+    cancel-label="Cancel"
+    @cancel="cancelSwitchgearDeletion"
+    @confirm="confirmSwitchgearDeletion"
+  />
 </template>
 
 <style scoped>

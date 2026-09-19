@@ -4,6 +4,8 @@ import { computed, ref, watch } from "vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import UiModal from "@/components/ui/UiModal.vue"
 import WorkspacePlaceholder from "@/components/ui/WorkspacePlaceholder.vue"
+import { SldAPI, SLD_DOCUMENT_SCHEMA } from "@/api/sld.api"
+import { normalizeHttpError } from "@/api/http"
 import { generateSldFromScd } from "@/modules/scd-sld-core"
 import type { ScdDiagnostic } from "@/modules/scd-sld-core"
 import { localSettingsKeys, readLocalSetting, writeLocalSetting } from "@/services/localSettingsStorage"
@@ -55,6 +57,8 @@ const workspaceStore = useWorkspaceStore()
 const switchgearStore = useSwitchgearStore()
 const toastStore = useToastStore()
 const storedState = ref<StoredDiagramState | null>(null)
+const persistenceError = ref<string | null>(null)
+const backendRevision = ref(0)
 const scdFileInputRef = ref<HTMLInputElement | null>(null)
 const scdImportBusy = ref(false)
 const scdImportApplyBusy = ref(false)
@@ -116,14 +120,13 @@ const scdImportApplyLabel = computed(() => (
 ))
 const scdImportVisibleDiagnostics = computed(() => scdImportPreview.value?.diagnostics ?? [])
 const canApplyScdImport = computed(() => scdImportPreview.value !== null && !scdImportBusy.value && !scdImportApplyBusy.value)
+let persistenceLoadToken = 0
+let saveQueue = Promise.resolve()
 
 watch(
   () => [workspaceId.value, props.active] as const,
   () => {
-    if (props.active === false) {
-      return
-    }
-    loadStoredState()
+    void loadStoredState()
   },
   { immediate: true },
 )
@@ -232,10 +235,7 @@ async function applyScdImportPreview() {
       labelOffsetById: base.labelOffsetById ?? {},
       viewState: base.viewState,
     }
-    storedState.value = nextState
-    writeLocalSetting(key, nextState, {
-      legacyKeys: [`unitlab.switchgears.sld.${workspace}`],
-    })
+    await persistDocument(nextState, "import")
     requestedSelectionIds.value = createdIds.map(item => `switchgear:${item.id}`)
     selectionRequestKey.value += 1
     fitRequestKey.value += 1
@@ -305,13 +305,15 @@ async function hashText(value: string): Promise<string> {
   return `fallback:${value.length}:${Math.abs(hash)}`
 }
 
-function loadStoredState() {
+async function loadStoredState() {
+  const loadToken = ++persistenceLoadToken
   if (!workspaceId.value || !storageKey.value) {
     storedState.value = null
+    persistenceError.value = null
     return
   }
 
-  storedState.value = readLocalSetting<StoredDiagramState | null>(
+  const localState = readLocalSetting<StoredDiagramState | null>(
     storageKey.value,
     null,
     {
@@ -319,6 +321,53 @@ function loadStoredState() {
       validate: normalizeStoredDiagramState,
     },
   )
+
+  // Render the local recovery copy immediately. The backend response remains authoritative
+  // and replaces it when available, but a slow or restarting backend must not hide the editor.
+  storedState.value = localState ?? { workspaceId: workspaceId.value, snapEnabled: true }
+  persistenceError.value = null
+  try {
+    const response = await SldAPI.get(workspaceId.value)
+    if (loadToken !== persistenceLoadToken) return
+    backendRevision.value = response.data.revision
+    const remoteState = normalizeStoredDiagramState(response.data.document)
+    if (response.data.revision > 0) {
+      storedState.value = remoteState
+    } else if (localState) {
+      storedState.value = localState
+      void persistDocument(localState, "migration", 0).catch(() => undefined)
+    } else {
+      storedState.value = { workspaceId: workspaceId.value, snapEnabled: true }
+    }
+  } catch (error) {
+    if (loadToken !== persistenceLoadToken) return
+    storedState.value = localState ?? { workspaceId: workspaceId.value, snapEnabled: true }
+    persistenceError.value = normalizeHttpError(error, "Unable to load SLD from backend").message
+    toastStore.error("SLD backend is unavailable; changes will not be persisted")
+  }
+}
+
+function persistDocument(state: StoredDiagramState, changeKind: "edit" | "import" | "migration" = "edit", migrationBaseRevision?: number) {
+  const workspace = workspaceId.value
+  if (!workspace) return Promise.reject(new Error("Workspace is not selected"))
+  const operation = saveQueue.catch(() => undefined).then(async () => {
+    const response = await SldAPI.save(workspace, {
+      base_revision: migrationBaseRevision ?? backendRevision.value,
+      document_schema: SLD_DOCUMENT_SCHEMA,
+      document: state,
+      change_kind: changeKind,
+    })
+    backendRevision.value = response.data.revision
+    storedState.value = normalizeStoredDiagramState(response.data.document)
+    writeLocalSetting(storageKey.value ?? localSettingsKeys.switchgearDiagram(workspace), state, {
+      legacyKeys: [`unitlab.switchgears.sld.${workspace}`],
+    })
+  })
+  saveQueue = operation.then(() => undefined)
+  return operation.catch((error) => {
+    persistenceError.value = normalizeHttpError(error, "Unable to save SLD").message
+    throw error
+  })
 }
 </script>
 
@@ -353,6 +402,7 @@ function loadStoredState() {
       :fit-request-key="fitRequestKey"
       :selection-request-key="selectionRequestKey"
       :requested-selection-ids="requestedSelectionIds"
+      :persist-document="persistDocument"
       @edit-switchgear-bindings="emit('editSwitchgearBindings', $event)"
     />
 
@@ -473,6 +523,9 @@ function loadStoredState() {
 .switchgear-sld-package__import-alert,
 .switchgear-sld-package__import-records,
 .switchgear-sld-package__import-diagnostics {
+  max-height: min(42vh, 30rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 1rem;
   border: 1px solid var(--color-neutral-200);
   border-radius: var(--radius-xl);

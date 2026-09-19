@@ -20,7 +20,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <aside class="switchgear-sld-object-browser" aria-label="SLD objects">
+  <aside class="switchgear-sld-object-browser" aria-label="SLD objects" @wheel.stop>
     <header class="switchgear-sld-object-browser__header">
       <div>
         <strong>Objects</strong>
@@ -112,6 +112,7 @@ const emit = defineEmits<{
 .switchgear-sld-object-browser__list {
   min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
   padding: 0.35rem;
 }
 
