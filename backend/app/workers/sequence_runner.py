@@ -3,11 +3,13 @@ from __future__ import annotations
 import asyncio
 import time
 from contextlib import suppress
+from typing import cast
 
 from app.core.config import get_settings
 from app.core.logger import get_logger
 from app.core.sequence_dto import SequenceCommand, SequenceCommandType
 from app.infrastructure.redis.manager import RedisManager
+from app.infrastructure.redis.types import RedisStreamClient, RedisStreamEntries
 from app.infrastructure.redis.stream_bus import enqueue_sequence_command, parse_sequence_command_entry
 from app.services.worker_health import clear_worker_status, start_worker_heartbeat
 from app.services.sequence_runner import (
@@ -32,7 +34,7 @@ CONSUMER_NAME = build_worker_consumer_name()
 MAX_RETRIES = 5
 
 
-async def _ensure_group(redis) -> None:
+async def _ensure_group(redis: RedisStreamClient) -> None:
     await ensure_stream_consumer_group(
         redis,
         stream_name=STREAM_NAME,
@@ -43,7 +45,7 @@ async def _ensure_group(redis) -> None:
     )
 
 
-async def _fetch(redis, stream_id: str, block_ms: int = 5000):
+async def _fetch(redis: RedisStreamClient, stream_id: str, block_ms: int = 5000) -> RedisStreamEntries:
     return await fetch_stream_group_entries(
         redis,
         stream_name=STREAM_NAME,
@@ -55,7 +57,7 @@ async def _fetch(redis, stream_id: str, block_ms: int = 5000):
     )
 
 
-async def _drain_pending(redis, runner: SequenceRunner) -> None:
+async def _drain_pending(redis: RedisStreamClient, runner: SequenceRunner) -> None:
     await drain_pending_stream_entries(
         fetch_pending=lambda stream_id, block_ms: _fetch(redis, stream_id, block_ms=block_ms),
         process_entries=lambda entries: _process_entries(redis, runner, entries),
@@ -65,7 +67,11 @@ async def _drain_pending(redis, runner: SequenceRunner) -> None:
     )
 
 
-async def _process_entries(redis, runner: SequenceRunner, entries) -> None:
+async def _process_entries(
+    redis: RedisStreamClient,
+    runner: SequenceRunner,
+    entries: RedisStreamEntries,
+) -> None:
     for entry_id, fields in entries:
         command: SequenceCommand | None = None
         started_monotonic: float | None = None
@@ -73,7 +79,7 @@ async def _process_entries(redis, runner: SequenceRunner, entries) -> None:
             _, command = parse_sequence_command_entry((entry_id, fields))
         except Exception as exc:  # noqa: BLE001
             logger.exception("💥 Invalid sequence command payload %s: %s", entry_id, exc)
-            await redis.xack(STREAM_NAME, GROUP_NAME, entry_id)
+            _ = await redis.xack(STREAM_NAME, GROUP_NAME, entry_id)
             continue
 
         op_name = str(command.type.value if hasattr(command.type, "value") else command.type).lower()
@@ -140,20 +146,20 @@ async def _process_entries(redis, runner: SequenceRunner, entries) -> None:
             )
             logger.exception("💥 Failed to process sequence command %s: %s", entry_id, exc)
             if command:
-                await _retry_or_dlq(command, exc)
+                _ = await _retry_or_dlq(command, exc)
         finally:
-            await redis.xack(STREAM_NAME, GROUP_NAME, entry_id)
+            _ = await redis.xack(STREAM_NAME, GROUP_NAME, entry_id)
 
 
 async def _handle_command(runner: SequenceRunner, command: SequenceCommand) -> None:
     if command.type == SequenceCommandType.START:
         signal_bindings = _coerce_signal_bindings(command.extra)
-        raw_workspace_id = command.extra.get("workspace_id") if isinstance(command.extra, dict) else None
+        raw_workspace_id = command.extra.get("workspace_id")
         try:
-            workspace_id = int(raw_workspace_id) if raw_workspace_id is not None else None
+            workspace_id = int(cast(int | str | float, raw_workspace_id)) if raw_workspace_id is not None else None
         except (TypeError, ValueError):
             workspace_id = None
-        await runner.start(
+        _ = await runner.start(
             command.sequence_id,
             workspace_id=workspace_id,
             request_id=command.request_id,
@@ -162,12 +168,12 @@ async def _handle_command(runner: SequenceRunner, command: SequenceCommand) -> N
         )
         return
     if command.type == SequenceCommandType.STOP:
-        await runner.stop(command.sequence_id)
+        _ = await runner.stop(command.sequence_id)
         return
     raise ValueError(f"Unknown sequence command type: {command.type}")
 
 
-def _coerce_signal_bindings(extra: dict | None) -> dict[str, int]:
+def _coerce_signal_bindings(extra: dict[str, object] | None) -> dict[str, int]:
     if not isinstance(extra, dict):
         return {}
     raw = extra.get("signal_bindings")
@@ -175,11 +181,12 @@ def _coerce_signal_bindings(extra: dict | None) -> dict[str, int]:
         return {}
 
     bindings: dict[str, int] = {}
-    for key, value in raw.items():
+    typed_raw = cast(dict[object, object], raw)
+    for key, value in typed_raw.items():
         if not isinstance(key, str) or not key.strip():
             continue
         try:
-            bindings[key.strip()] = int(value)
+            bindings[key.strip()] = int(cast(int | str | float, value))
         except (TypeError, ValueError):
             continue
     return bindings
@@ -190,7 +197,7 @@ async def _retry_or_dlq(command: SequenceCommand, error: Exception) -> bool:
     reason = str(error)
     if next_attempt <= MAX_RETRIES:
         retry_cmd = command.bumped_attempt(next_attempt, extra={"last_error": reason})
-        await enqueue_sequence_command(retry_cmd)
+        _ = await enqueue_sequence_command(retry_cmd)
         logger.warning(
             "🔁 Requeued sequence command (sequence=%s, attempt=%s/%s)",
             command.sequence_id,
@@ -200,7 +207,7 @@ async def _retry_or_dlq(command: SequenceCommand, error: Exception) -> bool:
         return False
     else:
         dlq_cmd = command.bumped_attempt(next_attempt, extra={"dlq_reason": reason})
-        await enqueue_sequence_command(dlq_cmd, stream_name=settings.sequence_command_dlq_stream)
+        _ = await enqueue_sequence_command(dlq_cmd, stream_name=settings.sequence_command_dlq_stream)
         logger.error(
             "💀 Command moved to DLQ after %s attempts (sequence=%s)",
             next_attempt,
@@ -211,7 +218,7 @@ async def _retry_or_dlq(command: SequenceCommand, error: Exception) -> bool:
 
 async def main() -> None:
     await RedisManager.start()
-    redis = RedisManager.get_instance()
+    redis = cast(RedisStreamClient, cast(object, RedisManager.get_instance()))
 
     await _ensure_group(redis)
 
@@ -242,7 +249,7 @@ async def main() -> None:
             logger=logger,
         )
     finally:
-        heartbeat_task.cancel()
+        _ = heartbeat_task.cancel()
         with suppress(asyncio.CancelledError):
             await heartbeat_task
         await clear_worker_status("sequence_runner")

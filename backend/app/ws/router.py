@@ -1,3 +1,6 @@
+from collections.abc import Awaitable, Callable
+from typing import cast
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError, TypeAdapter
 from app.ws.manager import WebSocketManager
@@ -8,11 +11,11 @@ from app.core.logger import get_logger
 logger = get_logger("ws")
 
 router = APIRouter(prefix="/ws", tags=["Websocket"])
-adapter = TypeAdapter(WSMessage)
+adapter: TypeAdapter[WSMessage] = TypeAdapter(WSMessage)
 
 
 @router.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(websocket: WebSocket) -> None:
     ws_manager = WebSocketManager.get_instance()
     
     await ws_manager.connect(websocket)
@@ -21,7 +24,7 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         while True:
             try:
-                raw = await websocket.receive_json()
+                raw = cast(object, await websocket.receive_json())
                 message = adapter.validate_python(raw)
             except WebSocketDisconnect:
                 logger.info("✅ Client disconnected cleanly")
@@ -35,7 +38,10 @@ async def websocket_endpoint(websocket: WebSocket):
 
             logger.info(f"📨 IN ← {message.action} | {message.model_dump_json()}")
             
-            handler = ACTION_HANDLERS.get(message.action)
+            handler = cast(
+                Callable[[WebSocket, object], Awaitable[None]] | None,
+                ACTION_HANDLERS.get(message.action),
+            )
             if handler:
                 try:
                     await handler(websocket, message)

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol, Sequence, runtime_checkable
+from typing import Protocol, runtime_checkable
+from collections.abc import Sequence
 
 from .report_runtime import (
     Iec61850DeviceEndpoint,
@@ -25,9 +26,9 @@ class UnitLabMmsTransportExchange:
 
 class UnitLabMmsScriptedTransport:
     def __init__(self, responses: Sequence[bytes] = ()) -> None:
-        self._responses = [bytes(response) for response in responses]
+        self._responses: list[bytes] = [bytes(response) for response in responses]
         self._sent_payloads: list[bytes] = []
-        self._closed = False
+        self._closed: bool = False
 
     def send(self, payload: bytes) -> bytes:
         if self._closed:
@@ -47,7 +48,7 @@ class UnitLabMmsScriptedTransport:
 
 class UnitLabMmsRecordedTransport:
     def __init__(self, transport: UnitLabMmsTransport) -> None:
-        self._transport = transport
+        self._transport: UnitLabMmsTransport = transport
         self._transcript: list[UnitLabMmsTransportExchange] = []
 
     def send(self, payload: bytes) -> bytes:
@@ -83,10 +84,10 @@ class UnitLabMmsAssociation(Protocol):
 
 class UnitLabMmsInMemoryAssociation:
     def __init__(self, *, session_id: str, endpoint: Iec61850DeviceEndpoint, transport: UnitLabMmsTransport) -> None:
-        self._session_id = session_id
-        self._endpoint = endpoint
-        self._transport = transport
-        self._state = UnitLabMmsAssociationState(
+        self._session_id: str = session_id
+        self._endpoint: Iec61850DeviceEndpoint = endpoint
+        self._transport: UnitLabMmsTransport = transport
+        self._state: UnitLabMmsAssociationState = UnitLabMmsAssociationState(
             session_id=session_id,
             endpoint_id=endpoint.id,
             opened=False,
@@ -165,8 +166,8 @@ class UnitLabMmsNamedVariableAccess(Protocol):
 
 class UnitLabMmsInMemoryNamedVariableAccess:
     def __init__(self, *, association: UnitLabMmsAssociation, variables: Sequence[UnitLabMmsNamedVariable] = ()) -> None:
-        self._association = association
-        self._variables = {
+        self._association: UnitLabMmsAssociation = association
+        self._variables: dict[str, UnitLabMmsNamedVariableState] = {
             variable.reference: UnitLabMmsNamedVariableState(
                 reference=variable.reference,
                 value=variable.value,

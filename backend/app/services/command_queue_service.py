@@ -17,6 +17,7 @@ from app.core.mqtt_dto import OutboundCmdMsg
 from app.infrastructure.redis.stream_bus import enqueue_outbound_command
 from app.core.logger import get_logger
 from uuid import uuid4
+from typing import cast
 
 logger = get_logger("cmdq")
 
@@ -32,12 +33,12 @@ async def _reserve_command_packet(unit_id: str, packet_id: int, command_id: str)
     try:
         from app.infrastructure.redis.manager import RedisManager
 
-        reserved = await RedisManager.get_instance().set(
+        reserved = cast(object, await RedisManager.get_instance().set(
             f"hardware:command:{unit_id}:{packet_id}",
             command_id,
             ex=86400,
             nx=True,
-        )
+        ))
         return bool(reserved)
     except Exception:  # noqa: BLE001
         logger.exception("Unable to reserve command correlation for %s/%s", unit_id, packet_id)
@@ -50,7 +51,7 @@ async def _release_command_packet(unit_id: str, packet_id: int, command_id: str)
 
         redis = RedisManager.get_instance()
         key = f"hardware:command:{unit_id}:{packet_id}"
-        current = await redis.get(key)
+        current = cast(object, await redis.get(key))
         if str(current or "") == command_id:
             await redis.delete(key)
     except Exception:  # noqa: BLE001
@@ -88,20 +89,28 @@ async def enqueue_do_command(
     topic = topics.cmd(unit_id)
 
     if mode == Cmd.SET_SINGLE_BIT:
-        payload = bit_encode.cmd_set_single(CmdSetSingleBit(ch=ch, value=value))  # type: ignore
+        if ch is None or value is None:
+            raise ValueError("SET_SINGLE_BIT requires ch and value")
+        payload = bit_encode.cmd_set_single(CmdSetSingleBit(ch=ch, value=value))
     elif mode == Cmd.SET_ALL_BIT:
-        payload = bit_encode.cmd_set_all(CmdSetAllBit(bitmask=bitmask))  # type: ignore
+        if bitmask is None:
+            raise ValueError("SET_ALL_BIT requires bitmask")
+        payload = bit_encode.cmd_set_all(CmdSetAllBit(bitmask=bitmask))
     elif mode == Cmd.SET_PAIR_BIT:
-        payload = bit_encode.cmd_set_pair(CmdSetPairBit(chA=chA, chB=chB, state2b=state2b))  # type: ignore
+        if chA is None or chB is None or state2b is None:
+            raise ValueError("SET_PAIR_BIT requires chA, chB and state2b")
+        payload = bit_encode.cmd_set_pair(CmdSetPairBit(chA=chA, chB=chB, state2b=state2b))
     elif mode == Cmd.SET_PULSE_BIT:
-        payload = bit_encode.cmd_set_pulse(CmdSetPulseBit(ch=ch, value=value, pulse_ms=pulse_ms))  # type: ignore
+        if ch is None or value is None:
+            raise ValueError("SET_PULSE_BIT requires ch and value")
+        payload = bit_encode.cmd_set_pulse(CmdSetPulseBit(ch=ch, value=value, pulse_ms=pulse_ms))
     else:
         raise ValueError(f"Unsupported DO command mode {mode}")
 
     resolved_command_id = _command_id(command_id)
     pid, packet_reserved = await _allocate_command_packet(unit_id, resolved_command_id)
     builder = PacketBuilder()
-    builder.build(mode, packet_id=pid, ts=0, payload=payload)
+    _ = builder.build(mode, packet_id=pid, ts=0, payload=payload)
     data = builder.to_bytes()
 
     msg = OutboundCmdMsg(
@@ -115,7 +124,7 @@ async def enqueue_do_command(
     )
 
     try:
-        await enqueue_outbound_command(msg)
+        _ = await enqueue_outbound_command(msg)
     except Exception:
         if packet_reserved:
             await _release_command_packet(unit_id, pid, resolved_command_id)
@@ -135,7 +144,7 @@ async def enqueue_ao_command(unit_id: str, ch: int, value: float, correlation_id
     resolved_command_id = _command_id(command_id)
     pid, packet_reserved = await _allocate_command_packet(unit_id, resolved_command_id)
     builder = PacketBuilder()
-    builder.build(mode, packet_id=pid, ts=0, payload=payload)
+    _ = builder.build(mode, packet_id=pid, ts=0, payload=payload)
     data = builder.to_bytes()
 
     msg = OutboundCmdMsg(
@@ -149,7 +158,7 @@ async def enqueue_ao_command(unit_id: str, ch: int, value: float, correlation_id
     )
         
     try:
-        await enqueue_outbound_command(msg)
+        _ = await enqueue_outbound_command(msg)
     except Exception:
         if packet_reserved:
             await _release_command_packet(unit_id, pid, resolved_command_id)
@@ -177,7 +186,7 @@ async def enqueue_request_state(
 
     pid = next_packet_id()
     builder = PacketBuilder()
-    builder.build(mode, packet_id=pid, ts=0, payload=payload)
+    _ = builder.build(mode, packet_id=pid, ts=0, payload=payload)
     data = builder.to_bytes()
 
     msg = OutboundCmdMsg(
@@ -189,7 +198,7 @@ async def enqueue_request_state(
         packet_id=pid,
     )
         
-    await enqueue_outbound_command(msg)
+    _ = await enqueue_outbound_command(msg)
     
     logger.info(f"🧺 Queued STATE REQ → {topic} | pid={pid} ({mode.name}) {data.hex().upper()}")
     return pid
@@ -206,7 +215,7 @@ async def enqueue_scan_devices(correlation_id: str | None = None, unit_id: str |
 
     pid = next_packet_id()
     builder = PacketBuilder()
-    builder.build(Sys.SCAN, packet_id=pid, ts=0, payload=b"")
+    _ = builder.build(Sys.SCAN, packet_id=pid, ts=0, payload=b"")
     payload = builder.to_bytes()
 
     msg = OutboundCmdMsg(
@@ -218,6 +227,6 @@ async def enqueue_scan_devices(correlation_id: str | None = None, unit_id: str |
         packet_id=pid,
     )
         
-    await enqueue_outbound_command(msg)
+    _ = await enqueue_outbound_command(msg)
     
     logger.info(f"🧺 Queued SCAN → {topic} | pid={pid} {payload.hex().upper()}")

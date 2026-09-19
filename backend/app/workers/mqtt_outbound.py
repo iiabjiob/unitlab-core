@@ -5,6 +5,7 @@ import os
 import signal
 import socket
 from contextlib import suppress
+from typing import cast
 
 from redis.exceptions import ConnectionError as RedisConnectionError, ResponseError
 
@@ -14,6 +15,8 @@ from app.infrastructure.mqtt.manager import MqttManager
 from app.infrastructure.mqtt.outbound_worker import publish_outbound_message
 from app.infrastructure.redis.manager import RedisManager
 from app.infrastructure.redis.stream_bus import parse_outbound_entry
+from app.infrastructure.redis.types import RedisStreamClient, RedisStreamEntries
+from app.infrastructure.mqtt.gmqtt_client import UnitLabMqttClient
 from app.services.worker_health import clear_worker_status, start_worker_heartbeat
 
 settings = get_settings()
@@ -24,9 +27,9 @@ GROUP_NAME = "mqtt-outbound"
 CONSUMER_NAME = f"{socket.gethostname()}-{os.getpid()}"
 
 
-async def _ensure_group(redis) -> None:
+async def _ensure_group(redis: RedisStreamClient) -> None:
     try:
-        await redis.xgroup_create(STREAM_NAME, GROUP_NAME, id="0", mkstream=True)
+        _ = await redis.xgroup_create(STREAM_NAME, GROUP_NAME, id="0", mkstream=True)
         logger.info("✅ Created outbound consumer group %s", GROUP_NAME)
     except ResponseError as exc:
         if "BUSYGROUP" in str(exc):
@@ -35,7 +38,7 @@ async def _ensure_group(redis) -> None:
             raise
 
 
-async def _fetch(redis, stream_id: str, block_ms: int = 5000):
+async def _fetch(redis: RedisStreamClient, stream_id: str, block_ms: int = 5000) -> RedisStreamEntries:
     result = await redis.xreadgroup(
         GROUP_NAME,
         CONSUMER_NAME,
@@ -48,17 +51,21 @@ async def _fetch(redis, stream_id: str, block_ms: int = 5000):
     return result[0][1]
 
 
-async def _process_entries(redis, mqtt_client, entries) -> None:
+async def _process_entries(
+    redis: RedisStreamClient,
+    mqtt_client: UnitLabMqttClient,
+    entries: RedisStreamEntries,
+) -> None:
     for entry_id, fields in entries:
         entry_id, msg = parse_outbound_entry((entry_id, fields))
         try:
             await publish_outbound_message(mqtt_client, msg)
-            await redis.xack(STREAM_NAME, GROUP_NAME, entry_id)
+            _ = await redis.xack(STREAM_NAME, GROUP_NAME, entry_id)
         except Exception as exc:
             logger.error("💥 Failed to publish outbound message %s: %s", entry_id, exc)
 
 
-async def _drain_pending(redis, mqtt_client) -> None:
+async def _drain_pending(redis: RedisStreamClient, mqtt_client: UnitLabMqttClient) -> None:
     while True:
         entries = await _fetch(redis, "0", block_ms=100)
         if not entries:
@@ -69,7 +76,7 @@ async def _drain_pending(redis, mqtt_client) -> None:
 
 async def main() -> None:
     await RedisManager.start()
-    redis = RedisManager.get_instance()
+    redis = cast(RedisStreamClient, cast(object, RedisManager.get_instance()))
 
     await _ensure_group(redis)
 
@@ -116,7 +123,7 @@ async def main() -> None:
                 continue
             await _process_entries(redis, mqtt_client, entries)
     finally:
-        heartbeat_task.cancel()
+        _ = heartbeat_task.cancel()
         with suppress(asyncio.CancelledError):
             await heartbeat_task
         await clear_worker_status("mqtt_outbound")

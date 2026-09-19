@@ -1,28 +1,41 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from collections.abc import Sequence
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
+from app.services.verification_evidence import VerificationEvidenceRepository
 
 from app.schemas.verification_schema import VerificationEvidenceDiagnosticSchema
 from app.services.verification_run_evidence_service import load_verification_run_evidence
 
 
 class _FakeEvidenceRepository:
-    def __init__(self, evidence_rows, evidence_set=None) -> None:
-        self.evidence_rows = list(evidence_rows)
-        self.evidence_set = evidence_set
-        self.list_calls = 0
-        self.set_calls = 0
+    def __init__(self, evidence_rows: Sequence[object], evidence_set: object | None = None) -> None:
+        self.evidence_rows: list[object] = list(evidence_rows)
+        self.evidence_set: object | None = evidence_set
+        self.list_calls: int = 0
+        self.set_calls: int = 0
 
-    async def list_signal_verification_evidence(self, *, workspace_id: int, test_run_id: str):
+    async def list_signal_verification_evidence(
+        self, *, workspace_id: int, test_run_id: str
+    ) -> list[object]:
+        _ = (workspace_id, test_run_id)
         self.list_calls += 1
         return list(self.evidence_rows)
 
-    async def get_signal_verification_evidence_set(self, *, workspace_id: int, test_run_id: str):
+    async def get_signal_verification_evidence_set(
+        self, *, workspace_id: int, test_run_id: str
+    ) -> object | None:
+        _ = (workspace_id, test_run_id)
         self.set_calls += 1
         return self.evidence_set
+
+
+def _repository(repo: _FakeEvidenceRepository) -> VerificationEvidenceRepository:
+    return cast(VerificationEvidenceRepository, cast(object, repo))
 
 
 @pytest.mark.anyio
@@ -95,7 +108,7 @@ async def test_load_verification_run_evidence_projects_steps_and_summary() -> No
     result = await load_verification_run_evidence(
         workspace_id=7,
         test_run_id="run-42",
-        repository=repo,  # type: ignore[arg-type]
+        repository=_repository(repo),
     )
 
     assert repo.list_calls == 1

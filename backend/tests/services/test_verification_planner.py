@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from collections.abc import Mapping
+from typing import cast
 
 from app.services.verification_planner import (
     build_planner_confidence_report,
@@ -8,6 +10,8 @@ from app.services.verification_planner import (
     build_verification_subscription_plan,
     build_verification_target_sources,
 )
+from app.models.signal import Signal
+from app.schemas.signal_sheet_schema import SignalAllocationRowSchema
 
 
 def test_build_verification_subscription_plan_separates_exact_partial_and_uncovered_targets() -> None:
@@ -281,8 +285,8 @@ def test_build_verification_target_sources_preserves_signal_identity_and_row_met
 
     sources = build_verification_target_sources(
         requested_signal_ids=[11, 11, 12, 0, -4],
-        signals_by_id=signals_by_id,
-        allocation_rows_by_signal_id=allocation_rows_by_signal_id,
+        signals_by_id=cast(Mapping[int, Signal], cast(object, signals_by_id)),
+        allocation_rows_by_signal_id=cast(Mapping[int, SignalAllocationRowSchema], cast(object, allocation_rows_by_signal_id)),
     )
 
     assert [source.signal_id for source in sources] == [11, 12]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Iterable, Sequence
+from typing import cast
+from collections.abc import Iterable, Sequence
 
 from app.schemas.verification_schema import (
     SignalVerificationEvidenceSchema,
@@ -106,7 +107,10 @@ def sort_confidence_levels(levels: Iterable[VerificationConfidenceLevel]) -> Ver
         return "unknown"
     if any(level == "degraded" for level in normalized):
         return "degraded"
-    return min(normalized, key=lambda level: _CONFIDENCE_RANK[level])
+    return cast(
+        VerificationConfidenceLevel,
+        min(normalized, key=lambda level: _CONFIDENCE_RANK[cast(VerificationConfidenceLevel, level)]),
+    )
 
 
 def _resolve_endpoint_id(

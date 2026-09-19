@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.verification_schema import (
     SignalVerificationEvidenceSchema,
@@ -119,46 +121,52 @@ def test_build_signal_verification_evidence_set_preserves_diagnostics() -> None:
 
 
 class _FakeExecuteResult:
-    def __init__(self, value=None) -> None:
-        self.value = value
+    def __init__(self, value: object | None = None) -> None:
+        self.value: object | None = value
 
-    def scalar_one_or_none(self):
+    def scalar_one_or_none(self) -> object | None:
         return self.value
 
 
-class _FakeListExecuteResult:
-    def __init__(self, values) -> None:
-        self.values = list(values)
+class _FakeListExecuteResult(_FakeExecuteResult):
+    def __init__(self, values: list[object]) -> None:
+        super().__init__()
+        self.values: list[object] = list(values)
 
-    def scalars(self):
+    def scalars(self) -> _FakeListExecuteResult:
         return self
 
-    def all(self):
+    def all(self) -> list[object]:
         return list(self.values)
 
 
 class _FakeAsyncSession:
-    def __init__(self, existing=None) -> None:
-        self.existing = existing
-        self.added = []
-        self.flushed = 0
-        self.execute_count = 0
+    def __init__(self, existing: object | None = None) -> None:
+        self.existing: object | None = existing
+        self.added: list[object] = []
+        self.flushed: int = 0
+        self.execute_count: int = 0
 
-    async def execute(self, _stmt):
+    async def execute(self, _stmt: object) -> _FakeExecuteResult:
+        _ = _stmt
         self.execute_count += 1
         return _FakeExecuteResult(self.existing)
 
-    def add(self, row):
+    def add(self, row: object) -> None:
         self.added.append(row)
 
-    async def flush(self):
+    async def flush(self) -> None:
         self.flushed += 1
+
+
+def _repository(session: object) -> VerificationEvidenceRepository:
+    return VerificationEvidenceRepository(cast(AsyncSession, session))
 
 
 @pytest.mark.anyio
 async def test_verification_evidence_repository_records_append_only_rows() -> None:
     session = _FakeAsyncSession()
-    repository = VerificationEvidenceRepository(session)  # type: ignore[arg-type]
+    repository = _repository(session)
 
     first = await repository.record_signal_verification_evidence(
         workspace_id=9,
@@ -214,7 +222,7 @@ async def test_verification_evidence_repository_records_append_only_rows() -> No
 async def test_verification_evidence_repository_updates_run_summary_without_touching_rows() -> None:
     existing = SimpleNamespace(summary={"evidence_count": 1}, diagnostics=[{"code": "OLD", "message": "old"}])
     session = _FakeAsyncSession(existing=existing)
-    repository = VerificationEvidenceRepository(session)  # type: ignore[arg-type]
+    repository = _repository(session)
 
     evidence = [
         SignalVerificationEvidenceSchema(
@@ -258,11 +266,14 @@ async def test_verification_evidence_repository_lists_rows_for_inspection() -> N
     ]
 
     class _ListingSession(_FakeAsyncSession):
-        async def execute(self, _stmt):
-            self.execute_count += 1
-            return _FakeListExecuteResult(rows)
+        execute_count: int
 
-    repository = VerificationEvidenceRepository(_ListingSession())  # type: ignore[arg-type]
+        async def execute(self, _stmt: object) -> _FakeListExecuteResult:  # pyright: ignore[reportImplicitOverride]
+            _ = _stmt
+            self.execute_count += 1
+            return _FakeListExecuteResult(cast(list[object], rows))
+
+    repository = _repository(_ListingSession())
 
     result = await repository.list_signal_verification_evidence(workspace_id=9, test_run_id="run-9")
 
@@ -272,7 +283,7 @@ async def test_verification_evidence_repository_lists_rows_for_inspection() -> N
 @pytest.mark.anyio
 async def test_verification_evidence_repository_allows_timeout_rows_with_nullable_fields() -> None:
     session = _FakeAsyncSession()
-    repository = VerificationEvidenceRepository(session)  # type: ignore[arg-type]
+    repository = _repository(session)
 
     evidence = await repository.record_signal_verification_evidence(
         workspace_id=9,

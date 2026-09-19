@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from typing import Callable, Protocol, TypedDict, Unpack, cast, final
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.schemas.verification_schema import (
@@ -22,15 +24,37 @@ from app.schemas.verification_schema import (
     VerificationVerdictExplanationSchema,
 )
 from app.services.iec61850.mms_adapter import Iec61850MmsEndpointCatalogEntry, build_mms_endpoint_catalog
-from app.services.iec61850.report_runtime import Iec61850DeviceEndpoint, Iec61850RuntimeMode
+from app.services.iec61850.report_runtime import (
+    Iec61850DeviceEndpoint,
+    Iec61850ReportControlCandidate,
+    Iec61850RuntimeMode,
+)
+from app.services.iec61850.client_control import Iec61850ClientControlService
 from app.services.iec61850.report_runtime import Iec61850ReportEvent, Iec61850ReportEventValue, Iec61850ReportReason, to_report_control_ref
 from app.services import verification_run_service as run_service
 from app.services.verification_run_service import (
+    _apply_external_ied_discovery_planning as apply_external_ied_discovery_planning,  # pyright: ignore[reportPrivateUsage]
     execute_single_signal_verification_run,
     load_verification_run_detail,
 )
 from app.services.verification_planner import VerificationTargetSource
 from app.services.verification_verdict_explanation_service import build_verification_verdict_explanation
+
+
+def _async_db(value: object) -> AsyncSession:
+    return cast(AsyncSession, value)
+
+
+def _client_factory(value: object) -> Callable[..., Iec61850ClientControlService]:
+    return cast(Callable[..., Iec61850ClientControlService], value)
+
+
+class _EndpointDevice(Protocol):
+    @property
+    def ied_name(self) -> str: ...
+
+    @property
+    def access_point_name(self) -> str: ...
 
 
 def _build_verification_run(signal_reference: str = "Breaker Close") -> VerificationRunSchema:
@@ -175,7 +199,7 @@ def _build_verification_run(signal_reference: str = "Breaker Close") -> Verifica
     )
 
 
-def _virtual_endpoint_for_plan_device(device) -> Iec61850DeviceEndpoint:
+def _virtual_endpoint_for_plan_device(device: _EndpointDevice) -> Iec61850DeviceEndpoint:
     return Iec61850DeviceEndpoint(
         id=f"sim:{device.ied_name}/{device.access_point_name}@10.10.10.250:12447",
         mode=Iec61850RuntimeMode.SIMULATOR,
@@ -187,8 +211,8 @@ def _virtual_endpoint_for_plan_device(device) -> Iec61850DeviceEndpoint:
 
 
 @pytest.mark.anyio
-async def test_discovery_planning_metadata_enriches_verification_sources(monkeypatch) -> None:
-    async def load_planning_results(**kwargs):
+async def test_discovery_planning_metadata_enriches_verification_sources(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def load_planning_results(**_kwargs: object) -> dict[int, dict[str, object]]:
         return {
             101: {
                 "signal_id": 101,
@@ -225,13 +249,13 @@ async def test_discovery_planning_metadata_enriches_verification_sources(monkeyp
         source_row_id="signal-101",
     )
 
-    enriched = await run_service._apply_external_ied_discovery_planning(
+    enriched = await apply_external_ied_discovery_planning(
         workspace_id=5,
         sources=[source],
         require_matched=True,
     )
 
-    metadata = enriched[0].signal_metadata["protocol_metadata"]
+    metadata = cast(dict[str, object], enriched[0].signal_metadata["protocol_metadata"])
     assert enriched[0].source_kind == "discovery"
     assert metadata["transport_host"] == "172.16.40.128:12447"
     assert metadata["ied_name"] == "IED-A"
@@ -242,8 +266,8 @@ async def test_discovery_planning_metadata_enriches_verification_sources(monkeyp
 
 
 @pytest.mark.anyio
-async def test_discovery_planning_strict_mode_blocks_unmatched_mapped_sources(monkeypatch) -> None:
-    async def load_planning_results(**kwargs):
+async def test_discovery_planning_strict_mode_blocks_unmatched_mapped_sources(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def load_planning_results(**_kwargs: object) -> dict[object, object]:
         return {}
 
     monkeypatch.setattr(run_service, "load_external_ied_planning_signal_results", load_planning_results)
@@ -269,7 +293,7 @@ async def test_discovery_planning_strict_mode_blocks_unmatched_mapped_sources(mo
     )
 
     with pytest.raises(ValueError, match="verification plan is not ready"):
-        await run_service._apply_external_ied_discovery_planning(
+        _ = await apply_external_ied_discovery_planning(
             workspace_id=5,
             sources=[source],
             require_matched=True,
@@ -448,6 +472,7 @@ def test_build_verification_verdict_explanation_includes_endpoint_source_clause(
     assert "model binding from loaded SCD" in explanation.summary
 
 
+@final
 class _FakeDb:
     def __init__(self) -> None:
         self.flushed = 0
@@ -463,10 +488,11 @@ class _FakeDb:
     async def rollback(self) -> None:
         self.rolled_back += 1
 
-    async def execute(self, _stmt):
+    async def execute(self, _stmt: object) -> SimpleNamespace:
         return SimpleNamespace(first=lambda: None)
 
 
+@final
 class _FakeSignalsRepository:
     def __init__(self, db: _FakeDb) -> None:
         self.db = db
@@ -474,7 +500,7 @@ class _FakeSignalsRepository:
     async def ensure_workspace(self, workspace_id: int) -> bool:
         return workspace_id == 7
 
-    async def list_by_ids(self, workspace_id: int, signal_ids):
+    async def list_by_ids(self, workspace_id: int, signal_ids: list[int]) -> list[SimpleNamespace]:
         if workspace_id != 7:
             return []
         rows_by_id = {
@@ -536,11 +562,12 @@ class _FakeSignalsRepository:
         return [rows_by_id[signal_id] for signal_id in signal_ids if signal_id in rows_by_id]
 
 
+@final
 class _FakeSignalSheetRepository:
     def __init__(self, db: _FakeDb) -> None:
         self.db = db
 
-    async def list_allocation_rows_by_signal_ids(self, workspace_id: int, signal_ids):
+    async def list_allocation_rows_by_signal_ids(self, workspace_id: int, signal_ids: list[int]) -> list[SimpleNamespace]:
         if workspace_id != 7:
             return []
         rows_by_id = {
@@ -581,31 +608,33 @@ class _FakeSignalSheetRepository:
         return [rows_by_id[signal_id] for signal_id in signal_ids if signal_id in rows_by_id]
 
 
+@final
 class _FakeEvidenceRepository:
     def __init__(self, db: _FakeDb) -> None:
         self.db = db
-        self.rows = []
-        self.evidence_sets = []
+        self.rows: list[dict[str, object]] = []
+        self.evidence_sets: list[dict[str, object]] = []
 
-    async def record_signal_verification_evidence(self, **kwargs):
+    async def record_signal_verification_evidence(self, **kwargs: object) -> SimpleNamespace:
         self.rows.append(dict(kwargs))
         return SimpleNamespace(**kwargs)
 
-    async def upsert_signal_verification_evidence_set(self, **kwargs):
+    async def upsert_signal_verification_evidence_set(self, **kwargs: object) -> SimpleNamespace:
         self.evidence_sets.append(dict(kwargs))
         return SimpleNamespace(**kwargs)
 
 
+@final
 class _FakeRunRepository:
     def __init__(self, db: _FakeDb) -> None:
         self.db = db
-        self.rows = {}
+        self.rows: dict[tuple[int, str], dict[str, object]] = {}
 
-    async def upsert_signal_verification_run(self, *, workspace_id: int, test_run_id: str, payload: dict):
+    async def upsert_signal_verification_run(self, *, workspace_id: int, test_run_id: str, payload: dict[str, object]):
         self.rows[(workspace_id, test_run_id)] = dict(payload)
         return SimpleNamespace(workspace_id=workspace_id, test_run_id=test_run_id, payload=dict(payload))
 
-    async def get_signal_verification_run(self, *, workspace_id: int, test_run_id: str):
+    async def get_signal_verification_run(self, *, workspace_id: int, test_run_id: str) -> SimpleNamespace | None:
         payload = self.rows.get((workspace_id, test_run_id))
         if payload is None:
             return None
@@ -613,7 +642,12 @@ class _FakeRunRepository:
 
 
 class _FakeClientControlService:
-    def __init__(self, *, session_id: str, client_id: str, endpoint: Iec61850DeviceEndpoint, candidate) -> None:
+    session_id: str
+    client_id: str
+    endpoint: Iec61850DeviceEndpoint
+    candidate: Iec61850ReportControlCandidate
+    _report: Iec61850ReportEvent
+    def __init__(self, *, session_id: str, client_id: str, endpoint: Iec61850DeviceEndpoint, candidate: Iec61850ReportControlCandidate) -> None:
         self.session_id = session_id
         self.client_id = client_id
         self.endpoint = endpoint
@@ -665,8 +699,15 @@ class _FakeClientControlService:
         return SimpleNamespace()
 
 
+class _ClientControlInit(TypedDict):
+    session_id: str
+    client_id: str
+    endpoint: Iec61850DeviceEndpoint
+    candidate: Iec61850ReportControlCandidate
+
+
 @pytest.mark.anyio
-async def test_execute_single_signal_verification_run_persists_run_snapshot_and_explanation(monkeypatch) -> None:
+async def test_execute_single_signal_verification_run_persists_run_snapshot_and_explanation(monkeypatch: pytest.MonkeyPatch) -> None:
     db = _FakeDb()
     triggered_at = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
 
@@ -688,7 +729,7 @@ async def test_execute_single_signal_verification_run_persists_run_snapshot_and_
             ),
             client_id="unitlab-backend-simulator",
         ),
-        db=db,  # type: ignore[arg-type]
+        db=_async_db(db),
         triggered_at=triggered_at,
     )
 
@@ -705,7 +746,7 @@ async def test_execute_single_signal_verification_run_persists_run_snapshot_and_
 
 
 @pytest.mark.anyio
-async def test_execute_single_signal_verification_run_uses_custom_endpoint_mapper(monkeypatch) -> None:
+async def test_execute_single_signal_verification_run_uses_custom_endpoint_mapper(monkeypatch: pytest.MonkeyPatch) -> None:
     db = _FakeDb()
     triggered_at = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
 
@@ -728,7 +769,7 @@ async def test_execute_single_signal_verification_run_uses_custom_endpoint_mappe
             client_id="unitlab-backend-simulator",
             test_run_id="vr-custom-endpoint",
         ),
-        db=db,  # type: ignore[arg-type]
+        db=_async_db(db),
         triggered_at=triggered_at,
         endpoint_for_device=_virtual_endpoint_for_plan_device,
     )
@@ -740,7 +781,7 @@ async def test_execute_single_signal_verification_run_uses_custom_endpoint_mappe
 
 
 @pytest.mark.anyio
-async def test_execute_single_signal_verification_run_selects_mms_runtime_from_catalog(monkeypatch) -> None:
+async def test_execute_single_signal_verification_run_selects_mms_runtime_from_catalog(monkeypatch: pytest.MonkeyPatch) -> None:
     db = _FakeDb()
     triggered_at = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
     catalog = build_mms_endpoint_catalog((
@@ -771,10 +812,10 @@ async def test_execute_single_signal_verification_run_selects_mms_runtime_from_c
             client_id="unitlab-backend-simulator",
             test_run_id="vr-mms-runtime",
         ),
-        db=db,  # type: ignore[arg-type]
+        db=_async_db(db),
         triggered_at=triggered_at,
         mms_endpoint_catalog=catalog,
-        mms_control_service_factory=_FakeClientControlService,
+        mms_control_service_factory=_client_factory(_FakeClientControlService),
     )
 
     assert result.verification_run.verdict_state == "fail"
@@ -794,18 +835,19 @@ async def test_execute_single_signal_verification_run_selects_mms_runtime_from_c
 
 
 @pytest.mark.anyio
-async def test_execute_single_signal_verification_run_uses_signal_list_fallback_catalog_when_no_scd_or_settings(monkeypatch) -> None:
+async def test_execute_single_signal_verification_run_uses_signal_list_fallback_catalog_when_no_scd_or_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     db = _FakeDb()
     triggered_at = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
 
     class _FallbackSignalsRepository:
         def __init__(self, db: _FakeDb) -> None:
-            self.db = db
+            self.db: _FakeDb = db
 
         async def ensure_workspace(self, workspace_id: int) -> bool:
             return workspace_id == 7
 
-        async def list_by_ids(self, workspace_id: int, signal_ids):
+        async def list_by_ids(self, workspace_id: int, signal_ids: list[int]) -> list[SimpleNamespace]:
+            del signal_ids
             if workspace_id != 7:
                 return []
             return [
@@ -848,9 +890,9 @@ async def test_execute_single_signal_verification_run_uses_signal_list_fallback_
             client_id="unitlab-backend-simulator",
             test_run_id="vr-mms-signal-fallback",
         ),
-        db=db,  # type: ignore[arg-type]
+        db=_async_db(db),
         triggered_at=triggered_at,
-        mms_control_service_factory=_FakeClientControlService,
+        mms_control_service_factory=_client_factory(_FakeClientControlService),
     )
 
     assert result.verification_run.session_snapshots[0].endpoint_id == "mms:IED-A/P1@10.10.10.250:102"
@@ -869,7 +911,7 @@ async def test_execute_single_signal_verification_run_uses_signal_list_fallback_
 
 
 @pytest.mark.anyio
-async def test_execute_single_signal_verification_run_loads_mms_endpoint_catalog_from_settings(monkeypatch) -> None:
+async def test_execute_single_signal_verification_run_loads_mms_endpoint_catalog_from_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     db = _FakeDb()
     triggered_at = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
     monkeypatch.setenv(
@@ -897,9 +939,9 @@ async def test_execute_single_signal_verification_run_loads_mms_endpoint_catalog
                 client_id="unitlab-backend-simulator",
                 test_run_id="vr-mms-settings",
             ),
-            db=db,  # type: ignore[arg-type]
+            db=_async_db(db),
             triggered_at=triggered_at,
-            mms_control_service_factory=_FakeClientControlService,
+            mms_control_service_factory=_client_factory(_FakeClientControlService),
         )
     finally:
         get_settings.cache_clear()
@@ -918,13 +960,13 @@ async def test_execute_single_signal_verification_run_loads_mms_endpoint_catalog
 
 
 @pytest.mark.anyio
-async def test_execute_single_signal_verification_run_uses_loaded_scd_for_transport_and_model_binding(monkeypatch) -> None:
+async def test_execute_single_signal_verification_run_uses_loaded_scd_for_transport_and_model_binding(monkeypatch: pytest.MonkeyPatch) -> None:
     db = _FakeDb()
     triggered_at = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
 
     class _FakeRuntimeSelectionRepository:
-        def __init__(self, _db):
-            self._source = (
+        def __init__(self, _db: _FakeDb) -> None:
+            self._source: bytes = (
                 b"<SCL>"
                 b"<Communication><SubNetwork type='8-MMS'>"
                 b"<ConnectedAP apName='P1' iedName='IED-A'><Address><P type='IP'>10.10.10.250</P></Address></ConnectedAP>"
@@ -932,10 +974,11 @@ async def test_execute_single_signal_verification_run_uses_loaded_scd_for_transp
                 b"</SCL>"
             )
 
-        async def get_active_runtime_selection(self, *, workspace_id: int):
+        async def get_active_runtime_selection(self, *, workspace_id: int) -> SimpleNamespace:
+            del workspace_id
             return SimpleNamespace(import_id="import-7", selected_ied="IED-A", runtime_revision=12)
 
-        async def get_import_source(self, *, workspace_id: int, import_id: str):
+        async def get_import_source(self, *, workspace_id: int, import_id: str) -> bytes | None:
             return self._source if workspace_id == 7 and import_id == "import-7" else None
 
     monkeypatch.setattr(run_service, "SignalsRepository", _FakeSignalsRepository)
@@ -958,9 +1001,9 @@ async def test_execute_single_signal_verification_run_uses_loaded_scd_for_transp
             client_id="unitlab-backend-simulator",
             test_run_id="vr-mms-loaded-scd",
         ),
-        db=db,  # type: ignore[arg-type]
+        db=_async_db(db),
         triggered_at=triggered_at,
-        mms_control_service_factory=_FakeClientControlService,
+        mms_control_service_factory=_client_factory(_FakeClientControlService),
     )
 
     assert result.verdict_explanation.summary.startswith("FAIL: no confirmation arrived before the timeout expired.")
@@ -976,14 +1019,14 @@ async def test_execute_single_signal_verification_run_uses_loaded_scd_for_transp
 
 
 @pytest.mark.anyio
-async def test_execute_single_signal_verification_run_passes_loaded_scd_path_to_real_mms_factory(monkeypatch) -> None:
+async def test_execute_single_signal_verification_run_passes_loaded_scd_path_to_real_mms_factory(monkeypatch: pytest.MonkeyPatch) -> None:
     db = _FakeDb()
     triggered_at = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
     recorded_target_scl_paths: list[str | None] = []
 
     class _FakeRuntimeSelectionRepository:
-        def __init__(self, _db):
-            self._source = (
+        def __init__(self, _db: _FakeDb) -> None:
+            self._source: bytes = (
                 b"<SCL>"
                 b"<Communication><SubNetwork type='8-MMS'>"
                 b"<ConnectedAP apName='P1' iedName='IED-A'><Address><P type='IP'>10.10.10.250</P></Address></ConnectedAP>"
@@ -991,14 +1034,15 @@ async def test_execute_single_signal_verification_run_passes_loaded_scd_path_to_
                 b"</SCL>"
             )
 
-        async def get_active_runtime_selection(self, *, workspace_id: int):
+        async def get_active_runtime_selection(self, *, workspace_id: int) -> SimpleNamespace:
+            del workspace_id
             return SimpleNamespace(import_id="import-7", selected_ied="IED-A", runtime_revision=12)
 
-        async def get_import_source(self, *, workspace_id: int, import_id: str):
+        async def get_import_source(self, *, workspace_id: int, import_id: str) -> bytes | None:
             return self._source if workspace_id == 7 and import_id == "import-7" else None
 
     class _RecordingClientControlService(_FakeClientControlService):
-        def __init__(self, *, target_scl_path=None, **kwargs):
+        def __init__(self, *, target_scl_path: str | None = None, **kwargs: Unpack[_ClientControlInit]) -> None:
             recorded_target_scl_paths.append(target_scl_path)
             super().__init__(**kwargs)
 
@@ -1023,7 +1067,7 @@ async def test_execute_single_signal_verification_run_passes_loaded_scd_path_to_
             client_id="unitlab-backend-simulator",
             test_run_id="vr-mms-scd-path",
         ),
-        db=db,  # type: ignore[arg-type]
+        db=_async_db(db),
         triggered_at=triggered_at,
     )
 
@@ -1034,7 +1078,7 @@ async def test_execute_single_signal_verification_run_passes_loaded_scd_path_to_
 
 
 @pytest.mark.anyio
-async def test_execute_single_signal_verification_run_applies_validation_override_transport(monkeypatch) -> None:
+async def test_execute_single_signal_verification_run_applies_validation_override_transport(monkeypatch: pytest.MonkeyPatch) -> None:
     db = _FakeDb()
     triggered_at = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
 
@@ -1059,7 +1103,7 @@ async def test_execute_single_signal_verification_run_applies_validation_overrid
             client_id="unitlab-backend-simulator",
             test_run_id="vr-mms-override",
         ),
-        db=db,  # type: ignore[arg-type]
+        db=_async_db(db),
         triggered_at=triggered_at,
         mms_endpoint_catalog=build_mms_endpoint_catalog((
             Iec61850MmsEndpointCatalogEntry(
@@ -1069,7 +1113,7 @@ async def test_execute_single_signal_verification_run_applies_validation_overrid
                 port=12447,
             ),
         )),
-        mms_control_service_factory=_FakeClientControlService,
+        mms_control_service_factory=_client_factory(_FakeClientControlService),
     )
 
     assert result.verification_run.session_snapshots[0].endpoint_id == "mms:IED-A/P1@10.10.10.99:12447"
@@ -1080,7 +1124,7 @@ async def test_execute_single_signal_verification_run_applies_validation_overrid
 
 
 @pytest.mark.anyio
-async def test_execute_single_signal_verification_run_allows_multiple_signals_on_same_ied(monkeypatch) -> None:
+async def test_execute_single_signal_verification_run_allows_multiple_signals_on_same_ied(monkeypatch: pytest.MonkeyPatch) -> None:
     db = _FakeDb()
     triggered_at = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
 
@@ -1102,7 +1146,7 @@ async def test_execute_single_signal_verification_run_allows_multiple_signals_on
             ),
             client_id="unitlab-backend-simulator",
         ),
-        db=db,  # type: ignore[arg-type]
+        db=_async_db(db),
         triggered_at=triggered_at,
     )
 
@@ -1119,7 +1163,7 @@ async def test_execute_single_signal_verification_run_allows_multiple_signals_on
 
 
 @pytest.mark.anyio
-async def test_execute_single_signal_verification_run_allows_multi_ied_selection(monkeypatch) -> None:
+async def test_execute_single_signal_verification_run_allows_multi_ied_selection(monkeypatch: pytest.MonkeyPatch) -> None:
     db = _FakeDb()
     triggered_at = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
 
@@ -1141,7 +1185,7 @@ async def test_execute_single_signal_verification_run_allows_multi_ied_selection
             ),
             client_id="unitlab-backend-simulator",
         ),
-        db=db,  # type: ignore[arg-type]
+        db=_async_db(db),
         triggered_at=triggered_at,
     )
 
@@ -1152,7 +1196,7 @@ async def test_execute_single_signal_verification_run_allows_multi_ied_selection
 
 
 @pytest.mark.anyio
-async def test_load_verification_run_detail_returns_persisted_payload(monkeypatch) -> None:
+async def test_load_verification_run_detail_returns_persisted_payload(monkeypatch: pytest.MonkeyPatch) -> None:
     db = _FakeDb()
     monkeypatch.setattr(run_service, "VerificationRunRepository", _FakeRunRepository)
 
@@ -1172,12 +1216,15 @@ async def test_load_verification_run_detail_returns_persisted_payload(monkeypatc
     ).model_dump(mode="json")
     repository = _FakeRunRepository(db)
     repository.rows[(7, "run-1")] = payload
-    monkeypatch.setattr(run_service, "VerificationRunRepository", lambda _db: repository)
+    def repository_factory(_db: object) -> _FakeRunRepository:
+        return repository
+
+    monkeypatch.setattr(run_service, "VerificationRunRepository", repository_factory)
 
     result = await load_verification_run_detail(
         workspace_id=7,
         test_run_id="run-1",
-        db=db,  # type: ignore[arg-type]
+        db=_async_db(db),
     )
 
     assert result.test_run_id == "run-1"

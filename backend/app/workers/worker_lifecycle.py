@@ -1,14 +1,21 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import signal
-from typing import Any, Awaitable, Callable
+from typing import TypeVar
+from collections.abc import Awaitable, Callable
+
+from logging import LoggerAdapter
+
+
+_Entry = TypeVar("_Entry")
 
 
 def install_stop_signal_handlers(
     *,
     stop_event: asyncio.Event,
-    logger: Any,
+    logger: LoggerAdapter[logging.Logger],
     stop_message: str,
 ) -> None:
     def _signal_handler() -> None:
@@ -27,9 +34,9 @@ def install_stop_signal_handlers(
 async def run_consume_loop(
     *,
     stop_event: asyncio.Event,
-    fetch_entries: Callable[[], Awaitable[list[Any]]],
-    process_entries: Callable[[list[Any]], Awaitable[None]],
-    logger: Any | None = None,
+    fetch_entries: Callable[[], Awaitable[list[_Entry]]],
+    process_entries: Callable[[list[_Entry]], Awaitable[None]],
+    logger: LoggerAdapter[logging.Logger] | None = None,
     retry_delay_sec: float = 0.5,
 ) -> None:
     while not stop_event.is_set():

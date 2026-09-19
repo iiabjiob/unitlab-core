@@ -1,3 +1,4 @@
+# pyright: reportUnusedCallResult=false
 from __future__ import annotations
 
 import asyncio
@@ -47,4 +48,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

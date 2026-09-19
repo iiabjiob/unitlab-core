@@ -1,9 +1,12 @@
+# pyright: reportPrivateUsage=false
+# pyright: reportUnknownParameterType=false
+# pyright: reportMissingParameterType=false
+# pyright: reportUnusedCallResult=false
 from __future__ import annotations
 
 import asyncio
 
 import pytest
-
 from unitlab_rpi_net_agent.config import load_config
 from unitlab_rpi_net_agent.nmcli_adapter import NmcliAdapter, NmcliError
 

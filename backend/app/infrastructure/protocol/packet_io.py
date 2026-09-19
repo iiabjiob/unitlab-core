@@ -1,7 +1,6 @@
 # protocol/packet.py
 # Mirror of C++ PacketBuilder / PacketParser
 
-from typing import Optional
 from .header import (
     HEADER_SIZE,
     MAX_PAYLOAD,
@@ -15,9 +14,9 @@ class PacketBuilder:
     """Helper to build packets (header + payload)."""
 
     def __init__(self, capacity: int = HEADER_SIZE + MAX_PAYLOAD):
-        self.buf = bytearray(capacity)
-        self.cap = capacity
-        self.len = 0
+        self.buf: bytearray = bytearray(capacity)
+        self.cap: int = capacity
+        self.len: int = 0
 
     def build(self, 
               mode: int, 
@@ -66,9 +65,9 @@ class PacketParser:
     """Helper to parse a raw packet (header + payload)."""
 
     def __init__(self, data: bytes):
-        self.buf = data
-        self.len = len(data)
-        self.hdr: Optional[PacketHeader] = None
+        self.buf: bytes = data
+        self.len: int = len(data)
+        self.hdr: PacketHeader | None = None
 
     def parse_header(self) -> bool:
         """Parse header, validate size, store in self.hdr."""

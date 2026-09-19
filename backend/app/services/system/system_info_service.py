@@ -1,42 +1,70 @@
 import platform
 import socket
-import psutil
 import datetime
-from app.core.logger import logger
-from app.core.config import get_settings
+from collections.abc import Sequence
+from importlib import import_module
+from typing import Protocol, cast
 
+from app.core.config import get_settings
+from app.core.logger import logger
+
+class _PsutilInterfaceInfo(Protocol):
+    isup: bool
+
+
+class _PsutilAddressInfo(Protocol):
+    address: str
+    family: object
+
+
+class _Psutil(Protocol):
+    def net_if_stats(self) -> dict[str, _PsutilInterfaceInfo]: ...
+
+    def net_if_addrs(self) -> dict[str, list[_PsutilAddressInfo]]: ...
+
+    def boot_time(self) -> float: ...
+
+
+try:
+    psutil: _Psutil | None = cast(_Psutil, cast(object, import_module("psutil")))
+except ImportError:  # pragma: no cover - optional host metric dependency
+    psutil = None
 settings = get_settings()
 
 class SystemInfoService:
     """ Retrieves system information """
 
     @staticmethod
-    def get_app_version():
+    def get_app_version() -> str:
         """ Returns the app version """
         return settings.app_version
 
     @staticmethod
-    def get_hostname():
+    def get_hostname() -> str:
         """ Returns the system hostname """
         hostname = socket.gethostname()
         logger.debug(f"🖥️ Hostname: {hostname}")
         return hostname
 
     @staticmethod
-    def get_active_interfaces():
+    def get_active_interfaces() -> list[str]:
         """Returns a list of active (UP) network interfaces, excluding loopback."""
-        active = []
+        if psutil is None:
+            return []
+        active: list[str] = []
         stats = psutil.net_if_stats()
         for iface, info in stats.items():
-            if info.isup and iface != 'lo':
+            if info.isup and iface != "lo":
                 active.append(iface)
         logger.debug(f"🔌 Active interfaces: {active}")
         return active
 
     @staticmethod
-    def get_ip_addresses(interfaces=None):
+    def get_ip_addresses(interfaces: Sequence[str] | None = None) -> dict[str, str]:
         """Returns IP addresses for given or active interfaces."""
-        ip_addresses = {}
+        if psutil is None:
+            return {}
+        ip_addresses: dict[str, str] = {}
         all_addrs = psutil.net_if_addrs()
 
         if interfaces is None:
@@ -60,7 +88,7 @@ class SystemInfoService:
     def get_local_ip_from_active_interface() -> str:
         """Return the IP address of the first active interface with a valid IPv4."""
         ip_addresses = SystemInfoService.get_ip_addresses()
-        for iface, ip in ip_addresses.items():
+        for ip in ip_addresses.values():
             if SystemInfoService._is_valid_ipv4(ip):
                 return ip
         return "127.0.0.1"
@@ -68,28 +96,30 @@ class SystemInfoService:
     @staticmethod
     def _is_valid_ipv4(ip: str) -> bool:
         try:
-            socket.inet_aton(ip)
+            _ = socket.inet_aton(ip)
             return True
         except socket.error:
             return False
 
     @staticmethod
-    def get_os():
+    def get_os() -> str:
         """ Returns the OS name and version """
         os_info = f"{platform.system()} {platform.version()}"
         logger.debug(f"🖥️ OS: {os_info}")
         return os_info
 
     @staticmethod
-    def get_uptime():
+    def get_uptime() -> str:
         """ Returns system uptime in format DD:HH:MM:SS """
         try:
+            if psutil is None:
+                return "Error retrieving uptime"
             boot_time = datetime.datetime.fromtimestamp(psutil.boot_time())
             uptime_timedelta = datetime.datetime.now() - boot_time
 
             days = uptime_timedelta.days
             hours, remainder = divmod(uptime_timedelta.seconds, 3600)
-            minutes, seconds = divmod(remainder, 60)
+            minutes, _ = divmod(remainder, 60)
 
             uptime_str = f"{days}d {hours}h {minutes}m"
             logger.debug(f"⏳ System Uptime: {uptime_str}")

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import cast
 
 from pydantic import BaseModel
 
@@ -14,8 +14,8 @@ _SUPPRESS_WS_DIAGNOSTICS = False
 _SUPPRESS_WS_DEVICE_STATUS = False
 
 
-def _build_payload(event: BaseModel) -> Dict[str, Any]:
-    data = event.model_dump(mode="json")
+def _build_payload(event: BaseModel) -> dict[str, object]:
+    data = cast(dict[str, object], event.model_dump(mode="json"))
     return {
         "event": event.__class__.__name__,
         "channel": data.get("channel"),
@@ -24,12 +24,12 @@ def _build_payload(event: BaseModel) -> Dict[str, Any]:
 
 
 def _should_publish_event(event: BaseModel) -> bool:
+    channel = cast(object, getattr(event, "channel", None))
     if not _SUPPRESS_WS_DIAGNOSTICS:
         if _SUPPRESS_WS_DEVICE_STATUS:
-            return getattr(event, "channel", None) != "devices/status"
+            return channel != "devices/status"
         return True
 
-    channel = getattr(event, "channel", None)
     if channel == "devices/status":
         if _SUPPRESS_WS_DEVICE_STATUS:
             return False

@@ -22,7 +22,7 @@ class _Redis:
         self.hashes: dict[str, dict[str, str]] = {}
         self.streams: dict[str, list[dict[str, str]]] = {}
 
-    async def set(self, key: str, value: str, **kwargs) -> bool:
+    async def set(self, key: str, value: str, **kwargs: object) -> bool:
         if kwargs.get("nx") and key in self.values:
             return False
         self.values[key] = value
@@ -33,9 +33,9 @@ class _Redis:
 
     async def delete(self, *keys: str) -> None:
         for key in keys:
-            self.values.pop(key, None)
+            _ = self.values.pop(key, None)
 
-    async def xadd(self, stream: str, fields: dict[str, str], **_kwargs) -> str:
+    async def xadd(self, stream: str, fields: dict[str, str], **_kwargs: object) -> str:
         self.streams.setdefault(stream, []).append(fields)
         return f"{len(self.streams[stream])}-0"
 
@@ -378,7 +378,7 @@ async def test_verification_required_upgrades_lower_priority_pending_request() -
 @pytest.mark.anyio
 async def test_redis_sink_allows_high_priority_upgrade_over_background_dedupe(monkeypatch: pytest.MonkeyPatch) -> None:
     redis = _Redis()
-    monkeypatch.setattr(scheduler.RedisManager, "get_instance", lambda: redis)
+    monkeypatch.setattr(scheduler.RedisManager, "get_instance", lambda: redis)  # pyright: ignore[reportPrivateLocalImportUsage]
     sink = scheduler.RedisExternalIedDiscoveryJobSink()
     background = scheduler.ExternalIedDiscoveryRequest(
         request_id="background",
@@ -409,8 +409,8 @@ async def test_redis_sink_allows_high_priority_upgrade_over_background_dedupe(mo
         earliest_execution_at_ms=200,
     )
 
-    await sink.enqueue(background)
-    await sink.enqueue(verification)
+    _ = await sink.enqueue(background)
+    _ = await sink.enqueue(verification)
 
     assert len(redis.streams["external-ied-discovery:jobs"]) == 2
     dedupe_payload = redis.values["external_ied:workspace:5:discovery_pending:172.16.40.128:12447"]
@@ -427,7 +427,7 @@ async def test_redis_sink_allows_high_priority_upgrade_over_background_dedupe(mo
 @pytest.mark.anyio
 async def test_verification_dedupe_keeps_distinct_planning_contexts(monkeypatch: pytest.MonkeyPatch) -> None:
     redis = _Redis()
-    monkeypatch.setattr(scheduler.RedisManager, "get_instance", lambda: redis)
+    monkeypatch.setattr(scheduler.RedisManager, "get_instance", lambda: redis)  # pyright: ignore[reportPrivateLocalImportUsage]
     sink = scheduler.RedisExternalIedDiscoveryJobSink()
     first = scheduler.ExternalIedDiscoveryRequest(
         request_id="verification-a",
@@ -458,8 +458,8 @@ async def test_verification_dedupe_keeps_distinct_planning_contexts(monkeypatch:
         earliest_execution_at_ms=200,
     )
 
-    await sink.enqueue(first)
-    await sink.enqueue(second)
+    _ = await sink.enqueue(first)
+    _ = await sink.enqueue(second)
 
     assert len(redis.streams["external-ied-discovery:jobs"]) == 2
     assert '"planning_fingerprint":"plan-b"' in redis.values["external_ied:workspace:5:discovery_pending:172.16.40.128:12447"]

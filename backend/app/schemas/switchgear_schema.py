@@ -1,19 +1,20 @@
+from typing import ClassVar
+
 # app/schemas/switchgear_schema.py
 from pydantic import BaseModel, ConfigDict, Field
-from typing import Optional
 
 
 class SwitchgearBindingSchema(BaseModel):
     id: int
-    channel_id: Optional[int]
+    channel_id: int | None
     role: str
     delay_ms: int
 
-    model_config = ConfigDict(from_attributes=True, extra="ignore")
+    model_config: ClassVar[ConfigDict] = ConfigDict(from_attributes=True, extra="ignore")
 
 
 class SwitchgearBindingCreateSchema(BaseModel):
-    channel_id: Optional[int] = None
+    channel_id: int | None = None
     role: str
     delay_ms: int = 0
 
@@ -25,7 +26,7 @@ class SwitchgearSchema(BaseModel):
     workspace_ids: list[int] = Field(default_factory=list)
     bindings: list[SwitchgearBindingSchema] = Field(default_factory=list)
 
-    model_config = ConfigDict(from_attributes=True, extra="ignore")
+    model_config: ClassVar[ConfigDict] = ConfigDict(from_attributes=True, extra="ignore")
 
 
 class SwitchgearCreateSchema(BaseModel):
@@ -35,6 +36,6 @@ class SwitchgearCreateSchema(BaseModel):
 
 
 class SwitchgearUpdateSchema(BaseModel):
-    name: Optional[str] = None
-    switchgear_type: Optional[str] = None
-    bindings: Optional[list[SwitchgearBindingCreateSchema]] = None
+    name: str | None = None
+    switchgear_type: str | None = None
+    bindings: list[SwitchgearBindingCreateSchema] | None = None

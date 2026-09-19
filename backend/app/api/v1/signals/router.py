@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,12 +18,12 @@ from app.schemas.signal_schema import (
 router = APIRouter(prefix="/api/v1", tags=["Signals"])
 
 
-def get_repo(db: AsyncSession = Depends(get_db)) -> SignalsRepository:
+def get_repo(db: Annotated[AsyncSession, Depends(get_db)]) -> SignalsRepository:
     return SignalsRepository(db)
 
 
 @router.get("/workspaces/{workspace_id}/signals", response_model=list[SignalSchema])
-async def list_signals(workspace_id: int, repo: SignalsRepository = Depends(get_repo)):
+async def list_signals(workspace_id: int, repo: Annotated[SignalsRepository, Depends(get_repo)]):
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
     return await repo.list(workspace_id)
@@ -31,7 +33,7 @@ async def list_signals(workspace_id: int, repo: SignalsRepository = Depends(get_
 async def create_signal(
     workspace_id: int,
     payload: SignalCreateSchema,
-    repo: SignalsRepository = Depends(get_repo),
+    repo: Annotated[SignalsRepository, Depends(get_repo)],
 ):
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -42,7 +44,7 @@ async def create_signal(
 
 
 @router.get("/signals/{signal_id}", response_model=SignalSchema)
-async def get_signal(signal_id: int, repo: SignalsRepository = Depends(get_repo)):
+async def get_signal(signal_id: int, repo: Annotated[SignalsRepository, Depends(get_repo)]):
     signal = await repo.get(signal_id)
     if not signal or signal.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Signal not found")
@@ -53,7 +55,7 @@ async def get_signal(signal_id: int, repo: SignalsRepository = Depends(get_repo)
 async def update_signal(
     signal_id: int,
     payload: SignalUpdateSchema,
-    repo: SignalsRepository = Depends(get_repo),
+    repo: Annotated[SignalsRepository, Depends(get_repo)],
 ):
     try:
         signal = await repo.update(signal_id, payload.model_dump(exclude_unset=True))
@@ -65,7 +67,7 @@ async def update_signal(
 
 
 @router.delete("/signals/{signal_id}")
-async def delete_signal(signal_id: int, repo: SignalsRepository = Depends(get_repo)):
+async def delete_signal(signal_id: int, repo: Annotated[SignalsRepository, Depends(get_repo)]):
     deleted = await repo.delete(signal_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Signal not found")
@@ -76,7 +78,7 @@ async def delete_signal(signal_id: int, repo: SignalsRepository = Depends(get_re
 async def bulk_delete_signals(
     workspace_id: int,
     payload: SignalBulkDeleteRequestSchema,
-    repo: SignalsRepository = Depends(get_repo),
+    repo: Annotated[SignalsRepository, Depends(get_repo)],
 ):
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -84,7 +86,7 @@ async def bulk_delete_signals(
     normalized_ids = {
         int(signal_id)
         for signal_id in payload.signal_ids
-        if isinstance(signal_id, int) and signal_id > 0
+        if signal_id > 0
     }
 
     deleted_count = await repo.delete_many(workspace_id, list(normalized_ids))

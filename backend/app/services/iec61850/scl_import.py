@@ -6,7 +6,7 @@ import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Protocol, cast
 
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,8 +27,8 @@ SCL_IED_LIST_SCHEMA = "unitlab.iec61850.scl.ied-list.v1"
 class Iec61850SclImportError(RuntimeError):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
-        self.code = code
-        self.message = message
+        self.code: str = code
+        self.message: str = message
 
 
 @dataclass(frozen=True)
@@ -50,7 +50,7 @@ class Iec61850SclCompilerOutput:
     schema: str
     selected_ied: str
     source_size: int
-    model: dict[str, Any]
+    model: dict[str, object]
     diagnostics: tuple[Iec61850SclCompilerDiagnostic, ...]
 
 
@@ -92,7 +92,7 @@ class Iec61850SclImportRecord:
     source_size: int
     selected_ied: str
     normalized_schema: str
-    normalized_model: dict[str, Any]
+    normalized_model: dict[str, object]
     diagnostics: tuple[Iec61850SclCompilerDiagnostic, ...]
 
 
@@ -130,7 +130,7 @@ class Iec61850InMemorySclImportRepository:
 
 class Iec61850SqlAlchemySclImportRepository:
     def __init__(self, db: AsyncSession) -> None:
-        self.db = db
+        self.db: AsyncSession = db
 
     async def ensure_workspace(self, workspace_id: int) -> bool:
         result = await self.db.execute(select(Workspace.id).where(Workspace.id == workspace_id).limit(1))
@@ -145,7 +145,7 @@ class Iec61850SqlAlchemySclImportRepository:
             ).limit(1)
         )
         row = result.scalar_one_or_none()
-        diagnostics = [_diagnostic_to_payload(item) for item in record.diagnostics]
+        diagnostics = cast(list[dict[str, object]], [_diagnostic_to_payload(item) for item in record.diagnostics])
         if row is None:
             row = WorkspaceIec61850SclImport(
                 workspace_id=record.workspace_id,
@@ -200,7 +200,10 @@ class Iec61850SqlAlchemySclImportRepository:
         item = result.first()
         if item is None:
             return None
-        selection, scl_import = item
+        selection, scl_import = cast(
+            tuple[WorkspaceIec61850RuntimeSelection, WorkspaceIec61850SclImport],
+            cast(object, item),
+        )
         return _selection_record_from_rows(selection, scl_import)
 
     async def select_runtime_import(
@@ -294,7 +297,7 @@ def _diagnostic_to_payload(item: Iec61850SclCompilerDiagnostic) -> dict[str, str
     }
 
 
-def _diagnostic_from_payload(item: dict[str, Any]) -> Iec61850SclCompilerDiagnostic:
+def _diagnostic_from_payload(item: dict[str, object]) -> Iec61850SclCompilerDiagnostic:
     return Iec61850SclCompilerDiagnostic(
         severity=str(item.get("severity", "")),
         code=str(item.get("code", "")),
@@ -310,7 +313,7 @@ def _diagnostic_from_payload(item: dict[str, Any]) -> Iec61850SclCompilerDiagnos
 
 
 def _record_from_row(row: WorkspaceIec61850SclImport) -> Iec61850SclImportRecord:
-    diagnostics = row.diagnostics if isinstance(row.diagnostics, list) else []
+    diagnostics = row.diagnostics
     return Iec61850SclImportRecord(
         import_id=str(row.id),
         workspace_id=row.workspace_id,
@@ -319,8 +322,12 @@ def _record_from_row(row: WorkspaceIec61850SclImport) -> Iec61850SclImportRecord
         source_size=row.source_size,
         selected_ied=row.selected_ied,
         normalized_schema=row.normalized_schema,
-        normalized_model=row.normalized_model if isinstance(row.normalized_model, dict) else {},
-        diagnostics=tuple(_diagnostic_from_payload(item) for item in diagnostics if isinstance(item, dict)),
+        normalized_model=row.normalized_model,
+        diagnostics=tuple(
+            _diagnostic_from_payload(cast(dict[str, object], item))
+            for item in cast(list[object], diagnostics)
+            if isinstance(item, dict)
+        ),
     )
 
 
@@ -343,15 +350,15 @@ def _selection_record_from_rows(
 
 class Iec61850SclCliCompiler:
     def __init__(self, binary_path: str | Path, *, timeout_seconds: float = 10.0) -> None:
-        self.binary_path = Path(binary_path)
-        self.timeout_seconds = timeout_seconds
+        self.binary_path: Path = Path(binary_path)
+        self.timeout_seconds: float = timeout_seconds
 
     def compile(self, source: bytes, *, selected_ied: str | None) -> Iec61850SclCompilerOutput:
         if not self.binary_path.exists():
             raise Iec61850SclImportError("SCL_COMPILER_UNAVAILABLE", f"SCL compiler binary not found: {self.binary_path}")
 
         with tempfile.NamedTemporaryFile(prefix="unitlab-scl-", suffix=".scd") as input_file:
-            input_file.write(source)
+            _ = input_file.write(source)
             input_file.flush()
             command = [str(self.binary_path), "--input", input_file.name]
             if selected_ied:
@@ -378,7 +385,7 @@ class Iec61850SclCliCompiler:
             raise Iec61850SclImportError("SCL_COMPILER_UNAVAILABLE", f"SCL compiler binary not found: {self.binary_path}")
 
         with tempfile.NamedTemporaryFile(prefix="unitlab-scl-", suffix=".scd") as input_file:
-            input_file.write(source)
+            _ = input_file.write(source)
             input_file.flush()
             command = [str(self.binary_path), "--input", input_file.name, "--list-ieds"]
             try:
@@ -401,8 +408,8 @@ class Iec61850SclCliCompiler:
 
 class Iec61850SclImportService:
     def __init__(self, compiler: Iec61850SclCompiler, repository: Iec61850SclImportRepository) -> None:
-        self._compiler = compiler
-        self._repository = repository
+        self._compiler: Iec61850SclCompiler = compiler
+        self._repository: Iec61850SclImportRepository = repository
 
     def discover_ieds(self, *, source: bytes) -> Iec61850SclIedDiscoveryOutput:
         if not source:
@@ -481,19 +488,45 @@ def _default_dev_scl_compiler_binary_path(app_env: str) -> str | None:
     return str(candidate) if candidate.exists() else None
 
 
+def _json_object(payload: str) -> dict[str, object]:
+    parsed = cast(object, json.loads(payload))
+    if not isinstance(parsed, dict):
+        raise Iec61850SclImportError("SCL_COMPILER_JSON_INVALID", "SCL compiler returned a JSON value that is not an object.")
+    return cast(dict[str, object], parsed)
+
+
+def _json_object_list(value: object) -> list[dict[str, object]]:
+    if not isinstance(value, list):
+        return []
+    items = cast(list[object], value)
+    result: list[dict[str, object]] = []
+    for item in items:
+        if isinstance(item, dict):
+            result.append(cast(dict[str, object], item))
+    return result
+
+
+def _json_int(value: object, default: int = 0) -> int:
+    if not isinstance(value, (int, float, str, bytes)):
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def _parse_ied_discovery_json(payload: str) -> Iec61850SclIedDiscoveryOutput:
     try:
-        document = json.loads(payload)
-    except json.JSONDecodeError as exc:
+        document = _json_object(payload)
+    except (Iec61850SclImportError, json.JSONDecodeError) as exc:
         raise Iec61850SclImportError("SCL_COMPILER_JSON_INVALID", "SCL compiler returned invalid IED discovery JSON.") from exc
 
     ieds = tuple(
         Iec61850SclIedSummary(
             name=str(item.get("name", "")),
-            access_point_count=int(item.get("accessPointCount", 0)),
+            access_point_count=_json_int(item.get("accessPointCount")),
         )
-        for item in document.get("ieds", [])
-        if isinstance(item, dict)
+        for item in _json_object_list(document.get("ieds"))
     )
     diagnostics = tuple(
         Iec61850SclCompilerDiagnostic(
@@ -501,12 +534,11 @@ def _parse_ied_discovery_json(payload: str) -> Iec61850SclIedDiscoveryOutput:
             code=str(item.get("code", "")),
             message=str(item.get("message", "")),
         )
-        for item in document.get("diagnostics", [])
-        if isinstance(item, dict)
+        for item in _json_object_list(document.get("diagnostics"))
     )
     return Iec61850SclIedDiscoveryOutput(
         schema=str(document.get("schema", "")),
-        source_size=int(document.get("sourceSize", 0)),
+        source_size=_json_int(document.get("sourceSize")),
         ieds=ieds,
         diagnostics=diagnostics,
     )
@@ -514,8 +546,8 @@ def _parse_ied_discovery_json(payload: str) -> Iec61850SclIedDiscoveryOutput:
 
 def _parse_compiler_json(payload: str) -> Iec61850SclCompilerOutput:
     try:
-        document = json.loads(payload)
-    except json.JSONDecodeError as exc:
+        document = _json_object(payload)
+    except (Iec61850SclImportError, json.JSONDecodeError) as exc:
         raise Iec61850SclImportError("SCL_COMPILER_JSON_INVALID", "SCL compiler returned invalid JSON.") from exc
 
     diagnostics = tuple(
@@ -531,8 +563,7 @@ def _parse_compiler_json(payload: str) -> Iec61850SclCompilerOutput:
             report_control_name=str(item.get("reportControlName", "")),
             member_reference=str(item.get("memberReference", "")),
         )
-        for item in document.get("diagnostics", [])
-        if isinstance(item, dict)
+        for item in _json_object_list(document.get("diagnostics"))
     )
     model = document.get("model", {})
     if not isinstance(model, dict):
@@ -541,7 +572,7 @@ def _parse_compiler_json(payload: str) -> Iec61850SclCompilerOutput:
     return Iec61850SclCompilerOutput(
         schema=str(document.get("schema", "")),
         selected_ied=str(document.get("selectedIed", "")),
-        source_size=int(document.get("sourceSize", 0)),
-        model=model,
+        source_size=_json_int(document.get("sourceSize")),
+        model=cast(dict[str, object], model),
         diagnostics=diagnostics,
     )

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import cast
 
 from app.schemas.verification_schema import (
     VerificationTargetSchema,
@@ -14,6 +15,7 @@ from app.services.verification_signal_endpoint_catalog import (
     build_verification_plan_endpoint_catalog,
     build_verification_signal_endpoint_catalog,
 )
+from app.services.iec61850.report_runtime import Iec61850ReportSubscriptionPlanDevice
 
 
 def test_build_verification_signal_endpoint_catalog_uses_signal_metadata_host() -> None:
@@ -136,11 +138,11 @@ def test_signal_list_only_metadata_builds_mms_endpoint_catalog_with_port() -> No
 
     assert catalog is not None
     endpoint = catalog.endpoint_for_plan_device(
-        SimpleNamespace(
+        cast(Iec61850ReportSubscriptionPlanDevice, cast(object, SimpleNamespace(
             ied_name="",
             access_point_name="AP1",
             endpoint_id="172.16.40.128:12447",
-        )
+        )))
     )
     assert endpoint.id == "172.16.40.128:12447"
     assert endpoint.ied_name == ""
@@ -184,11 +186,11 @@ def test_signal_list_address_domain_is_not_treated_as_ied_name() -> None:
 
     assert catalog is not None
     endpoint = catalog.endpoint_for_plan_device(
-        SimpleNamespace(
+        cast(Iec61850ReportSubscriptionPlanDevice, cast(object, SimpleNamespace(
             ied_name="",
             access_point_name="AP1",
             endpoint_id="172.16.40.128:12447",
-        )
+        )))
     )
     assert endpoint.id == "172.16.40.128:12447"
     assert endpoint.ied_name == ""

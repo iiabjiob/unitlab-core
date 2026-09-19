@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from uuid import uuid4
 from datetime import datetime, timezone
-from typing import Any
+from typing import Annotated, Literal, cast
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
@@ -15,6 +15,7 @@ from app.api.v1.signals import SignalsRepository
 from app.core.config import get_settings
 from app.core.logger import get_logger
 from app.infrastructure.db.database import get_db
+from app.models.signal_sheet import SignalSheet
 from app.schemas.signal_import_schema import SignalImportMetaSchema
 from app.schemas.signal_sheet_schema import (
     SignalAllocationActionResponseSchema,
@@ -64,20 +65,29 @@ from app.services.signal_revision_service import SignalRevisionService
 router = APIRouter(prefix="/api/v1", tags=["Signal Sheet"])
 settings = get_settings()
 logger = get_logger("api.signal_sheet")
+JsonObject = dict[str, object]
 
 
-def get_repo(db: AsyncSession = Depends(get_db)) -> SignalSheetRepository:
+def _object_list(value: object) -> list[object]:
+    return list(cast(list[object], value)) if isinstance(value, list) else []
+
+
+def _object_dict_list(value: object) -> list[JsonObject]:
+    return [cast(JsonObject, item) for item in _object_list(value) if isinstance(item, dict)]
+
+
+def get_repo(db: Annotated[AsyncSession, Depends(get_db)]) -> SignalSheetRepository:
     return SignalSheetRepository(db)
 
 
-def get_signals_repo(db: AsyncSession = Depends(get_db)) -> SignalsRepository:
+def get_signals_repo(db: Annotated[AsyncSession, Depends(get_db)]) -> SignalsRepository:
     return SignalsRepository(db)
 
 
 def get_write_service(
-    db: AsyncSession = Depends(get_db),
-    repo: SignalSheetRepository = Depends(get_repo),
-    signals_repo: SignalsRepository = Depends(get_signals_repo),
+    db: Annotated[AsyncSession, Depends(get_db)],
+    repo: Annotated[SignalSheetRepository, Depends(get_repo)],
+    signals_repo: Annotated[SignalsRepository, Depends(get_signals_repo)],
 ) -> SignalSheetWriteService:
     return SignalSheetWriteService(db=db, repo=repo, signals_repo=signals_repo)
 
@@ -90,9 +100,9 @@ def get_write_service(
 async def create_signal_list_revision(
     workspace_id: int,
     payload: SignalListRevisionCreateSchema,
-    repo: SignalSheetRepository = Depends(get_repo),
-    signals_repo: SignalsRepository = Depends(get_signals_repo),
-    db: AsyncSession = Depends(get_db),
+    repo: Annotated[SignalSheetRepository, Depends(get_repo)],
+    signals_repo: Annotated[SignalsRepository, Depends(get_signals_repo)],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -123,7 +133,7 @@ async def create_signal_list_revision(
 @router.get("/workspaces/{workspace_id}/signal-sheet", response_model=SignalSheetSchema)
 async def get_signal_sheet(
     workspace_id: int,
-    repo: SignalSheetRepository = Depends(get_repo),
+    repo: Annotated[SignalSheetRepository, Depends(get_repo)],
 ):
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -135,12 +145,12 @@ async def get_signal_sheet(
 @router.post("/workspaces/{workspace_id}/signal-sheet/import", response_model=SignalSheetImportResponseSchema)
 async def import_signal_sheet(
     workspace_id: int,
-    file: UploadFile = File(...),
-    metadata: str | None = Form(default=None),
-    preset_id: int | None = Form(default=None),
-    save_preset_name: str | None = Form(default=None),
-    repo: SignalSheetRepository = Depends(get_repo),
-    write_service: SignalSheetWriteService = Depends(get_write_service),
+    repo: Annotated[SignalSheetRepository, Depends(get_repo)],
+    write_service: Annotated[SignalSheetWriteService, Depends(get_write_service)],
+    file: Annotated[UploadFile, File(...)],
+    metadata: Annotated[str | None, Form()] = None,
+    preset_id: Annotated[int | None, Form()] = None,
+    save_preset_name: Annotated[str | None, Form()] = None,
 ):
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -200,10 +210,10 @@ async def import_signal_sheet(
 )
 async def preview_signal_sheet_import(
     workspace_id: int,
-    file: UploadFile = File(...),
-    metadata: str | None = Form(default=None),
-    preset_id: int | None = Form(default=None),
-    repo: SignalSheetRepository = Depends(get_repo),
+    repo: Annotated[SignalSheetRepository, Depends(get_repo)],
+    file: Annotated[UploadFile, File(...)],
+    metadata: Annotated[str | None, Form()] = None,
+    preset_id: Annotated[int | None, Form()] = None,
 ):
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -241,29 +251,27 @@ async def preview_signal_sheet_import(
             detail=f"Import limit exceeded: {payload.rows_count} rows (max {max_rows})",
         )
 
-    raw_data = payload.data if isinstance(payload.data, dict) else {}
-    raw_sheets = raw_data.get("sheets") if isinstance(raw_data.get("sheets"), list) else []
+    raw_data = payload.data
+    raw_sheets = _object_dict_list(raw_data.get("sheets"))
 
     sheets: list[SignalSheetImportPreviewSheetSchema] = []
     for item in raw_sheets:
-        if not isinstance(item, dict):
-            continue
-        rows = item.get("rows") if isinstance(item.get("rows"), list) else []
-        normalized_rows = [row for row in rows if isinstance(row, dict)]
+        rows_value = item.get("rows")
+        normalized_rows = _object_dict_list(rows_value)
         sheets.append(
             SignalSheetImportPreviewSheetSchema(
                 name=str(item.get("name") or "Sheet"),
-                index=int(item.get("index") or 0),
-                headers=[str(header) for header in (item.get("headers") or []) if str(header).strip()],
-                rows_count=int(item.get("rows_count") or len(normalized_rows)),
+                index=int(str(item.get("index") or 0)),
+                headers=[str(header) for header in _object_list(item.get("headers")) if str(header).strip()],
+                rows_count=int(str(item.get("rows_count") or len(normalized_rows))),
                 rows=normalized_rows,
             )
         )
 
     return SignalSheetImportPreviewResponseSchema(
         rows_count=payload.rows_count,
-        sheet_count=int(raw_data.get("sheet_count") or len(sheets)),
-        default_sheet_index=int(raw_data.get("default_sheet_index") or 0),
+        sheet_count=int(str(raw_data.get("sheet_count") or len(sheets))),
+        default_sheet_index=int(str(raw_data.get("default_sheet_index") or 0)),
         sheets=sheets,
     )
 
@@ -271,7 +279,7 @@ async def preview_signal_sheet_import(
 @router.get("/workspaces/{workspace_id}/signal-sheet/presets", response_model=list[SignalSheetPresetSchema])
 async def list_signal_sheet_presets(
     workspace_id: int,
-    repo: SignalSheetRepository = Depends(get_repo),
+    repo: Annotated[SignalSheetRepository, Depends(get_repo)],
 ):
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -300,8 +308,8 @@ async def list_signal_sheet_presets(
 async def save_signal_sheet_preset(
     workspace_id: int,
     payload: SignalSheetPresetCreateSchema,
-    repo: SignalSheetRepository = Depends(get_repo),
-    write_service: SignalSheetWriteService = Depends(get_write_service),
+    repo: Annotated[SignalSheetRepository, Depends(get_repo)],
+    write_service: Annotated[SignalSheetWriteService, Depends(get_write_service)],
 ):
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -328,7 +336,7 @@ async def save_signal_sheet_preset(
 @router.delete("/signal-sheet/presets/{preset_id}")
 async def delete_signal_sheet_preset(
     preset_id: int,
-    write_service: SignalSheetWriteService = Depends(get_write_service),
+    write_service: Annotated[SignalSheetWriteService, Depends(get_write_service)],
 ):
     deleted = await write_service.delete_preset(preset_id)
     if not deleted:
@@ -339,9 +347,9 @@ async def delete_signal_sheet_preset(
 @router.get("/workspaces/{workspace_id}/signal-allocations", response_model=list[SignalAllocationRowSchema])
 async def list_signal_allocations(
     workspace_id: int,
-    offset: int = Query(default=0, ge=0),
-    limit: int = Query(default=0, ge=0, le=5000),
-    repo: SignalSheetRepository = Depends(get_repo),
+    repo: Annotated[SignalSheetRepository, Depends(get_repo)],
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=0, le=5000)] = 0,
 ):
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -359,7 +367,7 @@ async def list_signal_allocations(
 @router.get("/workspaces/{workspace_id}/signal-allocations.ndjson")
 async def stream_signal_allocations_ndjson(
     workspace_id: int,
-    repo: SignalSheetRepository = Depends(get_repo),
+    repo: Annotated[SignalSheetRepository, Depends(get_repo)],
 ):
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -394,8 +402,8 @@ async def stream_signal_allocations_ndjson(
 async def update_signal_allocations(
     workspace_id: int,
     payload: SignalAllocationBulkUpdateSchema,
-    repo: SignalSheetRepository = Depends(get_repo),
-    write_service: SignalSheetWriteService = Depends(get_write_service),
+    repo: Annotated[SignalSheetRepository, Depends(get_repo)],
+    write_service: Annotated[SignalSheetWriteService, Depends(get_write_service)],
 ):
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -422,8 +430,8 @@ async def update_signal_allocations(
 async def assign_signal_allocation(
     workspace_id: int,
     payload: SignalAllocationAssignActionSchema,
-    repo: SignalSheetRepository = Depends(get_repo),
-    write_service: SignalSheetWriteService = Depends(get_write_service),
+    repo: Annotated[SignalSheetRepository, Depends(get_repo)],
+    write_service: Annotated[SignalSheetWriteService, Depends(get_write_service)],
 ):
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -448,8 +456,8 @@ async def assign_signal_allocation(
 async def reassign_signal_allocation(
     workspace_id: int,
     payload: SignalAllocationReassignActionSchema,
-    repo: SignalSheetRepository = Depends(get_repo),
-    write_service: SignalSheetWriteService = Depends(get_write_service),
+    repo: Annotated[SignalSheetRepository, Depends(get_repo)],
+    write_service: Annotated[SignalSheetWriteService, Depends(get_write_service)],
 ):
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -474,8 +482,8 @@ async def reassign_signal_allocation(
 async def unassign_signal_allocation(
     workspace_id: int,
     payload: SignalAllocationUnassignActionSchema,
-    repo: SignalSheetRepository = Depends(get_repo),
-    write_service: SignalSheetWriteService = Depends(get_write_service),
+    repo: Annotated[SignalSheetRepository, Depends(get_repo)],
+    write_service: Annotated[SignalSheetWriteService, Depends(get_write_service)],
 ):
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -498,8 +506,8 @@ async def unassign_signal_allocation(
 async def swap_signal_allocations(
     workspace_id: int,
     payload: SignalAllocationSwapActionSchema,
-    repo: SignalSheetRepository = Depends(get_repo),
-    write_service: SignalSheetWriteService = Depends(get_write_service),
+    repo: Annotated[SignalSheetRepository, Depends(get_repo)],
+    write_service: Annotated[SignalSheetWriteService, Depends(get_write_service)],
 ):
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -520,8 +528,8 @@ async def swap_signal_allocations(
 async def auto_allocate_signal_rows(
     workspace_id: int,
     payload: SignalAutoAllocateSchema,
-    repo: SignalSheetRepository = Depends(get_repo),
-    write_service: SignalSheetWriteService = Depends(get_write_service),
+    repo: Annotated[SignalSheetRepository, Depends(get_repo)],
+    write_service: Annotated[SignalSheetWriteService, Depends(get_write_service)],
 ):
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -555,7 +563,7 @@ async def auto_allocate_signal_rows(
 async def enqueue_auto_allocate_signal_rows(
     workspace_id: int,
     payload: SignalAutoAllocateSchema,
-    repo: SignalSheetRepository = Depends(get_repo),
+    repo: Annotated[SignalSheetRepository, Depends(get_repo)],
 ):
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -579,7 +587,7 @@ async def enqueue_auto_allocate_signal_rows(
 async def enqueue_bulk_signal_allocations_update(
     workspace_id: int,
     payload: SignalAllocationBulkUpdateSchema,
-    repo: SignalSheetRepository = Depends(get_repo),
+    repo: Annotated[SignalSheetRepository, Depends(get_repo)],
 ):
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -603,9 +611,9 @@ async def enqueue_bulk_signal_allocations_update(
 async def enqueue_signal_test_run_job(
     workspace_id: int,
     payload: SignalTestRunJobSchema,
-    repo: SignalSheetRepository = Depends(get_repo),
-    signals_repo: SignalsRepository = Depends(get_signals_repo),
-    db: AsyncSession = Depends(get_db),
+    repo: Annotated[SignalSheetRepository, Depends(get_repo)],
+    signals_repo: Annotated[SignalsRepository, Depends(get_signals_repo)],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -643,20 +651,20 @@ async def enqueue_signal_test_run_job(
 
     async def persist_immutable_plan() -> None:
         if source_plan is not None:
-            await revision_service.clone_test_run_plan(
+            _ = await revision_service.clone_test_run_plan(
                 source_job_id=resume_source_job_id,
                 job_id=job_id,
                 workspace_id=workspace_id,
             )
         else:
-            await revision_service.create_test_run_plan(
+            _ = await revision_service.create_test_run_plan(
                 job_id=job_id,
                 workspace_id=workspace_id,
                 revision_id=int(revision_id),
                 signal_ids=requested_signal_ids,
             )
         await db.commit()
-    initial_result: dict[str, Any] = {}
+    initial_result: JsonObject = {}
     initial_result["signal_list_revision_id"] = revision_id
     try:
         signals = await signals_repo.list_by_ids(workspace_id, payload.signal_ids)
@@ -707,7 +715,7 @@ async def enqueue_signal_test_run_job(
 async def get_signal_job_status(
     workspace_id: int,
     job_id: str,
-    repo: SignalSheetRepository = Depends(get_repo),
+    repo: Annotated[SignalSheetRepository, Depends(get_repo)],
 ):
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -715,7 +723,7 @@ async def get_signal_job_status(
     job_state = await get_signal_job(job_id)
     if job_state is None:
         raise HTTPException(status_code=404, detail="Job not found")
-    if int(job_state.get("workspace_id") or 0) != workspace_id:
+    if int(str(job_state.get("workspace_id") or 0)) != workspace_id:
         raise HTTPException(status_code=404, detail="Job not found")
 
     return SignalJobStatusSchema.model_validate(job_state)
@@ -726,7 +734,7 @@ async def control_signal_job_status(
     workspace_id: int,
     job_id: str,
     payload: SignalJobControlSchema,
-    repo: SignalSheetRepository = Depends(get_repo),
+    repo: Annotated[SignalSheetRepository, Depends(get_repo)],
 ):
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -734,14 +742,17 @@ async def control_signal_job_status(
     job_state = await get_signal_job(job_id)
     if job_state is None:
         raise HTTPException(status_code=404, detail="Job not found")
-    if int(job_state.get("workspace_id") or 0) != workspace_id:
+    if int(str(job_state.get("workspace_id") or 0)) != workspace_id:
         raise HTTPException(status_code=404, detail="Job not found")
 
     action = payload.action
     if action not in {"pause", "resume", "stop"}:
         raise HTTPException(status_code=400, detail="Unsupported action")
 
-    controlled = await control_signal_job(job_id, action)
+    controlled = await control_signal_job(
+        job_id,
+        cast(Literal["pause", "resume", "stop"], action),
+    )
     if controlled is None:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -753,8 +764,8 @@ async def control_signal_job_status(
 async def ensure_signal_allocations(
     workspace_id: int,
     payload: SignalAllocationEnsureSchema,
-    repo: SignalSheetRepository = Depends(get_repo),
-    write_service: SignalSheetWriteService = Depends(get_write_service),
+    repo: Annotated[SignalSheetRepository, Depends(get_repo)],
+    write_service: Annotated[SignalSheetWriteService, Depends(get_write_service)],
 ):
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -797,9 +808,9 @@ async def ensure_signal_allocations(
 async def mark_signal_allocations_tested(
     workspace_id: int,
     payload: SignalAllocationMarkTestedSchema,
-    repo: SignalSheetRepository = Depends(get_repo),
-    write_service: SignalSheetWriteService = Depends(get_write_service),
-):
+    repo: Annotated[SignalSheetRepository, Depends(get_repo)],
+    write_service: Annotated[SignalSheetWriteService, Depends(get_write_service)],
+) -> list[SignalAllocationRowSchema]:
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
 
@@ -867,7 +878,7 @@ def _parse_metadata(raw_metadata: str | None) -> SignalImportMetaSchema | None:
         return None
 
     try:
-        payload: dict[str, Any] = json.loads(raw_metadata)
+        payload = cast(JsonObject, json.loads(raw_metadata))
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=400, detail=f"Invalid metadata JSON: {exc}")
 
@@ -877,7 +888,7 @@ def _parse_metadata(raw_metadata: str | None) -> SignalImportMetaSchema | None:
         raise HTTPException(status_code=400, detail=exc.errors())
 
 
-def _compact_sheet_payload(raw_data: Any) -> dict[str, Any]:
+def _compact_sheet_payload(raw_data: object) -> JsonObject:
     if not isinstance(raw_data, dict):
         return {
             "version": 2,
@@ -885,21 +896,18 @@ def _compact_sheet_payload(raw_data: Any) -> dict[str, Any]:
             "default_sheet_index": 0,
             "sheets": [],
         }
+    raw_data = cast(JsonObject, raw_data)
 
     raw_sheets = raw_data.get("sheets")
-    compact_sheets: list[dict[str, Any]] = []
-    if isinstance(raw_sheets, list):
-        for item in raw_sheets:
-            if not isinstance(item, dict):
-                continue
-            compact_sheets.append(
-                {
-                    "name": item.get("name"),
-                    "index": item.get("index"),
-                    "headers": item.get("headers") if isinstance(item.get("headers"), list) else [],
-                    "rows_count": item.get("rows_count"),
-                }
-            )
+    compact_sheets: list[JsonObject] = []
+    for item in _object_dict_list(raw_sheets):
+        compact_sheets.append(
+            {
+                "name": item.get("name"),
+                "index": item.get("index"),
+                "headers": _object_list(item.get("headers")),
+                "rows_count": item.get("rows_count"),
+            })
 
     return {
         "version": raw_data.get("version", 2),
@@ -912,7 +920,7 @@ def _compact_sheet_payload(raw_data: Any) -> dict[str, Any]:
 async def _build_sheet_schema(
     repo: SignalSheetRepository,
     workspace_id: int,
-    sheet,
+    sheet: SignalSheet | None,
 ) -> SignalSheetSchema:
     signals_count = await repo.count_active_signals(workspace_id)
     allocated_count = await repo.count_allocated_signals(workspace_id)

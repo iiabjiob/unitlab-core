@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,7 +8,7 @@ from app.models.verification_run import SignalVerificationRun
 
 class VerificationRunRepository:
     def __init__(self, db: AsyncSession):
-        self.db = db
+        self.db: AsyncSession = db
 
     async def get_signal_verification_run(
         self,
@@ -30,7 +28,7 @@ class VerificationRunRepository:
         *,
         workspace_id: int,
         test_run_id: str,
-        payload: dict[str, Any],
+        payload: dict[str, object],
     ) -> SignalVerificationRun:
         run = await self.get_signal_verification_run(
             workspace_id=workspace_id,

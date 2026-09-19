@@ -5,7 +5,7 @@ import socket
 from collections import deque
 
 from redis.exceptions import ResponseError
-from typing import Any, Dict
+from typing import Literal, cast
 
 from app.core.config import get_settings
 from app.core.events.ws_event_publisher import WsEventPublisher
@@ -13,6 +13,7 @@ from app.core.logger import get_logger
 from app.core.sequence_dto import SequenceEventType
 from app.infrastructure.redis.manager import RedisManager
 from app.infrastructure.redis.stream_bus import parse_sequence_event_entry
+from app.infrastructure.redis.types import RedisStreamClient, RedisStreamEntries
 from app.schemas.ws.events import (
     SequenceCompletedEvent,
     SequenceErrorEvent,
@@ -23,6 +24,7 @@ from app.schemas.ws.events import (
     SequenceStoppingEvent,
     SequenceStoppedEvent,
 )
+from app.schemas.sequence_run_schema import SequenceRuntimeSchema
 
 settings = get_settings()
 logger = get_logger("sequence.forwarder")
@@ -47,9 +49,9 @@ def _mark_run_finished(run_id: int) -> None:
         _finished_run_set.discard(expired)
 
 
-async def _ensure_group(redis) -> None:
+async def _ensure_group(redis: RedisStreamClient) -> None:
     try:
-        await redis.xgroup_create(STREAM_NAME, GROUP_NAME, id="0", mkstream=True)
+        _ = await redis.xgroup_create(STREAM_NAME, GROUP_NAME, id="0", mkstream=True)
         logger.info("✅ Created consumer group %s for sequence events", GROUP_NAME)
     except ResponseError as exc:
         if "BUSYGROUP" in str(exc):
@@ -58,7 +60,7 @@ async def _ensure_group(redis) -> None:
             raise
 
 
-async def _fetch(redis, stream_id: str, block_ms: int = 5000):
+async def _fetch(redis: RedisStreamClient, stream_id: str, block_ms: int = 5000) -> RedisStreamEntries:
     result = await redis.xreadgroup(
         GROUP_NAME,
         CONSUMER_NAME,
@@ -71,7 +73,7 @@ async def _fetch(redis, stream_id: str, block_ms: int = 5000):
     return result[0][1]
 
 
-async def _drain_pending(redis) -> None:
+async def _drain_pending(redis: RedisStreamClient) -> None:
     while True:
         entries = await _fetch(redis, "0", block_ms=100)
         if not entries:
@@ -80,7 +82,7 @@ async def _drain_pending(redis) -> None:
         await _process_entries(redis, entries)
 
 
-async def _process_entries(redis, entries) -> None:
+async def _process_entries(redis: RedisStreamClient, entries: RedisStreamEntries) -> None:
     for entry_id, fields in entries:
         try:
             _, event = parse_sequence_event_entry((entry_id, fields))
@@ -88,17 +90,34 @@ async def _process_entries(redis, entries) -> None:
         except Exception as exc:  # noqa: BLE001
             logger.exception("💥 Failed to forward sequence event %s: %s", entry_id, exc)
         finally:
-            await redis.xack(STREAM_NAME, GROUP_NAME, entry_id)
+            _ = await redis.xack(STREAM_NAME, GROUP_NAME, entry_id)
 
 
-async def _forward(event_type: SequenceEventType, sequence_id: int, run_id: int, data: Dict[str, Any]):
+def _as_int(value: object, default: int = 0) -> int:
+    try:
+        return int(cast(str | int | float, value))
+    except (TypeError, ValueError):
+        return default
+
+
+def _as_int_list(value: object) -> list[int]:
+    if not isinstance(value, list):
+        return []
+    return [_as_int(item) for item in cast(list[object], value)]
+
+
+def _runtime(data: dict[str, object]) -> SequenceRuntimeSchema | None:
+    return cast(SequenceRuntimeSchema | None, data.get("runtime"))
+
+
+async def _forward(event_type: SequenceEventType, sequence_id: int, run_id: int, data: dict[str, object]) -> None:
     if event_type == SequenceEventType.STARTED:
         await WsEventPublisher.publish(
             SequenceStartedEvent(
                 sequence_id=sequence_id,
                 run_id=run_id,
-                total_steps=int(data.get("total_steps", 0)),
-                runtime=data.get("runtime"),
+                total_steps=_as_int(data.get("total_steps", 0)),
+                runtime=_runtime(data),
             )
         )
         return
@@ -112,9 +131,9 @@ async def _forward(event_type: SequenceEventType, sequence_id: int, run_id: int,
             SequenceStoppingEvent(
                 sequence_id=sequence_id,
                 run_id=run_id,
-                current_step_index=int(data.get("current_step_index", 0)),
-                total_steps=int(data.get("total_steps", 0)),
-                runtime=data.get("runtime"),
+                current_step_index=_as_int(data.get("current_step_index", 0)),
+                total_steps=_as_int(data.get("total_steps", 0)),
+                runtime=_runtime(data),
             )
         )
         _stopping_emitted_runs.add(run_id)
@@ -125,14 +144,14 @@ async def _forward(event_type: SequenceEventType, sequence_id: int, run_id: int,
             SequenceProgressEvent(
                 sequence_id=sequence_id,
                 run_id=run_id,
-                step_index=int(data.get("step_index", 0)),
-                step_id=int(data.get("step_id", 0)),
+                step_index=_as_int(data.get("step_index", 0)),
+                step_id=_as_int(data.get("step_id", 0)),
                 step_type=str(data.get("step_type", "")),
-                progress_scope=str(data.get("progress_scope", "step")),
-                step_elapsed_ms=int(data.get("step_elapsed_ms", 0)),
-                run_elapsed_ms=int(data.get("run_elapsed_ms", 0)),
-                completed_steps=list(data.get("completed_step_ids", [])),
-                runtime=data.get("runtime"),
+                progress_scope=cast(Literal["step", "nested_step"], str(data.get("progress_scope", "step"))),
+                step_elapsed_ms=_as_int(data.get("step_elapsed_ms", 0)),
+                run_elapsed_ms=_as_int(data.get("run_elapsed_ms", 0)),
+                completed_steps=_as_int_list(data.get("completed_step_ids", [])),
+                runtime=_runtime(data),
             )
         )
         return
@@ -142,18 +161,18 @@ async def _forward(event_type: SequenceEventType, sequence_id: int, run_id: int,
             SequenceStepIssueEvent(
                 sequence_id=sequence_id,
                 run_id=run_id,
-                step_index=int(data.get("step_index", 0)),
-                step_id=int(data.get("step_id", 0)),
-                status=str(data.get("status", "error")),
+                step_index=_as_int(data.get("step_index", 0)),
+                step_id=_as_int(data.get("step_id", 0)),
+                status=cast(Literal["blocked", "error"], str(data.get("status", "error"))),
                 message=str(data.get("message", "Sequence step could not complete")),
-                runtime=data.get("runtime"),
+                runtime=_runtime(data),
             )
         )
         return
 
     if event_type == SequenceEventType.FINISHED:
         status = data.get("status")
-        elapsed_ms = int(data.get("elapsed_ms", 0))
+        elapsed_ms = _as_int(data.get("elapsed_ms", 0))
         if status in {"completed", "completed_with_issues"}:
             _stopping_emitted_runs.discard(run_id)
             _mark_run_finished(run_id)
@@ -161,14 +180,14 @@ async def _forward(event_type: SequenceEventType, sequence_id: int, run_id: int,
                 SequenceCompletedEvent(
                     sequence_id=sequence_id,
                     run_id=run_id,
-                    status=status,
+                    status=cast(Literal["completed", "completed_with_issues"], status),
                     elapsed_ms=elapsed_ms,
-                    runtime=data.get("runtime"),
+                    runtime=_runtime(data),
                 )
             )
         elif status == "stopped":
-            current_step_index = int(data.get("current_step_index", 0))
-            total_steps = int(data.get("total_steps", 0))
+            current_step_index = _as_int(data.get("current_step_index", 0))
+            total_steps = _as_int(data.get("total_steps", 0))
             if run_id not in _stopping_emitted_runs:
                 await WsEventPublisher.publish(
                     SequenceStoppingEvent(
@@ -176,7 +195,7 @@ async def _forward(event_type: SequenceEventType, sequence_id: int, run_id: int,
                         run_id=run_id,
                         current_step_index=current_step_index,
                         total_steps=total_steps,
-                        runtime=data.get("runtime"),
+                        runtime=_runtime(data),
                     )
                 )
             else:
@@ -187,7 +206,7 @@ async def _forward(event_type: SequenceEventType, sequence_id: int, run_id: int,
                 SequenceStoppedEvent(
                     sequence_id=sequence_id,
                     run_id=run_id,
-                    runtime=data.get("runtime"),
+                    runtime=_runtime(data),
                 )
             )
         else:
@@ -203,10 +222,10 @@ async def _forward(event_type: SequenceEventType, sequence_id: int, run_id: int,
                 SequenceStepErrorEvent(
                     sequence_id=sequence_id,
                     run_id=run_id,
-                    step_index=int(step_index),
-                    step_id=int(step_id),
+                    step_index=_as_int(step_index),
+                    step_id=_as_int(step_id),
                     message=message,
-                    runtime=data.get("runtime"),
+                    runtime=_runtime(data),
                 )
             )
         await WsEventPublisher.publish(
@@ -214,7 +233,7 @@ async def _forward(event_type: SequenceEventType, sequence_id: int, run_id: int,
                 sequence_id=sequence_id,
                 run_id=run_id,
                 message=message,
-                runtime=data.get("runtime"),
+                runtime=_runtime(data),
             )
         )
         return
@@ -223,11 +242,11 @@ async def _forward(event_type: SequenceEventType, sequence_id: int, run_id: int,
         # Currently not exposed via WS; reserved for future UX.
         return
 
-    logger.warning("⚠️ Unsupported sequence event type: %s", event_type)
+    logger.warning("⚠️ Unsupported sequence event type: %s", event_type)  # pyright: ignore[reportUnreachable]
 
 
 async def forward_sequence_events() -> None:
-    redis = RedisManager.get_instance()
+    redis = cast(RedisStreamClient, cast(object, RedisManager.get_instance()))
     await _ensure_group(redis)
     await _drain_pending(redis)
 

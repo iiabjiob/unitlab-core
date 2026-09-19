@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 from uuid import uuid4
 
 from sqlalchemy import DateTime, ForeignKey, Index, String, UniqueConstraint
@@ -16,7 +16,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from app.models.sequence import Sequence
 
 class Workspace(Base):
-    __tablename__ = "workspaces"
+    __tablename__: str = "workspaces"
 
     id: Mapped[int] = mapped_column(BIGINT_PK, primary_key=True, autoincrement=True)
     uuid: Mapped[str] = mapped_column(String(36), unique=True, nullable=False, default=lambda: str(uuid4()))
@@ -55,13 +55,14 @@ class Workspace(Base):
         lazy="selectin",
     )
 
+    @override
     def __repr__(self) -> str:  # pragma: no cover - debug helper
         return f"Workspace(id={self.id!r}, slug={self.slug!r})"
 
 
 class WorkspaceSwitchgear(Base):
-    __tablename__ = "workspace_switchgears"
-    __table_args__ = (
+    __tablename__: str = "workspace_switchgears"
+    __table_args__: tuple[object, ...] = (
         UniqueConstraint("workspace_id", "switchgear_id", name="uq_workspace_switchgear"),
         Index("ix_workspace_switchgears_workspace", "workspace_id"),
         Index("ix_workspace_switchgears_switchgear", "switchgear_id"),
@@ -83,8 +84,8 @@ class WorkspaceSwitchgear(Base):
 
 
 class WorkspaceSequence(Base):
-    __tablename__ = "workspace_sequences"
-    __table_args__ = (
+    __tablename__: str = "workspace_sequences"
+    __table_args__: tuple[object, ...] = (
         UniqueConstraint("workspace_id", "sequence_id", name="uq_workspace_sequence"),
         Index("ix_workspace_sequences_workspace", "workspace_id"),
         Index("ix_workspace_sequences_sequence", "sequence_id"),

@@ -1,15 +1,40 @@
 import time
-from typing import Optional
+from typing import Protocol, cast
 
 from app.infrastructure.redis.manager import RedisManager
 from app.schemas.ws.events import DeviceStateEvent
 from app.infrastructure.protocol.modes import State
 from app.core.utils import to_str, to_int
+from app.infrastructure.redis.types import RedisHashClient
+from app.infrastructure.protocol.header import PacketHeader
+
+
+class _DecodedState(Protocol):
+    bitmask: int
+    ch: int
+    value: int | float
+    valid_mask: int
+    pending_mask: int
+    fault_mask: int
+    error_mask: int
+    open_mask: int
+    soft_mask: int
+    changed: int
+    state: int
+    seen: int
+    stuck: int
+    lost: int
+    latched: int
+    latched_changed: int
+    latched_cause: int
+    cause: int
+
+    def model_dump(self) -> dict[str, object]: ...
 
 
 class DeviceStateService:
     @staticmethod
-    async def _should_emit_unchanged_event(unit_id: str, raw_mode: int, redis) -> bool:
+    async def _should_emit_unchanged_event(unit_id: str, raw_mode: int, redis: RedisHashClient) -> bool:
         """Allow authoritative state snapshots for controllable devices without flooding passive DI streams."""
         if raw_mode == State.STATE_SINGLE_FLOAT:
             return True
@@ -18,7 +43,7 @@ class DeviceStateService:
             return False
 
         device_type_raw = await redis.get(f"device:{unit_id}:type")
-        device_type = to_str(device_type_raw, "").strip().lower()
+        device_type = (to_str(device_type_raw, "") or "").strip().lower()
         if not device_type:
             prefix = unit_id.split("-", 1)[0].strip().lower()
             if prefix in {"do", "di", "ao"}:
@@ -34,16 +59,21 @@ class DeviceStateService:
         return State(raw_mode)
 
     @staticmethod
-    async def update_state(unit_id: str, hdr, decoded) -> tuple[bool, DeviceStateEvent | None]:
+    async def update_state(
+        unit_id: str,
+        hdr: PacketHeader,
+        decoded: object,
+    ) -> tuple[bool, DeviceStateEvent | None]:
         """
         Update Redis state for the device based on the packet header/mode and decoded payload.
         Returns:
             changed: bool       -> True if Redis was updated
             event: DeviceStateEvent | None
         """
-        redis = RedisManager.get_instance()
+        decoded = cast(_DecodedState, decoded)
+        redis = cast(RedisHashClient, cast(object, RedisManager.get_instance()))
         changed = False
-        packet_id = getattr(hdr, "packet_id", None)
+        packet_id = cast(int | None, cast(object, getattr(hdr, "packet_id", None)))
 
         if hdr.mode == State.STATE_ALL_BIT:
             current = await redis.get(f"device:{unit_id}:bitmask")
@@ -138,7 +168,7 @@ class DeviceStateService:
                 changed = True
 
         if packet_id is not None:
-            await redis.set(f"device:{unit_id}:last_state_packet_id", str(int(packet_id)))
+            await redis.set(f"device:{unit_id}:last_state_packet_id", str(packet_id))
 
         if not changed and not await DeviceStateService._should_emit_unchanged_event(unit_id, hdr.mode, redis):
             return False, None
@@ -154,20 +184,22 @@ class DeviceStateService:
     # -------------------------------------------------------------------------
 
     @staticmethod
-    async def build_event_from_redis(unit_id: str, mode: State, ch: Optional[int] = None) -> DeviceStateEvent:
+    async def build_event_from_redis(unit_id: str, mode: State, ch: int | None = None) -> DeviceStateEvent:
         """
         Build a DeviceStateEvent from current values stored in Redis (no writes).
         Useful for snapshots or forced resend.
         """
-        redis = RedisManager.get_instance()
+        redis = cast(RedisHashClient, cast(object, RedisManager.get_instance()))
 
         if mode == State.STATE_ALL_BIT:
             bitmask = to_int(await redis.get(f"device:{unit_id}:bitmask"), 0)
             payload = {"bitmask": bitmask}
 
         elif mode == State.STATE_SINGLE_BIT:
+            if ch is None:
+                raise ValueError("Channel is required for a single-bit state event")
             bitmask = to_int(await redis.get(f"device:{unit_id}:bitmask"), 0)
-            value = 1 if (bitmask & (1 << ch)) else 0
+            value = 1 if ((bitmask or 0) & (1 << ch)) else 0
             payload = {"ch": ch, "value": value}
 
         elif mode == State.STATE_SINGLE_FLOAT:
@@ -232,7 +264,7 @@ class DeviceStateService:
         - AO diagnostics (if available)
         - All AO channels
         """
-        redis = RedisManager.get_instance()
+        redis = cast(RedisHashClient, cast(object, RedisManager.get_instance()))
         events: list[DeviceStateEvent] = []
 
         # Always include full bitmask

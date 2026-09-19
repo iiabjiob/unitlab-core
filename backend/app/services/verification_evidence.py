@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import datetime
-from typing import Any
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -49,7 +47,7 @@ def build_signal_verification_evidence_set(
 
 class VerificationEvidenceRepository:
     def __init__(self, db: AsyncSession):
-        self.db = db
+        self.db: AsyncSession = db
 
     async def record_signal_verification_evidence(
         self,
@@ -77,8 +75,8 @@ class VerificationEvidenceRepository:
         source_report_sequence_number: int | None = None,
         source_report_sub_sequence_number: int | None = None,
         report_reason: str | None = None,
-        signal_value: Any | None = None,
-        timestamp_summary: dict[str, Any] | None = None,
+        signal_value: object | None = None,
+        timestamp_summary: dict[str, object] | None = None,
         stale_reason: str | None = None,
         evidence_kind: str | None = None,
         diagnostics: Sequence[VerificationEvidenceDiagnosticSchema] = (),

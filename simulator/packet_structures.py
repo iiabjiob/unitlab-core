@@ -13,7 +13,7 @@ import struct
 import time
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Optional, Tuple
+from typing import cast
 
 HEADER_STRUCT = struct.Struct(">BBHQBH")  # mode, version, packet_id, ts, flags, payload_len
 HEADER_SIZE = HEADER_STRUCT.size
@@ -49,8 +49,8 @@ def unpack_header(data: bytes) -> PacketHeader:
     """Unpack bytes into a ``PacketHeader`` with bounds validation."""
     if len(data) < HEADER_SIZE:
         raise ValueError("Buffer too small for header")
-    mode, version, packet_id, timestamp_ms, flags, payload_len = HEADER_STRUCT.unpack(
-        data[:HEADER_SIZE]
+    mode, version, packet_id, timestamp_ms, flags, payload_len = cast(
+        tuple[int, int, int, int, int, int], HEADER_STRUCT.unpack(data[:HEADER_SIZE])
     )
     if payload_len > MAX_PAYLOAD:
         raise ValueError("Payload length exceeds protocol limit")
@@ -327,7 +327,7 @@ class PacketBuilder:
     """Incremental helper used by the simulator to send packets."""
 
     def __init__(self) -> None:
-        self._packet_id = 0
+        self._packet_id: int = 0
 
     def next_packet_id(self) -> int:
         self._packet_id = (self._packet_id + 1) & 0xFFFF
@@ -340,8 +340,8 @@ class PacketBuilder:
         mode: int,
         payload: bytes,
         *,
-        timestamp_ms: Optional[int] = None,
-        packet_id: Optional[int] = None,
+        timestamp_ms: int | None = None,
+        packet_id: int | None = None,
         flags: int = 0,
         version: int = PROTOCOL_VERSION,
     ) -> bytes:
@@ -356,15 +356,15 @@ class PacketBuilder:
 class PacketParser:
     """Lenient parser mirroring the backend implementation."""
 
-    def __init__(self, raw: bytes):
+    def __init__(self, raw: bytes) -> None:
         if len(raw) < HEADER_SIZE:
             raise ValueError("Buffer too small for packet")
-        self._raw = raw
-        self._header = unpack_header(raw[:HEADER_SIZE])
+        self._raw: bytes = raw
+        self._header: PacketHeader = unpack_header(raw[:HEADER_SIZE])
         end = HEADER_SIZE + self._header.payload_len
         if len(raw) < end:
             raise ValueError("Buffer shorter than declared payload length")
-        self._payload = raw[HEADER_SIZE:end]
+        self._payload: bytes = raw[HEADER_SIZE:end]
 
     @property
     def header(self) -> PacketHeader:
@@ -380,9 +380,9 @@ def build_packet(
     payload: bytes,
     *,
     builder: PacketBuilder,
-    timestamp_ms: Optional[int] = None,
+    timestamp_ms: int | None = None,
     flags: int = 0,
-    packet_id: Optional[int] = None,
+    packet_id: int | None = None,
 ) -> bytes:
     """Convenience wrapper that reuses a ``PacketBuilder`` per device."""
     mode_value = int(mode)
@@ -395,7 +395,7 @@ def build_packet(
     )
 
 
-def parse_packet(raw: bytes) -> Tuple[PacketHeader, bytes]:
+def parse_packet(raw: bytes) -> tuple[PacketHeader, bytes]:
     """Parse a packet returning the header/payload tuple."""
     parser = PacketParser(raw)
     return parser.header, parser.payload

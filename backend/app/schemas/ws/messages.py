@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Literal, Union, Optional
+from typing import Literal
 from app.infrastructure.protocol.modes import Cmd
 from app.infrastructure.protocol.modes import State
 from enum import Enum
@@ -30,12 +30,12 @@ class SetDoCommandMessage(BaseModel):
     channel_ids: list[int] | None = None
     unit_id: str
     mode: Cmd
-    ch: Optional[int] = None
-    value: Optional[int] = None
-    bitmask: Optional[int] = None
-    chA: Optional[int] = None
-    chB: Optional[int] = None
-    state2b: Optional[int] = None
+    ch: int | None = None
+    value: int | None = None
+    bitmask: int | None = None
+    chA: int | None = None
+    chB: int | None = None
+    state2b: int | None = None
     pulse_ms: int = 0
 
 class SetAoCommandMessage(BaseModel):
@@ -65,7 +65,7 @@ class RequestStateMessage(BaseModel):
     action: Literal[WSAction.GET_STATES]
     unit_id: str
     mode: State
-    ch: Optional[int] = None
+    ch: int | None = None
 
 
 # ---------------------------------------------------------------------
@@ -86,10 +86,10 @@ class AcknowledgeCoreDiagnosticsMessage(BaseModel):
 # Unified union
 # ---------------------------------------------------------------------
 
-WSMessage = Union[
-    SetDoCommandMessage,
-    SetAoCommandMessage,
-    RequestStateMessage,
-    ScanDevicesMessage,
-    AcknowledgeCoreDiagnosticsMessage,
-]
+WSMessage = (
+    SetDoCommandMessage
+    | SetAoCommandMessage
+    | RequestStateMessage
+    | ScanDevicesMessage
+    | AcknowledgeCoreDiagnosticsMessage
+)

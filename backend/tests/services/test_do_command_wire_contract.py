@@ -9,6 +9,7 @@ import struct
 import pytest
 
 from app.infrastructure.protocol.modes import Cmd
+from app.core.mqtt_dto import OutboundCmdMsg
 from app.services import command_queue_service as commands
 
 
@@ -30,20 +31,25 @@ from app.services import command_queue_service as commands
         (Cmd.SET_PULSE_BIT, {"ch": 31, "value": 0, "pulse_ms": 65535}, b"\x1f\x00\xff\xff"),
     ],
 )
-async def test_do_queue_preserves_logical_channel_and_wire_layout(monkeypatch, mode, kwargs, payload):
-    messages = []
+async def test_do_queue_preserves_logical_channel_and_wire_layout(
+    monkeypatch: pytest.MonkeyPatch,
+    mode: Cmd,
+    kwargs: dict[str, int],
+    payload: bytes,
+) -> None:
+    messages: list[OutboundCmdMsg] = []
 
-    async def reserve(unit_id, command_id):
+    async def reserve(unit_id: str, command_id: str) -> tuple[int, bool]:
         assert (unit_id, command_id) == ("DO-001", "audit-command")
         return 0x1234, True
 
-    async def capture(message):
+    async def capture(message: OutboundCmdMsg) -> None:
         messages.append(message)
 
     monkeypatch.setattr(commands, "_allocate_command_packet", reserve)
     monkeypatch.setattr(commands, "enqueue_outbound_command", capture)
     result = await commands.enqueue_do_command(
-        unit_id="DO-001", mode=mode, command_id="audit-command", **kwargs
+        unit_id="DO-001", mode=mode, command_id="audit-command", **kwargs  # pyright: ignore[reportArgumentType]
     )
 
     assert result == "audit-command"

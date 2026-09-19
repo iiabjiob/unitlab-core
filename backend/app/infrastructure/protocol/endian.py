@@ -4,13 +4,11 @@
 #   - Bytes-returning: write_u16_be(value) -> bytes
 #   - In-place write:  write_u16_be(value, into=bytearray, offset=pos) -> None
 
-from typing import Optional, Union
+from typing import overload
 
-MutableBuf = Union[bytearray, memoryview]
+MutableBuf = bytearray | memoryview
 
 def _check_uint(value: int, bits: int) -> None:
-    if not isinstance(value, int):
-        raise TypeError(f"value must be int, got {type(value).__name__}")
     if value < 0 or value > ((1 << bits) - 1):
         raise ValueError(f"value out of range for u{bits}: {value}")
 
@@ -24,7 +22,11 @@ def _ensure_room(buf: MutableBuf, offset: int, size: int) -> None:
 # Write (big-endian)
 # -------------------------
 
-def write_u16_be(value: int, into: Optional[MutableBuf] = None, offset: int = 0):
+@overload
+def write_u16_be(value: int, into: None = None, offset: int = 0) -> bytes: ...
+@overload
+def write_u16_be(value: int, into: MutableBuf, offset: int = 0) -> None: ...
+def write_u16_be(value: int, into: MutableBuf | None = None, offset: int = 0) -> bytes | None:
     """Write u16 in big-endian order. Returns bytes unless 'into' buffer is given."""
     _check_uint(value, 16)
     b = value.to_bytes(2, byteorder="big")
@@ -33,7 +35,11 @@ def write_u16_be(value: int, into: Optional[MutableBuf] = None, offset: int = 0)
     _ensure_room(into, offset, 2)
     into[offset:offset+2] = b
 
-def write_u32_be(value: int, into: Optional[MutableBuf] = None, offset: int = 0):
+@overload
+def write_u32_be(value: int, into: None = None, offset: int = 0) -> bytes: ...
+@overload
+def write_u32_be(value: int, into: MutableBuf, offset: int = 0) -> None: ...
+def write_u32_be(value: int, into: MutableBuf | None = None, offset: int = 0) -> bytes | None:
     """Write u32 in big-endian order. Returns bytes unless 'into' buffer is given."""
     _check_uint(value, 32)
     b = value.to_bytes(4, byteorder="big")
@@ -42,7 +48,11 @@ def write_u32_be(value: int, into: Optional[MutableBuf] = None, offset: int = 0)
     _ensure_room(into, offset, 4)
     into[offset:offset+4] = b
 
-def write_u64_be(value: int, into: Optional[MutableBuf] = None, offset: int = 0):
+@overload
+def write_u64_be(value: int, into: None = None, offset: int = 0) -> bytes: ...
+@overload
+def write_u64_be(value: int, into: MutableBuf, offset: int = 0) -> None: ...
+def write_u64_be(value: int, into: MutableBuf | None = None, offset: int = 0) -> bytes | None:
     """Write u64 in big-endian order. Returns bytes unless 'into' buffer is given."""
     _check_uint(value, 64)
     b = value.to_bytes(8, byteorder="big")

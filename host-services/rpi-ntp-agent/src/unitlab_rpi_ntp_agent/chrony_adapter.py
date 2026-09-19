@@ -1,19 +1,20 @@
+# pyright: reportUnusedCallResult=false
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
 import ipaddress
 import logging
 import os
 import re
 import shutil
+from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable
+from typing import ClassVar
 
 from .config import AgentConfig
 from .models import ChronySource, ChronyTracking
-
 
 logger = logging.getLogger("unitlab.ntp_agent.chrony")
 
@@ -35,10 +36,10 @@ class ChronyStatus:
 
 
 class ChronyAdapter:
-    _SERVER_RE = re.compile(r"^[A-Za-z0-9._:-]+$")
+    _SERVER_RE: ClassVar[re.Pattern[str]] = re.compile(r"^[A-Za-z0-9._:-]+$")
 
     def __init__(self, config: AgentConfig) -> None:
-        self.config = config
+        self.config: AgentConfig = config
 
     async def _run(self, *args: str, timeout: int | None = None, check: bool = True) -> str:
         if self.config.dry_run:
@@ -207,7 +208,7 @@ class ChronyAdapter:
         sources: list[ChronySource] = []
         for raw_line in output.splitlines():
             line = raw_line.rstrip()
-            if not line or line.startswith("MS Name/IP address") or line.startswith("=") or line.startswith("^") is False and line[0] not in {"^", "=", "#", "?"}:
+            if not line or line.startswith(("MS Name/IP address", "=", "^")) is False and line[0] not in {"^", "=", "#", "?"}:
                 # skip headers/legends; data rows usually start with marks like ^*
                 continue
             if len(line) < 2:

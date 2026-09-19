@@ -1,5 +1,6 @@
+from typing import ClassVar
+
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -7,19 +8,19 @@ from pydantic import BaseModel, ConfigDict, Field
 class ChannelBase(BaseModel):
     channel_index: int = Field(alias="index")
     channel_type: str = Field(alias="type")
-    name: Optional[str] = None
+    name: str | None = None
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config: ClassVar[ConfigDict] = ConfigDict(populate_by_name=True)
 
 
 class ChannelSchema(ChannelBase):
     id: int
     device_id: int
-    resolved_name: Optional[str] = None
+    resolved_name: str | None = None
     created_at: datetime
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+    model_config: ClassVar[ConfigDict] = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class ChannelListItem(ChannelSchema):
@@ -34,8 +35,8 @@ class ChannelListResponse(BaseModel):
 
 
 class ChannelUpdate(BaseModel):
-    channel_index: Optional[int] = Field(default=None, alias="index", ge=0)
-    channel_type: Optional[str] = Field(default=None, alias="type")
-    name: Optional[str] = None
+    channel_index: int | None = Field(default=None, alias="index", ge=0)
+    channel_type: str | None = Field(default=None, alias="type")
+    name: str | None = None
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config: ClassVar[ConfigDict] = ConfigDict(populate_by_name=True)

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any, Callable, Sequence
+from typing import Literal, Protocol, cast
+from sqlalchemy.ext.asyncio import AsyncSession
+from collections.abc import Callable, Sequence
 from uuid import uuid4
 
 from app.schemas.verification_schema import (
@@ -29,7 +31,13 @@ from app.services.iec61850.report_runtime import (
     Iec61850ReportSubscriptionPlanDevice,
     Iec61850ReportSubscriptionPlanReport,
     Iec61850ReportSubscriptionPlanSignal,
+    Iec61850ReportSubscriptionRunReportResult,
+    Iec61850ReportSubscriptionRunResult,
+    Iec61850ReportEvent,
+    Iec61850ReportSubscriptionPlanDiagnostic,
+    Iec61850ReportObservationDiagnostic,
     Iec61850ReportRuntimeAdapter,
+    Iec61850RuntimeDiagnostic,
     Iec61850SelectedSignal,
     Iec61850RuntimeTriggerOptions,
     build_simulator_endpoint_for_plan_device,
@@ -52,6 +60,26 @@ class VerificationExecutionResult:
     evidence_set: SignalVerificationEvidenceSetSchema
     evidence_rows: tuple[SignalVerificationEvidenceSchema, ...]
     diagnostics: tuple[VerificationEvidenceDiagnosticSchema, ...]
+
+
+class _RuntimeDiagnostics(Protocol):
+    @property
+    def diagnostics(self) -> Sequence[object]: ...
+
+
+class _ObservationReport(Protocol):
+    event: Iec61850ReportEvent | None
+    ied_name: str
+    report_control_name: str
+    data_set_ref: str | None
+
+
+SignalValue = bool | int | float | str | None
+ObservationBundle = (
+    tuple[object, str, SignalValue, str]
+    | tuple[object, str, SignalValue, str, SignalValue]
+    | tuple[object, str, SignalValue, str, SignalValue, int | float]
+)
 
 
 def build_runtime_subscription_plan(
@@ -182,7 +210,7 @@ async def execute_verification_run(
         _runtime_diagnostic_to_evidence_diagnostic(diagnostic) for diagnostic in runtime_result.diagnostics
     ]
 
-    observations_by_signal_id: dict[int, tuple[Any, str | None, str | None, str | None]] = {}
+    observations_by_signal_id: dict[int, ObservationBundle] = {}
     for report in runtime_result.reports:
         for observation in report.observations:
             target_signal_id = _resolve_signal_id(observation.selected_signal_id)
@@ -225,7 +253,7 @@ async def execute_verification_run(
         step_verdicts.append(step.verdict_state)
 
         if repository is not None:
-            await repository.record_signal_verification_evidence(
+            _ = await repository.record_signal_verification_evidence(
                 workspace_id=workspace_id,
                 test_run_id=test_run_id,
                 signal_list_revision_id=execution_context.signal_list_revision_id,
@@ -255,7 +283,7 @@ async def execute_verification_run(
                 evidence_kind=evidence.evidence_kind,
                 diagnostics=evidence.diagnostics,
             )
-            repository_db = getattr(repository, "db", None)
+            repository_db = cast(AsyncSession | None, getattr(repository, "db", None))
             if repository_db is not None:
                 await repository_db.commit()
 
@@ -265,13 +293,13 @@ async def execute_verification_run(
         diagnostics=diagnostics,
     )
     if repository is not None:
-        await repository.upsert_signal_verification_evidence_set(
+        _ = await repository.upsert_signal_verification_evidence_set(
             workspace_id=workspace_id,
             test_run_id=test_run_id,
             evidence=evidence_rows,
             diagnostics=diagnostics,
         )
-        repository_db = getattr(repository, "db", None)
+        repository_db = cast(AsyncSession | None, getattr(repository, "db", None))
         if repository_db is not None:
             await repository_db.commit()
 
@@ -284,7 +312,6 @@ async def execute_verification_run(
         test_run_id=test_run_id,
         runtime_result=runtime_result,
         subscription_plan=subscription_plan,
-        connection_generation=connection_generation,
         evidence_rows=evidence_rows,
         client_id=client_id,
     )
@@ -316,7 +343,7 @@ async def execute_verification_run(
         execution_context=execution_context,
         recovery_state=recovery_state,
         workflow_state=workflow_state,
-        verdict_state=verdict_state,
+        verdict_state=cast(Literal["pending", "pass", "fail", "inconclusive", "aborted"], verdict_state),
         verification_confidence=verification_confidence,
         confidence_reason=confidence_reason,
         selected_group_id=execution_context.selected_group_id,
@@ -379,15 +406,15 @@ def _build_step_and_evidence(
     target_index: int,
     target: VerificationTargetSchema,
     group: VerificationSubscriptionPlanGroupSchema | None,
-    observation_bundle: tuple[Any, str | None, str | None, str | None, Any, int | None] | None,
+    observation_bundle: ObservationBundle | None,
     triggered_at: datetime,
-    runtime_result,
+    runtime_result: _RuntimeDiagnostics,
     test_run_id: str,
     source_generation: int | None = None,
     forced_evidence_status: str | None = None,
     causal_report_required: bool = True,
 ) -> tuple[SignalVerificationEvidenceSchema, VerificationStepSchema]:
-    report = observation_bundle[0] if observation_bundle is not None else None
+    report = cast(_ObservationReport, observation_bundle[0]) if observation_bundle is not None else None
     actual_report_path = observation_bundle[1] if observation_bundle is not None else None
     signal_value = observation_bundle[2] if observation_bundle is not None else None
     source_timestamp = observation_bundle[3] if observation_bundle is not None else None
@@ -440,6 +467,8 @@ def _build_step_and_evidence(
         target=target,
         source_session_id=source_session_id,
     )
+    metadata_ied_name = target.protocol_metadata.get("ied_name")
+    metadata_dataset = target.protocol_metadata.get("data_set_reference")
     evidence_id = f"{test_run_id}:{target.signal_id}:{target_index}:{uuid4().hex[:8]}"
     evidence = SignalVerificationEvidenceSchema(
         evidence_id=evidence_id,
@@ -447,22 +476,22 @@ def _build_step_and_evidence(
         signal_path=target.signal_path,
         expected_path=target.expected_feedback_path or target.signal_path,
         actual_report_path=actual_report_path,
-        source_ied=report.ied_name if report is not None else target.protocol_metadata.get("ied_name"),
+        source_ied=report.ied_name if report is not None else (metadata_ied_name if isinstance(metadata_ied_name, str) else None),
         endpoint_id=report.event.endpoint_id if report is not None and report.event is not None else target.endpoint_id,
         rpt_id=_first_non_empty_report_text(
             report.event.rpt_id if report is not None and report.event is not None else None,
             report.report_control_name if report is not None else None,
             target.protocol_metadata.get("report_control_reference_hint"),
         ),
-        dataset=report.data_set_ref if report is not None else target.protocol_metadata.get("data_set_reference"),
+        dataset=report.data_set_ref if report is not None else (metadata_dataset if isinstance(metadata_dataset, str) else None),
         observed_at=observed_at,
         latency_ms=computed_latency_ms,
         # A report observation proves value/path/timing only. The current
         # normalized runtime model does not carry the IEC quality bit, so never
         # infer "good" from the observed status.
         quality=_resolve_quality_label(observed_quality, evidence_status),
-        freshness=freshness,
-        evidence_status=evidence_status,
+        freshness=cast(Literal["live", "stale", "unknown"] | None, freshness),
+        evidence_status=cast(Literal["observed", "stale", "timeout", "invalid", "late", "out_of_window"], evidence_status),
         reason_code=reason_code,
         source_generation=source_generation,
         source_report_sequence_generation=report.event.sequence_number if report is not None and report.event is not None else None,
@@ -490,12 +519,18 @@ def _build_step_and_evidence(
         session_id=source_session_id or f"{test_run_id}:unknown-session",
         subscription_id=source_subscription_id or f"{test_run_id}:unknown-subscription",
         group_id=group.group_id if group is not None else None,
-        step_state=_resolve_step_state(evidence_status=evidence_status),
+        step_state=cast(
+            Literal["draft", "planned", "armed", "running", "awaiting_confirmation", "completing", "completed", "aborted", "failed"],
+            _resolve_step_state(evidence_status=evidence_status),
+        ),
         expected_path=evidence.expected_path,
         expected_window_ms=window_ms,
-        freshness=freshness,
-        evidence_status=evidence_status,
-        verdict_state=_resolve_step_verdict_state(evidence_status=evidence_status),
+        freshness=cast(Literal["live", "stale", "unknown"] | None, freshness),
+        evidence_status=cast(Literal["none", "observed", "stale", "timeout", "invalid", "late", "out_of_window"], evidence_status),
+        verdict_state=cast(
+            Literal["pending", "pass", "fail", "inconclusive", "aborted"],
+            _resolve_step_verdict_state(evidence_status=evidence_status),
+        ),
         evidence_ids=[evidence_id],
         actual_report_path=evidence.actual_report_path,
         source_session_id=source_session_id,
@@ -537,15 +572,16 @@ def _resolve_evidence_state(
     target: VerificationTargetSchema,
     actual_report_path: str | None,
     observed_at: datetime | None,
-    signal_value: Any,
-    quality_value: Any = None,
+    signal_value: object,
+    quality_value: object = None,
     report_reason: str | None = None,
     causal_report_required: bool = True,
     latency_ms: int | None,
-    runtime_result,
+    runtime_result: _RuntimeDiagnostics,
     window_ms: int,
     timeout_ms: int,
 ) -> tuple[str, str | None, str, str]:
+    _ = target
     if observed_at is None:
         return "timeout", "unknown", "no_confirmation", "timeout"
     if actual_report_path is None:
@@ -567,11 +603,11 @@ def _resolve_evidence_state(
     if runtime_result.diagnostics:
         first = runtime_result.diagnostics[0]
         if getattr(first, "severity", "") == "error":
-            return "invalid", "unknown", first.code, "report_observation"
+            return "invalid", "unknown", str(getattr(first, "code", "runtime_diagnostic")), "report_observation"
     return "observed", "live", "report_received", "report_observation"
 
 
-def _quality_is_unusable(value: Any) -> bool:
+def _quality_is_unusable(value: object) -> bool:
     if isinstance(value, bool) or value is None:
         return False
     if isinstance(value, int):
@@ -580,7 +616,7 @@ def _quality_is_unusable(value: Any) -> bool:
     return normalized in {"questionable", "invalid", "bad", "reserved", "overflow"}
 
 
-def _resolve_quality_label(value: Any, evidence_status: str) -> str | None:
+def _resolve_quality_label(value: object, evidence_status: str) -> str | None:
     if evidence_status != "observed":
         return None
     if value is None:
@@ -597,7 +633,7 @@ def _build_recovery_state(
     session_snapshots: Sequence[VerificationSessionSnapshotSchema],
     subscription_snapshots: Sequence[VerificationSubscriptionSnapshotSchema],
     evidence_rows: Sequence[SignalVerificationEvidenceSchema],
-    runtime_result,
+    runtime_result: Iec61850ReportSubscriptionRunResult,
 ) -> VerificationRecoveryStateSchema | None:
     recovery_evidence_rows = [evidence for evidence in evidence_rows if _is_recovery_evidence_status(evidence.evidence_status)]
     runtime_diagnostics = tuple(_runtime_diagnostic_to_evidence_diagnostic(diagnostic) for diagnostic in runtime_result.diagnostics)
@@ -644,7 +680,20 @@ def _build_recovery_state(
         runtime_state=runtime_state,
         desired_state=desired_state,
         active_generation=max((snapshot.connection_generation for snapshot in session_snapshots), default=1),
-        recovery_reason=recovery_reason,
+        recovery_reason=cast(
+            Literal[
+                "disconnect",
+                "association_lost",
+                "report_health_degraded",
+                "stale_generation",
+                "subscription_lost",
+                "timeout",
+                "user_reconnect",
+                "runtime_failure",
+            ]
+            | None,
+            recovery_reason,
+        ),
         desired_subscription_plan_id=subscription_plan.plan_id or test_run_id,
         desired_group_ids=group_ids,
         desired_report_controls=report_controls,
@@ -730,7 +779,7 @@ def _resolve_recovery_reason(
     return None
 
 
-def _first_non_empty_report_text(*values: Any) -> str | None:
+def _first_non_empty_report_text(*values: object) -> str | None:
     for value in values:
         if not isinstance(value, str):
             continue
@@ -757,7 +806,7 @@ def _unique_non_empty_strings(values: Sequence[str | None]) -> list[str]:
 def _build_session_snapshots(
     *,
     test_run_id: str,
-    runtime_result,
+    runtime_result: Iec61850ReportSubscriptionRunResult,
     connection_generation: int,
 ) -> list[VerificationSessionSnapshotSchema]:
     snapshots: list[VerificationSessionSnapshotSchema] = []
@@ -786,9 +835,8 @@ def _build_session_snapshots(
 def _build_subscription_snapshots(
     *,
     test_run_id: str,
-    runtime_result,
+    runtime_result: Iec61850ReportSubscriptionRunResult,
     subscription_plan: VerificationSubscriptionPlanSchema,
-    connection_generation: int,
     evidence_rows: Sequence[SignalVerificationEvidenceSchema],
     client_id: str,
 ) -> list[VerificationSubscriptionSnapshotSchema]:
@@ -854,10 +902,10 @@ def _build_subscription_snapshots(
 
 
 def _build_runtime_summary(
-    runtime_result,
+    runtime_result: Iec61850ReportSubscriptionRunResult,
     evidence_rows: Sequence[SignalVerificationEvidenceSchema],
     subscription_snapshots: Sequence[VerificationSubscriptionSnapshotSchema] = (),
-) -> dict[str, Any]:
+) -> dict[str, object]:
     summary = build_signal_verification_evidence_summary(evidence_rows).model_dump()
     summary.update(
         {
@@ -877,7 +925,7 @@ def _build_runtime_summary(
 
 def _resolve_plan_group_for_report(
     subscription_plan: VerificationSubscriptionPlanSchema,
-    report,
+    report: Iec61850ReportSubscriptionRunReportResult,
 ) -> VerificationSubscriptionPlanGroupSchema | None:
     report_control_name = str(getattr(report, "report_control_name", "")).strip()
     data_set_ref = str(getattr(report, "data_set_ref", "")).strip()
@@ -895,7 +943,7 @@ def _resolve_subscription_id(
     test_run_id: str,
     endpoint_id: str,
     group: VerificationSubscriptionPlanGroupSchema | None,
-    report,
+    report: Iec61850ReportSubscriptionRunReportResult,
 ) -> str:
     if group is not None and group.group_id.strip():
         return f"{test_run_id}:{group.group_id}"
@@ -911,7 +959,7 @@ def _resolve_subscription_id(
 def _resolve_source_session_id(
     *,
     test_run_id: str,
-    report,
+    report: _ObservationReport | None,
     target: VerificationTargetSchema,
 ) -> str | None:
     if report is not None and report.event is not None:
@@ -925,7 +973,7 @@ def _resolve_source_subscription_id(
     *,
     test_run_id: str,
     group: VerificationSubscriptionPlanGroupSchema | None,
-    report,
+    report: _ObservationReport | None,
     target: VerificationTargetSchema,
     source_session_id: str | None,
 ) -> str | None:
@@ -944,7 +992,7 @@ def _resolve_source_subscription_id(
     return None
 
 
-def _parse_timestamp(value: Any) -> datetime | None:
+def _parse_timestamp(value: object) -> datetime | None:
     if value is None:
         return None
     if isinstance(value, datetime):
@@ -976,8 +1024,10 @@ def _diagnostic_message(code: str, evidence_status: str) -> str:
     return f"Evidence status is {evidence_status}."
 
 
-def _runtime_diagnostic_to_evidence_diagnostic(diagnostic: Any) -> VerificationEvidenceDiagnosticSchema:
-    severity = getattr(diagnostic, "severity", None)
+def _runtime_diagnostic_to_evidence_diagnostic(
+    diagnostic: Iec61850RuntimeDiagnostic | Iec61850ReportSubscriptionPlanDiagnostic | Iec61850ReportObservationDiagnostic,
+) -> VerificationEvidenceDiagnosticSchema:
+    severity = cast(object, getattr(diagnostic, "severity", None))
     severity_value = str(severity).strip() if severity is not None else ""
     return VerificationEvidenceDiagnosticSchema(
         code=str(getattr(diagnostic, "code", "runtime_diagnostic")),
@@ -997,21 +1047,11 @@ def _runtime_diagnostic_to_evidence_diagnostic(diagnostic: Any) -> VerificationE
     )
 
 
-def _resolve_connection_generation(runtime_result) -> int:
+def _resolve_connection_generation(runtime_result: Iec61850ReportSubscriptionRunResult) -> int:
     generation = getattr(runtime_result, "connection_generation", None)
     if isinstance(generation, int) and generation > 0:
         return generation
     return 1
-
-
-def _resolve_target_group_id(
-    subscription_plan: VerificationSubscriptionPlanSchema,
-    target_index: int,
-) -> str | None:
-    for group in subscription_plan.groups:
-        if target_index in group.target_indexes:
-            return group.group_id or None
-    return None
 
 
 def _resolve_target_group(

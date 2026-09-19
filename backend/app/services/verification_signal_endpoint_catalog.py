@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import cast
 import re
 
 from app.services.iec61850.mms_adapter import (
@@ -99,34 +99,15 @@ def build_verification_plan_endpoint_catalog(
 
 
 def _extract_target_endpoint_candidate(sources: list[VerificationTargetSource]) -> tuple[str, int] | None:
-    metadata_items = [
-        getattr(source, "signal_metadata", None)
+    metadata_items: list[dict[str, object]] = [
+        cast(dict[str, object], getattr(source, "signal_metadata", {}))
         for source in sources
         if isinstance(getattr(source, "signal_metadata", None), dict)
     ]
     return _extract_endpoint_candidate(metadata_items)
 
 
-def _extract_target_host_candidates(sources: list[VerificationTargetSource]) -> list[str]:
-    prioritized: list[str] = []
-    fallback: list[str] = []
-    for source in sources:
-        metadata = getattr(source, "signal_metadata", None)
-        if not isinstance(metadata, dict) or not metadata:
-            continue
-        keys = _extract_by_key_priority(metadata, _HOST_KEY_TOKENS)
-        for candidate in keys:
-            normalized = _normalize_ipv4_candidate(candidate)
-            if normalized and normalized not in prioritized:
-                prioritized.append(normalized)
-        if not prioritized:
-            for candidate in _extract_ipv4_strings(metadata):
-                if candidate not in fallback:
-                    fallback.append(candidate)
-    return prioritized or fallback
-
-
-def _extract_endpoint_candidate(metadata_items: list[dict[str, Any]]) -> tuple[str, int] | None:
+def _extract_endpoint_candidate(metadata_items: list[dict[str, object]]) -> tuple[str, int] | None:
     for metadata in metadata_items:
         for candidate in _extract_by_key_priority(metadata, _HOST_KEY_TOKENS):
             endpoint = _normalize_host_port_candidate(candidate)
@@ -140,40 +121,41 @@ def _extract_endpoint_candidate(metadata_items: list[dict[str, Any]]) -> tuple[s
     return None
 
 
-def _extract_by_key_priority(payload: Any, key_tokens: tuple[str, ...]) -> list[str]:
+def _extract_by_key_priority(payload: object, key_tokens: tuple[str, ...]) -> list[str]:
     values: list[str] = []
     if isinstance(payload, dict):
-        for key, child in payload.items():
+        typed_payload = cast(dict[object, object], payload)
+        for key, child in typed_payload.items():
             key_text = str(key).strip().lower()
             if any(token == key_text or token in key_text for token in key_tokens):
                 values.extend(_extract_strings(child))
             values.extend(_extract_by_key_priority(child, key_tokens))
     elif isinstance(payload, (list, tuple, set)):
-        for item in payload:
+        for item in cast(list[object], payload):
             values.extend(_extract_by_key_priority(item, key_tokens))
     return values
 
 
-def _extract_strings(value: Any) -> list[str]:
+def _extract_strings(value: object) -> list[str]:
     if isinstance(value, str):
         return [value]
     if isinstance(value, (list, tuple, set)):
         result: list[str] = []
-        for item in value:
+        for item in cast(list[object] | tuple[object, ...] | set[object], value):
             result.extend(_extract_strings(item))
         return result
     if isinstance(value, dict):
-        result: list[str] = []
-        for child in value.values():
-            result.extend(_extract_strings(child))
-        return result
+        mapping_result: list[str] = []
+        for child in cast(dict[object, object], value).values():
+            mapping_result.extend(_extract_strings(child))
+        return mapping_result
     return []
 
 
-def _extract_ipv4_strings(value: Any) -> list[str]:
+def _extract_ipv4_strings(value: object) -> list[str]:
     candidates: list[str] = []
     for raw in _extract_strings(value):
-        for match in _IP_PATTERN.findall(raw):
+        for match in cast(list[str], _IP_PATTERN.findall(raw)):
             normalized = _normalize_ipv4_candidate(match)
             if normalized and normalized not in candidates:
                 candidates.append(normalized)

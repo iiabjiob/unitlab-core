@@ -21,16 +21,18 @@ async def process_inbound_message(msg: InboundMqttMsg) -> None:
 
         start_handler = time.perf_counter()
         if handler:
-            await handler(msg.topic, msg.payload, unit_id)
+            _ = await handler(msg.topic, msg.payload, unit_id)
         else:
             logger.warning(f"[INBO] No handler found for {msg.topic}")
         handler_latency = (time.perf_counter() - start_handler) * 1000
 
         logger.debug(
-            f"[INBO] {msg.topic} ({pattern}) | "
-            f"queue={queue_latency:.1f} ms, "
-            f"route={route_latency:.1f} ms, "
-            f"handler={handler_latency:.1f} ms"
+            (
+                f"[INBO] {msg.topic} ({pattern}) | "
+                f"queue={queue_latency:.1f} ms, "
+                f"route={route_latency:.1f} ms, "
+                f"handler={handler_latency:.1f} ms"
+            )
         )
     except Exception as exc:
         logger.error(f"[INBO] 💥 Error while handling {msg.topic}: {exc}")

@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
-
+from collections.abc import Mapping
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -12,7 +11,7 @@ from app.models.device import Device
 
 class DeviceRepository:
     def __init__(self, db: AsyncSession):
-        self.db = db
+        self.db: AsyncSession = db
 
     # -------------------------------------------
     # Base select helpers
@@ -29,9 +28,9 @@ class DeviceRepository:
     async def list(self, with_channels: bool = False) -> list[Device]:
         query = self.base_with_channels() if with_channels else self.base()
         result = await self.db.execute(query)
-        return result.scalars().all()
+        return list(result.scalars().all())
 
-    async def get(self, device_id: int, with_channels: bool = False) -> Optional[Device]:
+    async def get(self, device_id: int, with_channels: bool = False) -> Device | None:
         query = (
             self.base_with_channels() if with_channels else self.base()
         ).where(Device.id == device_id)
@@ -39,7 +38,7 @@ class DeviceRepository:
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
-    async def get_by_unit_id(self, unit_id: str, with_channels: bool = False) -> Optional[Device]:
+    async def get_by_unit_id(self, unit_id: str, with_channels: bool = False) -> Device | None:
         query = (
             self.base_with_channels() if with_channels else self.base()
         ).where(Device.unit_id == unit_id)
@@ -47,21 +46,21 @@ class DeviceRepository:
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
-    async def create_if_not_exists(self, data: dict) -> Device:
+    async def create_if_not_exists(self, data: Mapping[str, object]) -> Device:
         # First try to locate existing device
-        device = await self.get_by_unit_id(data["unit_id"])
+        device = await self.get_by_unit_id(str(data["unit_id"]))
         if device:
             return device
 
         # Create new
-        device = Device(**data)
+        device = Device(**dict(data))
         self.db.add(device)
         await self.db.commit()
         await self.db.refresh(device)
 
         return device
 
-    async def update(self, device_id: int, changes: dict) -> Optional[Device]:
+    async def update(self, device_id: int, changes: Mapping[str, object]) -> Device | None:
         dev = await self.get(device_id, with_channels=True)
         if not dev:
             return None
@@ -85,7 +84,7 @@ class DeviceRepository:
     # -------------------------------------------
     # Last seen
     # -------------------------------------------
-    async def set_last_seen(self, unit_id: str, ts: datetime | None) -> Optional[Device]:
+    async def set_last_seen(self, unit_id: str, ts: datetime | None) -> Device | None:
         device = await self.get_by_unit_id(unit_id)
         if not device:
             return None

@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-
-from typing import TYPE_CHECKING, Awaitable, Callable, Optional
+from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING, cast, override
 
 from simulator.mqtt_client import (
     SimulatedDeviceBase,
@@ -17,20 +17,20 @@ from simulator.packet_structures import (
     CmdSetPulseBit,
     CmdSetSingleBit,
     Mode,
+    PacketHeader,
     RespError,
     RespStatus,
     StateAllBit,
     StateDiagBitmask,
     StateSingleBit,
-    encode_state_all_bit,
-    encode_state_diag_bitmask,
-    encode_state_single_bit,
     decode_cmd_set_all_bit,
     decode_cmd_set_pair,
     decode_cmd_set_pulse,
     decode_cmd_set_single_bit,
+    encode_state_all_bit,
+    encode_state_diag_bitmask,
+    encode_state_single_bit,
 )
-
 
 if TYPE_CHECKING:  # pragma: no cover - hints only
     from simulator.mqtt_client import BehaviorSettings, BrokerSettings
@@ -45,8 +45,8 @@ class SimulatedDODevice(SimulatedDeviceBase):
         unit_id: str,
         signals: int,
         interval: float,
-        broker: "BrokerSettings",
-        behavior: "BehaviorSettings",
+        broker: BrokerSettings,
+        behavior: BehaviorSettings,
         test_mode: bool = False,
     ) -> None:
         super().__init__(
@@ -57,17 +57,19 @@ class SimulatedDODevice(SimulatedDeviceBase):
             behavior=behavior,
             test_mode=test_mode,
         )
-        self._bitmask = 0
-        self._state_lock = asyncio.Lock()
-        self._diag_lock = asyncio.Lock()
-        self._diag_open = 0
-        self._diag_fault = 0
-        self._diag_soft = 0
+        self._bitmask: int = 0
+        self._state_lock: asyncio.Lock = asyncio.Lock()
+        self._diag_lock: asyncio.Lock = asyncio.Lock()
+        self._diag_open: int = 0
+        self._diag_fault: int = 0
+        self._diag_soft: int = 0
 
     @property
+    @override
     def device_type_code(self) -> str:
         return "DO  "
 
+    @override
     def randomize_state(self) -> None:
         if self.signals <= 0:
             return
@@ -75,10 +77,12 @@ class SimulatedDODevice(SimulatedDeviceBase):
         value = self._rng.randint(0, 1)
         self._set_bit(ch, value)
 
+    @override
     def should_auto_publish(self) -> bool:
         return False
 
-    async def publish_state(self, *, packet_id: Optional[int] = None) -> None:
+    @override
+    async def publish_state(self, *, packet_id: int | None = None) -> None:
         async with self._state_lock:
             payload = encode_state_all_bit(
                 StateAllBit(bitmask=self._bitmask & self._mask())
@@ -96,7 +100,7 @@ class SimulatedDODevice(SimulatedDeviceBase):
         ch: int,
         value: int,
         *,
-        packet_id: Optional[int] = None,
+        packet_id: int | None = None,
     ) -> None:
         payload = encode_state_single_bit(StateSingleBit(ch=ch, value=value))
         await self._publish_packet(
@@ -107,7 +111,7 @@ class SimulatedDODevice(SimulatedDeviceBase):
             retain=False,
         )
 
-    async def _publish_diag(self, *, packet_id: Optional[int] = None) -> None:
+    async def _publish_diag(self, *, packet_id: int | None = None) -> None:
         async with self._diag_lock:
             payload = encode_state_diag_bitmask(
                 StateDiagBitmask(
@@ -132,7 +136,7 @@ class SimulatedDODevice(SimulatedDeviceBase):
             return
         target_field = self._rng.choice(("_diag_open", "_diag_fault", "_diag_soft"))
         async with self._diag_lock:
-            current = getattr(self, target_field)
+            current = cast(int, getattr(self, target_field))
             if self._rng.random() < 0.5:
                 current |= mask
             else:
@@ -140,7 +144,8 @@ class SimulatedDODevice(SimulatedDeviceBase):
             setattr(self, target_field, current & self._mask())
         await self._publish_diag()
 
-    async def handle_packet(self, topic: str, header, payload: bytes) -> None:
+    @override
+    async def handle_packet(self, topic: str, header: PacketHeader, payload: bytes) -> None:
         mode = header.mode
         try:
             cmd = Cmd(mode)
@@ -190,7 +195,7 @@ class SimulatedDODevice(SimulatedDeviceBase):
             self._logger.debug("Unhandled state request %s from %s", state_mode, topic)
 
     async def _handle_command(self, cmd: Cmd, payload: bytes, packet_id: int) -> None:
-        action: Optional[Callable[[], Awaitable[None]]] = None
+        action: Callable[[], Awaitable[None]] | None = None
         try:
             if cmd == Cmd.SET_SINGLE_BIT:
                 command = decode_cmd_set_single_bit(payload)
@@ -236,8 +241,7 @@ class SimulatedDODevice(SimulatedDeviceBase):
             )
             return
 
-        if action is None:
-            return
+        action = cast(Callable[[], Awaitable[None]], action)
 
         if self._rng.random() < self.behavior.command_error_rate:
             await self._send_resp(
@@ -254,7 +258,7 @@ class SimulatedDODevice(SimulatedDeviceBase):
         await action()
         await self._send_resp(RespStatus.OK, packet_id=packet_id)
 
-    async def _apply_single(self, cmd: CmdSetSingleBit, packet_id: Optional[int] = None) -> None:
+    async def _apply_single(self, cmd: CmdSetSingleBit, packet_id: int | None = None) -> None:
         changed_mask = 0
         async with self._state_lock:
             previous = (self._bitmask >> cmd.ch) & 0x01
@@ -265,7 +269,7 @@ class SimulatedDODevice(SimulatedDeviceBase):
         if changed_mask:
             await self._maybe_mutate_diag(changed_mask)
 
-    async def _apply_all(self, cmd: CmdSetAllBit, packet_id: Optional[int] = None) -> None:
+    async def _apply_all(self, cmd: CmdSetAllBit, packet_id: int | None = None) -> None:
         changed_mask = 0
         async with self._state_lock:
             previous = self._bitmask
@@ -278,7 +282,7 @@ class SimulatedDODevice(SimulatedDeviceBase):
     async def _apply_pair(
         self,
         cmd: CmdSetPairBit,
-        packet_id: Optional[int] = None,
+        packet_id: int | None = None,
     ) -> None:
         mapping = {
             # Switchgear contract:
@@ -312,7 +316,7 @@ class SimulatedDODevice(SimulatedDeviceBase):
     async def _apply_pulse(
         self,
         cmd: CmdSetPulseBit,
-        packet_id: Optional[int] = None,
+        packet_id: int | None = None,
     ) -> None:
         changed_mask = 0
         async with self._state_lock:

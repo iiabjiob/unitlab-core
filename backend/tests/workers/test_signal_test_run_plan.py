@@ -1,23 +1,24 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
-from app.workers.signal_test_run_runner import _load_immutable_plan_rows
+from app.workers.signal_test_run_runner import _load_immutable_plan_rows  # pyright: ignore[reportPrivateUsage]
+from app.api.v1.signal_sheet.repository import SignalSheetRepository
 
 
 class _FakeDb:
-    def __init__(self, plan) -> None:
-        self.plan = plan
+    def __init__(self, plan: object) -> None:
+        self.plan: object = plan
 
-    async def scalar(self, _statement):
+    async def scalar(self, _statement: object) -> object:
         return self.plan
-
 
 @pytest.mark.anyio
 async def test_worker_loads_rows_from_immutable_plan_order() -> None:
-    row = {
+    row: dict[str, object] = {
         "row_id": "signal-2",
         "signal_id": 2,
         "signal_key": "S2",
@@ -40,7 +41,7 @@ async def test_worker_loads_rows_from_immutable_plan_order() -> None:
     )
     repo = SimpleNamespace(db=_FakeDb(plan))
 
-    rows = await _load_immutable_plan_rows(repo, 7, "job-1")
+    rows = await _load_immutable_plan_rows(cast(SignalSheetRepository, cast(object, repo)), 7, "job-1")
 
     assert [item.signal_id for item in rows] == [2, 3]
     assert rows[0].channel_id == 200
@@ -51,4 +52,4 @@ async def test_worker_rejects_missing_immutable_plan() -> None:
     repo = SimpleNamespace(db=_FakeDb(None))
 
     with pytest.raises(RuntimeError, match="Immutable test-run plan is missing"):
-        await _load_immutable_plan_rows(repo, 7, "job-1")
+        _ = await _load_immutable_plan_rows(cast(SignalSheetRepository, cast(object, repo)), 7, "job-1")

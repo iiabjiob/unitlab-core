@@ -4,7 +4,8 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Literal, Sequence
+from typing import Literal
+from collections.abc import Sequence
 
 from app.services.external_ied_discovery_scheduler import DiscoveryCacheMetadata
 
@@ -332,7 +333,7 @@ class _GraphBuilder:
     edges: set[tuple[str, str]] = field(default_factory=set)
 
     def add_node(self, node_id: str, kind: str, label: str) -> None:
-        self.nodes.setdefault(node_id, {"id": node_id, "kind": kind, "label": label})
+        _ = self.nodes.setdefault(node_id, {"id": node_id, "kind": kind, "label": label})
 
     def add_edge(self, source: str, target: str) -> None:
         self.edges.add((source, target))
@@ -429,7 +430,7 @@ def _functional_constraint_from_reference(value: str) -> str | None:
         return bracket_match.group(1).upper()
     if "!" in text:
         text = text.split("!", 1)[1]
-    domain, separator, item = text.partition("/")
+    _domain, separator, item = text.partition("/")
     parts = item.split("$") if separator else text.split("$")
     if len(parts) >= 3 and parts[1].lower() in IEC61850_FUNCTIONAL_CONSTRAINTS:
         return parts[1].upper()

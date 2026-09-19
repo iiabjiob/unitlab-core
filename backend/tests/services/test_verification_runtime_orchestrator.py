@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from threading import Event, Lock
 from types import SimpleNamespace
 import time
+from typing import Never, Protocol, cast, final, override
 
 import pytest
 
@@ -13,6 +14,7 @@ from app.services.iec61850.report_runtime import (
     Iec61850DeviceEndpoint,
     Iec61850ReportControlReadResult,
     Iec61850ReportControlState,
+    Iec61850ReportControlRef,
     Iec61850ReportEvent,
     Iec61850ReportEventValue,
     Iec61850ReportReason,
@@ -22,9 +24,33 @@ from app.services.iec61850.report_runtime import (
     Iec61850RuntimeMode,
     Iec61850RuntimeStatus,
     Iec61850RuntimeTriggerOptions,
+    Iec61850ReportRuntimeAdapter,
 )
 from app.services.verification_planner import VerificationTargetSource, build_verification_subscription_plan
-from app.services.verification_runtime_orchestrator import VerificationRuntimeOrchestrator, _observation_diagnostics_to_evidence_diagnostics
+from app.services.verification_runtime_orchestrator import (
+    VerificationRuntimeOrchestrator,
+    _observation_diagnostics_to_evidence_diagnostics as observation_diagnostics_to_evidence_diagnostics,  # pyright: ignore[reportPrivateUsage]
+)
+
+
+def _runtime_adapter(value: object) -> Iec61850ReportRuntimeAdapter:
+    return cast(Iec61850ReportRuntimeAdapter, value)
+
+
+def _runtime_summary(value: object) -> dict[str, int]:
+    return cast(dict[str, int], value)
+
+
+def _diagnostic_details(value: object) -> dict[str, object]:
+    return cast(dict[str, object], value)
+
+
+class _EndpointDevice(Protocol):
+    @property
+    def ied_name(self) -> str: ...
+
+    @property
+    def access_point_name(self) -> str: ...
 
 
 def _build_multi_ied_plan():
@@ -182,7 +208,7 @@ def test_observation_diagnostics_filter_unrelated_selected_signals_for_capture_e
         ),
     )
 
-    filtered = _observation_diagnostics_to_evidence_diagnostics(
+    filtered = observation_diagnostics_to_evidence_diagnostics(
         diagnostics,
         signal_id=251,
         include_unrelated=False,
@@ -193,7 +219,7 @@ def test_observation_diagnostics_filter_unrelated_selected_signals_for_capture_e
     assert filtered[0].details["signal_id"] == "251"
 
 
-def _custom_endpoint_for_device(device) -> Iec61850DeviceEndpoint:
+def _custom_endpoint_for_device(device: _EndpointDevice) -> Iec61850DeviceEndpoint:
     return Iec61850DeviceEndpoint(
         id=f"custom:{device.ied_name}/{device.access_point_name}",
         mode=Iec61850RuntimeMode.SIMULATOR,
@@ -204,7 +230,7 @@ def _custom_endpoint_for_device(device) -> Iec61850DeviceEndpoint:
     )
 
 
-def _mms_endpoint_for_device(device) -> Iec61850DeviceEndpoint:
+def _mms_endpoint_for_device(device: _EndpointDevice) -> Iec61850DeviceEndpoint:
     return Iec61850DeviceEndpoint(
         id=f"mms:172.16.40.128:12447/{device.ied_name}/{device.access_point_name}",
         mode=Iec61850RuntimeMode.MMS,
@@ -215,7 +241,7 @@ def _mms_endpoint_for_device(device) -> Iec61850DeviceEndpoint:
     )
 
 
-def _unreachable_mms_endpoint_for_device(device) -> Iec61850DeviceEndpoint:
+def _unreachable_mms_endpoint_for_device(device: _EndpointDevice) -> Iec61850DeviceEndpoint:
     return Iec61850DeviceEndpoint(
         id=f"mms:192.168.248.110:102/{device.ied_name}/{device.access_point_name}",
         mode=Iec61850RuntimeMode.MMS,
@@ -226,7 +252,7 @@ def _unreachable_mms_endpoint_for_device(device) -> Iec61850DeviceEndpoint:
     )
 
 
-def _other_unreachable_mms_endpoint_for_device(device) -> Iec61850DeviceEndpoint:
+def _other_unreachable_mms_endpoint_for_device(device: _EndpointDevice) -> Iec61850DeviceEndpoint:
     return Iec61850DeviceEndpoint(
         id=f"mms:192.168.248.111:102/{device.ied_name}/{device.access_point_name}",
         mode=Iec61850RuntimeMode.MMS,
@@ -237,11 +263,13 @@ def _other_unreachable_mms_endpoint_for_device(device) -> Iec61850DeviceEndpoint
     )
 
 
+@final
 class _FailingReadSession:
     def __init__(self) -> None:
         self.read_count = 0
 
-    def read_report_control(self, reference):  # noqa: ANN001
+    def read_report_control(self, reference: Iec61850ReportControlRef) -> Iec61850ReportControlReadResult | Iec61850ReportControlState:
+        del reference
         self.read_count += 1
         raise Iec61850ReportRuntimeError(
             "EXTERNAL_MMS_ENDPOINT_UNREACHABLE",
@@ -252,30 +280,31 @@ class _FailingReadSession:
         return None
 
 
+@final
 class _FailingReadAdapter:
     def __init__(self) -> None:
         self.session = _FailingReadSession()
         self.connect_count = 0
 
-    def connect(self, **kwargs):  # noqa: ANN001
+    def connect(self, **_kwargs: object) -> _FailingReadSession:
         self.connect_count += 1
         return self.session
 
 
 class _PartialRptEnaFailureSession:
     def __init__(self) -> None:
-        self.read_count = 0
-        self.enable_count = 0
-        self.gi_count = 0
+        self.read_count: int = 0
+        self.enable_count: int = 0
+        self.gi_count: int = 0
 
-    def read_report_control(self, reference):  # noqa: ANN001
+    def read_report_control(self, reference: Iec61850ReportControlRef) -> Iec61850ReportControlReadResult | Iec61850ReportControlState:
         self.read_count += 1
         return _state_from_reference(reference, Iec61850RuntimeStatus.READ)
 
-    def reserve_report_control(self, reference, client_id):  # noqa: ANN001
+    def reserve_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:
         return _state_from_reference(reference, Iec61850RuntimeStatus.RESERVED, reserved_by=client_id)
 
-    def enable_report_control(self, reference, client_id):  # noqa: ANN001
+    def enable_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:
         self.enable_count += 1
         if reference.report_control_name == "brB":
             raise Iec61850ReportRuntimeError(
@@ -284,7 +313,8 @@ class _PartialRptEnaFailureSession:
             )
         return _state_from_reference(reference, Iec61850RuntimeStatus.ENABLED, enabled=True, reserved_by=client_id, owner=client_id)
 
-    def send_general_interrogation(self, reference, client_id):  # noqa: ANN001, ARG002
+    def send_general_interrogation(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportEvent:  # noqa: ARG002
+        del client_id
         self.gi_count += 1
         return Iec61850ReportEvent(
             id=f"{reference.report_control_name}:report-1",
@@ -315,44 +345,50 @@ class _PartialRptEnaFailureSession:
         return None
 
 
+@final
 class _PartialRptEnaFailureAdapter:
     def __init__(self) -> None:
         self.session = _PartialRptEnaFailureSession()
         self.connect_count = 0
 
-    def connect(self, **kwargs):  # noqa: ANN001
+    def connect(self, **_kwargs: object) -> _PartialRptEnaFailureSession:
         self.connect_count += 1
         return self.session
 
 
+@final
 class _ResolvedCandidateReadSession(_PartialRptEnaFailureSession):
-    def read_report_control(self, reference):  # noqa: ANN001
+    @override
+    def read_report_control(self, reference: Iec61850ReportControlRef) -> Iec61850ReportControlReadResult:
         self.read_count += 1
         state = _state_from_reference(reference, Iec61850RuntimeStatus.READ)
         return Iec61850ReportControlReadResult(
-            endpoint=_custom_endpoint_for_device(type("Device", (), {"ied_name": reference.ied_name, "access_point_name": reference.access_point_name})()),
+            endpoint=_custom_endpoint_for_device(cast(_EndpointDevice, cast(object, type("Device", (), {"ied_name": reference.ied_name, "access_point_name": reference.access_point_name})()))),
             candidate_id="IED-ACTRL1:LLN0$BR$brcbST01",
             state=state,
             diagnostics=(),
         )
 
 
+@final
 class _ResolvedCandidateReadAdapter:
     def __init__(self) -> None:
         self.session = _ResolvedCandidateReadSession()
         self.connect_count = 0
 
-    def connect(self, **kwargs):  # noqa: ANN001
+    def connect(self, **_kwargs: object) -> _ResolvedCandidateReadSession:
         self.connect_count += 1
         return self.session
 
 
+@final
 class _PrecheckDiagnosticSession(_PartialRptEnaFailureSession):
-    def read_report_control(self, reference):  # noqa: ANN001
+    @override
+    def read_report_control(self, reference: Iec61850ReportControlRef) -> Iec61850ReportControlReadResult:
         self.read_count += 1
         state = _state_from_reference(reference, Iec61850RuntimeStatus.READ)
         return Iec61850ReportControlReadResult(
-            endpoint=_custom_endpoint_for_device(type("Device", (), {"ied_name": reference.ied_name, "access_point_name": reference.access_point_name})()),
+            endpoint=_custom_endpoint_for_device(cast(_EndpointDevice, cast(object, type("Device", (), {"ied_name": reference.ied_name, "access_point_name": reference.access_point_name})()))),
             candidate_id="group-unmatched",
             state=state,
             diagnostics=(
@@ -366,47 +402,57 @@ class _PrecheckDiagnosticSession(_PartialRptEnaFailureSession):
         )
 
 
+@final
 class _PrecheckDiagnosticAdapter:
     def __init__(self) -> None:
         self.session = _PrecheckDiagnosticSession()
         self.connect_count = 0
 
-    def connect(self, **kwargs):  # noqa: ANN001
+    def connect(self, **_kwargs: object) -> _PrecheckDiagnosticSession:
         self.connect_count += 1
         return self.session
 
 
 class _GiNoReportSession(_PartialRptEnaFailureSession):
-    def enable_report_control(self, reference, client_id):  # noqa: ANN001
+    enable_count: int
+    gi_count: int
+    @override
+    def enable_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:
         self.enable_count += 1
         return _state_from_reference(reference, Iec61850RuntimeStatus.ENABLED, enabled=True, reserved_by=client_id, owner=client_id)
 
-    def send_general_interrogation(self, reference, client_id):  # noqa: ANN001, ARG002
+    @override
+    def send_general_interrogation(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportEvent:  # noqa: ARG002
         self.gi_count += 1
         raise Iec61850ReportRuntimeError(
             "MMS_REPORT_NOT_OBSERVED",
             "IEC 61850 MMS client did not surface a report event.",
         )
 
-    def wait_for_report(self, reference, client_id, *, after_sequence_number=None, after_event_id=None, timeout_ms=5000):  # noqa: ANN001, ARG002
+    def wait_for_report(self, reference: Iec61850ReportControlRef, client_id: str, *, after_sequence_number: int | None = None, after_event_id: str | None = None, timeout_ms: int = 5000) -> Iec61850ReportEvent:  # noqa: ARG002
+        del reference, client_id, after_sequence_number, after_event_id, timeout_ms
         raise Iec61850ReportRuntimeError(
             "MMS_REPORT_TIMEOUT",
             "IEC 61850 MMS client did not surface a new report event before timeout.",
         )
 
 
+@final
 class _GiNoReportAdapter:
     def __init__(self) -> None:
         self.session = _GiNoReportSession()
         self.connect_count = 0
 
-    def connect(self, **kwargs):  # noqa: ANN001
+    def connect(self, **_kwargs: object) -> _GiNoReportSession:
         self.connect_count += 1
         return self.session
 
 
+@final
 class _GiDelayedReportSession(_GiNoReportSession):
-    def wait_for_report(self, reference, client_id, *, after_sequence_number=None, after_event_id=None, timeout_ms=5000):  # noqa: ANN001, ARG002
+    @override
+    def wait_for_report(self, reference: Iec61850ReportControlRef, client_id: str, *, after_sequence_number: int | None = None, after_event_id: str | None = None, timeout_ms: int = 5000) -> Iec61850ReportEvent:  # noqa: ARG002
+        del client_id, after_event_id, timeout_ms
         return Iec61850ReportEvent(
             id=f"{reference.report_control_name}:delayed-report-1",
             endpoint_id="mms:IED-A/P1",
@@ -433,26 +479,30 @@ class _GiDelayedReportSession(_GiNoReportSession):
         )
 
 
+@final
 class _GiDelayedReportAdapter:
     def __init__(self) -> None:
         self.session = _GiDelayedReportSession()
         self.connect_count = 0
 
-    def connect(self, **kwargs):  # noqa: ANN001
+    def connect(self, **_kwargs: object) -> _GiDelayedReportSession:
         self.connect_count += 1
         return self.session
 
 
+@final
 class _UnrelatedThenTargetReportSession(_PartialRptEnaFailureSession):
     def __init__(self) -> None:
         super().__init__()
-        self.wait_count = 0
+        self.wait_count: int = 0
 
-    def enable_report_control(self, reference, client_id):  # noqa: ANN001
+    @override
+    def enable_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:
         self.enable_count += 1
         return _state_from_reference(reference, Iec61850RuntimeStatus.ENABLED, enabled=True, reserved_by=client_id, owner=client_id)
 
-    def wait_for_report(self, reference, client_id, *, after_sequence_number=None, after_event_id=None, timeout_ms=5000):  # noqa: ANN001, ARG002
+    def wait_for_report(self, reference: Iec61850ReportControlRef, client_id: str, *, after_sequence_number: int | None = None, after_event_id: str | None = None, timeout_ms: int = 5000) -> Iec61850ReportEvent:  # noqa: ARG002
+        del client_id, after_event_id, timeout_ms
         self.wait_count += 1
         sequence = int(after_sequence_number or 1) + 1
         if self.wait_count == 1:
@@ -490,28 +540,31 @@ class _UnrelatedThenTargetReportSession(_PartialRptEnaFailureSession):
         )
 
 
+@final
 class _UnrelatedThenTargetReportAdapter:
     def __init__(self) -> None:
         self.session = _UnrelatedThenTargetReportSession()
         self.connect_count = 0
 
-    def connect(self, **kwargs):  # noqa: ANN001
+    def connect(self, **_kwargs: object) -> _UnrelatedThenTargetReportSession:
         self.connect_count += 1
         return self.session
 
 
+@final
 class _BlockingConnectAdapter:
     def __init__(self, release_event: Event) -> None:
         self.release_event = release_event
         self.session = _PartialRptEnaFailureSession()
         self.connect_count = 0
 
-    def connect(self, **kwargs):  # noqa: ANN001
+    def connect(self, **_kwargs: object) -> _PartialRptEnaFailureSession:
         self.connect_count += 1
-        self.release_event.wait(timeout=5)
+        _ = self.release_event.wait(timeout=5)
         return self.session
 
 
+@final
 class _ConcurrentConnectAdapter:
     def __init__(self, release_event: Event, both_started_event: Event) -> None:
         self.release_event = release_event
@@ -520,17 +573,17 @@ class _ConcurrentConnectAdapter:
         self.connect_count = 0
         self.lock = Lock()
 
-    def connect(self, **kwargs):  # noqa: ANN001
+    def connect(self, **_kwargs: object) -> _PartialRptEnaFailureSession:
         with self.lock:
             self.connect_count += 1
             if self.connect_count >= 2:
                 self.both_started_event.set()
-        self.release_event.wait(timeout=5)
+        _ = self.release_event.wait(timeout=5)
         return self.session
 
 
 def _state_from_reference(
-    reference,
+    reference: Iec61850ReportControlRef,
     runtime_status: Iec61850RuntimeStatus,
     *,
     enabled: bool = False,
@@ -574,7 +627,7 @@ async def test_runtime_orchestrator_preserves_plan_group_id_after_live_candidate
             policy_version="v1",
         ),
         endpoint_for_device=_custom_endpoint_for_device,
-        adapter=adapter,
+        adapter=_runtime_adapter(adapter),
     )
 
     assert {snapshot.group_id for snapshot in result.subscription_snapshots} == {"group-1", "group-2"}
@@ -599,12 +652,12 @@ async def test_runtime_orchestrator_marks_unmatched_report_control_precheck_as_d
             policy_version="v1",
         ),
         endpoint_for_device=_custom_endpoint_for_device,
-        adapter=adapter,
+        adapter=_runtime_adapter(adapter),
     )
 
     assert {snapshot.subscription_state for snapshot in result.subscription_snapshots} == {"degraded"}
     assert {snapshot.diagnostic_code for snapshot in result.subscription_snapshots} == {"MMS_REPORT_CONTROL_NOT_MATCHED"}
-    assert result.verification_run.runtime_summary["failed_subscriptions"] == 0
+    assert _runtime_summary(result.verification_run.runtime_summary)["failed_subscriptions"] == 0
 
 
 @pytest.mark.anyio
@@ -629,7 +682,7 @@ async def test_runtime_orchestrator_keeps_mms_subscription_reporting_when_startu
             policy_version="v1",
         ),
         endpoint_for_device=_mms_endpoint_for_device,
-        adapter=adapter,
+        adapter=_runtime_adapter(adapter),
     )
 
     assert adapter.session.gi_count == 2
@@ -638,7 +691,7 @@ async def test_runtime_orchestrator_keeps_mms_subscription_reporting_when_startu
     assert {snapshot.report_health for snapshot in result.subscription_snapshots} == {"healthy"}
     assert {snapshot.gi_requested for snapshot in result.subscription_snapshots} == {True}
     assert {snapshot.last_report_value_count for snapshot in result.subscription_snapshots} == {0}
-    assert result.verification_run.runtime_summary["failed_subscriptions"] == 0
+    assert _runtime_summary(result.verification_run.runtime_summary)["failed_subscriptions"] == 0
     assert {diagnostic.severity for snapshot in result.subscription_snapshots for diagnostic in snapshot.diagnostics} == {"warning"}
 
 
@@ -664,7 +717,7 @@ async def test_runtime_orchestrator_does_not_wait_for_delayed_mms_startup_gi_rep
             policy_version="v1",
         ),
         endpoint_for_device=_mms_endpoint_for_device,
-        adapter=adapter,
+        adapter=_runtime_adapter(adapter),
     )
 
     assert {snapshot.gi_requested for snapshot in result.subscription_snapshots} == {True}
@@ -724,7 +777,7 @@ async def test_runtime_orchestrator_deferred_start_returns_before_mms_connect_fi
             policy_version="v1",
         ),
         endpoint_for_device=_mms_endpoint_for_device,
-        adapter=adapter,
+        adapter=_runtime_adapter(adapter),
     )
 
     assert len(result.session_snapshots) == 1
@@ -737,7 +790,7 @@ async def test_runtime_orchestrator_deferred_start_returns_before_mms_connect_fi
         if all(item.subscription_state != "pending" for item in snapshot.subscription_snapshots):
             break
         time.sleep(0.05)
-    orchestrator.stop(result.orchestration_id)
+    _ = orchestrator.stop(result.orchestration_id)
 
 
 @pytest.mark.anyio
@@ -764,13 +817,13 @@ async def test_runtime_orchestrator_deferred_start_connects_endpoint_groups_in_p
             policy_version="v1",
         ),
         endpoint_for_device=_mms_endpoint_for_device,
-        adapter=adapter,
+        adapter=_runtime_adapter(adapter),
     )
 
     assert both_started_event.wait(timeout=1.0)
     assert adapter.connect_count == 2
     release_event.set()
-    orchestrator.stop(result.orchestration_id)
+    _ = orchestrator.stop(result.orchestration_id)
 
 
 @pytest.mark.anyio
@@ -792,7 +845,7 @@ async def test_runtime_orchestrator_keeps_session_alive_when_one_report_rptena_f
             policy_version="v1",
         ),
         endpoint_for_device=_custom_endpoint_for_device,
-        adapter=adapter,
+        adapter=_runtime_adapter(adapter),
     )
 
     states_by_report = {
@@ -814,8 +867,8 @@ async def test_runtime_orchestrator_keeps_session_alive_when_one_report_rptena_f
     assert states_by_report["brB"].subscription_state == "failed"
     assert states_by_report["brB"].report_health == "degraded"
     assert states_by_report["brB"].diagnostic_code == "EXTERNAL_MMS_RPTENA_NOT_CONFIRMED"
-    assert result.verification_run.runtime_summary["failed_sessions"] == 0
-    assert result.verification_run.runtime_summary["failed_subscriptions"] == 1
+    assert _runtime_summary(result.verification_run.runtime_summary)["failed_sessions"] == 0
+    assert _runtime_summary(result.verification_run.runtime_summary)["failed_subscriptions"] == 1
 
 
 @pytest.mark.anyio
@@ -840,7 +893,7 @@ async def test_runtime_orchestrator_requests_startup_gi_for_mms_endpoints() -> N
             policy_version="v1",
         ),
         endpoint_for_device=_mms_endpoint_for_device,
-        adapter=adapter,
+        adapter=_runtime_adapter(adapter),
     )
 
     assert adapter.connect_count == 1
@@ -922,10 +975,10 @@ async def test_runtime_orchestrator_opens_sessions_and_keeps_live_state() -> Non
     assert all(snapshot.subscription_state == "reporting" for snapshot in result.subscription_snapshots)
     assert all(snapshot.report_health == "healthy" for snapshot in result.subscription_snapshots)
     assert all(snapshot.current_rptena_owner == "unitlab-backend-simulator" for snapshot in result.subscription_snapshots)
-    assert result.verification_run.runtime_summary["active_sessions"] == 2
-    assert result.verification_run.runtime_summary["reporting_sessions"] == 2
-    assert result.verification_run.runtime_summary["active_subscriptions"] == 2
-    assert result.verification_run.runtime_summary["reporting_subscriptions"] == 2
+    assert _runtime_summary(result.verification_run.runtime_summary)["active_sessions"] == 2
+    assert _runtime_summary(result.verification_run.runtime_summary)["reporting_sessions"] == 2
+    assert _runtime_summary(result.verification_run.runtime_summary)["active_subscriptions"] == 2
+    assert _runtime_summary(result.verification_run.runtime_summary)["reporting_subscriptions"] == 2
 
     snapshot = orchestrator.snapshot(result.orchestration_id)
     assert snapshot.verification_run.runtime_state == "reporting"
@@ -934,10 +987,10 @@ async def test_runtime_orchestrator_opens_sessions_and_keeps_live_state() -> Non
 
     stopped = orchestrator.stop(result.orchestration_id)
     assert stopped.verification_run.runtime_state == "closed"
-    assert stopped.verification_run.runtime_summary["closed_sessions"] == 2
+    assert _runtime_summary(stopped.verification_run.runtime_summary)["closed_sessions"] == 2
 
     with pytest.raises(RuntimeError):
-        orchestrator.snapshot(result.orchestration_id)
+        _ = orchestrator.snapshot(result.orchestration_id)
 
 
 @pytest.mark.anyio
@@ -992,7 +1045,7 @@ async def test_runtime_orchestrator_surfaces_unreachable_mms_endpoint_without_ra
             policy_version="v1",
         ),
         endpoint_for_device=_unreachable_mms_endpoint_for_device,
-        adapter=adapter,
+        adapter=_runtime_adapter(adapter),
     )
 
     assert adapter.connect_count == 1
@@ -1008,9 +1061,9 @@ async def test_runtime_orchestrator_surfaces_unreachable_mms_endpoint_without_ra
     assert {snapshot.subscription_state for snapshot in result.subscription_snapshots} == {"failed"}
     assert {snapshot.report_health for snapshot in result.subscription_snapshots} == {"degraded"}
     assert result.diagnostics[0].code == "EXTERNAL_MMS_ENDPOINT_UNREACHABLE"
-    assert result.diagnostics[0].details["endpoint_host"] == "192.168.248.110"
-    assert result.verification_run.runtime_summary["failed_sessions"] == 1
-    assert result.verification_run.runtime_summary["failed_subscriptions"] == 2
+    assert _diagnostic_details(result.diagnostics[0].details)["endpoint_host"] == "192.168.248.110"
+    assert _runtime_summary(result.verification_run.runtime_summary)["failed_sessions"] == 1
+    assert _runtime_summary(result.verification_run.runtime_summary)["failed_subscriptions"] == 2
 
 
 @pytest.mark.anyio
@@ -1035,7 +1088,7 @@ async def test_runtime_orchestrator_skips_unreachable_mms_endpoint_before_openin
             policy_version="v1",
         ),
         endpoint_for_device=_other_unreachable_mms_endpoint_for_device,
-        adapter=adapter,
+        adapter=_runtime_adapter(adapter),
     )
 
     assert adapter.connect_count == 0
@@ -1048,7 +1101,7 @@ async def test_runtime_orchestrator_skips_unreachable_mms_endpoint_before_openin
     assert len(result.subscription_snapshots) == 2
     assert {snapshot.subscription_state for snapshot in result.subscription_snapshots} == {"failed"}
     assert result.diagnostics[0].message == "IEC 61850 endpoint 192.168.248.111:102 is unreachable: timed out"
-    assert result.diagnostics[0].details["endpoint_host"] == "192.168.248.111"
+    assert _diagnostic_details(result.diagnostics[0].details)["endpoint_host"] == "192.168.248.111"
 
 
 @pytest.mark.anyio
@@ -1056,7 +1109,7 @@ async def test_runtime_orchestrator_prefights_mixed_mms_fleet_before_opening_ses
     plan = _build_multi_ied_plan()
     adapter = _FailingReadAdapter()
 
-    def endpoint_for_device(device) -> Iec61850DeviceEndpoint:  # noqa: ANN001
+    def endpoint_for_device(device: _EndpointDevice) -> Iec61850DeviceEndpoint:
         host = "172.16.40.128" if device.ied_name == "IED-A" else "192.168.248.111"
         return Iec61850DeviceEndpoint(
             id=f"mms:{host}:102/{device.ied_name}/{device.access_point_name}",
@@ -1090,7 +1143,7 @@ async def test_runtime_orchestrator_prefights_mixed_mms_fleet_before_opening_ses
             policy_version="v1",
         ),
         endpoint_for_device=endpoint_for_device,
-        adapter=adapter,
+        adapter=_runtime_adapter(adapter),
     )
 
     assert adapter.connect_count == 1
@@ -1160,10 +1213,10 @@ async def test_runtime_orchestrator_reconnect_failure_surfaces_recovery_state(mo
         ),
     )
 
-    handle = orchestrator._handles[result.orchestration_id]  # noqa: SLF001
+    handle = orchestrator._handles[result.orchestration_id]  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
     session_id = result.session_snapshots[0].session_id
 
-    def _raise_open_session(**kwargs):  # noqa: ANN001
+    def _raise_open_session(**_kwargs: object) -> Never:
         raise RuntimeError("simulated reconnect failure")
 
     monkeypatch.setattr(handle.runtime_service, "open_session", _raise_open_session)
@@ -1235,7 +1288,7 @@ async def test_runtime_orchestrator_rejects_non_causal_triggered_report_reason()
             runtime_version="mms",
             policy_version="v1",
         ),
-        adapter=_GiDelayedReportAdapter(),
+        adapter=_runtime_adapter(_GiDelayedReportAdapter()),
         endpoint_for_device=_mms_endpoint_for_device,
     )
 
@@ -1304,7 +1357,7 @@ async def test_runtime_orchestrator_waits_past_unrelated_report_for_triggered_si
             runtime_version="mms",
             policy_version="v1",
         ),
-        adapter=adapter,
+        adapter=_runtime_adapter(adapter),
         endpoint_for_device=_mms_endpoint_for_device,
     )
 

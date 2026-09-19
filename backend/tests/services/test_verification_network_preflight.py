@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.verification_schema import (
     VerificationAutoRunStartSchema,
@@ -13,18 +15,20 @@ from app.services.verification_network_preflight import build_verification_netwo
 
 
 class _FakeDb:
-    async def execute(self, _stmt):
+    async def execute(self, _stmt: object) -> SimpleNamespace:
+        _ = _stmt
         return SimpleNamespace(first=lambda: None)
 
 
 class _FakeSignalsRepository:
     def __init__(self, db: _FakeDb) -> None:
-        self.db = db
+        self.db: _FakeDb = db
 
     async def ensure_workspace(self, workspace_id: int) -> bool:
         return workspace_id == 7
 
-    async def list_by_ids(self, workspace_id: int, signal_ids):
+    async def list_by_ids(self, workspace_id: int, signal_ids: list[int]) -> list[SimpleNamespace]:
+        _ = signal_ids
         if workspace_id != 7:
             return []
         return [
@@ -51,9 +55,12 @@ class _FakeSignalsRepository:
 
 class _FakeSignalSheetRepository:
     def __init__(self, db: _FakeDb) -> None:
-        self.db = db
+        self.db: _FakeDb = db
 
-    async def list_allocation_rows_by_signal_ids(self, workspace_id: int, signal_ids):
+    async def list_allocation_rows_by_signal_ids(
+        self, workspace_id: int, signal_ids: list[int]
+    ) -> list[SimpleNamespace]:
+        _ = signal_ids
         if workspace_id != 7:
             return []
         return [
@@ -72,18 +79,21 @@ class _FakeSignalSheetRepository:
 
 
 class _FakeRuntimeSelectionRepository:
-    def __init__(self, _db) -> None:
+    def __init__(self, _db: _FakeDb) -> None:
+        _ = _db
         pass
 
-    async def get_active_runtime_selection(self, *, workspace_id: int):
+    async def get_active_runtime_selection(self, *, workspace_id: int) -> None:
+        _ = workspace_id
         return None
 
-    async def get_import_source(self, *, workspace_id: int, import_id: str):
+    async def get_import_source(self, *, workspace_id: int, import_id: str) -> None:
+        _ = (workspace_id, import_id)
         return None
 
 
 @pytest.mark.anyio
-async def test_build_verification_network_preflight_response_uses_agent_network_state_for_ready_mms(monkeypatch) -> None:
+async def test_build_verification_network_preflight_response_uses_agent_network_state_for_ready_mms(monkeypatch: pytest.MonkeyPatch) -> None:
     db = _FakeDb()
 
     async def _get_core_network_state():
@@ -117,7 +127,7 @@ async def test_build_verification_network_preflight_response_uses_agent_network_
             ),
             client_id="unitlab-backend-simulator",
         ),
-        db=db,  # type: ignore[arg-type]
+        db=cast(AsyncSession, cast(object, db)),
     )
 
     preflight = result.preflight
@@ -130,7 +140,7 @@ async def test_build_verification_network_preflight_response_uses_agent_network_
 
 
 @pytest.mark.anyio
-async def test_build_verification_network_preflight_response_falls_back_to_simulator_when_core_state_missing(monkeypatch) -> None:
+async def test_build_verification_network_preflight_response_falls_back_to_simulator_when_core_state_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     db = _FakeDb()
 
     async def _get_core_network_state():
@@ -154,7 +164,7 @@ async def test_build_verification_network_preflight_response_falls_back_to_simul
             ),
             client_id="unitlab-backend-simulator",
         ),
-        db=db,  # type: ignore[arg-type]
+        db=cast(AsyncSession, cast(object, db)),
     )
 
     preflight = result.preflight

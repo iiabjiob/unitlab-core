@@ -3,12 +3,13 @@ from __future__ import annotations
 import asyncio
 import json
 from contextlib import suppress
-from typing import Any
+from typing import cast
 
 from app.core.config import get_settings
 from app.core.logger import get_logger
 from app.infrastructure.db.database import AsyncSessionLocal
 from app.infrastructure.redis.manager import RedisManager
+from app.infrastructure.redis.types import RedisStreamClient, RedisStreamEntries
 from app.services.external_ied_planning import (
     ExternalIedPlanningRequest,
     execute_external_ied_planning_request,
@@ -31,7 +32,7 @@ CONSUMER_NAME = build_worker_consumer_name()
 WORKER_NAME = "external_ied_planning"
 
 
-async def _ensure_group(redis) -> None:
+async def _ensure_group(redis: RedisStreamClient) -> None:
     await ensure_stream_consumer_group(
         redis,
         stream_name=STREAM_NAME,
@@ -42,7 +43,7 @@ async def _ensure_group(redis) -> None:
     )
 
 
-async def _fetch(redis, stream_id: str, block_ms: int = 5000):
+async def _fetch(redis: RedisStreamClient, stream_id: str, block_ms: int = 5000) -> RedisStreamEntries:
     return await fetch_stream_group_entries(
         redis,
         stream_name=STREAM_NAME,
@@ -54,7 +55,7 @@ async def _fetch(redis, stream_id: str, block_ms: int = 5000):
     )
 
 
-async def _drain_pending(redis) -> None:
+async def _drain_pending(redis: RedisStreamClient) -> None:
     await drain_pending_stream_entries(
         fetch_pending=lambda stream_id, block_ms: _fetch(redis, stream_id, block_ms=block_ms),
         process_entries=lambda entries: _process_entries(redis, entries),
@@ -64,7 +65,7 @@ async def _drain_pending(redis) -> None:
     )
 
 
-async def _process_entries(redis, entries) -> None:
+async def _process_entries(redis: RedisStreamClient, entries: RedisStreamEntries) -> None:
     for entry_id, fields in entries:
         request: ExternalIedPlanningRequest | None = None
         should_ack = False
@@ -85,7 +86,7 @@ async def _process_entries(redis, entries) -> None:
                 entry_id,
             )
             async with AsyncSessionLocal() as db:
-                await execute_external_ied_planning_request(request, db=db)
+                _ = await execute_external_ied_planning_request(request, db=db)
             logger.info(
                 "External IED planning completed | workspace=%s endpoint=%s request_id=%s",
                 request.workspace_id,
@@ -107,27 +108,28 @@ async def _process_entries(redis, entries) -> None:
             should_ack = True
         finally:
             if should_ack:
-                await redis.xack(STREAM_NAME, GROUP_NAME, entry_id)
+                _ = await redis.xack(STREAM_NAME, GROUP_NAME, entry_id)
 
 
-def _parse_request(fields: Any) -> ExternalIedPlanningRequest | None:
-    data = fields.get("data") if isinstance(fields, dict) else None
+def _parse_request(fields: dict[str, object]) -> ExternalIedPlanningRequest | None:
+    data = fields.get("data")
     if isinstance(data, bytes):
         data = data.decode("utf-8")
     if not isinstance(data, str) or not data.strip():
         return None
-    payload = json.loads(data)
+    payload = cast(object, json.loads(data))
     if not isinstance(payload, dict):
         return None
-    event = str(payload.get("event") or "")
+    typed_payload = cast(dict[str, object], payload)
+    event = str(typed_payload.get("event") or "")
     if event not in {"ExternalIedDiscoveryCompleted", "ExternalIedPlanningRequested"}:
         return None
-    return ExternalIedPlanningRequest.from_payload(payload)
+    return ExternalIedPlanningRequest.from_payload(typed_payload)
 
 
 async def main() -> None:
     await RedisManager.start()
-    redis = RedisManager.get_instance()
+    redis = cast(RedisStreamClient, cast(object, RedisManager.get_instance()))
 
     heartbeat_task = start_worker_heartbeat(WORKER_NAME)
     stop_event = asyncio.Event()
@@ -155,7 +157,7 @@ async def main() -> None:
             logger=logger,
         )
     finally:
-        heartbeat_task.cancel()
+        _ = heartbeat_task.cancel()
         with suppress(asyncio.CancelledError):
             await heartbeat_task
         await clear_worker_status(WORKER_NAME)

@@ -25,9 +25,9 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 
 
 class SignalSheet(Base):
-    __tablename__ = "signal_sheets"
+    __tablename__: str = "signal_sheets"
 
-    __table_args__ = (
+    __table_args__: tuple[object, ...] = (
         UniqueConstraint("workspace_id", name="uq_signal_sheets_workspace"),
         Index("ix_signal_sheets_workspace", "workspace_id"),
         Index("ix_signal_sheets_workspace_updated", "workspace_id", "updated_at"),
@@ -43,8 +43,8 @@ class SignalSheet(Base):
     source_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     rows_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     schema_version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="2")
-    data: Mapped[dict] = mapped_column(JSON, nullable=False, server_default="{}")
-    import_meta: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    data: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, server_default="{}")
+    import_meta: Mapped[dict[str, object] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -56,9 +56,9 @@ class SignalSheet(Base):
 
 
 class SignalSheetPreset(Base):
-    __tablename__ = "signal_sheet_presets"
+    __tablename__: str = "signal_sheet_presets"
 
-    __table_args__ = (
+    __table_args__: tuple[object, ...] = (
         UniqueConstraint("workspace_id", "name", name="uq_signal_sheet_presets_workspace_name"),
         Index("ix_signal_sheet_presets_workspace", "workspace_id"),
     )
@@ -70,7 +70,7 @@ class SignalSheetPreset(Base):
         nullable=False,
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
-    import_meta: Mapped[dict] = mapped_column(JSON, nullable=False, server_default="{}")
+    import_meta: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, server_default="{}")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -82,9 +82,9 @@ class SignalSheetPreset(Base):
 
 
 class SignalAllocation(Base):
-    __tablename__ = "signal_allocations"
+    __tablename__: str = "signal_allocations"
 
-    __table_args__ = (
+    __table_args__: tuple[object, ...] = (
         UniqueConstraint("workspace_id", "signal_id", name="uq_signal_allocations_signal"),
         UniqueConstraint("workspace_id", "channel_id", name="uq_signal_allocations_channel"),
         Index("ix_signal_allocations_workspace", "workspace_id"),
@@ -107,7 +107,7 @@ class SignalAllocation(Base):
         ForeignKey("channels.id", ondelete="CASCADE"),
         nullable=False,
     )
-    allocation_meta: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    allocation_meta: Mapped[dict[str, object] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -121,9 +121,9 @@ class SignalAllocation(Base):
 
 
 class SignalAllocationEvent(Base):
-    __tablename__ = "signal_allocation_events"
+    __tablename__: str = "signal_allocation_events"
 
-    __table_args__ = (
+    __table_args__: tuple[object, ...] = (
         Index("ix_signal_allocation_events_workspace_created", "workspace_id", "created_at", "id"),
         Index("ix_signal_allocation_events_workspace_operation", "workspace_id", "operation", "created_at"),
         Index("ix_signal_allocation_events_workspace_signal", "workspace_id", "signal_id", "created_at"),
@@ -144,7 +144,7 @@ class SignalAllocationEvent(Base):
     changed_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     skipped_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     rejected_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
-    payload: Mapped[dict] = mapped_column(JSON, nullable=False, server_default="{}")
+    payload: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, server_default="{}")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -153,9 +153,9 @@ class SignalAllocationEvent(Base):
 
 
 class SignalTestRunStepEvidence(Base):
-    __tablename__ = "signal_test_run_step_evidence"
+    __tablename__: str = "signal_test_run_step_evidence"
 
-    __table_args__ = (
+    __table_args__: tuple[object, ...] = (
         Index("ix_signal_test_run_evidence_workspace_job_order", "workspace_id", "job_id", "order_index"),
         Index("ix_signal_test_run_evidence_workspace_created", "workspace_id", "created_at", "id"),
         Index("ix_signal_test_run_evidence_workspace_signal", "workspace_id", "signal_id", "created_at"),
@@ -187,7 +187,7 @@ class SignalTestRunStepEvidence(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     reason: Mapped[str | None] = mapped_column(String(128), nullable=True)
     result_state: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    command_payload: Mapped[dict] = mapped_column(JSON, nullable=False, server_default="{}")
+    command_payload: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, server_default="{}")
     tested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

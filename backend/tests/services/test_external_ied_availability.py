@@ -3,18 +3,23 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import dataclass
+from typing import cast
 
 import pytest
 
-from app.schemas.verification_schema import VerificationMmsReachabilityResultSchema
+from app.schemas.verification_schema import (
+    VerificationMmsReachabilityResultSchema,
+    VerificationMmsReachabilityTargetSchema,
+)
+from app.schemas.ws.events import ExternalIedStatus, ExternalIedStatusChangedEvent
 from app.services import external_ied_availability as availability
 from app.services.external_ied_availability import configure_external_ied_targets, run_external_ied_availability_checker
 
 
 class _FakePipeline:
     def __init__(self, redis: "_FakeRedis") -> None:
-        self.redis = redis
-        self.ops: list[tuple[str, tuple]] = []
+        self.redis: _FakeRedis = redis
+        self.ops: list[tuple[str, tuple[str, ...]]] = []
 
     def delete(self, *keys: str) -> None:
         self.ops.append(("delete", keys))
@@ -56,11 +61,11 @@ class _FakeRedis:
 
     async def delete(self, *keys: str) -> None:
         for key in keys:
-            self.hashes.pop(key, None)
-            self.sets.pop(key, None)
-            self.values.pop(key, None)
+            _ = self.hashes.pop(key, None)
+            _ = self.sets.pop(key, None)
+            _ = self.values.pop(key, None)
 
-    async def set(self, key: str, value: str, **_kwargs) -> bool:
+    async def set(self, key: str, value: str, **_kwargs: object) -> bool:
         if _kwargs.get("nx") and key in self.values:
             return False
         self.values[key] = value
@@ -69,8 +74,9 @@ class _FakeRedis:
     async def get(self, key: str) -> str | None:
         return self.values.get(key)
 
-    async def xadd(self, stream: str, fields: dict, **_kwargs) -> str:
-        self.values.setdefault(f"xadd:{stream}", "0")
+    async def xadd(self, stream: str, fields: dict[str, object], **_kwargs: object) -> str:
+        _ = fields
+        _ = self.values.setdefault(f"xadd:{stream}", "0")
         current = int(self.values[f"xadd:{stream}"]) + 1
         self.values[f"xadd:{stream}"] = str(current)
         return f"{current}-0"
@@ -90,7 +96,7 @@ class _Published:
 def _state(
     endpoint: str = "10.10.10.20:102",
     *,
-    status: str = "expected",
+    status: ExternalIedStatus = "expected",
     next_probe_at_ms: int = 0,
     last_probe_at_ms: int | None = None,
     consecutive_successes: int = 0,
@@ -113,7 +119,7 @@ def _state(
         consecutive_successes=consecutive_successes,
         consecutive_failures=consecutive_failures,
         active_probe=False,
-        priority_reason=priority_reason or availability._priority_reason_for_record(
+        priority_reason=priority_reason or availability._priority_reason_for_record(  # pyright: ignore[reportPrivateUsage]
             status,
             consecutive_successes,
             consecutive_failures,
@@ -135,11 +141,11 @@ def _probe_result(*, reachable: bool) -> VerificationMmsReachabilityResultSchema
 
 
 @pytest.mark.anyio
-async def test_configure_external_ied_targets_writes_expected_snapshot(monkeypatch) -> None:
+async def test_configure_external_ied_targets_writes_expected_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:
     redis = _FakeRedis()
     published = _Published([])
-    monkeypatch.setattr(availability.RedisManager, "get_instance", lambda: redis)
-    monkeypatch.setattr(availability.WsEventPublisher, "publish", published.publish)
+    monkeypatch.setattr(availability.RedisManager, "get_instance", lambda: redis)  # pyright: ignore[reportPrivateLocalImportUsage]
+    monkeypatch.setattr(availability.WsEventPublisher, "publish", published.publish)  # pyright: ignore[reportPrivateLocalImportUsage]
 
     event = await configure_external_ied_targets(7, [
         {"ip": "10.10.10.20", "signal_ids": [2, 1, 1]},
@@ -154,13 +160,13 @@ async def test_configure_external_ied_targets_writes_expected_snapshot(monkeypat
 
 
 @pytest.mark.anyio
-async def test_configure_external_ied_targets_clears_backend_context(monkeypatch) -> None:
+async def test_configure_external_ied_targets_clears_backend_context(monkeypatch: pytest.MonkeyPatch) -> None:
     redis = _FakeRedis()
     published = _Published([])
-    monkeypatch.setattr(availability.RedisManager, "get_instance", lambda: redis)
-    monkeypatch.setattr(availability.WsEventPublisher, "publish", published.publish)
+    monkeypatch.setattr(availability.RedisManager, "get_instance", lambda: redis)  # pyright: ignore[reportPrivateLocalImportUsage]
+    monkeypatch.setattr(availability.WsEventPublisher, "publish", published.publish)  # pyright: ignore[reportPrivateLocalImportUsage]
 
-    await configure_external_ied_targets(7, [{"ip": "10.10.10.20", "signal_ids": [1]}])
+    _ = await configure_external_ied_targets(7, [{"ip": "10.10.10.20", "signal_ids": [1]}])
     event = await configure_external_ied_targets(7, [])
 
     assert event.devices == []
@@ -169,11 +175,11 @@ async def test_configure_external_ied_targets_clears_backend_context(monkeypatch
 
 
 @pytest.mark.anyio
-async def test_load_external_ied_discovery_tree_reads_cached_model(monkeypatch) -> None:
+async def test_load_external_ied_discovery_tree_reads_cached_model(monkeypatch: pytest.MonkeyPatch) -> None:
     redis = _FakeRedis()
-    monkeypatch.setattr(availability.RedisManager, "get_instance", lambda: redis)
+    monkeypatch.setattr(availability.RedisManager, "get_instance", lambda: redis)  # pyright: ignore[reportPrivateLocalImportUsage]
     await redis.hset(
-        availability._discovery_model_key(7),
+        availability._discovery_model_key(7),  # pyright: ignore[reportPrivateUsage]
         "10.10.10.20:102",
         json.dumps({
             "datasets": [{"reference": "IEDLD0/LLN0.ds", "members": ["IEDLD0/GGIO1.ST.stVal"]}],
@@ -182,7 +188,7 @@ async def test_load_external_ied_discovery_tree_reads_cached_model(monkeypatch) 
         }),
     )
     await redis.hset(
-        availability._cache_key(7),
+        availability._cache_key(7),  # pyright: ignore[reportPrivateUsage]
         "10.10.10.20:102",
         json.dumps({"model_fingerprint": "model-1"}),
     )
@@ -192,18 +198,23 @@ async def test_load_external_ied_discovery_tree_reads_cached_model(monkeypatch) 
     assert tree is not None
     assert tree["endpoint"] == "10.10.10.20:102"
     assert tree["model_fingerprint"] == "model-1"
-    assert tree["reports"][0]["name"] == "brcb01"
-    assert tree["reports"][0]["dataset"]["reference"] == "IEDLD0/LLN0.ds"
-    assert tree["reports"][0]["dataset"]["signals"][0]["reference"] == "IEDLD0/GGIO1.ST.stVal"
-    assert tree["reports"][0]["dataset"]["signals"][0]["fc"] == "ST"
+    reports = cast(list[dict[str, object]], tree["reports"])
+    report = reports[0]
+    dataset = cast(dict[str, object], report["dataset"])
+    signals = cast(list[dict[str, object]], dataset["signals"])
+    signal = signals[0]
+    assert report["name"] == "brcb01"
+    assert dataset["reference"] == "IEDLD0/LLN0.ds"
+    assert signal["reference"] == "IEDLD0/GGIO1.ST.stVal"
+    assert signal["fc"] == "ST"
 
 
 @pytest.mark.anyio
-async def test_status_snapshot_does_not_include_discovery_model_tree(monkeypatch) -> None:
+async def test_status_snapshot_does_not_include_discovery_model_tree(monkeypatch: pytest.MonkeyPatch) -> None:
     redis = _FakeRedis()
-    monkeypatch.setattr(availability.RedisManager, "get_instance", lambda: redis)
+    monkeypatch.setattr(availability.RedisManager, "get_instance", lambda: redis)  # pyright: ignore[reportPrivateLocalImportUsage]
     await redis.hset(
-        availability._status_key(7),
+        availability._status_key(7),  # pyright: ignore[reportPrivateUsage]
         "10.10.10.20:102",
         json.dumps({
             "ip": "10.10.10.20",
@@ -214,7 +225,7 @@ async def test_status_snapshot_does_not_include_discovery_model_tree(monkeypatch
         }),
     )
     await redis.hset(
-        availability._discovery_model_key(7),
+        availability._discovery_model_key(7),  # pyright: ignore[reportPrivateUsage]
         "10.10.10.20:102",
         json.dumps({"datasets": [], "rcbs": [], "fcdas": []}),
     )
@@ -225,13 +236,16 @@ async def test_status_snapshot_does_not_include_discovery_model_tree(monkeypatch
 
 
 @pytest.mark.anyio
-async def test_checker_publishes_only_on_status_transition(monkeypatch) -> None:
+async def test_checker_publishes_only_on_status_transition(monkeypatch: pytest.MonkeyPatch) -> None:
     redis = _FakeRedis()
     published = _Published([])
-    monkeypatch.setattr(availability.RedisManager, "get_instance", lambda: redis)
-    monkeypatch.setattr(availability.WsEventPublisher, "publish", published.publish)
+    monkeypatch.setattr(availability.RedisManager, "get_instance", lambda: redis)  # pyright: ignore[reportPrivateLocalImportUsage]
+    monkeypatch.setattr(availability.WsEventPublisher, "publish", published.publish)  # pyright: ignore[reportPrivateLocalImportUsage]
 
-    async def fake_reachability(_target, *, timeout_ms: int):
+    async def fake_reachability(
+        _target: VerificationMmsReachabilityTargetSchema, *, timeout_ms: int
+    ) -> VerificationMmsReachabilityResultSchema:
+        _ = timeout_ms
         return VerificationMmsReachabilityResultSchema(
             host="10.10.10.20",
             port=12447,
@@ -243,35 +257,37 @@ async def test_checker_publishes_only_on_status_transition(monkeypatch) -> None:
         )
 
     monkeypatch.setattr(availability, "check_mms_tcp_endpoint", fake_reachability)
-    await configure_external_ied_targets(7, [{"ip": "10.10.10.20", "port": 12447, "signal_ids": [1]}])
-    published.events.clear()
+    _ = await configure_external_ied_targets(7, [{"ip": "10.10.10.20", "port": 12447, "signal_ids": [1]}])
+    _ = published.events.clear()
 
     stop_event = asyncio.Event()
     task = asyncio.create_task(run_external_ied_availability_checker(stop_event))
     await asyncio.sleep(1.2)
     stop_event.set()
-    task.cancel()
+    _ = task.cancel()
     try:
         await task
     except asyncio.CancelledError:
         pass
 
-    assert [event.event for event in published.events] == ["external_ied_status_changed"]
-    assert published.events[0].old_status == "expected"
-    assert published.events[0].new_status == "reachable"
-    assert published.events[0].port == 12447
+    events = [cast(ExternalIedStatusChangedEvent, event) for event in published.events]
+    assert [event.event for event in events] == ["external_ied_status_changed"]
+    assert events[0].old_status == "expected"
+    assert events[0].new_status == "reachable"
+    assert events[0].port == 12447
 
 
 @pytest.mark.anyio
-async def test_checker_uses_tcp_probe_and_does_not_call_ping(monkeypatch) -> None:
+async def test_checker_uses_tcp_probe_and_does_not_call_ping(monkeypatch: pytest.MonkeyPatch) -> None:
     redis = _FakeRedis()
     published = _Published([])
-    monkeypatch.setattr(availability.RedisManager, "get_instance", lambda: redis)
-    monkeypatch.setattr(availability.WsEventPublisher, "publish", published.publish)
+    monkeypatch.setattr(availability.RedisManager, "get_instance", lambda: redis)  # pyright: ignore[reportPrivateLocalImportUsage]
+    monkeypatch.setattr(availability.WsEventPublisher, "publish", published.publish)  # pyright: ignore[reportPrivateLocalImportUsage]
 
     called_targets: list[tuple[str, int]] = []
 
-    async def fake_tcp(target, *, timeout_ms: int):
+    async def fake_tcp(target: VerificationMmsReachabilityTargetSchema, *, timeout_ms: int):
+        _ = timeout_ms
         called_targets.append((target.host, target.port))
         return VerificationMmsReachabilityResultSchema(
             host=target.host,
@@ -285,32 +301,34 @@ async def test_checker_uses_tcp_probe_and_does_not_call_ping(monkeypatch) -> Non
 
     monkeypatch.setattr(availability, "check_mms_tcp_endpoint", fake_tcp)
     assert not hasattr(availability, "_probe_ping_target")
-    await configure_external_ied_targets(7, [{"ip": "10.10.10.20", "port": 12447, "signal_ids": [1]}])
-    published.events.clear()
+    _ = await configure_external_ied_targets(7, [{"ip": "10.10.10.20", "port": 12447, "signal_ids": [1]}])
+    _ = published.events.clear()
 
     stop_event = asyncio.Event()
     task = asyncio.create_task(run_external_ied_availability_checker(stop_event))
     await asyncio.sleep(1.2)
     stop_event.set()
-    task.cancel()
+    _ = task.cancel()
     try:
         await task
     except asyncio.CancelledError:
         pass
 
     assert called_targets == [("10.10.10.20", 12447)]
-    assert published.events[0].new_status == "offline"
-    assert published.events[0].failure_code == "mms_unavailable"
+    event = cast(ExternalIedStatusChangedEvent, published.events[0])
+    assert event.new_status == "offline"
+    assert event.failure_code == "mms_unavailable"
 
 
 @pytest.mark.anyio
-async def test_checker_does_not_emit_duplicate_events_for_same_status(monkeypatch) -> None:
+async def test_checker_does_not_emit_duplicate_events_for_same_status(monkeypatch: pytest.MonkeyPatch) -> None:
     redis = _FakeRedis()
     published = _Published([])
-    monkeypatch.setattr(availability.RedisManager, "get_instance", lambda: redis)
-    monkeypatch.setattr(availability.WsEventPublisher, "publish", published.publish)
+    monkeypatch.setattr(availability.RedisManager, "get_instance", lambda: redis)  # pyright: ignore[reportPrivateLocalImportUsage]
+    monkeypatch.setattr(availability.WsEventPublisher, "publish", published.publish)  # pyright: ignore[reportPrivateLocalImportUsage]
 
-    async def fake_tcp(target, *, timeout_ms: int):
+    async def fake_tcp(target: VerificationMmsReachabilityTargetSchema, *, timeout_ms: int):
+        _ = timeout_ms
         return VerificationMmsReachabilityResultSchema(
             host=target.host,
             port=target.port,
@@ -326,15 +344,15 @@ async def test_checker_does_not_emit_duplicate_events_for_same_status(monkeypatc
     target = availability.ExternalIedTarget(ip="10.10.10.20", port=102, signal_ids=(1,))
     expected = event.devices[0]
 
-    await availability._check_one(7, "10.10.10.20:102", target, expected)
-    published.events.clear()
-    previous = availability._record_from_payload(
+    await availability._check_one(7, "10.10.10.20:102", target, expected)  # pyright: ignore[reportPrivateUsage]
+    _ = published.events.clear()
+    previous = availability._record_from_payload(  # pyright: ignore[reportPrivateUsage]
         "10.10.10.20",
-        redis.hashes[availability._status_key(7)]["10.10.10.20:102"],
+        redis.hashes[availability._status_key(7)]["10.10.10.20:102"],  # pyright: ignore[reportPrivateUsage]
         target,
     )
 
-    await availability._check_one(7, "10.10.10.20:102", target, previous)
+    await availability._check_one(7, "10.10.10.20:102", target, previous)  # pyright: ignore[reportPrivateUsage]
 
     assert published.events == []
 
@@ -515,8 +533,11 @@ def test_verification_needed_expires_after_timeout_without_manual_clear() -> Non
     assert scheduler.states[endpoint_id].priority_reason == availability.PRIORITY_REASON_OFFLINE
 
 
-def test_polling_interval_jitter_is_configurable(monkeypatch) -> None:
-    monkeypatch.setattr(availability.random, "uniform", lambda _low, _high: 1.2)
+def test_polling_interval_jitter_is_configurable(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _uniform(_low: float, _high: float) -> float:
+        return 1.2
+
+    monkeypatch.setattr(availability.random, "uniform", _uniform)  # pyright: ignore[reportPrivateLocalImportUsage]
     config = availability.ExternalIedWatcherConfig(
         reachable_candidate_interval_ms=2_000,
         interval_jitter_ratio=0.2,

@@ -1,29 +1,29 @@
+# pyright: reportUnusedCallResult=false
 from __future__ import annotations
 
 import asyncio
+import logging
 from contextlib import suppress
 from datetime import datetime
-import logging
-from typing import Any
+from typing import cast
 
 from .chrony_adapter import ChronyAdapter, ChronyError
 from .config import AgentConfig
 from .models import CommandEnvelope, CoreNtpSnapshot
 from .redis_protocol import RedisProtocol
 
-
 logger = logging.getLogger("unitlab.ntp_agent")
 
 
 class CoreNtpAgent:
     def __init__(self, config: AgentConfig) -> None:
-        self.config = config
-        self.chrony = ChronyAdapter(config)
-        self.redis = RedisProtocol(config)
-        self._stop = asyncio.Event()
+        self.config: AgentConfig = config
+        self.chrony: ChronyAdapter = ChronyAdapter(config)
+        self.redis: RedisProtocol = RedisProtocol(config)
+        self._stop: asyncio.Event = asyncio.Event()
         self._status_task: asyncio.Task[None] | None = None
         self._command_task: asyncio.Task[None] | None = None
-        self._snapshot = CoreNtpSnapshot(
+        self._snapshot: CoreNtpSnapshot = CoreNtpSnapshot(
             mode="unknown",
             chrony_service_active=None,
             chrony_service_name=None,
@@ -63,8 +63,8 @@ class CoreNtpAgent:
                 await self._refresh_status(publish=True)
             except asyncio.CancelledError:
                 raise
-            except Exception as exc:  # noqa: BLE001
-                logger.exception("Status loop failed: %s", exc)
+            except Exception as exc:
+                logger.exception("Status loop failed")
                 await self._publish_error("status_loop_error", str(exc))
             await asyncio.sleep(self.config.status_publish_interval_sec)
 
@@ -77,8 +77,8 @@ class CoreNtpAgent:
                 await asyncio.sleep(0.25)
             except asyncio.CancelledError:
                 raise
-            except Exception as exc:  # noqa: BLE001
-                logger.exception("Command loop failed: %s", exc)
+            except Exception as exc:
+                logger.exception("Command loop failed")
                 await self._publish_error("command_loop_error", str(exc))
                 await asyncio.sleep(1)
 
@@ -109,7 +109,7 @@ class CoreNtpAgent:
                         "reason": f"Unknown action: {cmd.action}",
                     },
                 )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.exception("Command failed | request=%s action=%s", cmd.request_id, cmd.action)
             await self.redis.publish_event(
                 "command_failed",
@@ -131,7 +131,7 @@ class CoreNtpAgent:
         raw_servers = cmd.payload.get("servers")
         if not isinstance(raw_servers, list):
             raise ChronyError("servers[] is required")
-        servers = [str(item).strip() for item in raw_servers if str(item).strip()]
+        servers = [str(item).strip() for item in cast(list[object], raw_servers) if str(item).strip()]
         await self.redis.publish_event(
             "chrony_apply_started",
             {"request_id": cmd.request_id, "servers": servers},

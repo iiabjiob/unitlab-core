@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import time
+import redis.asyncio as redis_async
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Set
+from typing import Literal, Protocol, cast
+from collections.abc import Awaitable, Callable, Mapping
 
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.logger import get_logger
@@ -23,7 +26,11 @@ from app.models.sequence_run import (
     SequenceRunStepStatus,
 )
 from app.models.workspace import WorkspaceSequence, WorkspaceSwitchgear
-from app.schemas.sequence_run_schema import SequenceRuntimeSchema, SequenceStateSchema
+from app.schemas.sequence_run_schema import (
+    SequenceRunStatusLiteral,
+    SequenceRuntimeSchema,
+    SequenceStateSchema,
+)
 from app.services.domain_errors import (
     ChannelNotFoundError,
     SequenceDeviceUnavailableError,
@@ -48,6 +55,7 @@ from app.services.sequence_executor import (
 from app.services.sequence_event_stream import SequenceEventStream
 from app.services.hardware_command_ack import wait_for_hardware_command_acks
 from app.services.hardware_command_admission import HardwareCommandAdmission
+from app.services.hardware_command_admission import HardwareChannelLease
 from app.services.hardware_command_intent import (
     mark_hardware_command_intent_delivery_failure,
     mark_hardware_command_intent_completed,
@@ -67,10 +75,47 @@ logger = get_logger("sequence.runner")
 
 SEQUENCE_READBACK_TIMEOUT_MS = 2000
 SEQUENCE_HARDWARE_STEP_TIMEOUT_MS = 7000
+SequenceRepeatMode = Literal["times", "duration", "until_stopped"]
+
+
+class _SequenceReadbackRedis(Protocol):
+    async def get(self, name: str) -> object: ...
+
+    async def hget(self, name: str, key: str) -> object: ...
+
+
+def _sequence_steps(sequence: Sequence) -> list[SequenceStep]:
+    return cast(list[SequenceStep], cast(object, sequence.steps))
+
+
+def _required_int(value: object) -> int:
+    if not isinstance(value, (int, float, str, bytes)):
+        raise ValueError("integer value is required")
+    return int(value)
+
+
+def _object_list(value: object) -> list[object]:
+    return cast(list[object], value) if isinstance(value, list) else []
+
+
+def _redis_int(value: object) -> int:
+    if not isinstance(value, (int, float, str, bytes)):
+        raise ValueError("integer Redis value is required")
+    return int(value)
+
+
+def _redis_float(value: object) -> float:
+    if not isinstance(value, (int, float, str, bytes)):
+        raise ValueError("numeric Redis value is required")
+    return float(value)
+
+
+def _sequence_readback_redis() -> _SequenceReadbackRedis:
+    return cast(_SequenceReadbackRedis, cast(object, RedisManager.get_instance()))
 
 
 async def _wait_for_sequence_readback(
-    redis: Any,
+    redis: _SequenceReadbackRedis,
     *,
     unit_id: str,
     targets: list[tuple[int, int | float]],
@@ -78,7 +123,7 @@ async def _wait_for_sequence_readback(
     packet_id: int,
     timeout_ms: int = SEQUENCE_READBACK_TIMEOUT_MS,
     cancel_event: asyncio.Event | None = None,
-    cancellation_probe: Optional[Callable[[], Awaitable[None]]] = None,
+    cancellation_probe: Callable[[], Awaitable[None]] | None = None,
 ) -> bool:
     """Require a state snapshot caused by this request before accepting a step."""
     if not targets:
@@ -90,7 +135,7 @@ async def _wait_for_sequence_readback(
         if cancel_event is not None and cancel_event.is_set():
             raise SequenceCancellationRequested()
         try:
-            fresh = int(await redis.get(f"device:{unit_id}:last_state_packet_id")) == int(packet_id)
+            fresh = _redis_int(await redis.get(f"device:{unit_id}:last_state_packet_id")) == int(packet_id)
         except (TypeError, ValueError):
             fresh = False
         if fresh:
@@ -98,7 +143,7 @@ async def _wait_for_sequence_readback(
             if analog:
                 for channel_index, expected in targets:
                     try:
-                        actual = float(await redis.hget(f"device:{unit_id}:ao", str(int(channel_index))))
+                        actual = _redis_float(await redis.hget(f"device:{unit_id}:ao", str(int(channel_index))))
                     except (TypeError, ValueError):
                         matched = False
                         break
@@ -107,7 +152,7 @@ async def _wait_for_sequence_readback(
                         break
             else:
                 try:
-                    bitmask = int(await redis.get(f"device:{unit_id}:bitmask"))
+                    bitmask = _redis_int(await redis.get(f"device:{unit_id}:bitmask"))
                 except (TypeError, ValueError):
                     bitmask = None
                 if bitmask is None:
@@ -125,7 +170,7 @@ async def _wait_for_sequence_readback(
             await asyncio.sleep(0.05)
         else:
             try:
-                await asyncio.wait_for(cancel_event.wait(), timeout=0.05)
+                _ = await asyncio.wait_for(cancel_event.wait(), timeout=0.05)
             except asyncio.TimeoutError:
                 pass
 
@@ -133,25 +178,25 @@ async def _wait_for_sequence_readback(
 def _sequence_readback_targets(
     *,
     action: str,
-    payload: dict[str, Any],
+    payload: Mapping[str, object],
 ) -> tuple[list[tuple[int, int | float]], bool]:
     if action == "ao_set":
-        return [(int(payload["channel_index"]), float(payload["value"]))], True
+        return [(_required_int(payload["channel_index"]), _redis_float(payload["value"]))], True
     if action == "do_set" or action == "do_pulse":
-        return [(int(payload["channel_index"]), int(payload["value"]))], False
+        return [(_required_int(payload["channel_index"]), _required_int(payload["value"]))], False
     if action == "do_pair":
-        state2b = int(payload["state2b"]) & 0b11
-        indexes = [int(index) for index in payload["channel_indexes"]]
+        state2b = _required_int(payload["state2b"]) & 0b11
+        indexes = [_required_int(index) for index in _object_list(payload.get("channel_indexes"))]
         if len(indexes) != 2:
             raise SequenceNotApplicableError("DO_PAIR readback requires two channel indexes")
         return [(indexes[0], state2b & 0b01), (indexes[1], (state2b >> 1) & 0b01)], False
     if action == "do_all":
-        bitmask = int(payload["bitmask"])
-        indexes = payload.get("channel_indexes")
-        if not isinstance(indexes, list) or not indexes:
+        bitmask = _required_int(payload["bitmask"])
+        indexes = _object_list(payload.get("channel_indexes"))
+        if not indexes:
             raise SequenceNotApplicableError("DO_BITMASK readback requires resolved channel indexes")
         return [
-            (int(index), 1 if bitmask & (1 << int(index)) else 0)
+            (_required_int(index), 1 if bitmask & (1 << _required_int(index)) else 0)
             for index in indexes
         ], False
     raise SequenceNotApplicableError(f"Unsupported hardware readback action {action}")
@@ -185,31 +230,31 @@ class ResolvedSequenceStep:
     order_index: int
     total_steps: int
     step_type: SequenceStepType
-    payload: dict[str, Any]
-    primary_channel: Optional[ChannelInfo]
-    pair_channels: List[ChannelInfo]
-    target_device: Optional[DeviceInfo]
-    run_step_id: Optional[int] = None
+    payload: dict[str, object]
+    primary_channel: ChannelInfo | None
+    pair_channels: list[ChannelInfo]
+    target_device: DeviceInfo | None
+    run_step_id: int | None = None
 
 
 @dataclass(frozen=True)
 class ResolvedSequenceDefinition:
     id: int
     name: str
-    steps: List[ResolvedSequenceStep]
+    steps: list[ResolvedSequenceStep]
 
 
 @dataclass(frozen=True)
 class RepeatStepConfig:
-    mode: str
-    iterations: Optional[int] = None
-    duration_ms: Optional[int] = None
+    mode: SequenceRepeatMode
+    iterations: int | None = None
+    duration_ms: int | None = None
 
 
 @dataclass(frozen=True)
 class ExecutionLoopState:
     current: int
-    total: Optional[int]
+    total: int | None
     mode: str
 
 
@@ -222,7 +267,7 @@ class RuntimeCursor:
     active_total_steps: int
     active_step_type: str
     execution_path: tuple[str, ...]
-    loop_state: Optional[ExecutionLoopState] = None
+    loop_state: ExecutionLoopState | None = None
 
     def to_schema(self, *, start_time: float) -> SequenceRuntimeSchema:
         return SequenceRuntimeSchema(
@@ -235,7 +280,7 @@ class RuntimeCursor:
             active_step_type=self.active_step_type,
             iteration_current=self.loop_state.current if self.loop_state else None,
             iteration_total=self.loop_state.total if self.loop_state else None,
-            repeat_mode=self.loop_state.mode if self.loop_state else None,
+            repeat_mode=cast(SequenceRepeatMode, self.loop_state.mode) if self.loop_state else None,
             run_elapsed_ms=int((time.monotonic() - start_time) * 1000),
         )
 
@@ -243,24 +288,24 @@ class RuntimeCursor:
 class SequenceRunner:
     """Coordinates asynchronous sequence executions directly from stored sequences."""
 
-    _CANCELLATION_PROBE_MIN_INTERVAL = 0.3  # seconds
+    _CANCELLATION_PROBE_MIN_INTERVAL: float = 0.3  # seconds
 
     def __init__(self) -> None:
-        self._active_runs: Dict[int, ActiveRun] = {}
-        self._state_cache: Dict[int, SequenceStateSchema] = {}
-        self._last_cancellation_probe_at: Dict[int, float] = {}
-        self._lock = asyncio.Lock()
-        self._stopping_emitted_runs: Set[int] = set()
-        self._executor = SequenceExecutor()
+        self._active_runs: dict[int, ActiveRun] = {}
+        self._state_cache: dict[int, SequenceStateSchema] = {}
+        self._last_cancellation_probe_at: dict[int, float] = {}
+        self._lock: asyncio.Lock = asyncio.Lock()
+        self._stopping_emitted_runs: set[int] = set()
+        self._executor: SequenceExecutor = SequenceExecutor()
 
     async def start(
         self,
         sequence_id: int,
         *,
-        workspace_id: Optional[int] = None,
-        request_id: Optional[str] = None,
-        requested_by: Optional[str] = None,
-        signal_bindings: Optional[dict[str, int]] = None,
+        workspace_id: int | None = None,
+        request_id: str | None = None,
+        requested_by: str | None = None,
+        signal_bindings: dict[str, int] | None = None,
     ) -> SequenceStateSchema:
         if workspace_id is None or int(workspace_id) <= 0:
             raise SequenceNotApplicableError("Sequence start requires workspace_id")
@@ -302,11 +347,11 @@ class SequenceRunner:
 
     async def stop(self, sequence_id: int) -> SequenceStateSchema:
         self.invalidate_state(sequence_id)
-        handle: Optional[ActiveRun] = None
+        handle: ActiveRun | None = None
         async with self._lock:
             handle = self._active_runs.get(sequence_id)
 
-        run_id: Optional[int] = None
+        run_id: int | None = None
         if handle:
             run_id = handle.run_id
         else:
@@ -321,7 +366,7 @@ class SequenceRunner:
                 await asyncio.wait_for(handle.task, timeout=5)
             except asyncio.TimeoutError:
                 logger.warning("Timed out waiting for sequence %s stop", sequence_id)
-                handle.task.cancel()
+                _ = handle.task.cancel()
                 try:
                     await handle.task
                 except BaseException:  # noqa: BLE001
@@ -332,7 +377,7 @@ class SequenceRunner:
 
         return await self.get_state(sequence_id)
 
-    async def _finalize_orphaned_stop(self, sequence_id: int, run_id: Optional[int]) -> None:
+    async def _finalize_orphaned_stop(self, sequence_id: int, run_id: int | None) -> None:
         if run_id is None:
             return
 
@@ -352,8 +397,8 @@ class SequenceRunner:
             ):
                 return
             current_step_index = int(row[1] or 0)
-            started_at = row[2]
-            await session.execute(
+            started_at = cast(datetime, row[2])
+            _ = await session.execute(
                 update(SequenceRunStep)
                 .where(
                     SequenceRunStep.run_id == run_id,
@@ -365,7 +410,7 @@ class SequenceRunner:
                     error_message="stopped",
                 )
             )
-            await self._record_cancellation(
+            _ = await self._record_cancellation(
                 session=session,
                 run_id=run_id,
                 current_step=None,
@@ -410,9 +455,9 @@ class SequenceRunner:
                 .limit(1)
             )
             result = await session.execute(stmt)
-            run: Optional[SequenceRun] = result.scalar_one_or_none()
+            run: SequenceRun | None = result.scalar_one_or_none()
 
-            total_steps = len(sequence.steps)
+            total_steps = len(_sequence_steps(sequence))
             sequence_updated_at = sequence.updated_at or sequence.created_at
 
             if run:
@@ -441,7 +486,10 @@ class SequenceRunner:
                 ]
                 state = SequenceStateSchema(
                     sequence_id=sequence_id,
-                    status=run.status.value if isinstance(run.status, SequenceRunStatus) else str(run.status),
+                    status=cast(
+                        SequenceRunStatusLiteral,
+                        run.status.value,
+                    ),
                     run_id=run.id,
                     current_step_index=run.current_step_index,
                     total_steps=total_steps,
@@ -455,7 +503,7 @@ class SequenceRunner:
             return state
 
 
-    async def _activate_run(self, session, run_id: int, started_at: datetime) -> bool:
+    async def _activate_run(self, session: AsyncSession, run_id: int, started_at: datetime) -> bool:
         stmt = (
             update(SequenceRun)
             .where(
@@ -472,14 +520,15 @@ class SequenceRunner:
     async def _handle_activation_skip(
         self,
         *,
-        session,
+        session: AsyncSession,
         sequence_id: int,
         run_id: int,
         total_steps: int,
-        completed_step_ids: List[int],
+        completed_step_ids: list[int],
         started_at: datetime,
         start_time: float,
-    ) -> Optional[int]:
+    ) -> int | None:
+        _ = (total_steps, started_at, start_time)
         status = await session.scalar(
             select(SequenceRun.status).where(SequenceRun.id == run_id)
         )
@@ -507,15 +556,15 @@ class SequenceRunner:
         *,
         sequence_id: int,
         run_id: int,
-        status: str,
+        status: SequenceRunStatusLiteral | Literal["idle"],
         current_step_index: int,
         total_steps: int,
-        completed_step_ids: List[int],
+        completed_step_ids: list[int],
         started_at: datetime,
         start_time: float,
-        last_error: Optional[str] = None,
-        runtime: Optional[SequenceRuntimeSchema] = None,
-        blocked_step_ids: Optional[List[int]] = None,
+        last_error: str | None = None,
+        runtime: SequenceRuntimeSchema | None = None,
+        blocked_step_ids: list[int] | None = None,
     ) -> None:
         elapsed_total = int((time.monotonic() - start_time) * 1000)
         finished_at = datetime.now(timezone.utc)
@@ -576,7 +625,7 @@ class SequenceRunner:
         step_id: int,
         status: str,
         message: str,
-        runtime: Optional[SequenceRuntimeSchema],
+        runtime: SequenceRuntimeSchema | None,
     ) -> None:
         try:
             await asyncio.wait_for(
@@ -601,9 +650,7 @@ class SequenceRunner:
             )
 
     def _reset_cancellation_probe(self, run_id: int) -> None:
-        tracker = getattr(self, "_last_cancellation_probe_at", None)
-        if tracker is not None:
-            tracker.pop(run_id, None)
+        _ = self._last_cancellation_probe_at.pop(run_id, None)
 
     async def _ensure_stopping_event(
         self,
@@ -629,17 +676,17 @@ class SequenceRunner:
     async def _record_cancellation(
         self,
         *,
-        session,
+        session: AsyncSession,
         run_id: int,
-        current_step: Optional[StepContext],
-        step_started_monotonic: Optional[float],
+        current_step: StepContext | None,
+        step_started_monotonic: float | None,
         fallback_index: int,
     ) -> int:
-        await reconcile_unfinished_hardware_command_intents(
+        _ = await reconcile_unfinished_hardware_command_intents(
             session,
             job_id=str(run_id),
         )
-        if current_step and step_started_monotonic is not None:
+        if current_step and current_step.run_step_id is not None and step_started_monotonic is not None:
             await self._mark_step_status(
                 session,
                 current_step.run_step_id,
@@ -657,9 +704,9 @@ class SequenceRunner:
         run_id: int,
         total_steps: int,
         started_at: datetime,
-        request_id: Optional[str],
-        requested_by: Optional[str],
-        runtime: Optional[SequenceRuntimeSchema] = None,
+        request_id: str | None,
+        requested_by: str | None,
+        runtime: SequenceRuntimeSchema | None = None,
     ) -> None:
         await SequenceEventStream.started(
             sequence_id=sequence_id,
@@ -698,9 +745,9 @@ class SequenceRunner:
         run_id: int,
         current_step_index: int,
         total_steps: int,
-        completed_step_ids: List[int],
+        completed_step_ids: list[int],
         started_at: datetime,
-        runtime: Optional[SequenceRuntimeSchema],
+        runtime: SequenceRuntimeSchema | None,
     ) -> None:
         self._cache_state(
             sequence_id,
@@ -719,8 +766,8 @@ class SequenceRunner:
         )
 
 
-    async def _set_step_running(self, session, run_step_id: int, started_at: datetime) -> None:
-        await session.execute(
+    async def _set_step_running(self, session: AsyncSession, run_step_id: int, started_at: datetime) -> None:
+        _ = await session.execute(
             update(SequenceRunStep)
             .where(SequenceRunStep.id == run_step_id)
             .values(status=SequenceRunStepStatus.RUNNING, started_at=started_at)
@@ -729,9 +776,7 @@ class SequenceRunner:
     async def _probe_cancellation_from_db(self, run_id: int, cancel_event: asyncio.Event) -> None:
         if cancel_event.is_set():
             return
-        tracker = getattr(self, "_last_cancellation_probe_at", None)
-        if tracker is None:
-            tracker = self._last_cancellation_probe_at = {}
+        tracker = self._last_cancellation_probe_at
 
         now = time.monotonic()
         last_checked = tracker.get(run_id)
@@ -746,7 +791,7 @@ class SequenceRunner:
         if status in (SequenceRunStatus.CANCELLING, SequenceRunStatus.STOPPED):
             cancel_event.set()
 
-    async def _get_active_run_id(self, sequence_id: int) -> Optional[int]:
+    async def _get_active_run_id(self, sequence_id: int) -> int | None:
         async with AsyncSessionLocal() as session:
             stmt = (
                 select(SequenceRun.id)
@@ -770,7 +815,7 @@ class SequenceRunner:
         self,
         sequence_id: int,
         *,
-        workspace_id: Optional[int] = None,
+        workspace_id: int | None = None,
         signal_bindings: dict[str, int] | None = None,
     ) -> tuple[int, ResolvedSequenceDefinition, dict[int, ResolvedSequenceDefinition]]:
         signal_bindings = signal_bindings or {}
@@ -786,7 +831,7 @@ class SequenceRunner:
             ) is None:
                 raise SequenceNotApplicableError("Sequence is not linked to the requested workspace")
 
-            ordered_steps = sorted(sequence.steps, key=lambda s: s.order_index)
+            ordered_steps = sorted(_sequence_steps(sequence), key=lambda s: s.order_index)
             if not ordered_steps:
                 raise SequenceNotApplicableError(f"Sequence {sequence_id} has no steps to execute")
 
@@ -837,7 +882,7 @@ class SequenceRunner:
 
     async def _build_resolved_sequence(
         self,
-        session,
+        session: AsyncSession,
         sequence_id: int,
         *,
         workspace_id: int | None,
@@ -859,18 +904,18 @@ class SequenceRunner:
         if not sequence:
             raise SequenceNotFoundError(f"Sequence {sequence_id} not found")
 
-        ordered_steps = sorted(sequence.steps, key=lambda step: step.order_index)
+        ordered_steps = sorted(_sequence_steps(sequence), key=lambda step: step.order_index)
         if not ordered_steps:
             raise SequenceNotApplicableError(f"Sequence {sequence.name} has no steps to execute")
 
-        payload_by_step_id: Dict[int, dict[str, Any]] = {}
-        primary_channel_by_step_id: Dict[int, int | None] = {}
+        payload_by_step_id: dict[int, dict[str, object]] = {}
+        primary_channel_by_step_id: dict[int, int | None] = {}
         primary_channel_ids: set[int] = set()
         payload_channel_ids: set[int] = set()
         device_ids: set[int] = set()
 
         switchgear_ids = {
-            int(step.payload.get("switchgear_id"))
+            _required_int(cast(object, step.payload.get("switchgear_id")))
             for step in ordered_steps
             if step.sequence_step_type == SequenceStepType.DO_PAIR
             and isinstance(step.payload, dict)
@@ -897,7 +942,7 @@ class SequenceRunner:
                 signal_bindings=signal_bindings,
             )
             if step.sequence_step_type == SequenceStepType.DO_PAIR and payload.get("switchgear_id") is not None:
-                switchgear_id = int(payload["switchgear_id"])
+                switchgear_id = _required_int(payload["switchgear_id"])
                 switchgear = switchgear_lookup.get(switchgear_id)
                 if switchgear is None:
                     raise SequenceNotApplicableError(f"Configured switchgear #{switchgear_id} is not available")
@@ -924,14 +969,14 @@ class SequenceRunner:
             if resolved_primary is not None:
                 primary_channel_ids.add(int(resolved_primary))
 
-            for channel_id in payload.get("channel_ids") or []:
+            for channel_id in _object_list(payload.get("channel_ids")):
                 if channel_id is None:
                     continue
-                payload_channel_ids.add(int(channel_id))
+                payload_channel_ids.add(_required_int(channel_id))
 
             device_id = payload.get("device_id")
             if device_id is not None:
-                device_ids.add(int(device_id))
+                device_ids.add(_required_int(device_id))
 
         all_channel_ids = primary_channel_ids | payload_channel_ids
         channel_lookup = await self._load_channel_infos(
@@ -954,9 +999,9 @@ class SequenceRunner:
             payload = dict(payload_by_step_id.get(step.id) or {})
             target_sequence_id = payload.get("target_sequence_id")
             if target_sequence_id is not None:
-                await self._build_resolved_sequence(
+                _ = await self._build_resolved_sequence(
                     session,
-                    int(target_sequence_id),
+                    _required_int(target_sequence_id),
                     workspace_id=workspace_id,
                     signal_bindings=signal_bindings,
                     resolved_cache=resolved_cache,
@@ -968,15 +1013,15 @@ class SequenceRunner:
             primary_channel_id = primary_channel_by_step_id.get(step.id)
             primary = channel_lookup.get(primary_channel_id) if primary_channel_id else None
             pair_channels: list[ChannelInfo] = []
-            for channel_id in payload.get("channel_ids") or []:
-                info = channel_lookup.get(int(channel_id))
+            for channel_id in _object_list(payload.get("channel_ids")):
+                info = channel_lookup.get(_required_int(channel_id))
                 if info:
                     pair_channels.append(info)
 
             target_device = None
             payload_device_id = payload.get("device_id")
             if payload_device_id is not None:
-                target_device = device_lookup.get(int(payload_device_id))
+                target_device = device_lookup.get(_required_int(payload_device_id))
             elif primary:
                 target_device = device_lookup.get(primary.device_id)
 
@@ -1001,7 +1046,7 @@ class SequenceRunner:
 
     async def _load_channel_infos(
         self,
-        session,
+        session: AsyncSession,
         channel_ids: set[int],
         *,
         channel_cache: dict[int, ChannelInfo],
@@ -1028,10 +1073,11 @@ class SequenceRunner:
                     raise SequenceNotApplicableError(
                         f"Channel {channel.id} is not attached to a device"
                     )
+                channel_device = cast(Device, channel.device)
                 channel_cache[channel.id] = ChannelInfo(
                     id=channel.id,
                     device_id=channel.device_id,
-                    unit_id=channel.device.unit_id,
+                    unit_id=channel_device.unit_id,
                     channel_index=channel.channel_index,
                 )
 
@@ -1043,7 +1089,7 @@ class SequenceRunner:
 
     async def _load_device_infos(
         self,
-        session,
+        session: AsyncSession,
         device_ids: set[int],
         *,
         device_cache: dict[int, DeviceInfo],
@@ -1062,11 +1108,12 @@ class SequenceRunner:
                     "Devices not found: " + ", ".join(map(str, missing_devices))
                 )
             for device in devices.values():
+                device_channels = cast(list[Channel], device.channels or [])
                 device_cache[device.id] = DeviceInfo(
                     id=device.id,
                     unit_id=device.unit_id,
-                    channel_ids=[int(channel.id) for channel in (device.channels or [])],
-                    channel_indexes=[int(channel.channel_index) for channel in (device.channels or [])],
+                    channel_ids=[int(channel.id) for channel in device_channels],
+                    channel_indexes=[int(channel.channel_index) for channel in device_channels],
                 )
 
         return {
@@ -1102,7 +1149,7 @@ class SequenceRunner:
         )
 
     @staticmethod
-    def _resolve_target_sequence_id(*, step, payload: dict[str, Any]) -> int | None:
+    def _resolve_target_sequence_id(*, step: SequenceStep, payload: dict[str, object]) -> int | None:
         step_type = getattr(step.sequence_step_type, "value", str(step.sequence_step_type))
         if step_type not in {"CALL_SEQUENCE", "REPEAT_SEQUENCE"}:
             return None
@@ -1112,7 +1159,7 @@ class SequenceRunner:
             raise SequenceNotApplicableError(f"{step_type} step requires target_sequence_id")
 
         try:
-            target_sequence_id = int(raw_target)
+            target_sequence_id = _required_int(raw_target)
         except (TypeError, ValueError) as exc:
             raise SequenceNotApplicableError(
                 f"{step_type} target_sequence_id must be a positive integer"
@@ -1126,12 +1173,12 @@ class SequenceRunner:
         return target_sequence_id
 
     @staticmethod
-    def _parse_repeat_config(payload: dict[str, Any]) -> RepeatStepConfig:
+    def _parse_repeat_config(payload: dict[str, object]) -> RepeatStepConfig:
         raw_mode = str(payload.get("repeat_mode") or "times").strip().lower()
         if raw_mode == "times":
             raw_iterations = payload.get("iterations")
             try:
-                iterations = int(raw_iterations)
+                iterations = _required_int(cast(object, raw_iterations))
             except (TypeError, ValueError) as exc:
                 raise SequenceNotApplicableError("REPEAT_SEQUENCE iterations must be a positive integer") from exc
             if iterations <= 0:
@@ -1141,7 +1188,7 @@ class SequenceRunner:
         if raw_mode == "duration":
             raw_duration = payload.get("duration_ms")
             try:
-                duration_ms = int(raw_duration)
+                duration_ms = _required_int(cast(object, raw_duration))
             except (TypeError, ValueError) as exc:
                 raise SequenceNotApplicableError("REPEAT_SEQUENCE duration_ms must be a positive integer") from exc
             if duration_ms <= 0:
@@ -1157,15 +1204,15 @@ class SequenceRunner:
 
     @staticmethod
     def _resolve_payload_channel_ids(
-        payload_raw: dict,
+        payload_raw: dict[str, object],
         *,
         signal_bindings: dict[str, int],
-    ) -> dict:
+    ) -> dict[str, object]:
         payload = dict(payload_raw or {})
 
         raw_channel_ids = payload.get("channel_ids")
         if isinstance(raw_channel_ids, list) and raw_channel_ids:
-            payload["channel_ids"] = [int(channel_id) for channel_id in raw_channel_ids if channel_id is not None]
+            payload["channel_ids"] = [_required_int(channel_id) for channel_id in cast(list[object], raw_channel_ids) if channel_id is not None]
             return payload
 
         signal_keys = payload.get("signal_keys")
@@ -1174,7 +1221,7 @@ class SequenceRunner:
 
         resolved: list[int] = []
         missing: list[str] = []
-        for raw_key in signal_keys:
+        for raw_key in cast(list[object], signal_keys):
             key = str(raw_key).strip() if raw_key is not None else ""
             if not key:
                 continue
@@ -1195,8 +1242,8 @@ class SequenceRunner:
     @staticmethod
     def _resolve_primary_channel_id(
         *,
-        step,
-        payload: dict,
+        step: SequenceStep,
+        payload: dict[str, object],
         signal_bindings: dict[str, int],
     ) -> int | None:
         if step.channel_id is not None:
@@ -1213,7 +1260,7 @@ class SequenceRunner:
         return int(channel_id) if channel_id is not None else None
 
     @staticmethod
-    def _step_requires_primary_channel(step) -> bool:
+    def _step_requires_primary_channel(step: SequenceStep) -> bool:
         step_type = getattr(step.sequence_step_type, "value", str(step.sequence_step_type))
         return step_type in {"DO_LATCH", "DO_PULSE", "AO_SET"}
 
@@ -1224,16 +1271,16 @@ class SequenceRunner:
         root_sequence: ResolvedSequenceDefinition,
         resolved_sequences: dict[int, ResolvedSequenceDefinition],
         cancel_event: asyncio.Event,
-        request_id: Optional[str],
-        requested_by: Optional[str],
-        workspace_id: Optional[int],
+        request_id: str | None,
+        requested_by: str | None,
+        workspace_id: int | None,
     ) -> None:
         total_steps = len(root_sequence.steps)
         start_time = time.monotonic()
         started_at = datetime.now(timezone.utc)
-        completed_step_ids: List[int] = []
-        blocked_step_ids: List[int] = []
-        non_terminal_failures: List[str] = []
+        completed_step_ids: list[int] = []
+        blocked_step_ids: list[int] = []
+        non_terminal_failures: list[str] = []
 
         try:
             async with AsyncSessionLocal() as session:
@@ -1276,7 +1323,9 @@ class SequenceRunner:
 
                 if workspace_id is None:
                     raise SequenceNotApplicableError("Sequence is not linked to a workspace")
-                hardware_admission = HardwareCommandAdmission(RedisManager.get_instance())
+                hardware_admission = HardwareCommandAdmission(
+                    cast(redis_async.Redis, cast(object, RedisManager.get_instance()))
+                )
                 device_presence = DevicePresenceService()
                 unavailable_units: set[str] = set()
 
@@ -1286,9 +1335,10 @@ class SequenceRunner:
                     channel_id: int | list[int] | None,
                     device_id: int | None,
                     unit_id: str,
-                    command_payload: dict[str, Any],
-                    sender,
-                ) -> Any:
+                    command_payload: dict[str, object],
+                    sender: Callable[[str], Awaitable[object]],
+                ) -> object:
+                    _ = ctx
                     if channel_id is None or device_id is None:
                         raise SequenceNotApplicableError("Hardware sequence step requires a single channel")
                     normalized_unit_id = str(unit_id).strip()
@@ -1332,20 +1382,22 @@ class SequenceRunner:
                             "Hardware sequence channel requires physical recovery"
                         )
                     owner_id = f"sequence:{run_id}"
-                    leases = await hardware_admission.acquire_many(
+                    leases: list[HardwareChannelLease] = []
+                    acquired_leases = await hardware_admission.acquire_many(
                         channel_ids=channel_ids,
                         owner_kind="sequence",
                         owner_id=owner_id,
                     )
-                    if leases is None:
+                    if acquired_leases is None:
                         raise SequenceNotApplicableError("Hardware channel is busy")
+                    leases = acquired_leases
                     targets, analog = _sequence_readback_targets(
                         action=action,
                         payload=command_payload,
                     )
                     command_id = uuid4().hex
                     try:
-                        await record_hardware_command_intent(
+                        _ = await record_hardware_command_intent(
                             session,
                             command_id=command_id,
                             workspace_id=int(workspace_id),
@@ -1371,7 +1423,7 @@ class SequenceRunner:
                         if lease_lost:
                             raise SequenceNotApplicableError("Hardware channel lease lost")
                         try:
-                            await sender(command_id)
+                            _ = await sender(command_id)
                         except Exception as exc:
                             await session.rollback()
                             await mark_hardware_command_intent_delivery_failure(
@@ -1421,7 +1473,7 @@ class SequenceRunner:
                             correlation_id=f"sequence:{command_id}:readback",
                         )
                         if not await _wait_for_sequence_readback(
-                            RedisManager.get_instance(),
+                            _sequence_readback_redis(),
                             unit_id=unit_id,
                             targets=targets,
                             analog=analog,
@@ -1441,17 +1493,17 @@ class SequenceRunner:
                                 unit_id=normalized_unit_id,
                             )
                         if action == "do_pulse":
-                            await asyncio.sleep(max(0, int(command_payload.get("pulse_ms", 0))) / 1000)
+                            await asyncio.sleep(max(0, _required_int(command_payload.get("pulse_ms", 0))) / 1000)
                             revert_packet_id = await enqueue_request_state(
                                 unit_id=unit_id,
                                 mode=State.REQ_SINGLE_BIT,
-                                ch=int(command_payload["channel_index"]),
+                                ch=_required_int(command_payload["channel_index"]),
                                 correlation_id=f"sequence:{command_id}:pulse-revert",
                             )
                             if not await _wait_for_sequence_readback(
-                                RedisManager.get_instance(),
+                                _sequence_readback_redis(),
                                 unit_id=unit_id,
-                                targets=[(int(command_payload["channel_index"]), 0)],
+                                targets=[(_required_int(command_payload["channel_index"]), 0)],
                                 analog=False,
                                 packet_id=revert_packet_id,
                                 cancel_event=cancel_event,
@@ -1472,8 +1524,8 @@ class SequenceRunner:
                         await session.commit()
                         return command_id
                     finally:
-                        for lease in locals().get("leases", []) or []:
-                            await hardware_admission.release(lease)
+                        for lease in leases:
+                            _ = await hardware_admission.release(lease)
 
                 async def bounded_admit_sequence_command(
                     ctx: StepContext,
@@ -1481,9 +1533,9 @@ class SequenceRunner:
                     channel_id: int | list[int] | None,
                     device_id: int | None,
                     unit_id: str,
-                    command_payload: dict[str, Any],
-                    sender,
-                ) -> Any:
+                    command_payload: dict[str, object],
+                    sender: Callable[[str], Awaitable[object]],
+                ) -> object:
                     try:
                         return await asyncio.wait_for(
                             admit_sequence_command(
@@ -1500,7 +1552,7 @@ class SequenceRunner:
                     except asyncio.TimeoutError as exc:
                         normalized_unit_id = str(unit_id).strip()
                         unavailable_units.add(normalized_unit_id)
-                        await reconcile_unfinished_hardware_command_intents(
+                        _ = await reconcile_unfinished_hardware_command_intents(
                             session,
                             job_id=str(run_id),
                         )
@@ -1611,7 +1663,7 @@ class SequenceRunner:
                                 str(exc),
                             )
                         blocked_step_ids.append(top_step.sequence_step_id)
-                        await session.execute(
+                        _ = await session.execute(
                             update(SequenceRun)
                             .where(SequenceRun.id == run_id)
                             .values(current_step_index=top_step.order_index + 1)
@@ -1637,7 +1689,7 @@ class SequenceRunner:
                                 str(exc),
                             )
                         non_terminal_failures.append(str(exc))
-                        await session.execute(
+                        _ = await session.execute(
                             update(SequenceRun)
                             .where(SequenceRun.id == run_id)
                             .values(current_step_index=top_step.order_index + 1, error_message=str(exc))
@@ -1688,9 +1740,8 @@ class SequenceRunner:
                             top_step_started_monotonic=top_step_started_monotonic,
                             message=str(exc),
                             runtime=(
-                                self._state_cache.get(sequence_id).runtime
-                                if self._state_cache.get(sequence_id)
-                                else top_runtime_cursor.to_schema(start_time=start_time)
+                                (cached_state.runtime if (cached_state := self._state_cache.get(sequence_id)) else None)
+                                or top_runtime_cursor.to_schema(start_time=start_time)
                             ),
                         )
                         return
@@ -1703,7 +1754,7 @@ class SequenceRunner:
                             top_step_started_monotonic,
                         )
                     completed_step_ids.append(top_step.sequence_step_id)
-                    await session.execute(
+                    _ = await session.execute(
                         update(SequenceRun)
                         .where(SequenceRun.id == run_id)
                         .values(current_step_index=top_step.order_index + 1)
@@ -1769,25 +1820,24 @@ class SequenceRunner:
                 sequence_id,
                 run_id,
             )
-            if run_id is not None:
-                try:
-                    async with AsyncSessionLocal() as recovery_session:
-                        reconciled = await reconcile_unfinished_hardware_command_intents(
-                            recovery_session,
-                            job_id=str(run_id),
-                        )
-                        await recovery_session.commit()
-                    if reconciled:
-                        logger.warning(
-                            "⚠️ Reconciled %s unfinished hardware intents after sequence crash run=%s",
-                            reconciled,
-                            run_id,
-                        )
-                except Exception:  # noqa: BLE001
-                    logger.exception(
-                        "💥 Failed to reconcile hardware intents after sequence crash run=%s",
+            try:
+                async with AsyncSessionLocal() as recovery_session:
+                    reconciled = await reconcile_unfinished_hardware_command_intents(
+                        recovery_session,
+                        job_id=str(run_id),
+                    )
+                    await recovery_session.commit()
+                if reconciled:
+                    logger.warning(
+                        "⚠️ Reconciled %s unfinished hardware intents after sequence crash run=%s",
+                        reconciled,
                         run_id,
                     )
+            except Exception:  # noqa: BLE001
+                logger.exception(
+                    "💥 Failed to reconcile hardware intents after sequence crash run=%s",
+                    run_id,
+                )
             raise
 
     @staticmethod
@@ -1796,7 +1846,7 @@ class SequenceRunner:
         active_sequence: ResolvedSequenceDefinition,
         active_step: ResolvedSequenceStep,
         execution_path: tuple[str, ...],
-        loop_state: Optional[ExecutionLoopState] = None,
+        loop_state: ExecutionLoopState | None = None,
     ) -> RuntimeCursor:
         return RuntimeCursor(
             active_sequence_id=active_sequence.id,
@@ -1834,7 +1884,7 @@ class SequenceRunner:
         total_steps: int,
         started_at: datetime,
         start_time: float,
-        completed_step_ids: List[int],
+        completed_step_ids: list[int],
         cancel_event: asyncio.Event,
         top_level_step: ResolvedSequenceStep,
         active_sequence: ResolvedSequenceDefinition,
@@ -1842,7 +1892,7 @@ class SequenceRunner:
         execution_path: tuple[str, ...],
         resolved_sequences: dict[int, ResolvedSequenceDefinition],
         command_admission: HardwareCommandAdmissionFn,
-        loop_state: Optional[ExecutionLoopState] = None,
+        loop_state: ExecutionLoopState | None = None,
     ) -> None:
         await self._probe_cancellation_from_db(run_id, cancel_event)
         if cancel_event.is_set():
@@ -1865,7 +1915,7 @@ class SequenceRunner:
         )
 
         if active_step.step_type == SequenceStepType.CALL_SEQUENCE:
-            target_sequence_id = int(active_step.payload["target_sequence_id"])
+            target_sequence_id = _required_int(active_step.payload["target_sequence_id"])
             child_sequence = resolved_sequences.get(target_sequence_id)
             if child_sequence is None:
                 raise SequenceNotApplicableError(f"Target sequence {target_sequence_id} is not available")
@@ -1890,7 +1940,7 @@ class SequenceRunner:
             return
 
         if active_step.step_type == SequenceStepType.REPEAT_SEQUENCE:
-            target_sequence_id = int(active_step.payload["target_sequence_id"])
+            target_sequence_id = _required_int(active_step.payload["target_sequence_id"])
             child_sequence = resolved_sequences.get(target_sequence_id)
             if child_sequence is None:
                 raise SequenceNotApplicableError(f"Target sequence {target_sequence_id} is not available")
@@ -1973,18 +2023,19 @@ class SequenceRunner:
     async def _handle_step_failure(
         self,
         *,
-        session,
+        session: AsyncSession,
         sequence_id: int,
         run_id: int,
         total_steps: int,
         started_at: datetime,
         start_time: float,
-        completed_step_ids: List[int],
+        completed_step_ids: list[int],
         top_level_step: ResolvedSequenceStep,
         top_step_started_monotonic: float,
         message: str,
-        runtime: Optional[SequenceRuntimeSchema],
+        runtime: SequenceRuntimeSchema | None,
     ) -> None:
+        _ = start_time
         if top_level_step.run_step_id is not None:
             await self._mark_step_status(
                 session,
@@ -2023,17 +2074,17 @@ class SequenceRunner:
     def _build_executor_hooks(
         self,
         *,
-        session,
+        session: AsyncSession,
         sequence_id: int,
         run_id: int,
         total_steps: int,
         started_at: datetime,
         start_time: float,
-        request_id: Optional[str],
-        requested_by: Optional[str],
+        request_id: str | None,
+        requested_by: str | None,
     ) -> SequenceExecutorHooks:
         run_start_time = start_time
-        completed_cache: List[int] = []
+        completed_cache: list[int] = []
 
         async def on_run_started(event: RunStartedEvent) -> None:
             nonlocal run_start_time
@@ -2071,7 +2122,7 @@ class SequenceRunner:
                     event.started_monotonic,
                 )
             completed_cache = list(event.completed_step_ids)
-            await session.execute(
+            _ = await session.execute(
                 update(SequenceRun)
                 .where(SequenceRun.id == run_id)
                 .values(current_step_index=ctx.index + 1)
@@ -2172,7 +2223,7 @@ class SequenceRunner:
             await self._publish_terminal_state(
                 sequence_id=sequence_id,
                 run_id=run_id,
-                status=result.status,
+                status=cast(SequenceRunStatusLiteral | Literal["idle"], result.status),
                 current_step_index=result.current_step_index,
                 total_steps=total_steps,
                 completed_step_ids=list(result.completed_step_ids),
@@ -2190,9 +2241,9 @@ class SequenceRunner:
             on_finished=on_finished,
         )
 
-    async def _mark_run_completed(self, session, run_id: int) -> None:
+    async def _mark_run_completed(self, session: AsyncSession, run_id: int) -> None:
         finished_at = datetime.now(timezone.utc)
-        await session.execute(
+        _ = await session.execute(
             update(SequenceRun)
             .where(SequenceRun.id == run_id)
             .values(
@@ -2204,13 +2255,13 @@ class SequenceRunner:
 
     async def _mark_run_completed_with_issues(
         self,
-        session,
+        session: AsyncSession,
         run_id: int,
         *,
-        error_message: Optional[str],
+        error_message: str | None,
     ) -> None:
         finished_at = datetime.now(timezone.utc)
-        await session.execute(
+        _ = await session.execute(
             update(SequenceRun)
             .where(SequenceRun.id == run_id)
             .values(
@@ -2233,7 +2284,7 @@ class SequenceRunner:
                 .values(status=SequenceRunStatus.CANCELLING)
             )
             result = await session.execute(stmt)
-            updated = result.rowcount > 0
+            updated = bool(getattr(result, "rowcount", 0) > 0)
             await session.commit()
 
         if not updated:
@@ -2260,13 +2311,13 @@ class SequenceRunner:
 
     async def _mark_run_error(
         self,
-        session,
+        session: AsyncSession,
         run_id: int,
         step_index: int,
         message: str,
     ) -> None:
         finished_at = datetime.now(timezone.utc)
-        await session.execute(
+        _ = await session.execute(
             update(SequenceRun)
             .where(SequenceRun.id == run_id)
             .values(
@@ -2277,9 +2328,9 @@ class SequenceRunner:
             )
         )
 
-    async def _mark_run_stopped(self, session, run_id: int, step_index: int) -> None:
+    async def _mark_run_stopped(self, session: AsyncSession, run_id: int, step_index: int) -> None:
         finished_at = datetime.now(timezone.utc)
-        await session.execute(
+        _ = await session.execute(
             update(SequenceRun)
             .where(SequenceRun.id == run_id)
             .values(
@@ -2292,15 +2343,15 @@ class SequenceRunner:
 
     async def _mark_step_status(
         self,
-        session,
+        session: AsyncSession,
         run_step_id: int,
         status: SequenceRunStepStatus,
         started_monotonic: float,
-        error_message: Optional[str] = None,
+        error_message: str | None = None,
     ) -> None:
         finished_at = datetime.now(timezone.utc)
         elapsed_ms = int((time.monotonic() - started_monotonic) * 1000)
-        await session.execute(
+        _ = await session.execute(
             update(SequenceRunStep)
             .where(SequenceRunStep.id == run_step_id)
             .values(
@@ -2311,7 +2362,7 @@ class SequenceRunner:
             )
         )
 
-    async def _load_sequence(self, session, sequence_id: int, include_steps: bool = False) -> Optional[Sequence]:
+    async def _load_sequence(self, session: AsyncSession, sequence_id: int, include_steps: bool = False) -> Sequence | None:
         query = select(Sequence)
         if include_steps:
             query = query.options(
@@ -2327,7 +2378,7 @@ class SequenceRunner:
         self._state_cache[sequence_id] = state
 
     def invalidate_state(self, sequence_id: int) -> None:
-        self._state_cache.pop(sequence_id, None)
+        _ = self._state_cache.pop(sequence_id, None)
 
     @staticmethod
     def _is_active_run_violation(exc: IntegrityError) -> bool:

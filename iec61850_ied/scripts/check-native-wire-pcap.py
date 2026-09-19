@@ -14,6 +14,13 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol, cast
+
+
+class _Arguments(Protocol):
+    pcap: Path
+    port: int
+    min_reports: int
 
 
 @dataclass
@@ -28,7 +35,7 @@ class MmsRow:
 
 
 def run_tshark(args: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(args, check=False, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    return subprocess.run(args, check=False, text=True, capture_output=True)
 
 
 def split_multi(value: str) -> list[str]:
@@ -112,10 +119,10 @@ def has_response(rows: list[MmsRow], invoke_id: str, service: str) -> bool:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description='Validate native-wire MMS pcap v1 gates.')
-    parser.add_argument('pcap', type=Path)
-    parser.add_argument('--port', type=int, default=12447)
-    parser.add_argument('--min-reports', type=int, default=1)
-    args = parser.parse_args()
+    _ = parser.add_argument('pcap', type=Path)
+    _ = parser.add_argument('--port', type=int, default=12447)
+    _ = parser.add_argument('--min-reports', type=int, default=1)
+    args = cast(_Arguments, cast(object, parser.parse_args()))
 
     if shutil.which('tshark') is None:
         print('FAIL: tshark is required', file=sys.stderr)

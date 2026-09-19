@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.schemas.verification_schema import (
+    VerificationConfidenceLevel,
     VerificationSessionSnapshotSchema,
     VerificationStepSchema,
     VerificationSubscriptionSnapshotSchema,
@@ -8,7 +9,7 @@ from app.schemas.verification_schema import (
 from app.services.verification_confidence import derive_run_confidence
 
 
-def _step(*, signal_id: int, confidence: str, reason: str, step_id: str | None = None) -> VerificationStepSchema:
+def _step(*, signal_id: int, confidence: VerificationConfidenceLevel, reason: str, step_id: str | None = None) -> VerificationStepSchema:
     return VerificationStepSchema(
         step_id=step_id or f"step-{signal_id}",
         signal_id=signal_id,

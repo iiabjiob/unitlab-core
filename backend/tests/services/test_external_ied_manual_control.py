@@ -1,32 +1,36 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from types import SimpleNamespace
+from typing import cast
 
 from app.services.external_ied_manual_control import (
     ExternalIedManualReportControlService,
     ExternalIedManualReportRequest,
 )
+from app.services.iec61850.client_control import Iec61850ClientControlService
+from app.services.iec61850.report_runtime import Iec61850DeviceEndpoint, Iec61850ReportControlCandidate
 
 
 class _RecordingControlService:
     instances: list["_RecordingControlService"] = []
 
-    def __init__(self, **kwargs):
-        self.kwargs = kwargs
-        self.enable_calls = 0
-        self.gi_calls = 0
-        self.refresh_calls = 0
-        self.disconnect_calls = 0
-        self.close_calls = 0
-        self.report_enabled = True
+    def __init__(self, **kwargs: object) -> None:
+        self.kwargs: dict[str, object] = kwargs
+        self.enable_calls: int = 0
+        self.gi_calls: int = 0
+        self.refresh_calls: int = 0
+        self.disconnect_calls: int = 0
+        self.close_calls: int = 0
+        self.report_enabled: bool = True
         _RecordingControlService.instances.append(self)
 
-    def enable_reporting(self):
+    def enable_reporting(self) -> SimpleNamespace:
         self.enable_calls += 1
         return self._snapshot("enabled")
 
-    def send_general_interrogation(self):
+    def send_general_interrogation(self) -> SimpleNamespace:
         self.gi_calls += 1
         return self._snapshot("reporting", signal_states=[
             {
@@ -38,7 +42,7 @@ class _RecordingControlService:
             },
         ])
 
-    def refresh_reporting(self):
+    def refresh_reporting(self) -> SimpleNamespace:
         self.refresh_calls += 1
         return self._snapshot("reporting", signal_states=[
             {
@@ -50,7 +54,7 @@ class _RecordingControlService:
             },
         ])
 
-    def _snapshot(self, status: str, signal_states: list[dict] | None = None):
+    def _snapshot(self, status: str, signal_states: list[dict[str, object]] | None = None) -> SimpleNamespace:
         return SimpleNamespace(
             last_state=SimpleNamespace(runtime_status=SimpleNamespace(value=status), enabled=self.report_enabled),
             last_diagnostic=None,
@@ -69,19 +73,24 @@ class _RecordingControlService:
             }},
         )
 
-    def close_ied(self):
+    def close_ied(self) -> None:
         self.close_calls += 1
 
-    def disconnect_ied(self):
+    def disconnect_ied(self) -> None:
         self.disconnect_calls += 1
 
-    def snapshot(self):
+    def snapshot(self) -> SimpleNamespace:
         return self._snapshot("enabled" if self.report_enabled else "disabled")
+
+
+_CONTROL_SERVICE_FACTORY = cast(
+    Callable[..., Iec61850ClientControlService], _RecordingControlService
+)
 
 
 def test_manual_report_enable_uses_external_endpoint_and_rcb_reference():
     _RecordingControlService.instances = []
-    service = ExternalIedManualReportControlService(control_service_factory=_RecordingControlService, start_cleanup_thread=False)
+    service = ExternalIedManualReportControlService(control_service_factory=_CONTROL_SERVICE_FACTORY, start_cleanup_thread=False)
 
     result = service.set_report_enabled(
         ExternalIedManualReportRequest(
@@ -105,15 +114,17 @@ def test_manual_report_enable_uses_external_endpoint_and_rcb_reference():
     instance = _RecordingControlService.instances[0]
     assert instance.enable_calls == 1
     assert instance.gi_calls == 0
-    assert instance.kwargs["endpoint"].host == "172.16.40.128"
-    assert instance.kwargs["endpoint"].port == 12447
-    assert instance.kwargs["candidate"].id == "KINTE15BCU01CTRL1:LLN0$BR$brcbST"
-    assert instance.kwargs["candidate"].data_set_ref == "KINTE15BCU01CTRL1/LLN0$Events"
+    endpoint = cast(Iec61850DeviceEndpoint, instance.kwargs["endpoint"])
+    candidate = cast(Iec61850ReportControlCandidate, instance.kwargs["candidate"])
+    assert endpoint.host == "172.16.40.128"
+    assert endpoint.port == 12447
+    assert candidate.id == "KINTE15BCU01CTRL1:LLN0$BR$brcbST"
+    assert candidate.data_set_ref == "KINTE15BCU01CTRL1/LLN0$Events"
 
 
 def test_manual_report_disable_closes_existing_session():
     _RecordingControlService.instances = []
-    service = ExternalIedManualReportControlService(control_service_factory=_RecordingControlService, start_cleanup_thread=False)
+    service = ExternalIedManualReportControlService(control_service_factory=_CONTROL_SERVICE_FACTORY, start_cleanup_thread=False)
     request = ExternalIedManualReportRequest(
         workspace_id=5,
         endpoint="172.16.40.128:12447",
@@ -121,7 +132,7 @@ def test_manual_report_disable_closes_existing_session():
         report_kind="buffered",
     )
 
-    service.set_report_enabled(request, enabled=True)
+    _ = service.set_report_enabled(request, enabled=True)
     result = service.set_report_enabled(request, enabled=False)
 
     assert result.enabled is False
@@ -132,7 +143,7 @@ def test_manual_report_disable_closes_existing_session():
 
 def test_manual_report_can_enable_multiple_reports_on_same_endpoint():
     _RecordingControlService.instances = []
-    service = ExternalIedManualReportControlService(control_service_factory=_RecordingControlService, start_cleanup_thread=False)
+    service = ExternalIedManualReportControlService(control_service_factory=_CONTROL_SERVICE_FACTORY, start_cleanup_thread=False)
     first_request = ExternalIedManualReportRequest(
         workspace_id=5,
         endpoint="172.16.40.128:12447",
@@ -159,7 +170,7 @@ def test_manual_report_can_enable_multiple_reports_on_same_endpoint():
 
 def test_manual_report_gi_returns_signal_values():
     _RecordingControlService.instances = []
-    service = ExternalIedManualReportControlService(control_service_factory=_RecordingControlService, start_cleanup_thread=False)
+    service = ExternalIedManualReportControlService(control_service_factory=_CONTROL_SERVICE_FACTORY, start_cleanup_thread=False)
     request = ExternalIedManualReportRequest(
         workspace_id=5,
         endpoint="172.16.40.128:12447",
@@ -200,7 +211,7 @@ def test_manual_report_gi_returns_signal_values():
 def test_manual_report_heartbeat_renews_lease():
     _RecordingControlService.instances = []
     service = ExternalIedManualReportControlService(
-        control_service_factory=_RecordingControlService,
+        control_service_factory=_CONTROL_SERVICE_FACTORY,
         lease_ttl_seconds=1.0,
         start_cleanup_thread=False,
     )
@@ -216,6 +227,8 @@ def test_manual_report_heartbeat_renews_lease():
 
     assert renewed.enabled is True
     assert renewed.lease_id == enabled.lease_id
+    assert renewed.renewed_at is not None
+    assert enabled.renewed_at is not None
     assert renewed.renewed_at >= enabled.renewed_at
     assert renewed.signal_states == ()
     assert renewed.report_values == ()
@@ -225,9 +238,9 @@ def test_manual_report_heartbeat_renews_lease():
 
 def test_manual_report_poll_publishes_changed_values():
     _RecordingControlService.instances = []
-    events: list[dict] = []
+    events: list[dict[str, object]] = []
     service = ExternalIedManualReportControlService(
-        control_service_factory=_RecordingControlService,
+        control_service_factory=_CONTROL_SERVICE_FACTORY,
         event_publisher=events.append,
         start_cleanup_thread=False,
     )
@@ -282,7 +295,7 @@ def test_manual_report_poll_publishes_changed_values():
 
 def test_manual_report_heartbeat_clears_disabled_session_state():
     _RecordingControlService.instances = []
-    service = ExternalIedManualReportControlService(control_service_factory=_RecordingControlService, start_cleanup_thread=False)
+    service = ExternalIedManualReportControlService(control_service_factory=_CONTROL_SERVICE_FACTORY, start_cleanup_thread=False)
     request = ExternalIedManualReportRequest(
         workspace_id=5,
         endpoint="172.16.40.128:12447",
@@ -303,7 +316,7 @@ def test_manual_report_heartbeat_clears_disabled_session_state():
 
 def test_manual_report_release_by_lease_uses_cleanup_path():
     _RecordingControlService.instances = []
-    service = ExternalIedManualReportControlService(control_service_factory=_RecordingControlService, start_cleanup_thread=False)
+    service = ExternalIedManualReportControlService(control_service_factory=_CONTROL_SERVICE_FACTORY, start_cleanup_thread=False)
     request = ExternalIedManualReportRequest(
         workspace_id=5,
         endpoint="172.16.40.128:12447",
@@ -323,7 +336,7 @@ def test_manual_report_release_by_lease_uses_cleanup_path():
 def test_manual_report_expired_lease_is_cleaned_up():
     _RecordingControlService.instances = []
     service = ExternalIedManualReportControlService(
-        control_service_factory=_RecordingControlService,
+        control_service_factory=_CONTROL_SERVICE_FACTORY,
         lease_ttl_seconds=0.05,
         cleanup_interval_seconds=0.05,
     )
@@ -335,7 +348,7 @@ def test_manual_report_expired_lease_is_cleaned_up():
     )
 
     try:
-        service.set_report_enabled(request, enabled=True)
+        _ = service.set_report_enabled(request, enabled=True)
         time.sleep(0.4)
     finally:
         service.shutdown()

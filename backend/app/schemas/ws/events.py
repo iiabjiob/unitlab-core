@@ -1,5 +1,6 @@
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Union
+from collections.abc import Mapping
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_serializer
 from app.infrastructure.protocol.modes import State
@@ -43,7 +44,7 @@ class DeviceStateEvent(BaseModel):
     unit_id: str
     timestamp: int
     mode: State                   # Enum from protocol.modes
-    payload: Dict[str, Any]
+    payload: Mapping[str, object]
 
 # ---------------------------------------------------------------------
 # Device registration
@@ -89,8 +90,8 @@ class DeviceHeartbeatEvent(BaseModel):
     status: Literal["online", "offline"]
     last_seen: int
     heartbeat_kind: Literal["fast", "diag"] | None = None
-    heartbeat_fast: Dict[str, Any] | None = None
-    heartbeat_diag: Dict[str, Any] | None = None
+    heartbeat_fast: dict[str, object] | None = None
+    heartbeat_diag: dict[str, object] | None = None
 
 
 ExternalIedStatus = Literal["not_applicable", "unknown", "expected", "reachable", "offline"]
@@ -228,8 +229,8 @@ class ExternalIedManualReportValuesChangedEvent(BaseModel):
     report_reference: str
     lease_id: str
     status: str
-    signal_states: list[dict[str, Any]] = Field(default_factory=list)
-    report_values: list[dict[str, Any]] = Field(default_factory=list)
+    signal_states: list[dict[str, object]] = Field(default_factory=list)
+    report_values: list[dict[str, object]] = Field(default_factory=list)
     emitted_at: str
 
 class SequenceEventBase(BaseModel):
@@ -252,7 +253,7 @@ class SequenceProgressEvent(SequenceEventBase):
     progress_scope: Literal["step", "nested_step"] = "step"
     step_elapsed_ms: int
     run_elapsed_ms: int
-    completed_steps: List[int]
+    completed_steps: list[int]
     runtime: SequenceRuntimeSchema | None = None
 
 
@@ -304,36 +305,36 @@ class SystemHealthChangedEvent(BaseModel):
     previous_status: Literal["online", "degraded", "offline"] | None = None
     current_status: Literal["online", "degraded", "offline"]
     changed_at: datetime
-    issues: List[str]
-    diff: Dict[str, List[str]]
-    snapshot: Dict[str, Any]
+    issues: list[str]
+    diff: dict[str, list[str]]
+    snapshot: dict[str, object]
 
 
 class CoreNetworkStateEvent(BaseModel):
     channel: Literal[WSChannel.SYSTEM_INFO] = WSChannel.SYSTEM_INFO
     event: Literal["core_network_state"] = "core_network_state"
-    snapshot: Dict[str, Any]
+    snapshot: dict[str, object]
     changed_at: datetime
 
 
 class CoreNtpStateEvent(BaseModel):
     channel: Literal[WSChannel.SYSTEM_INFO] = WSChannel.SYSTEM_INFO
     event: Literal["core_ntp_state"] = "core_ntp_state"
-    snapshot: Dict[str, Any]
+    snapshot: dict[str, object]
     changed_at: datetime
 
 
 class CoreDiagnosticsStateEvent(BaseModel):
     channel: Literal[WSChannel.SYSTEM_INFO] = WSChannel.SYSTEM_INFO
     event: Literal["core_diagnostics_state"] = "core_diagnostics_state"
-    snapshot: Dict[str, Any]
+    snapshot: dict[str, object]
     changed_at: datetime
 
 
 class CoreProvisionStateEvent(BaseModel):
     channel: Literal[WSChannel.SYSTEM_INFO] = WSChannel.SYSTEM_INFO
     event: Literal["core_provision_state"] = "core_provision_state"
-    snapshot: Dict[str, Any]
+    snapshot: dict[str, object]
     changed_at: datetime
 
 
@@ -348,7 +349,7 @@ class SignalAllocationJobEvent(BaseModel):
     progress_done: int = 0
     message: str | None = None
     error: str | None = None
-    result: Dict[str, Any] = {}
+    result: dict[str, object] = {}
     created_at: datetime
     updated_at: datetime
 
@@ -364,7 +365,7 @@ class SignalTestRunJobEvent(BaseModel):
     progress_done: int = 0
     message: str | None = None
     error: str | None = None
-    result: Dict[str, Any] = {}
+    result: dict[str, object] = {}
     created_at: datetime
     updated_at: datetime
 
@@ -375,8 +376,8 @@ class SignalTestRuntimePatchEvent(BaseModel):
     job_id: str
     workspace_id: int
     patch_type: Literal["tested_at"] = "tested_at"
-    tested_at_by_signal: Dict[int, str] = Field(default_factory=dict)
-    test_status_by_signal: Dict[int, str] = Field(default_factory=dict)
+    tested_at_by_signal: dict[int, str] = Field(default_factory=dict)
+    test_status_by_signal: dict[int, str] = Field(default_factory=dict)
     emitted_at: datetime
 
 
@@ -386,8 +387,8 @@ SignalRowsPatchSource = Literal["allocation", "test_runtime", "device_health"]
 class SignalRowsPatchedRowPatch(BaseModel):
     row_id: str | None = None
     signal_id: int
-    changes: Dict[str, Any] = Field(default_factory=dict)
-    columns: List[str] | None = None
+    changes: dict[str, object] = Field(default_factory=dict)
+    columns: list[str] | None = None
 
 
 class SignalRowsPatchedEvent(BaseModel):
@@ -396,22 +397,22 @@ class SignalRowsPatchedEvent(BaseModel):
     workspace_id: int
     sequence: int
     source: SignalRowsPatchSource
-    patches: List[SignalRowsPatchedRowPatch] = Field(default_factory=list)
+    patches: list[SignalRowsPatchedRowPatch] = Field(default_factory=list)
     requires_full_reload: bool = False
     emitted_at: datetime
 
 
-def build_signal_job_event(job_state: Dict[str, Any]) -> SignalAllocationJobEvent | SignalTestRunJobEvent:
+def build_signal_job_event(job_state: dict[str, object]) -> SignalAllocationJobEvent | SignalTestRunJobEvent:
     operation = str(job_state.get("operation") or "").strip().lower()
     if operation == "test_run":
-        return SignalTestRunJobEvent(**job_state)
-    return SignalAllocationJobEvent(**job_state)
+        return SignalTestRunJobEvent.model_validate(job_state)
+    return SignalAllocationJobEvent.model_validate(job_state)
 
 # ---------------------------------------------------------------------
 # Union of all WS events
 # ---------------------------------------------------------------------
 
-WSEvent = Union[
+WSEvent = (
     DeviceStateEvent,
     DeviceRegisterEvent,
     DeviceRespEvent,
@@ -432,5 +433,5 @@ WSEvent = Union[
     SignalAllocationJobEvent,
     SignalTestRunJobEvent,
     SignalTestRuntimePatchEvent,
-    SignalRowsPatchedEvent,
-]
+    SignalRowsPatchedEvent
+)

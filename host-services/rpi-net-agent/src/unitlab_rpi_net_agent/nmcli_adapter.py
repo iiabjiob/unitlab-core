@@ -1,3 +1,4 @@
+# pyright: reportUnusedCallResult=false
 from __future__ import annotations
 
 import asyncio
@@ -10,7 +11,6 @@ from pathlib import Path
 
 from .config import AgentConfig
 from .models import AddressProbeResult, WifiNetwork
-
 
 logger = logging.getLogger("unitlab.net_agent.nmcli")
 
@@ -37,7 +37,7 @@ class DeviceStatus:
 
 class NmcliAdapter:
     def __init__(self, config: AgentConfig) -> None:
-        self.config = config
+        self.config: AgentConfig = config
 
     async def _run(self, *args: str, timeout: int | None = None, check: bool = True) -> str:
         cmd = ("nmcli", *args)
@@ -81,7 +81,7 @@ class NmcliAdapter:
         err = stderr.decode("utf-8", errors="ignore").strip()
         if check and proc.returncode != 0:
             raise NmcliError(f"command failed ({proc.returncode}): {' '.join(args)} :: {err or out}")
-        return proc.returncode, out, err
+        return int(proc.returncode or 0), out, err
 
     @staticmethod
     def _read_text(path: Path) -> str | None:
@@ -552,6 +552,6 @@ class NmcliAdapter:
                 return status
             await asyncio.sleep(1)
         raise NmcliError(
-            f"STA connection timeout for profile={expected_profile}; "
-            f"last_state={last_status.state_code}/{last_status.state_text}, conn={last_status.connection}, ip={last_status.ip4}"
+            f"STA connection timeout for profile={expected_profile}; last_state={last_status.state_code}/"
+            + f"{last_status.state_text}, conn={last_status.connection}, ip={last_status.ip4}"
         )

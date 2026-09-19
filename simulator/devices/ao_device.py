@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, override
 
 from simulator.mqtt_client import (
     SimulatedDeviceBase,
@@ -12,17 +11,16 @@ from simulator.mqtt_client import (
 )
 from simulator.packet_structures import (
     Cmd,
-    CmdSetSingleFloat,
     DiagAllAo,
     Mode,
+    PacketHeader,
     RespError,
     RespStatus,
     StateSingleFloat,
+    decode_cmd_set_single_float,
     encode_diag_all_ao,
     encode_state_single_float,
-    decode_cmd_set_single_float,
 )
-
 
 if TYPE_CHECKING:  # pragma: no cover - hints only
     from simulator.mqtt_client import BehaviorSettings, BrokerSettings
@@ -37,8 +35,8 @@ class SimulatedAODevice(SimulatedDeviceBase):
         unit_id: str,
         signals: int,
         interval: float,
-        broker: "BrokerSettings",
-        behavior: "BehaviorSettings",
+        broker: BrokerSettings,
+        behavior: BehaviorSettings,
         test_mode: bool = False,
     ) -> None:
         super().__init__(
@@ -49,13 +47,15 @@ class SimulatedAODevice(SimulatedDeviceBase):
             behavior=behavior,
             test_mode=test_mode,
         )
-        self._values = [0.0 for _ in range(signals or 1)]
-        self._lock = asyncio.Lock()
+        self._values: list[float] = [0.0 for _ in range(signals or 1)]
+        self._lock: asyncio.Lock = asyncio.Lock()
 
     @property
+    @override
     def device_type_code(self) -> str:
         return "AO  "
 
+    @override
     def randomize_state(self) -> None:
         if not self.behavior.randomize or not self._values:
             return
@@ -63,10 +63,12 @@ class SimulatedAODevice(SimulatedDeviceBase):
         delta = self._rng.uniform(-0.5, 0.5)
         self._values[idx] = float(min(max(self._values[idx] + delta, 0.0), 100.0))
 
+    @override
     def should_auto_publish(self) -> bool:
         return False
 
-    async def publish_state(self, *, packet_id: Optional[int] = None) -> None:
+    @override
+    async def publish_state(self, *, packet_id: int | None = None) -> None:
         async with self._lock:
             snapshot = list(self._values)
         for idx, value in enumerate(snapshot):
@@ -80,7 +82,8 @@ class SimulatedAODevice(SimulatedDeviceBase):
             )
             packet_id = None  # reuse only once per burst
 
-    async def handle_packet(self, topic: str, header, payload: bytes) -> None:
+    @override
+    async def handle_packet(self, topic: str, header: PacketHeader, payload: bytes) -> None:
         mode_value = header.mode
         try:
             cmd = Cmd(mode_value)
@@ -129,7 +132,7 @@ class SimulatedAODevice(SimulatedDeviceBase):
         else:
             self._logger.debug("Unhandled AO request %s", request)
 
-    async def _publish_diagnostics(self, *, packet_id: Optional[int] = None) -> None:
+    async def _publish_diagnostics(self, *, packet_id: int | None = None) -> None:
         async with self._lock:
             valid_mask = self._mask()
         await self._publish_packet(
@@ -193,7 +196,7 @@ class SimulatedAODevice(SimulatedDeviceBase):
         ch: int,
         value: float,
         *,
-        packet_id: Optional[int] = None,
+        packet_id: int | None = None,
     ) -> None:
         payload = encode_state_single_float(StateSingleFloat(ch=ch, value=value))
         await self._publish_packet(

@@ -1,14 +1,15 @@
+# pyright: reportUnusedCallResult=false
 from __future__ import annotations
 
 import asyncio
 import ipaddress
 import json
-from contextlib import suppress
 import logging
 import re
+from contextlib import suppress
 from dataclasses import asdict, replace
 from pathlib import Path
-from typing import Any
+from typing import Literal, cast
 
 from .config import AgentConfig
 from .models import (
@@ -21,26 +22,25 @@ from .models import (
     StaInfo,
     WifiNetwork,
 )
-from .nmcli_adapter import DeviceStatus, NmcliAdapter, NmcliError
+from .nmcli_adapter import DeviceStatus, NmcliAdapter
 from .redis_protocol import RedisProtocol
-
 
 logger = logging.getLogger("unitlab.net_agent")
 
 
 class CoreNetworkAgent:
     def __init__(self, config: AgentConfig) -> None:
-        self.config = config
-        self.nmcli = NmcliAdapter(config)
-        self.redis = RedisProtocol(config)
-        self._stop = asyncio.Event()
+        self.config: AgentConfig = config
+        self.nmcli: NmcliAdapter = NmcliAdapter(config)
+        self.redis: RedisProtocol = RedisProtocol(config)
+        self._stop: asyncio.Event = asyncio.Event()
         self._status_task: asyncio.Task[None] | None = None
         self._command_task: asyncio.Task[None] | None = None
         self._ap_ssid: str | None = None
         self._ap_password: str | None = None
         self._mac: str | None = None
         self._suffix: str | None = None
-        self._snapshot = CoreNetworkSnapshot(
+        self._snapshot: CoreNetworkSnapshot = CoreNetworkSnapshot(
             mode="unknown",
             ap=AccessPointInfo(
                 ssid="",
@@ -96,7 +96,7 @@ class CoreNetworkAgent:
     def _normalize_suffix(raw: str | None) -> str:
         if not raw:
             return "0000"
-        pairs = re.findall(r"[0-9A-Fa-f]{2}", raw)
+        pairs: list[str] = re.findall(r"[0-9A-Fa-f]{2}", raw)
         if len(pairs) >= 2:
             return (pairs[-2] + pairs[-1]).upper()
         hex_only = "".join(ch for ch in raw if ch.lower() in "0123456789abcdef")
@@ -109,21 +109,39 @@ class CoreNetworkAgent:
         return value or fallback
 
     @staticmethod
-    def _sanitize_text(value: Any) -> str | None:
+    def _as_int(value: object, default: int) -> int:
+        if value is None:
+            return default
+        if not isinstance(value, (int, float, str)):
+            return default
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
+    def _ipv4_mode(value: str) -> Literal["auto", "manual"]:
+        mode = value.strip().lower()
+        if mode not in {"auto", "manual"}:
+            raise ValueError(f"Invalid ipv4_mode: {value}")
+        return cast(Literal["auto", "manual"], mode)
+
+    @staticmethod
+    def _sanitize_text(value: object) -> str | None:
         if value is None:
             return None
         text = str(value).strip()
         return text or None
 
     @staticmethod
-    def _normalize_text_list(value: Any) -> list[str]:
+    def _normalize_text_list(value: object) -> list[str]:
         if value is None:
             return []
         items: list[str] = []
         if isinstance(value, str):
             value = [part.strip() for part in value.split(",")]
         if isinstance(value, list):
-            for item in value:
+            for item in cast(list[object], value):
                 text = str(item).strip()
                 if text:
                     items.append(text)
@@ -138,7 +156,7 @@ class CoreNetworkAgent:
         return HostNetworkSettings(
             interface=self.config.ethernet_interface,
             profile=self.config.ethernet_profile_name,
-            ipv4_mode=mode,
+            ipv4_mode=self._ipv4_mode(mode),
             address_cidr=address_cidr,
             gateway=gateway,
             dns_servers=list(self.config.ethernet_default_dns_servers),
@@ -153,21 +171,21 @@ class CoreNetworkAgent:
         if not path.exists():
             return
         try:
-            raw = json.loads(path.read_text(encoding="utf-8", errors="ignore"))
+            raw = cast(object, json.loads(path.read_text(encoding="utf-8", errors="ignore")))
         except Exception as exc:  # noqa: BLE001
             logger.warning("Failed to read host network settings file | path=%s error=%s", path, exc)
             return
         if not isinstance(raw, dict):
             return
-        self._snapshot.host_network = self._host_network_settings_from_mapping(raw)
+        self._snapshot.host_network = self._host_network_settings_from_mapping(cast(dict[str, object], raw))
 
-    def _host_network_settings_from_mapping(self, raw: dict[str, Any]) -> HostNetworkSettings:
+    def _host_network_settings_from_mapping(self, raw: dict[str, object]) -> HostNetworkSettings:
         mode = self._sanitize_text(raw.get("ipv4_mode")) or self._snapshot.host_network.ipv4_mode
         mode = mode if mode in {"auto", "manual"} else self._snapshot.host_network.ipv4_mode
         return HostNetworkSettings(
             interface=self._sanitize_text(raw.get("interface")) or self.config.ethernet_interface,
             profile=self._sanitize_text(raw.get("profile")) or self.config.ethernet_profile_name,
-            ipv4_mode=mode,
+            ipv4_mode=self._ipv4_mode(mode),
             address_cidr=self._sanitize_text(raw.get("address_cidr")),
             gateway=self._sanitize_text(raw.get("gateway")),
             dns_servers=self._normalize_text_list(raw.get("dns_servers")),
@@ -289,7 +307,7 @@ class CoreNetworkAgent:
             return False
         return True
 
-    async def _publish_event_best_effort(self, event_type: str, payload: dict[str, Any]) -> bool:
+    async def _publish_event_best_effort(self, event_type: str, payload: dict[str, object]) -> bool:
         try:
             await self.redis.publish_event(event_type, payload)
         except Exception as exc:  # noqa: BLE001
@@ -311,8 +329,8 @@ class CoreNetworkAgent:
                 await self._refresh_runtime_status(publish=True)
             except asyncio.CancelledError:
                 raise
-            except Exception as exc:  # noqa: BLE001
-                logger.exception("Status loop failed: %s", exc)
+            except Exception as exc:
+                logger.exception("Status loop failed")
                 await self._publish_error("status_loop_error", str(exc))
             await asyncio.sleep(self.config.status_publish_interval_sec)
 
@@ -325,8 +343,8 @@ class CoreNetworkAgent:
                 await asyncio.sleep(0.25)
             except asyncio.CancelledError:
                 raise
-            except Exception as exc:  # noqa: BLE001
-                logger.exception("Command loop failed: %s", exc)
+            except Exception as exc:
+                logger.exception("Command loop failed")
                 await self._ensure_redis_group_best_effort("command loop recovery")
                 await self._publish_error("command_loop_error", str(exc))
                 await asyncio.sleep(1)
@@ -363,7 +381,7 @@ class CoreNetworkAgent:
                         "reason": f"Unknown action: {cmd.action}",
                     },
                 )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.exception("Command failed | request=%s action=%s", cmd.request_id, cmd.action)
             await self._publish_event_best_effort(
                 "command_failed",
@@ -400,7 +418,7 @@ class CoreNetworkAgent:
         ssid = str(cmd.payload.get("ssid") or "").strip()
         password = cmd.payload.get("password")
         hidden = bool(cmd.payload.get("hidden") or False)
-        timeout_sec = int(cmd.payload.get("timeout_sec") or self.config.sta_connect_timeout_sec)
+        timeout_sec = self._as_int(cmd.payload.get("timeout_sec"), self.config.sta_connect_timeout_sec)
         if not ssid:
             raise ValueError("ssid is required")
         if password is not None:
@@ -459,10 +477,10 @@ class CoreNetworkAgent:
         raw_addresses = cmd.payload.get("addresses")
         if not isinstance(raw_addresses, list) or not raw_addresses:
             raise ValueError("addresses is required")
-        timeout_sec = int(cmd.payload.get("timeout_sec") or 1)
+        timeout_sec = self._as_int(cmd.payload.get("timeout_sec"), 1)
         addresses: list[str] = []
         seen: set[str] = set()
-        for raw in raw_addresses:
+        for raw in cast(list[object], raw_addresses):
             text = self._sanitize_text(raw)
             if not text:
                 continue
@@ -533,7 +551,7 @@ class CoreNetworkAgent:
             await self.nmcli.activate_connection(settings.profile)
             status = await self.nmcli.device_status(settings.interface)
             await self._apply_host_network_settings(status=status, settings=settings, request_id=cmd.request_id)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             err = str(exc)
             logger.warning("Host network settings apply failed | request=%s error=%s", cmd.request_id, err)
             self._snapshot.host_network = replace(self._snapshot.host_network, last_error=err)
@@ -550,12 +568,11 @@ class CoreNetworkAgent:
             )
             raise
 
-    def _normalize_host_network_settings(self, payload: dict[str, Any]) -> HostNetworkSettings:
+    def _normalize_host_network_settings(self, payload: dict[str, object]) -> HostNetworkSettings:
         interface = self._sanitize_text(payload.get("interface")) or self.config.ethernet_interface
         profile = self._sanitize_text(payload.get("profile")) or self.config.ethernet_profile_name
-        ipv4_mode = (self._sanitize_text(payload.get("ipv4_mode")) or self._snapshot.host_network.ipv4_mode).lower()
-        if ipv4_mode not in {"auto", "manual"}:
-            raise ValueError(f"Invalid ipv4_mode: {ipv4_mode}")
+        ipv4_mode = self._sanitize_text(payload.get("ipv4_mode")) or self._snapshot.host_network.ipv4_mode
+        mode = self._ipv4_mode(ipv4_mode)
         address_cidr = self._sanitize_text(payload.get("address_cidr"))
         gateway = self._sanitize_text(payload.get("gateway"))
         dns_servers = self._normalize_text_list(payload.get("dns_servers"))
@@ -564,7 +581,7 @@ class CoreNetworkAgent:
         return HostNetworkSettings(
             interface=interface,
             profile=profile,
-            ipv4_mode=ipv4_mode,
+            ipv4_mode=mode,
             address_cidr=address_cidr,
             gateway=gateway,
             dns_servers=dns_servers,
@@ -805,7 +822,7 @@ class CoreNetworkAgent:
         await self._publish_snapshot(last_event="command_finished")
 
     @staticmethod
-    def _network_to_dict(item: WifiNetwork) -> dict[str, Any]:
+    def _network_to_dict(item: WifiNetwork) -> dict[str, object]:
         return {
             "ssid": item.ssid,
             "signal": item.signal,

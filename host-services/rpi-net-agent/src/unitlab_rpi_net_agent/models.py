@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Literal
-
+from typing import Literal, cast
 
 NetMode = Literal["unknown", "ap", "sta", "switching", "error"]
 StaState = Literal["disconnected", "connecting", "connected", "failed"]
@@ -95,7 +94,7 @@ class CoreNetworkSnapshot:
     mac: str | None
     suffix: str | None
     interfaces: list[NetworkInterfaceInfo] = field(default_factory=list)
-    request_in_flight: dict[str, Any] | None = None
+    request_in_flight: dict[str, object] | None = None
     previous_host_network: HostNetworkSettings | None = None
     last_address_probe: AddressProbeSnapshot | None = None
     last_event: str | None = None
@@ -103,10 +102,10 @@ class CoreNetworkSnapshot:
     available_networks: list[WifiNetwork] = field(default_factory=list)
     updated_at: str = field(default_factory=utc_now_iso)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         payload = asdict(self)
         payload["updated_at"] = utc_now_iso()
-        return payload
+        return cast(dict[str, object], payload)
 
 
 @dataclass(frozen=True)
@@ -114,4 +113,4 @@ class CommandEnvelope:
     entry_id: str
     request_id: str
     action: str
-    payload: dict[str, Any]
+    payload: dict[str, object]

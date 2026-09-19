@@ -5,7 +5,8 @@ import hashlib
 import os
 import socket
 from datetime import datetime, timezone
-from typing import Any
+from collections.abc import Mapping
+from typing import cast
 
 from redis.exceptions import ResponseError
 
@@ -13,8 +14,10 @@ from app.core.config import get_settings
 from app.core.events.ws_event_publisher import WsEventPublisher
 from app.core.logger import get_logger
 from app.infrastructure.redis.manager import RedisManager
+from app.infrastructure.redis.types import RedisStreamClient, RedisStreamEntries
 from app.schemas.ws.events import CoreDiagnosticsStateEvent
-from app.services.core_diagnostics_incident import is_incident_acknowledged
+from app.services.core_diagnostics_incident import DiagnosticsRedisClient, is_incident_acknowledged
+
 
 settings = get_settings()
 logger = get_logger("core.diag.forwarder")
@@ -24,18 +27,18 @@ GROUP_NAME = "core-diag-events"
 CONSUMER_NAME = f"{socket.gethostname()}-{os.getpid()}"
 
 
-def _parse_json_field(fields: dict[str, Any]) -> dict[str, Any] | None:
+def _parse_json_field(fields: Mapping[str, object]) -> dict[str, object] | None:
     raw = fields.get("json")
     if not isinstance(raw, str):
         return None
     try:
-        payload = json.loads(raw)
+        payload = cast(object, json.loads(raw))
     except json.JSONDecodeError:
         return None
-    return payload if isinstance(payload, dict) else None
+    return cast(dict[str, object], payload) if isinstance(payload, dict) else None
 
 
-def _parse_changed_at(payload: dict[str, Any]) -> datetime:
+def _parse_changed_at(payload: dict[str, object]) -> datetime:
     raw = payload.get("updated_at")
     if isinstance(raw, str):
         try:
@@ -45,33 +48,23 @@ def _parse_changed_at(payload: dict[str, Any]) -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _incident_id(payload: dict[str, Any]) -> str | None:
+def _incident_id(payload: dict[str, object]) -> str | None:
     """Build a stable identity from diagnostic categories, not measurements."""
     mode = str(payload.get("mode") or "unknown").strip().lower()
     categories: list[str] = []
-    cpu = payload.get("cpu") if isinstance(payload.get("cpu"), dict) else {}
-    memory = payload.get("memory") if isinstance(payload.get("memory"), dict) else {}
-    disk = payload.get("disk_root") if isinstance(payload.get("disk_root"), dict) else {}
-    try:
-        if float(cpu.get("temperature_c")) >= 85:
-            categories.append("cpu_temperature")
-    except (TypeError, ValueError):
-        pass
-    try:
-        if float(memory.get("used_percent")) >= 95:
-            categories.append("memory_pressure")
-    except (TypeError, ValueError):
-        pass
-    try:
-        if float(disk.get("used_percent")) >= 95:
-            categories.append("disk_pressure")
-    except (TypeError, ValueError):
-        pass
+    cpu = _payload_mapping(payload.get("cpu"))
+    memory = _payload_mapping(payload.get("memory"))
+    disk = _payload_mapping(payload.get("disk_root"))
+    if (temperature := _float_or_none(cpu.get("temperature_c"))) is not None and temperature >= 85:
+        categories.append("cpu_temperature")
+    if (used_memory := _float_or_none(memory.get("used_percent"))) is not None and used_memory >= 95:
+        categories.append("memory_pressure")
+    if (used_disk := _float_or_none(disk.get("used_percent"))) is not None and used_disk >= 95:
+        categories.append("disk_pressure")
     inactive = sorted(
         str(service.get("name") or "").strip()
-        for service in (payload.get("services") if isinstance(payload.get("services"), list) else [])
-        if isinstance(service, dict)
-        and str(service.get("name") or "") in {"docker", "NetworkManager"}
+        for service in _payload_list(payload.get("services"))
+        if str(service.get("name") or "") in {"docker", "NetworkManager"}
         and service.get("active") is False
     )
     if inactive:
@@ -87,9 +80,27 @@ def _incident_id(payload: dict[str, Any]) -> str | None:
     return f"core-diag:{hashlib.sha256(canonical).hexdigest()[:24]}"
 
 
-async def _ensure_group(redis) -> None:
+def _payload_mapping(value: object) -> dict[str, object]:
+    return cast(dict[str, object], value) if isinstance(value, dict) else {}
+
+
+def _payload_list(value: object) -> list[dict[str, object]]:
+    if not isinstance(value, list):
+        return []
+    items = cast(list[object], value)
+    return [cast(dict[str, object], item) for item in items if isinstance(item, dict)]
+
+
+def _float_or_none(value: object) -> float | None:
     try:
-        await redis.xgroup_create(STREAM_NAME, GROUP_NAME, id="0", mkstream=True)
+        return float(cast(str | int | float, value))
+    except (TypeError, ValueError):
+        return None
+
+
+async def _ensure_group(redis: RedisStreamClient) -> None:
+    try:
+        _ = await redis.xgroup_create(STREAM_NAME, GROUP_NAME, id="0", mkstream=True)
         logger.info("✅ Created consumer group %s for core diagnostics events", GROUP_NAME)
     except ResponseError as exc:
         if "BUSYGROUP" in str(exc):
@@ -98,7 +109,7 @@ async def _ensure_group(redis) -> None:
             raise
 
 
-async def _fetch(redis, stream_id: str, block_ms: int = 5000):
+async def _fetch(redis: RedisStreamClient, stream_id: str, block_ms: int = 5000) -> RedisStreamEntries:
     result = await redis.xreadgroup(
         GROUP_NAME,
         CONSUMER_NAME,
@@ -111,7 +122,7 @@ async def _fetch(redis, stream_id: str, block_ms: int = 5000):
     return result[0][1]
 
 
-async def _drain_pending(redis) -> None:
+async def _drain_pending(redis: RedisStreamClient) -> None:
     while True:
         entries = await _fetch(redis, "0", block_ms=100)
         if not entries:
@@ -120,7 +131,7 @@ async def _drain_pending(redis) -> None:
         await _process_entries(redis, entries)
 
 
-async def _process_entries(redis, entries) -> None:
+async def _process_entries(redis: RedisStreamClient, entries: RedisStreamEntries) -> None:
     for entry_id, fields in entries:
         try:
             payload = _parse_json_field(fields)
@@ -130,11 +141,11 @@ async def _process_entries(redis, entries) -> None:
                 snapshot = {**payload}
                 incident_id = _incident_id(snapshot)
                 if incident_id is None:
-                    snapshot.pop("incident_id", None)
+                    _ = snapshot.pop("incident_id", None)
                 else:
                     snapshot["incident_id"] = incident_id
                     snapshot["incident_acknowledged"] = await is_incident_acknowledged(
-                        redis,
+                        cast(DiagnosticsRedisClient, cast(object, redis)),
                         hostname=str(snapshot.get("hostname") or "unknown"),
                         incident_id=incident_id,
                     )
@@ -147,11 +158,11 @@ async def _process_entries(redis, entries) -> None:
         except Exception as exc:  # noqa: BLE001
             logger.exception("💥 Failed to forward core diagnostics event %s: %s", entry_id, exc)
         finally:
-            await redis.xack(STREAM_NAME, GROUP_NAME, entry_id)
+            _ = await redis.xack(STREAM_NAME, GROUP_NAME, entry_id)
 
 
 async def forward_core_diag_events() -> None:
-    redis = RedisManager.get_instance()
+    redis = cast(RedisStreamClient, cast(object, RedisManager.get_instance()))
     await _ensure_group(redis)
     await _drain_pending(redis)
     while True:

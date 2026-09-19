@@ -1,20 +1,24 @@
+# pyright: reportPrivateUsage=false
+# pyright: reportUnusedCallResult=false
 from __future__ import annotations
 
 import asyncio
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
-
 from unitlab_rpi_core_diag_agent.agent import CoreDiagAgent
+from unitlab_rpi_core_diag_agent.config import AgentConfig
 from unitlab_rpi_core_diag_agent.redis_protocol import RedisProtocol
 
 
 def _config(**overrides: object) -> SimpleNamespace:
-    values = {
+    values: dict[str, object] = {
         "redis_url": "redis://127.0.0.1:6379/0",
         "command_poll_interval_sec": 0.25,
     }
-    values.update(overrides)
+    for key, value in overrides.items():
+        values[key] = value
     return SimpleNamespace(**values)
 
 
@@ -26,11 +30,12 @@ def test_redis_client_leaves_blocking_read_without_socket_timeout(monkeypatch: p
 
     def fake_from_url(url: str, **kwargs: object) -> FakeRedis:
         captured["url"] = url
-        captured.update(kwargs)
+        for key, value in kwargs.items():
+            captured[str(key)] = value
         return FakeRedis()
 
     monkeypatch.setattr("unitlab_rpi_core_diag_agent.redis_protocol.Redis.from_url", fake_from_url)
-    RedisProtocol(_config())
+    RedisProtocol(cast(AgentConfig, cast(object, _config())))
 
     assert captured["socket_connect_timeout"] == 3
     assert "socket_timeout" not in captured
@@ -43,7 +48,7 @@ def test_publish_error_does_not_kill_loop_when_redis_is_unavailable() -> None:
 
 
 async def _assert_publish_error_is_safe() -> None:
-    agent = CoreDiagAgent(_config())
+    agent = CoreDiagAgent(cast(AgentConfig, cast(object, _config())))
 
     async def fail_publish(*_args: object, **_kwargs: object) -> None:
         raise TimeoutError("Timeout reading from 127.0.0.1:6379")

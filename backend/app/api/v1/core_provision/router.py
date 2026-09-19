@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -21,7 +19,7 @@ class CoreProvisionCommandAcceptedResponse(BaseModel):
 
 
 class CoreProvisionStateResponse(BaseModel):
-    state: dict[str, Any]
+    state: dict[str, object]
 
 
 def _accepted_to_response(accepted: CoreProvisionCommandAccepted) -> CoreProvisionCommandAcceptedResponse:
@@ -63,4 +61,3 @@ async def core_provision_install_ntp_agent() -> CoreProvisionCommandAcceptedResp
 @router.post("/install/diag-agent", response_model=CoreProvisionCommandAcceptedResponse)
 async def core_provision_install_diag_agent() -> CoreProvisionCommandAcceptedResponse:
     return _accepted_to_response(await enqueue_core_provision_command("install_diag_agent"))
-

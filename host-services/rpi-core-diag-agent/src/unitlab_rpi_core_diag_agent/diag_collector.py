@@ -4,9 +4,9 @@ import asyncio
 import os
 import platform
 import socket
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 from .config import AgentConfig
 from .models import (
@@ -29,7 +29,7 @@ class CollectedDiagnostics:
 
 class DiagnosticsCollector:
     def __init__(self, config: AgentConfig) -> None:
-        self.config = config
+        self.config: AgentConfig = config
 
     async def _run(self, *args: str, timeout: int | None = None, check: bool = False) -> tuple[int, str, str]:
         proc = await asyncio.create_subprocess_exec(
@@ -46,14 +46,14 @@ class DiagnosticsCollector:
         err = stderr.decode("utf-8", errors="ignore").strip()
         if check and proc.returncode != 0:
             raise CoreDiagError(f"Command failed ({proc.returncode}): {' '.join(args)} :: {err or out}")
-        return proc.returncode, out, err
+        return int(proc.returncode or 0), out, err
 
     async def collect(self) -> CollectedDiagnostics:
         time_utc = None
         try:
             import datetime as _dt
             time_utc = _dt.datetime.now(_dt.timezone.utc).isoformat()
-        except Exception:
+        except (AttributeError, ImportError, OSError, TypeError, ValueError):
             time_utc = None
 
         cpu = CpuDiagnostics(
@@ -206,4 +206,3 @@ def _read_disk_usage(path: str) -> DiskDiagnostics:
         return DiskDiagnostics(path, total, free, used, used_percent)
     except OSError:
         return DiskDiagnostics(path, None, None, None, None)
-

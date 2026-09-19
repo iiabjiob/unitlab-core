@@ -5,16 +5,17 @@ import os
 import signal
 import socket
 from contextlib import suppress
-from typing import List, Tuple
+from typing import cast
 
 from redis.exceptions import ConnectionError as RedisConnectionError, ResponseError
 
 from app.core.config import get_settings
 from app.core.logger import get_logger
-from app.infrastructure.mqtt.handlers import bootstrap  # noqa: F401
+from app.infrastructure.mqtt.handlers import bootstrap as _bootstrap  # noqa: F401  # pyright: ignore[reportUnusedImport]
 from app.infrastructure.mqtt.inbound_worker import process_inbound_message
 from app.infrastructure.redis.manager import RedisManager
 from app.infrastructure.redis.stream_bus import parse_inbound_entry
+from app.infrastructure.redis.types import RedisStreamClient, RedisStreamEntries
 from app.services.worker_health import clear_worker_status, start_worker_heartbeat
 
 settings = get_settings()
@@ -24,12 +25,12 @@ STREAM_NAME = settings.mqtt_in_stream
 GROUP_NAME = "mqtt-inbound"
 CONSUMER_NAME = f"{socket.gethostname()}-{os.getpid()}"
 
-StreamEntries = List[Tuple[str, dict]]
+StreamEntries = RedisStreamEntries
 
 
-async def _ensure_group(redis) -> None:
+async def _ensure_group(redis: RedisStreamClient) -> None:
     try:
-        await redis.xgroup_create(STREAM_NAME, GROUP_NAME, id="0", mkstream=True)
+        _ = await redis.xgroup_create(STREAM_NAME, GROUP_NAME, id="0", mkstream=True)
         logger.info("✅ Created consumer group %s for stream %s", GROUP_NAME, STREAM_NAME)
     except ResponseError as exc:
         if "BUSYGROUP" in str(exc):
@@ -38,17 +39,17 @@ async def _ensure_group(redis) -> None:
             raise
 
 
-async def _process_entries(redis, entries: StreamEntries) -> None:
+async def _process_entries(redis: RedisStreamClient, entries: StreamEntries) -> None:
     for entry_id, fields in entries:
         try:
             entry_id, msg = parse_inbound_entry((entry_id, fields))
             await process_inbound_message(msg)
-            await redis.xack(STREAM_NAME, GROUP_NAME, entry_id)
+            _ = await redis.xack(STREAM_NAME, GROUP_NAME, entry_id)
         except Exception as exc:
             logger.error("💥 Failed to process inbound entry %s: %s", entry_id, exc)
 
 
-async def _fetch(redis, stream_id: str, block_ms: int = 5000) -> StreamEntries:
+async def _fetch(redis: RedisStreamClient, stream_id: str, block_ms: int = 5000) -> StreamEntries:
     result = await redis.xreadgroup(
         GROUP_NAME,
         CONSUMER_NAME,
@@ -62,7 +63,7 @@ async def _fetch(redis, stream_id: str, block_ms: int = 5000) -> StreamEntries:
     return entries
 
 
-async def _drain_pending(redis) -> None:
+async def _drain_pending(redis: RedisStreamClient) -> None:
     while True:
         entries = await _fetch(redis, "0", block_ms=100)
         if not entries:
@@ -73,7 +74,7 @@ async def _drain_pending(redis) -> None:
 
 async def main() -> None:
     await RedisManager.start()
-    redis = RedisManager.get_instance()
+    redis = cast(RedisStreamClient, cast(object, RedisManager.get_instance()))
 
     await _ensure_group(redis)
     await _drain_pending(redis)
@@ -114,7 +115,7 @@ async def main() -> None:
                 continue
             await _process_entries(redis, entries)
     finally:
-        heartbeat_task.cancel()
+        _ = heartbeat_task.cancel()
         with suppress(asyncio.CancelledError):
             await heartbeat_task
         await clear_worker_status("inbound_processor")

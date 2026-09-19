@@ -10,9 +10,9 @@ from app.infrastructure.db.database import Base
 
 
 class ProcessedJob(Base):
-    __tablename__ = "processed_jobs"
+    __tablename__: str = "processed_jobs"
 
-    __table_args__ = (
+    __table_args__: tuple[object, ...] = (
         PrimaryKeyConstraint("worker_name", "job_id", name="pk_processed_jobs"),
         Index("ix_processed_jobs_processed_at", "processed_at"),
     )

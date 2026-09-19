@@ -2,7 +2,6 @@
 # Decode helpers (mirror of C++ protocol/*/decode)
 
 import struct
-from typing import Optional
 from . import endian
 from .packet_structures import (
     StateSingleBit,
@@ -29,7 +28,7 @@ from .packet_structures import (
 # ------------------------------------------------------
 class bit:
     @staticmethod
-    def state_single(data: bytes) -> Optional[StateSingleBit]:
+    def state_single(data: bytes) -> StateSingleBit | None:
         if len(data) != 2:
             return None
         return StateSingleBit(
@@ -38,13 +37,13 @@ class bit:
         )
 
     @staticmethod
-    def state_all(data: bytes) -> Optional[StateAllBit]:
+    def state_all(data: bytes) -> StateAllBit | None:
         if len(data) != 4:
             return None
         return StateAllBit(bitmask=endian.read_u32_be(data))
 
     @staticmethod
-    def state_diag(data: bytes) -> Optional[StateDiagBitmask]:
+    def state_diag(data: bytes) -> StateDiagBitmask | None:
         if len(data) == 12:
             open_mask = endian.read_u32_be(data, 0)
             fault_mask = endian.read_u32_be(data, 4)
@@ -69,7 +68,7 @@ class bit:
         )
 
     @staticmethod
-    def state_delta(data: bytes) -> Optional[StateChangedBit]:
+    def state_delta(data: bytes) -> StateChangedBit | None:
         if len(data) != 8:
             return None
         return StateChangedBit(
@@ -78,7 +77,7 @@ class bit:
         )
 
     @staticmethod
-    def state_diag_di(data: bytes) -> Optional[DiagAllDi]:
+    def state_diag_di(data: bytes) -> DiagAllDi | None:
         if len(data) != 24:
             return None
         return DiagAllDi(
@@ -91,7 +90,7 @@ class bit:
         )
 
     @staticmethod
-    def state_latched(data: bytes) -> Optional[StateLatchedBit]:
+    def state_latched(data: bytes) -> StateLatchedBit | None:
         if len(data) != 12:
             return None
         return StateLatchedBit(
@@ -101,7 +100,7 @@ class bit:
         )
 
     @staticmethod
-    def cmd_set_single(data: bytes) -> Optional[CmdSetSingleBit]:
+    def cmd_set_single(data: bytes) -> CmdSetSingleBit | None:
         if len(data) != 2:
             return None
         return CmdSetSingleBit(
@@ -110,13 +109,13 @@ class bit:
         )
 
     @staticmethod
-    def cmd_set_all(data: bytes) -> Optional[CmdSetAllBit]:
+    def cmd_set_all(data: bytes) -> CmdSetAllBit | None:
         if len(data) != 4:
             return None
         return CmdSetAllBit(bitmask=endian.read_u32_be(data))
 
     @staticmethod
-    def cmd_set_pair(data: bytes) -> Optional[CmdSetPairBit]:
+    def cmd_set_pair(data: bytes) -> CmdSetPairBit | None:
         if len(data) != 3:
             return None
         return CmdSetPairBit(
@@ -126,7 +125,7 @@ class bit:
         )
 
     @staticmethod
-    def cmd_set_pulse(data: bytes) -> Optional[CmdSetPulseBit]:
+    def cmd_set_pulse(data: bytes) -> CmdSetPulseBit | None:
         if len(data) != 4:
             return None
 
@@ -142,14 +141,14 @@ class bit:
 # ------------------------------------------------------
 class afloat:
     @staticmethod
-    def state_single(data: bytes) -> Optional[StateSingleFloat]:
+    def state_single(data: bytes) -> StateSingleFloat | None:
         if len(data) != 5:
             return None
         value = struct.unpack(">f", data[1:5])[0]
         return StateSingleFloat(ch=data[0], value=value)
 
     @staticmethod
-    def diag_all(data: bytes) -> Optional[DiagAllAo]:
+    def diag_all(data: bytes) -> DiagAllAo | None:
         if len(data) != 16:
             return None
         return DiagAllAo(
@@ -160,7 +159,7 @@ class afloat:
         )
 
     @staticmethod
-    def cmd_set_single(data: bytes) -> Optional[CmdSetSingleFloat]:
+    def cmd_set_single(data: bytes) -> CmdSetSingleFloat | None:
         if len(data) != 5:
             return None
         value = struct.unpack(">f", data[1:5])[0]
@@ -172,13 +171,13 @@ class afloat:
 # ------------------------------------------------------
 class sys:
     @staticmethod
-    def resp(data: bytes) -> Optional[Resp]:
+    def resp(data: bytes) -> Resp | None:
         if len(data) != 2:
             return None
         return Resp(status=data[0], errCode=data[1])
 
     @staticmethod
-    def register_msg(data: bytes) -> Optional[Register]:
+    def register_msg(data: bytes) -> Register | None:
         if len(data) != 40:
             return None
         type_str = data[0:4].rstrip(b"\x00").decode("ascii", errors="ignore")

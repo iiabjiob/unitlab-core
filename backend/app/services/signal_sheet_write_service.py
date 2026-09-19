@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import time
-from typing import Any, Sequence
+from typing import cast
+from collections.abc import Sequence
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +11,7 @@ from app.api.v1.signal_sheet import SignalSheetAutoAllocateResult, SignalSheetRe
 from app.api.v1.signals import SignalsRepository
 from app.core.logger import get_logger
 from app.schemas.signal_import_schema import SignalImportMetaSchema
+from app.services.signal_sheet_import_service import ImportedSignalProjection
 
 logger = get_logger("service.signal_sheet_write")
 
@@ -27,9 +29,9 @@ class SignalSheetWriteService:
         repo: SignalSheetRepository,
         signals_repo: SignalsRepository | None = None,
     ) -> None:
-        self.db = db
-        self.repo = repo
-        self.signals_repo = signals_repo
+        self.db: AsyncSession = db
+        self.repo: SignalSheetRepository = repo
+        self.signals_repo: SignalsRepository | None = signals_repo
 
     async def import_sheet_from_parsed_payload(
         self,
@@ -38,8 +40,8 @@ class SignalSheetWriteService:
         raw_file_bytes: bytes,
         source_filename: str | None,
         rows_count: int,
-        parsed_data: dict[str, Any],
-        parsed_signals: Sequence[Any],
+        parsed_data: dict[str, object],
+        parsed_signals: Sequence[ImportedSignalProjection],
         import_meta: SignalImportMetaSchema | None,
         save_preset_name: str | None,
     ) -> None:
@@ -51,7 +53,7 @@ class SignalSheetWriteService:
             await self.repo.clear_allocations(workspace_id)
 
             source_hash = hashlib.sha256(raw_file_bytes).hexdigest()
-            await self.repo.upsert_sheet(
+            _ = await self.repo.upsert_sheet(
                 workspace_id=workspace_id,
                 source_filename=source_filename,
                 source_hash=source_hash,
@@ -62,7 +64,7 @@ class SignalSheetWriteService:
             )
 
             if save_preset_name and import_meta is not None:
-                await self.repo.save_preset(
+                _ = await self.repo.save_preset(
                     workspace_id=workspace_id,
                     name=save_preset_name,
                     import_meta=import_meta,
@@ -106,13 +108,13 @@ class SignalSheetWriteService:
             await self.db.rollback()
             raise
 
-    async def update_allocations(self, workspace_id: int, entries: Sequence[dict[str, Any]]) -> None:
+    async def update_allocations(self, workspace_id: int, entries: Sequence[dict[str, object]]) -> None:
         started_at = time.monotonic()
         entry_count = len(entries)
         try:
             changed_signal_ids = await self.repo.update_allocations(workspace_id, entries, commit=False)
-            requested_signal_ids = sorted({int(item["signal_id"]) for item in entries})
-            await self.repo.record_allocation_event(
+            requested_signal_ids = sorted({int(cast(int | str | float, item["signal_id"])) for item in entries})
+            _ = await self.repo.record_allocation_event(
                 workspace_id=workspace_id,
                 operation="bulk_update",
                 source="api",
@@ -150,7 +152,7 @@ class SignalSheetWriteService:
         workspace_id: int,
         signal_id: int,
         channel_id: int,
-        allocation_meta: dict[str, Any] | None = None,
+        allocation_meta: dict[str, object] | None = None,
     ) -> list[int]:
         started_at = time.monotonic()
         try:
@@ -171,7 +173,7 @@ class SignalSheetWriteService:
                 commit=False,
             )
             if changed_signal_ids:
-                await self.repo.record_allocation_event(
+                _ = await self.repo.record_allocation_event(
                     workspace_id=workspace_id,
                     operation="assign",
                     source="api",
@@ -202,7 +204,7 @@ class SignalSheetWriteService:
         workspace_id: int,
         signal_id: int,
         channel_id: int,
-        allocation_meta: dict[str, Any] | None = None,
+        allocation_meta: dict[str, object] | None = None,
     ) -> list[int]:
         started_at = time.monotonic()
         try:
@@ -224,7 +226,7 @@ class SignalSheetWriteService:
                 commit=False,
             )
             if changed_signal_ids:
-                await self.repo.record_allocation_event(
+                _ = await self.repo.record_allocation_event(
                     workspace_id=workspace_id,
                     operation="reassign",
                     source="api",
@@ -268,7 +270,7 @@ class SignalSheetWriteService:
                 commit=False,
             )
             if changed_signal_ids:
-                await self.repo.record_allocation_event(
+                _ = await self.repo.record_allocation_event(
                     workspace_id=workspace_id,
                     operation="unassign",
                     source="api",
@@ -310,7 +312,7 @@ class SignalSheetWriteService:
                 commit=False,
             )
             if changed_signal_ids:
-                await self.repo.record_allocation_event(
+                _ = await self.repo.record_allocation_event(
                     workspace_id=workspace_id,
                     operation="swap",
                     source="api",
@@ -360,7 +362,7 @@ class SignalSheetWriteService:
                 overwrite_existing=overwrite_existing,
                 commit=False,
             )
-            await self.repo.record_allocation_event(
+            _ = await self.repo.record_allocation_event(
                 workspace_id=workspace_id,
                 operation="auto_allocate",
                 source="api",

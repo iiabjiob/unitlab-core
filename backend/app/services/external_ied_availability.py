@@ -7,7 +7,7 @@ import random
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any
+from typing import Protocol, TypedDict, cast
 
 from app.core.events.ws_event_publisher import WsEventPublisher
 from app.core.logger import get_logger
@@ -15,13 +15,17 @@ from app.infrastructure.redis.manager import RedisManager
 from app.schemas.verification_schema import VerificationMmsReachabilityTargetSchema
 from app.schemas.ws.events import (
     ExternalIedStatusChangedEvent,
+    ExternalIedStatus,
+    ExternalIedCheckKind,
+    ExternalIedFailureCode,
+    ExternalIedDiscoveryState,
     ExternalIedStatusRecord,
     ExternalIedStatusSnapshotEvent,
 )
 from app.services.external_ied_discovery_scheduler import (
-    _cache_key,
-    _discovery_state_key,
-    _discovery_model_key,
+    discovery_cache_key,
+    discovery_state_key,
+    discovery_model_key,
     discovery_cache_metadata_from_payload,
     discovery_ui_fields_from_payload,
     schedule_external_ied_discovery_from_watcher_payload,
@@ -33,6 +37,60 @@ from app.services.external_ied_planning import (
 from app.services.verification_mms_reachability import check_mms_tcp_endpoint
 
 logger = get_logger("external_ied")
+JsonObject = dict[str, object]
+
+
+class _DiscoveryUiFields(TypedDict):
+    discovery_state: ExternalIedDiscoveryState
+    discovery_retry_at_ms: int | None
+    discovery_last_error: str | None
+    discovery_updated_at_ms: int | None
+    discovery_ready_for_verification: bool
+
+# Compatibility aliases for existing internal callers and tests.
+_cache_key = discovery_cache_key
+_discovery_state_key = discovery_state_key
+_discovery_model_key = discovery_model_key
+
+
+class ExternalIedRedisPipeline(Protocol):
+    def delete(self, *keys: object) -> object: ...
+
+    def hset(self, *args: object, **kwargs: object) -> object: ...
+
+    async def execute(self) -> object: ...
+
+
+class ExternalIedRedisClient(Protocol):
+    async def hgetall(self, name: str) -> dict[str, str]: ...
+
+    async def hget(self, name: str, key: str) -> str | None: ...
+
+    async def hset(self, *args: object, **kwargs: object) -> int: ...
+
+    async def delete(self, *keys: str) -> int: ...
+
+    async def srem(self, name: str, *values: str) -> int: ...
+
+    async def sadd(self, name: str, *values: str) -> int: ...
+
+    async def smembers(self, name: str) -> set[str]: ...
+
+    async def set(self, name: str, value: str, **kwargs: object) -> bool | None: ...
+
+    def pipeline(self) -> ExternalIedRedisPipeline: ...
+
+
+class _ProbeResult(Protocol):
+    reachable: bool
+    checked_at: str | None
+    error: str | None
+    check_kind: ExternalIedCheckKind
+    failure_code: ExternalIedFailureCode | None
+
+
+def _redis_client() -> ExternalIedRedisClient:
+    return cast(ExternalIedRedisClient, cast(object, RedisManager.get_instance()))
 
 EXPECTED_POLL_MS = 1_200
 OFFLINE_POLL_MS = 5_000
@@ -95,7 +153,7 @@ class EndpointProbeState:
     host: str
     port: int
     signal_ids: tuple[int, ...]
-    status: str
+    status: ExternalIedStatus
     last_probe_at_ms: int | None
     next_probe_at_ms: int
     last_success_at_ms: int | None
@@ -111,8 +169,8 @@ class EndpointProbeState:
 class ProbeTransition:
     state: EndpointProbeState
     record: ExternalIedStatusRecord
-    old_status: str
-    new_status: str
+    old_status: ExternalIedStatus
+    new_status: ExternalIedStatus
     status_changed: bool
     next_check_at_ms: int
     probe_succeeded: bool
@@ -151,7 +209,7 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _normalize_ip(value: Any) -> str | None:
+def _normalize_ip(value: object) -> str | None:
     text = str(value or "").strip()
     parts = text.split(".")
     if len(parts) != 4:
@@ -165,14 +223,14 @@ def _normalize_ip(value: Any) -> str | None:
     return ".".join(str(octet) for octet in octets)
 
 
-def _normalize_signal_ids(values: Any) -> tuple[int, ...]:
+def _normalize_signal_ids(values: object) -> tuple[int, ...]:
     if not isinstance(values, list | tuple):
         return ()
     seen: set[int] = set()
     normalized: list[int] = []
-    for raw in values:
+    for raw in cast(list[object] | tuple[object, ...], values):
         try:
-            signal_id = int(raw)
+            signal_id = int(cast(str | int | float | bytes | bytearray, raw))
         except (TypeError, ValueError):
             continue
         if signal_id <= 0 or signal_id in seen:
@@ -182,9 +240,9 @@ def _normalize_signal_ids(values: Any) -> tuple[int, ...]:
     return tuple(sorted(normalized))
 
 
-def _normalize_port(value: Any) -> int:
+def _normalize_port(value: object) -> int:
     try:
-        port = int(value)
+        port = int(str(value))
     except (TypeError, ValueError):
         return 102
     return port if 1 <= port <= 65535 else 102
@@ -194,42 +252,44 @@ def _signal_ids_from_json_payload(payload: str | None) -> tuple[int, ...]:
     if not payload:
         return ()
     try:
-        parsed = json.loads(payload)
+        parsed = cast(object, json.loads(payload))
     except json.JSONDecodeError:
         return ()
     if not isinstance(parsed, dict):
         return ()
-    return _normalize_signal_ids(parsed.get("signal_ids"))
+    return _normalize_signal_ids(cast(JsonObject, parsed).get("signal_ids"))
 
 
 def _target_from_json_payload(endpoint: str, payload: str | None) -> ExternalIedTarget | None:
     if not payload:
         return None
     try:
-        parsed = json.loads(payload)
+        parsed = cast(object, json.loads(payload))
     except json.JSONDecodeError:
         return None
     if not isinstance(parsed, dict):
         return None
-    ip = _normalize_ip(parsed.get("ip"))
+    typed_parsed = cast(JsonObject, parsed)
+    ip = _normalize_ip(typed_parsed.get("ip"))
     if not ip:
         ip = _normalize_ip(endpoint.rsplit(":", 1)[0])
     if not ip:
         return None
-    signal_ids = _normalize_signal_ids(parsed.get("signal_ids"))
+    signal_ids = _normalize_signal_ids(typed_parsed.get("signal_ids"))
     if not signal_ids:
         return None
-    return ExternalIedTarget(ip=ip, port=_normalize_port(parsed.get("port")), signal_ids=signal_ids)
+    return ExternalIedTarget(ip=ip, port=_normalize_port(typed_parsed.get("port")), signal_ids=signal_ids)
 
 
-def normalize_external_ied_targets(raw_targets: list[Any]) -> dict[str, ExternalIedTarget]:
+def normalize_external_ied_targets(raw_targets: list[object]) -> dict[str, ExternalIedTarget]:
     targets: dict[str, ExternalIedTarget] = {}
     for raw in raw_targets:
         if not isinstance(raw, dict):
             continue
-        ip = _normalize_ip(raw.get("ip"))
-        port = _normalize_port(raw.get("port"))
-        signal_ids = _normalize_signal_ids(raw.get("signal_ids"))
+        typed_raw = cast(JsonObject, raw)
+        ip = _normalize_ip(typed_raw.get("ip"))
+        port = _normalize_port(typed_raw.get("port"))
+        signal_ids = _normalize_signal_ids(typed_raw.get("signal_ids"))
         if not ip or not signal_ids:
             continue
         key = _endpoint_key(ip, port)
@@ -245,25 +305,34 @@ def _record_from_payload(
     target: ExternalIedTarget | None = None,
     discovery_payload: str | None = None,
 ) -> ExternalIedStatusRecord:
-    parsed: dict[str, Any] = {}
+    parsed: JsonObject = {}
     if payload:
         try:
-            candidate = json.loads(payload)
+            candidate = cast(object, json.loads(payload))
             if isinstance(candidate, dict):
-                parsed = candidate
+                parsed = cast(JsonObject, candidate)
         except json.JSONDecodeError:
             parsed = {}
     signal_ids = list(target.signal_ids if target else _normalize_signal_ids(parsed.get("signal_ids")))
-    discovery_fields = discovery_ui_fields_from_payload(discovery_payload)
+    discovery_fields = cast(_DiscoveryUiFields, cast(object, discovery_ui_fields_from_payload(discovery_payload)))
+    last_checked_at = parsed.get("last_checked_at")
+    last_error = parsed.get("last_error")
+    failure_code = parsed.get("failure_code")
     return ExternalIedStatusRecord(
         ip=ip,
         port=target.port if target else _normalize_port(parsed.get("port")),
-        status=parsed.get("status") if parsed.get("status") in {"unknown", "expected", "reachable", "offline"} else "expected",
+        status=cast(
+            ExternalIedStatus,
+            parsed.get("status") if parsed.get("status") in {"unknown", "expected", "reachable", "offline"} else "expected",
+        ),
         signal_ids=signal_ids,
-        last_checked_at=parsed.get("last_checked_at") if isinstance(parsed.get("last_checked_at"), str) else None,
-        last_error=parsed.get("last_error") if isinstance(parsed.get("last_error"), str) else None,
-        check_kind=parsed.get("check_kind") if parsed.get("check_kind") in {"none", "tcp_connect"} else "none",
-        failure_code=parsed.get("failure_code") if parsed.get("failure_code") in {"unreachable", "mms_unavailable", "network_unreachable", "probe_failed"} else None,
+        last_checked_at=last_checked_at if isinstance(last_checked_at, str) else None,
+        last_error=last_error if isinstance(last_error, str) else None,
+        check_kind=cast(
+            ExternalIedCheckKind,
+            parsed.get("check_kind") if parsed.get("check_kind") in {"none", "tcp_connect"} else "none",
+        ),
+        failure_code=cast(ExternalIedFailureCode, failure_code) if failure_code in {"unreachable", "mms_unavailable", "network_unreachable", "probe_failed"} else None,
         **discovery_fields,
     )
 
@@ -289,9 +358,9 @@ def _serialize_state_record(state: EndpointProbeState, record: ExternalIedStatus
     return json.dumps(payload, separators=(",", ":"))
 
 
-def _int_or_none(value: Any) -> int | None:
+def _int_or_none(value: object) -> int | None:
     try:
-        parsed = int(value)
+        parsed = int(str(value))
     except (TypeError, ValueError):
         return None
     return parsed if parsed >= 0 else None
@@ -383,12 +452,12 @@ def _state_from_payload(
     now_ms: int,
     config: ExternalIedWatcherConfig,
 ) -> EndpointProbeState:
-    parsed: dict[str, Any] = {}
+    parsed: JsonObject = {}
     if payload:
         try:
-            candidate = json.loads(payload)
+            candidate = cast(object, json.loads(payload))
             if isinstance(candidate, dict):
-                parsed = candidate
+                parsed = cast(JsonObject, candidate)
         except json.JSONDecodeError:
             parsed = {}
     record = _record_from_payload(target.ip, payload, target)
@@ -425,7 +494,7 @@ def _state_from_payload(
 
 class ExternalIedPriorityScheduler:
     def __init__(self, config: ExternalIedWatcherConfig | None = None) -> None:
-        self.config = config or ExternalIedWatcherConfig()
+        self.config: ExternalIedWatcherConfig = config or ExternalIedWatcherConfig()
         self._states: dict[str, EndpointProbeState] = {}
         self._queue: list[_QueueEntry] = []
         self._verification_needed: dict[str, int] = {}
@@ -446,8 +515,8 @@ class ExternalIedPriorityScheduler:
         next_ids = {state.endpoint_id for state in states}
         for endpoint_id in list(self._states):
             if endpoint_id not in next_ids:
-                self._states.pop(endpoint_id, None)
-                self._verification_needed.pop(endpoint_id, None)
+                _ = self._states.pop(endpoint_id, None)
+                _ = self._verification_needed.pop(endpoint_id, None)
 
         for state in states:
             existing = self._states.get(state.endpoint_id)
@@ -481,7 +550,7 @@ class ExternalIedPriorityScheduler:
     def clearVerificationNeeded(self, endpoint_ids: set[str] | list[str] | tuple[str, ...], *, now_ms: int | None = None) -> None:
         now = now_ms if now_ms is not None else int(time.time() * 1000)
         for endpoint_id in endpoint_ids:
-            self._verification_needed.pop(endpoint_id, None)
+            _ = self._verification_needed.pop(endpoint_id, None)
             state = self._states.get(endpoint_id)
             if state is None:
                 continue
@@ -547,12 +616,12 @@ class ExternalIedPriorityScheduler:
             due.append(state)
         return due
 
-    def complete_probe(self, endpoint_id: str, transition: ProbeTransition) -> None:
+    def complete_probe(self, _endpoint_id: str, transition: ProbeTransition) -> None:
         state = transition.state
         state.active_probe = False
         verification_expires_at = self._verification_needed.get(state.endpoint_id)
         if verification_expires_at is not None and transition.probe_succeeded:
-            self._verification_needed.pop(state.endpoint_id, None)
+            _ = self._verification_needed.pop(state.endpoint_id, None)
         elif verification_expires_at is not None and verification_expires_at > (state.last_probe_at_ms or 0):
             state.priority_reason = PRIORITY_REASON_VERIFICATION_NEEDED
             state.next_probe_at_ms = _next_probe_at_for_reason(
@@ -561,7 +630,7 @@ class ExternalIedPriorityScheduler:
                 config=self.config,
             )
         elif verification_expires_at is not None:
-            self._verification_needed.pop(state.endpoint_id, None)
+            _ = self._verification_needed.pop(state.endpoint_id, None)
         self._upsert(state)
 
     def fail_probe(self, endpoint_id: str, *, now_ms: int) -> None:
@@ -577,7 +646,7 @@ class ExternalIedPriorityScheduler:
             entry = self._queue[0]
             state = self._states.get(entry.endpoint_id)
             if state is None or state.queue_version != entry.version:
-                heapq.heappop(self._queue)
+                _ = heapq.heappop(self._queue)
                 continue
             return max(0, state.next_probe_at_ms - now_ms)
         return self.config.loop_idle_sleep_ms
@@ -593,7 +662,7 @@ class ExternalIedPriorityScheduler:
         for endpoint_id, expires_at in list(self._verification_needed.items()):
             if expires_at > now_ms:
                 continue
-            self._verification_needed.pop(endpoint_id, None)
+            _ = self._verification_needed.pop(endpoint_id, None)
             state = self._states.get(endpoint_id)
             if state is None or state.priority_reason != PRIORITY_REASON_VERIFICATION_NEEDED:
                 continue
@@ -623,13 +692,14 @@ class ExternalIedPriorityScheduler:
 
 def resolve_probe_transition(
     state: EndpointProbeState,
-    result: Any,
+    result: object,
     *,
     now_ms: int,
     config: ExternalIedWatcherConfig,
 ) -> ProbeTransition:
+    probe = cast(_ProbeResult, result)
     old_status = state.status if state.status in {"unknown", "expected", "reachable", "offline"} else "expected"
-    if result.reachable:
+    if probe.reachable:
         state.consecutive_successes += 1
         state.consecutive_failures = 0
         state.last_success_at_ms = now_ms
@@ -658,10 +728,10 @@ def resolve_probe_transition(
         port=state.port,
         status=new_status,
         signal_ids=list(state.signal_ids),
-        last_checked_at=result.checked_at,
-        last_error=result.error,
-        check_kind=result.check_kind,
-        failure_code=result.failure_code,
+        last_checked_at=probe.checked_at,
+        last_error=probe.error,
+        check_kind=probe.check_kind,
+        failure_code=probe.failure_code,
     )
     return ProbeTransition(
         state=state,
@@ -670,18 +740,18 @@ def resolve_probe_transition(
         new_status=new_status,
         status_changed=old_status != new_status,
         next_check_at_ms=state.next_probe_at_ms,
-        probe_succeeded=result.reachable,
+        probe_succeeded=probe.reachable,
     )
 
 
-async def configure_external_ied_targets(workspace_id: int, raw_targets: list[Any]) -> ExternalIedStatusSnapshotEvent:
-    redis = RedisManager.get_instance()
+async def configure_external_ied_targets(workspace_id: int, raw_targets: list[object]) -> ExternalIedStatusSnapshotEvent:
+    redis = _redis_client()
     targets = normalize_external_ied_targets(raw_targets)
     target_key = _targets_key(workspace_id)
     status_key = _status_key(workspace_id)
     previous_targets = await redis.hgetall(target_key)
     previous_statuses = await redis.hgetall(status_key)
-    previous_discovery_states = await redis.hgetall(_discovery_state_key(workspace_id))
+    previous_discovery_states = await redis.hgetall(discovery_state_key(workspace_id))
     previous_signal_ids = [
         signal_id
         for payload in previous_targets.values()
@@ -690,15 +760,15 @@ async def configure_external_ied_targets(workspace_id: int, raw_targets: list[An
 
     if not targets:
         if previous_targets or previous_statuses:
-            await redis.delete(
+            _ = await redis.delete(
                 target_key,
                 status_key,
-                _discovery_state_key(workspace_id),
+                discovery_state_key(workspace_id),
                 f"external_ied:workspace:{workspace_id}:planning_state",
                 f"external_ied:workspace:{workspace_id}:planning_signal",
                 f"external_ied:workspace:{workspace_id}:verification_plan",
             )
-            await redis.srem(TARGET_WORKSPACES_KEY, str(workspace_id))
+            _ = await redis.srem(TARGET_WORKSPACES_KEY, str(workspace_id))
             logger.info("External IED targets cleared | workspace=%s", workspace_id)
         event = ExternalIedStatusSnapshotEvent(
             workspace_id=workspace_id,
@@ -710,18 +780,18 @@ async def configure_external_ied_targets(workspace_id: int, raw_targets: list[An
             await WsEventPublisher.publish(event)
         return event
 
-    await redis.sadd(TARGET_WORKSPACES_KEY, str(workspace_id))
+    _ = await redis.sadd(TARGET_WORKSPACES_KEY, str(workspace_id))
     pipe = redis.pipeline()
-    pipe.delete(target_key)
-    pipe.delete(status_key)
+    _ = pipe.delete(target_key)
+    _ = pipe.delete(status_key)
     devices: list[ExternalIedStatusRecord] = []
     now_ms = int(time.time() * 1000)
     for key, target in targets.items():
         record = _record_from_payload(target.ip, previous_statuses.get(key), target, previous_discovery_states.get(key))
         devices.append(record)
-        pipe.hset(target_key, key, json.dumps({"ip": target.ip, "port": target.port, "signal_ids": list(target.signal_ids)}, separators=(",", ":")))
-        pipe.hset(status_key, key, _serialize_record(record, next_check_at_ms=now_ms))
-    await pipe.execute()
+        _ = pipe.hset(target_key, key, json.dumps({"ip": target.ip, "port": target.port, "signal_ids": list(target.signal_ids)}, separators=(",", ":")))
+        _ = pipe.hset(status_key, key, _serialize_record(record, next_check_at_ms=now_ms))
+    _ = await pipe.execute()
 
     endpoint_sample = ", ".join(sorted(targets.keys())[:8])
     logger.info(
@@ -739,7 +809,7 @@ async def configure_external_ied_targets(workspace_id: int, raw_targets: list[An
     )
     await WsEventPublisher.publish(event)
     for key, target in targets.items():
-        await emit_external_ied_planning_requested(
+        _ = await emit_external_ied_planning_requested(
             workspace_id=workspace_id,
             endpoint=key,
             ip=target.ip,
@@ -751,7 +821,7 @@ async def configure_external_ied_targets(workspace_id: int, raw_targets: list[An
 
 
 async def list_external_ied_status_snapshots() -> list[ExternalIedStatusSnapshotEvent]:
-    redis = RedisManager.get_instance()
+    redis = _redis_client()
     raw_workspace_ids = await redis.smembers(TARGET_WORKSPACES_KEY)
     events: list[ExternalIedStatusSnapshotEvent] = []
     for raw_workspace_id in raw_workspace_ids:
@@ -764,12 +834,12 @@ async def list_external_ied_status_snapshots() -> list[ExternalIedStatusSnapshot
 
 
 async def build_external_ied_status_snapshot(workspace_id: int) -> ExternalIedStatusSnapshotEvent:
-    redis = RedisManager.get_instance()
+    redis = _redis_client()
     statuses = await redis.hgetall(_status_key(workspace_id))
-    discovery_states = await redis.hgetall(_discovery_state_key(workspace_id))
-    discovery_cache = await redis.hgetall(_cache_key(workspace_id))
-    discovery_models = await redis.hgetall(_discovery_model_key(workspace_id))
-    devices = []
+    discovery_states = await redis.hgetall(discovery_state_key(workspace_id))
+    discovery_cache = await redis.hgetall(discovery_cache_key(workspace_id))
+    discovery_models = await redis.hgetall(discovery_model_key(workspace_id))
+    devices: list[ExternalIedStatusRecord] = []
     for endpoint, payload in statuses.items():
         record = _record_from_payload(endpoint.rsplit(":", 1)[0], payload, discovery_payload=discovery_states.get(endpoint))
         _attach_discovery_cache_fields(
@@ -797,8 +867,8 @@ async def publish_external_ied_status_snapshot(workspace_id: int) -> ExternalIed
 def _attach_discovery_cache_fields(
     record: ExternalIedStatusRecord,
     *,
-    cache_payload: str | dict[str, Any] | None,
-    model_payload: str | dict[str, Any] | None,
+    cache_payload: str | JsonObject | None,
+    model_payload: str | JsonObject | None,
 ) -> None:
     metadata = discovery_cache_metadata_from_payload(cache_payload)
     if metadata is not None:
@@ -809,22 +879,22 @@ def _attach_discovery_cache_fields(
     model = _parse_json_object(model_payload)
     if model is None:
         return
-    datasets = model.get("datasets") if isinstance(model.get("datasets"), list) else []
-    rcbs = model.get("rcbs") if isinstance(model.get("rcbs"), list) else []
-    fcdas = model.get("fcdas") if isinstance(model.get("fcdas"), list) else []
+    datasets = _model_list(model, "datasets")
+    rcbs = _model_list(model, "rcbs")
+    fcdas = _model_list(model, "fcdas")
     record.discovery_datasets = len(datasets)
     record.discovery_rcbs = len(rcbs)
     record.discovery_model_signals = len(fcdas)
 
 
-async def load_external_ied_discovery_tree(workspace_id: int, endpoint: str) -> dict[str, Any] | None:
-    redis = RedisManager.get_instance()
-    model_payload = await redis.hget(_discovery_model_key(workspace_id), endpoint)
+async def load_external_ied_discovery_tree(workspace_id: int, endpoint: str) -> JsonObject | None:
+    redis = _redis_client()
+    model_payload = await redis.hget(discovery_model_key(workspace_id), endpoint)
     model = _parse_json_object(model_payload)
     if model is None:
         return None
 
-    cache_payload = await redis.hget(_cache_key(workspace_id), endpoint)
+    cache_payload = await redis.hget(discovery_cache_key(workspace_id), endpoint)
     metadata = discovery_cache_metadata_from_payload(cache_payload)
     return {
         "endpoint": endpoint,
@@ -833,36 +903,44 @@ async def load_external_ied_discovery_tree(workspace_id: int, endpoint: str) -> 
     }
 
 
-def _parse_json_object(payload: str | dict[str, Any] | None) -> dict[str, Any] | None:
+def _parse_json_object(payload: str | JsonObject | None) -> JsonObject | None:
     if isinstance(payload, dict):
         return payload
     if not isinstance(payload, str) or not payload:
         return None
     try:
-        parsed = json.loads(payload)
+        parsed = cast(object, json.loads(payload))
     except json.JSONDecodeError:
         return None
-    return parsed if isinstance(parsed, dict) else None
+    return cast(JsonObject, parsed) if isinstance(parsed, dict) else None
 
 
-def _discovery_tree_from_model(model: dict[str, Any]) -> dict[str, Any]:
-    datasets = model.get("datasets") if isinstance(model.get("datasets"), list) else []
-    rcbs = model.get("rcbs") if isinstance(model.get("rcbs"), list) else []
-    fcdas = model.get("fcdas") if isinstance(model.get("fcdas"), list) else []
-    fc_by_reference = {
-        str(item.get("reference")): str(item.get("fc"))
-        for item in fcdas
-        if isinstance(item, dict) and item.get("reference") is not None and item.get("fc") is not None
-    }
-    dataset_by_reference: dict[str, dict[str, Any]] = {}
+def _model_list(model: JsonObject, key: str) -> list[object]:
+    value = model.get(key)
+    return cast(list[object], value) if isinstance(value, list) else []
+
+
+def _discovery_tree_from_model(model: JsonObject) -> JsonObject:
+    datasets = _model_list(model, "datasets")
+    rcbs = _model_list(model, "rcbs")
+    fcdas = _model_list(model, "fcdas")
+    fc_by_reference: dict[str, str] = {}
+    for item in fcdas:
+        if not isinstance(item, dict):
+            continue
+        item_dict = cast(dict[str, object], item)
+        if item_dict.get("reference") is not None and item_dict.get("fc") is not None:
+            fc_by_reference[str(item_dict["reference"])] = str(item_dict["fc"])
+    dataset_by_reference: dict[str, JsonObject] = {}
     for dataset in datasets:
         if not isinstance(dataset, dict):
             continue
-        reference = str(dataset.get("reference") or "").strip()
+        dataset_dict = cast(dict[str, object], dataset)
+        reference = str(dataset_dict.get("reference") or "").strip()
         if not reference:
             continue
-        raw_members = dataset.get("members") if isinstance(dataset.get("members"), list) else []
-        signals = []
+        raw_members = _model_list(cast(JsonObject, dataset), "members")
+        signals: list[JsonObject] = []
         for raw_member in raw_members:
             signal_reference = str(raw_member).strip()
             if not signal_reference:
@@ -875,18 +953,19 @@ def _discovery_tree_from_model(model: dict[str, Any]) -> dict[str, Any]:
             "reference": reference,
             "signals": signals,
         }
-    reports = []
+    reports: list[JsonObject] = []
     for rcb in rcbs:
         if not isinstance(rcb, dict):
             continue
-        reference = str(rcb.get("reference") or "").strip()
+        rcb_dict = cast(dict[str, object], rcb)
+        reference = str(rcb_dict.get("reference") or "").strip()
         if not reference:
             continue
-        dataset_reference = str(rcb.get("dataset_reference") or "").strip()
+        dataset_reference = str(rcb_dict.get("dataset_reference") or "").strip()
         reports.append({
             "reference": reference,
-            "name": str(rcb.get("name") or reference.rsplit(".", 1)[-1] or reference),
-            "kind": str(rcb.get("kind") or "unknown"),
+            "name": str(rcb_dict.get("name") or reference.rsplit(".", 1)[-1] or reference),
+            "kind": str(rcb_dict.get("kind") or "unknown"),
             "dataset_reference": dataset_reference or None,
             "dataset": dataset_by_reference.get(dataset_reference) if dataset_reference else None,
         })
@@ -898,7 +977,7 @@ async def _probe_state(
     *,
     config: ExternalIedWatcherConfig,
 ) -> ProbeTransition | None:
-    redis = RedisManager.get_instance()
+    redis = _redis_client()
     endpoint = _endpoint_key(state.host, state.port)
     locked = await redis.set(_lock_key(state.workspace_id, endpoint), "1", nx=True, ex=10)
     if not locked:
@@ -931,12 +1010,12 @@ async def _probe_state(
             config=config,
         )
         serialized_state = _serialize_state_record(transition.state, transition.record)
-        await redis.hset(
+        _ = await redis.hset(
             _status_key(state.workspace_id),
             endpoint,
             serialized_state,
         )
-        discovery_fields = discovery_ui_fields_from_payload(None)
+        discovery_fields = cast(_DiscoveryUiFields, cast(object, discovery_ui_fields_from_payload(None)))
         try:
             discovery_request = await schedule_external_ied_discovery_from_watcher_payload(
                 workspace_id=state.workspace_id,
@@ -944,10 +1023,10 @@ async def _probe_state(
                 payload=serialized_state,
             )
             if discovery_request is not None:
-                discovery_fields = discovery_ui_fields_from_payload({"state": "Queued", "updated_at_ms": discovery_request.requested_at_ms})
+                discovery_fields = cast(_DiscoveryUiFields, cast(object, discovery_ui_fields_from_payload({"state": "Queued", "updated_at_ms": discovery_request.requested_at_ms})))
             else:
-                discovery_payload = await redis.hget(_discovery_state_key(state.workspace_id), endpoint)
-                discovery_fields = discovery_ui_fields_from_payload(discovery_payload)
+                discovery_payload = await redis.hget(discovery_state_key(state.workspace_id), endpoint)
+                discovery_fields = cast(_DiscoveryUiFields, cast(object, discovery_ui_fields_from_payload(discovery_payload)))
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "External IED discovery scheduling failed | workspace=%s endpoint=%s error=%s",
@@ -982,10 +1061,10 @@ async def _probe_state(
         )
         return transition
     finally:
-        await redis.delete(_lock_key(state.workspace_id, endpoint))
+        _ = await redis.delete(_lock_key(state.workspace_id, endpoint))
 
 
-async def _check_one(workspace_id: int, endpoint: str, target: ExternalIedTarget, previous: ExternalIedStatusRecord) -> None:
+async def _check_one(workspace_id: int, endpoint: str, target: ExternalIedTarget, previous: ExternalIedStatusRecord) -> None:  # pyright: ignore[reportUnusedFunction]
     config = ExternalIedWatcherConfig()
     now_ms = int(time.time() * 1000)
     state = EndpointProbeState(
@@ -1004,11 +1083,11 @@ async def _check_one(workspace_id: int, endpoint: str, target: ExternalIedTarget
         active_probe=False,
         priority_reason=_priority_reason_for_record(previous.status, 0, 0, config),
     )
-    await _probe_state(state, config=config)
+    _ = await _probe_state(state, config=config)
 
 
 async def _load_scheduler_states(config: ExternalIedWatcherConfig) -> list[EndpointProbeState]:
-    redis = RedisManager.get_instance()
+    redis = _redis_client()
     raw_workspace_ids = await redis.smembers(TARGET_WORKSPACES_KEY)
     now_ms = int(time.time() * 1000)
     states: list[EndpointProbeState] = []
@@ -1103,6 +1182,6 @@ async def run_external_ied_availability_checker(
             await asyncio.sleep(max(0.01, wait_ms / 1000))
 
     for task in active_tasks:
-        task.cancel()
+        _ = task.cancel()
     if active_tasks:
-        await asyncio.gather(*active_tasks.keys(), return_exceptions=True)
+        _ = await asyncio.gather(*active_tasks.keys(), return_exceptions=True)

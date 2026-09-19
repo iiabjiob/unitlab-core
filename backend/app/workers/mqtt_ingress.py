@@ -15,9 +15,10 @@ logger = get_logger("worker.ingress")
 
 
 async def _handle_incoming(topic: str, payload: bytes, qos: int, properties: object):
+    _ = properties
     msg = InboundMqttMsg(topic=topic, payload=payload, qos=qos)
     try:
-        await enqueue_inbound_message(msg)
+        _ = await enqueue_inbound_message(msg)
         logger.debug("[Ingress] Stored %s (%d bytes)", topic, len(payload))
     except Exception as exc:
         logger.error("💥 Failed to enqueue inbound MQTT message %s: %s", topic, exc)
@@ -26,7 +27,7 @@ async def _handle_incoming(topic: str, payload: bytes, qos: int, properties: obj
 
 async def main() -> None:
     await RedisManager.start()
-    await MqttManager.start(client_id="unitlab-ingress", on_message=_handle_incoming)
+    _ = await MqttManager.start(client_id="unitlab-ingress", on_message=_handle_incoming)
 
     stop_event = asyncio.Event()
     heartbeat_task = start_worker_heartbeat("mqtt_ingress")
@@ -44,9 +45,9 @@ async def main() -> None:
             pass
 
     try:
-        await stop_event.wait()
+        _ = await stop_event.wait()
     finally:
-        heartbeat_task.cancel()
+        _ = heartbeat_task.cancel()
         with suppress(asyncio.CancelledError):
             await heartbeat_task
         await clear_worker_status("mqtt_ingress")

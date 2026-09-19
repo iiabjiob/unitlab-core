@@ -37,14 +37,14 @@ from app.core.logger import get_logger
 
 # Import all MQTT handlers to ensure they register themselves in the router.
 # This line is required for side-effects (do not remove).
-from app.infrastructure.mqtt.handlers import bootstrap  # noqa: F401
+from app.infrastructure.mqtt.handlers import bootstrap  # noqa: F401  # pyright: ignore[reportUnusedImport]
 
 
 settings = get_settings()
 logger = get_logger("core")
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_app: FastAPI):
     logger.info("🚀 Starting FastAPI application...")
 
     # Healthchecks (skip heavy DB probe in non-production environments)
@@ -90,25 +90,25 @@ async def lifespan(app: FastAPI):
         logger.info("🛑 Shutting down FastAPI application...")
 
         # Cancel background tasks
-        ws_forwarder_task.cancel()
+        _ = ws_forwarder_task.cancel()
         with suppress(asyncio.CancelledError):
             await ws_forwarder_task
-        sequence_forwarder_task.cancel()
+        _ = sequence_forwarder_task.cancel()
         with suppress(asyncio.CancelledError):
             await sequence_forwarder_task
-        core_network_forwarder_task.cancel()
+        _ = core_network_forwarder_task.cancel()
         with suppress(asyncio.CancelledError):
             await core_network_forwarder_task
-        core_ntp_forwarder_task.cancel()
+        _ = core_ntp_forwarder_task.cancel()
         with suppress(asyncio.CancelledError):
             await core_ntp_forwarder_task
-        core_diag_forwarder_task.cancel()
+        _ = core_diag_forwarder_task.cancel()
         with suppress(asyncio.CancelledError):
             await core_diag_forwarder_task
-        core_provision_forwarder_task.cancel()
+        _ = core_provision_forwarder_task.cancel()
         with suppress(asyncio.CancelledError):
             await core_provision_forwarder_task
-        worker_health_task.cancel()
+        _ = worker_health_task.cancel()
         with suppress(asyncio.CancelledError):
             await worker_health_task
 

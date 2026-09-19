@@ -1,17 +1,20 @@
 from __future__ import annotations
 
 import json
+from typing import cast
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.signal_sheet_schema import SignalAllocationRowSchema
+from app.schemas.ws.events import ExternalIedPlanningChangedEvent
 from app.services import external_ied_planning as planning
 
 
 class _FakeRedis:
     def __init__(self) -> None:
         self.hashes: dict[str, dict[str, str]] = {}
-        self.streams: dict[str, list[dict[str, str]]] = {}
+        self.streams: dict[str, list[dict[str, object]]] = {}
 
     async def hget(self, key: str, field: str) -> str | None:
         return self.hashes.get(key, {}).get(field)
@@ -23,12 +26,12 @@ class _FakeRedis:
         self.hashes.setdefault(key, {})[field] = value
 
     async def hdel(self, key: str, field: str) -> None:
-        self.hashes.setdefault(key, {}).pop(field, None)
+        _ = self.hashes.setdefault(key, {}).pop(field, None)
 
     async def smembers(self, _key: str) -> set[str]:
         return {"5"}
 
-    async def xadd(self, stream: str, fields: dict, **_kwargs) -> str:
+    async def xadd(self, stream: str, fields: dict[str, object], **_kwargs: object) -> str:
         self.streams.setdefault(stream, []).append(fields)
         return f"{len(self.streams[stream])}-0"
 
@@ -62,20 +65,22 @@ def _row(signal_id: int, address: str, host: str = "172.16.40.128:12447") -> Sig
     )
 
 
-async def _rows(_db, _request):
+async def _rows(_db: AsyncSession, _request: planning.ExternalIedPlanningRequest) -> list[SignalAllocationRowSchema]:
     return [_row(101, "IEDLD0/GGIO1.ST.stVal")]
 
 
-async def _incomplete_domain_rows(_db, _request):
+async def _incomplete_domain_rows(
+    _db: AsyncSession, _request: planning.ExternalIedPlanningRequest
+) -> list[SignalAllocationRowSchema]:
     return [_row(101, "KINTE15BCU01CTRL2/DARGAPC6/Ind20/stVal[ST]")]
 
 
 class _FakeSignalSheetRepository:
-    def __init__(self, _db) -> None:
-        self.list_all_rows_calls = 0
-        self.list_by_ids_calls = 0
+    def __init__(self, _db: AsyncSession) -> None:
+        self.list_all_rows_calls: int = 0
+        self.list_by_ids_calls: int = 0
 
-    async def list_allocation_rows(self, workspace_id: int):
+    async def list_allocation_rows(self, workspace_id: int) -> list[SignalAllocationRowSchema]:
         self.list_all_rows_calls += 1
         assert workspace_id == 5
         return [
@@ -83,18 +88,20 @@ class _FakeSignalSheetRepository:
             _row(102, "KINTE15BCU01CTRL1/GGIO1/stVal[ST]", host="172.16.40.128:12448"),
         ]
 
-    async def list_allocation_rows_by_signal_ids(self, workspace_id: int, signal_ids):
+    async def list_allocation_rows_by_signal_ids(
+        self, workspace_id: int, signal_ids: tuple[int, ...]
+    ) -> list[SignalAllocationRowSchema]:
         self.list_by_ids_calls += 1
         assert workspace_id == 5
         return [_row(signal_id, "KINTE15BCU01CTRL2/DARGAPC6/Ind20/stVal[ST]") for signal_id in signal_ids]
 
 
 @pytest.mark.anyio
-async def test_external_ied_planning_builds_signal_coverage(monkeypatch) -> None:
+async def test_external_ied_planning_builds_signal_coverage(monkeypatch: pytest.MonkeyPatch) -> None:
     redis = _FakeRedis()
     published = _Published()
-    monkeypatch.setattr(planning.RedisManager, "get_instance", lambda: redis)
-    monkeypatch.setattr(planning.WsEventPublisher, "publish", published.publish)
+    monkeypatch.setattr(planning.RedisManager, "get_instance", lambda: redis)  # pyright: ignore[reportPrivateLocalImportUsage]
+    monkeypatch.setattr(planning.WsEventPublisher, "publish", published.publish)  # pyright: ignore[reportPrivateLocalImportUsage]
     monkeypatch.setattr(planning, "_load_mapped_rows", _rows)
     await redis.hset(
         "external_ied:workspace:5:discovery_cache",
@@ -121,25 +128,28 @@ async def test_external_ied_planning_builds_signal_coverage(monkeypatch) -> None
         requested_at_ms=1000,
     )
 
-    plan = await planning.execute_external_ied_planning_request(request, db=None)  # type: ignore[arg-type]
+    plan = await planning.execute_external_ied_planning_request(
+        request, db=cast(AsyncSession, cast(object, None))
+    )
 
     assert plan is not None
     assert plan.signals[0].status == "planned"
-    endpoint_payload = json.loads(redis.hashes["external_ied:workspace:5:planning_state"]["172.16.40.128:12447"])
+    endpoint_payload = cast(dict[str, object], json.loads(redis.hashes["external_ied:workspace:5:planning_state"]["172.16.40.128:12447"]))
     assert endpoint_payload["state"] == "Ready"
-    signal_payload = json.loads(redis.hashes["external_ied:workspace:5:planning_signal"]["101"])
+    signal_payload = cast(dict[str, object], json.loads(redis.hashes["external_ied:workspace:5:planning_signal"]["101"]))
     assert signal_payload["status"] == "matched"
     assert signal_payload["rcb_name"] == "brcb01"
-    assert published.events[-1].event == "external_ied_planning_changed"
-    assert published.events[-1].signal_results[0].status == "matched"
+    event = cast(ExternalIedPlanningChangedEvent, published.events[-1])
+    assert event.event == "external_ied_planning_changed"
+    assert event.signal_results[0].status == "matched"
 
 
 @pytest.mark.anyio
-async def test_external_ied_planning_waits_for_discovery_cache(monkeypatch) -> None:
+async def test_external_ied_planning_waits_for_discovery_cache(monkeypatch: pytest.MonkeyPatch) -> None:
     redis = _FakeRedis()
     published = _Published()
-    monkeypatch.setattr(planning.RedisManager, "get_instance", lambda: redis)
-    monkeypatch.setattr(planning.WsEventPublisher, "publish", published.publish)
+    monkeypatch.setattr(planning.RedisManager, "get_instance", lambda: redis)  # pyright: ignore[reportPrivateLocalImportUsage]
+    monkeypatch.setattr(planning.WsEventPublisher, "publish", published.publish)  # pyright: ignore[reportPrivateLocalImportUsage]
     monkeypatch.setattr(planning, "_load_mapped_rows", _rows)
     request = planning.ExternalIedPlanningRequest(
         request_id="req-1",
@@ -152,21 +162,24 @@ async def test_external_ied_planning_waits_for_discovery_cache(monkeypatch) -> N
         requested_at_ms=1000,
     )
 
-    plan = await planning.execute_external_ied_planning_request(request, db=None)  # type: ignore[arg-type]
+    plan = await planning.execute_external_ied_planning_request(
+        request, db=cast(AsyncSession, cast(object, None))
+    )
 
     assert plan is None
-    endpoint_payload = json.loads(redis.hashes["external_ied:workspace:5:planning_state"]["172.16.40.128:12447"])
+    endpoint_payload = cast(dict[str, object], json.loads(redis.hashes["external_ied:workspace:5:planning_state"]["172.16.40.128:12447"]))
     assert endpoint_payload["state"] == "WaitingForDiscovery"
     assert "external_ied:workspace:5:planning_signal" not in redis.hashes
-    assert published.events[-1].endpoint.state == "WaitingForDiscovery"
+    event = cast(ExternalIedPlanningChangedEvent, published.events[-1])
+    assert event.endpoint.state == "WaitingForDiscovery"
 
 
 @pytest.mark.anyio
-async def test_external_ied_planning_marks_incomplete_discovery_as_stale(monkeypatch) -> None:
+async def test_external_ied_planning_marks_incomplete_discovery_as_stale(monkeypatch: pytest.MonkeyPatch) -> None:
     redis = _FakeRedis()
     published = _Published()
-    monkeypatch.setattr(planning.RedisManager, "get_instance", lambda: redis)
-    monkeypatch.setattr(planning.WsEventPublisher, "publish", published.publish)
+    monkeypatch.setattr(planning.RedisManager, "get_instance", lambda: redis)  # pyright: ignore[reportPrivateLocalImportUsage]
+    monkeypatch.setattr(planning.WsEventPublisher, "publish", published.publish)  # pyright: ignore[reportPrivateLocalImportUsage]
     monkeypatch.setattr(planning, "_load_mapped_rows", _incomplete_domain_rows)
     await redis.hset(
         "external_ied:workspace:5:discovery_cache",
@@ -200,21 +213,27 @@ async def test_external_ied_planning_marks_incomplete_discovery_as_stale(monkeyp
         requested_at_ms=1000,
     )
 
-    plan = await planning.execute_external_ied_planning_request(request, db=None)  # type: ignore[arg-type]
+    plan = await planning.execute_external_ied_planning_request(
+        request, db=cast(AsyncSession, cast(object, None))
+    )
 
     assert plan is not None
-    endpoint_payload = json.loads(redis.hashes["external_ied:workspace:5:planning_state"]["172.16.40.128:12447"])
+    endpoint_payload = cast(dict[str, object], json.loads(redis.hashes["external_ied:workspace:5:planning_state"]["172.16.40.128:12447"]))
     assert endpoint_payload["state"] == "Stale"
-    signal_payload = json.loads(redis.hashes["external_ied:workspace:5:planning_signal"]["101"])
+    signal_payload = cast(dict[str, object], json.loads(redis.hashes["external_ied:workspace:5:planning_signal"]["101"]))
     assert signal_payload["status"] == "stale"
     assert signal_payload["reason"] == "discovery cache has no dataset members for IED domain"
-    assert published.events[-1].signal_results[0].status == "stale"
+    event = cast(ExternalIedPlanningChangedEvent, published.events[-1])
+    assert event.signal_results[0].status == "stale"
 
 
 @pytest.mark.anyio
-async def test_external_ied_planning_loads_endpoint_rows_when_request_has_no_signal_ids(monkeypatch) -> None:
-    repository = _FakeSignalSheetRepository(None)
-    monkeypatch.setattr(planning, "SignalSheetRepository", lambda _db: repository)
+async def test_external_ied_planning_loads_endpoint_rows_when_request_has_no_signal_ids(monkeypatch: pytest.MonkeyPatch) -> None:
+    repository = _FakeSignalSheetRepository(cast(AsyncSession, cast(object, None)))
+    def _repository_factory(_db: AsyncSession) -> _FakeSignalSheetRepository:
+        return repository
+
+    monkeypatch.setattr(planning, "SignalSheetRepository", _repository_factory)
     request = planning.ExternalIedPlanningRequest(
         request_id="req-1",
         workspace_id=5,
@@ -226,7 +245,9 @@ async def test_external_ied_planning_loads_endpoint_rows_when_request_has_no_sig
         requested_at_ms=1000,
     )
 
-    rows = await planning._load_mapped_rows(None, request)  # type: ignore[arg-type]
+    rows = await planning._load_mapped_rows(  # pyright: ignore[reportPrivateUsage]
+        cast(AsyncSession, cast(object, None)), request
+    )
 
     assert repository.list_all_rows_calls == 1
     assert repository.list_by_ids_calls == 0

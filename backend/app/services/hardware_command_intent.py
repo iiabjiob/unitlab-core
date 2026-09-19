@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from typing import cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import and_, exists, or_, select, update
@@ -160,7 +161,7 @@ async def record_hardware_command_intent(
     channel_id: int,
     unit_id: str,
     action: str,
-    payload: dict,
+    payload: dict[str, object],
     fencing_epoch: int | None,
 ) -> HardwareCommandIntent:
     intent = HardwareCommandIntent(
@@ -185,16 +186,16 @@ async def record_hardware_command_intent(
     if primary_channel_id <= 0:
         raise ValueError("Hardware intent requires a positive primary channel_id")
     channel_ids: list[int] = [primary_channel_id]
-    has_multi_channel_scope = isinstance(payload, dict) and "channel_ids" in payload
-    raw_channel_ids = payload.get("channel_ids") if isinstance(payload, dict) else None
+    has_multi_channel_scope = "channel_ids" in payload
+    raw_channel_ids = payload.get("channel_ids")
     if has_multi_channel_scope and not isinstance(raw_channel_ids, list):
         raise ValueError("Hardware intent channel_ids must be a list")
     if has_multi_channel_scope and not raw_channel_ids:
         raise ValueError("Hardware intent channel_ids must not be empty")
     if isinstance(raw_channel_ids, list):
-        for raw_channel_id in raw_channel_ids:
+        for raw_channel_id in cast(list[object], raw_channel_ids):
             try:
-                normalized_channel_id = int(raw_channel_id)
+                normalized_channel_id = int(cast(str | int | float, raw_channel_id))
             except (TypeError, ValueError) as exc:
                 raise ValueError("Hardware intent channel_ids contains an invalid channel") from exc
             if normalized_channel_id > 0 and normalized_channel_id not in channel_ids:
@@ -218,7 +219,7 @@ async def mark_hardware_command_intent_queued(
     *,
     command_id: str,
 ) -> None:
-    await db.execute(
+    _ = await db.execute(
         update(HardwareCommandIntent)
         .where(HardwareCommandIntent.command_id == command_id)
         .values(status="queued")
@@ -231,7 +232,7 @@ async def mark_hardware_command_intent_completed(
     *,
     command_id: str,
 ) -> None:
-    await db.execute(
+    _ = await db.execute(
         update(HardwareCommandIntent)
         .where(
             HardwareCommandIntent.command_id == command_id,
@@ -249,7 +250,7 @@ async def mark_hardware_command_intent_delivery_failure(
     command_id: str,
     status: str,
 ) -> None:
-    await db.execute(
+    _ = await db.execute(
         update(HardwareCommandIntent)
         .where(HardwareCommandIntent.command_id == command_id)
         .values(status=status)

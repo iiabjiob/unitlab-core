@@ -7,7 +7,7 @@ must recreate the disposable database and run ``alembic upgrade head``.
 
 from alembic import op
 
-import app.models  # noqa: F401
+import app.models  # noqa: F401  # pyright: ignore[reportUnusedImport]  # imported for model registration side effects
 from app.infrastructure.db.database import Base
 
 

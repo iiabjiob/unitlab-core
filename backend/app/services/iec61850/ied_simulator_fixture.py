@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Sequence
+from collections.abc import Sequence
 
 
 from .report_runtime import (
@@ -80,7 +80,7 @@ def build_ied_simulator_fixture_from_subscription_plan(
             candidate = plan_report.candidate
             data_set_ref = _require_data_set_ref(candidate)
             reports.append(_to_fixture_report(candidate, data_set_ref))
-            data_sets_by_ref.setdefault(
+            _ = data_sets_by_ref.setdefault(
                 data_set_ref,
                 Iec61850IedSimulatorFixtureDataSet(
                     reference=data_set_ref,
@@ -102,7 +102,7 @@ def build_ied_simulator_fixture_from_subscription_plan(
     )
 
 
-def ied_simulator_fixture_to_payload(fixture: Iec61850IedSimulatorFixture) -> dict[str, Any]:
+def ied_simulator_fixture_to_payload(fixture: Iec61850IedSimulatorFixture) -> dict[str, object]:
     return {
         "schema": fixture.schema,
         "devices": [

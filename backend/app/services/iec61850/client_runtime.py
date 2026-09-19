@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Callable, Sequence
+from collections.abc import Callable, Sequence
 
 from .report_runtime import (
     Iec61850DeviceEndpoint,
@@ -47,10 +47,10 @@ class Iec61850MmsClientRuntime:
     """
 
     def __init__(self, adapter: Iec61850ReportRuntimeAdapter) -> None:
-        self._adapter = adapter
-        self._service = Iec61850ReportRuntimeService(adapter)
+        self._adapter: Iec61850ReportRuntimeAdapter = adapter
+        self._service: Iec61850ReportRuntimeService = Iec61850ReportRuntimeService(adapter)
         self._events: list[Iec61850MmsClientEvent] = []
-        self._event_sequence = 0
+        self._event_sequence: int = 0
 
     def transcript(self) -> tuple[Iec61850MmsClientEvent, ...]:
         return tuple(self._events)
@@ -67,7 +67,7 @@ class Iec61850MmsClientRuntime:
         candidates: Sequence[Iec61850ReportControlCandidate],
     ) -> None:
         self._service.open_session(session_id=session_id, endpoint=endpoint, candidates=candidates)
-        self._append_event(
+        self.append_event(
             kind="session-open",
             session_id=session_id,
             endpoint_id=endpoint.id,
@@ -76,7 +76,7 @@ class Iec61850MmsClientRuntime:
 
     def close_session(self, session_id: str) -> None:
         self._service.close_session(session_id)
-        self._append_event(
+        self.append_event(
             kind="session-close",
             session_id=session_id,
             endpoint_id=session_id,
@@ -91,7 +91,7 @@ class Iec61850MmsClientRuntime:
         candidate: Iec61850ReportControlCandidate,
     ) -> Iec61850ReportControlReadResult:
         result = self._service.read_report_control(session_id=session_id, endpoint=endpoint, candidate=candidate)
-        self._append_event(
+        self.append_event(
             kind="report-control-read",
             session_id=session_id,
             endpoint_id=endpoint.id,
@@ -111,7 +111,7 @@ class Iec61850MmsClientRuntime:
         client_id: str,
     ) -> Iec61850ReportControlState:
         state = self._service.reserve_report_control(session_id=session_id, candidate=candidate, client_id=client_id)
-        self._append_event(
+        self.append_event(
             kind="report-control-reserve",
             session_id=session_id,
             endpoint_id=self._endpoint_id(candidate),
@@ -130,7 +130,7 @@ class Iec61850MmsClientRuntime:
         client_id: str,
     ) -> Iec61850ReportControlState:
         state = self._service.release_report_control(session_id=session_id, candidate=candidate, client_id=client_id)
-        self._append_event(
+        self.append_event(
             kind="report-control-release",
             session_id=session_id,
             endpoint_id=self._endpoint_id(candidate),
@@ -149,7 +149,7 @@ class Iec61850MmsClientRuntime:
         client_id: str,
     ) -> Iec61850ReportControlState:
         state = self._service.enable_report_control(session_id=session_id, candidate=candidate, client_id=client_id)
-        self._append_event(
+        self.append_event(
             kind="report-control-enable",
             session_id=session_id,
             endpoint_id=self._endpoint_id(candidate),
@@ -168,7 +168,7 @@ class Iec61850MmsClientRuntime:
         client_id: str,
     ) -> Iec61850ReportControlState:
         state = self._service.disable_report_control(session_id=session_id, candidate=candidate, client_id=client_id)
-        self._append_event(
+        self.append_event(
             kind="report-control-disable",
             session_id=session_id,
             endpoint_id=self._endpoint_id(candidate),
@@ -187,7 +187,7 @@ class Iec61850MmsClientRuntime:
         client_id: str,
     ) -> Iec61850ReportEvent:
         event = self._service.send_general_interrogation(session_id=session_id, candidate=candidate, client_id=client_id)
-        self._append_event(
+        self.append_event(
             kind="report-control-gi",
             session_id=session_id,
             endpoint_id=event.endpoint_id,
@@ -216,7 +216,7 @@ class Iec61850MmsClientRuntime:
             now=now,
         )
         for report in result.reports:
-            self._append_event(
+            self.append_event(
                 kind="subscription-plan-report",
                 session_id=f"{session_id_prefix}:{report.ied_name}/{report.access_point_name}",
                 endpoint_id=f"sim:{report.ied_name}/{report.access_point_name}",
@@ -244,7 +244,7 @@ class Iec61850MmsClientRuntime:
             now=now,
         )
         for report in result.reports:
-            self._append_event(
+            self.append_event(
                 kind="simulator-subscription-report",
                 session_id=f"sim:{report.ied_name}/{report.access_point_name}",
                 endpoint_id=f"sim:{report.ied_name}/{report.access_point_name}",
@@ -257,7 +257,7 @@ class Iec61850MmsClientRuntime:
             )
         return result
 
-    def _append_event(
+    def append_event(
         self,
         *,
         kind: str,

@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable
 from dataclasses import dataclass
-from typing import Any, TypeVar
+from typing import TypeVar, cast
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.signal_sheet import SignalSheetAutoAllocateResult
 from app.services.signal_sheet_write_service import SignalSheetWriteService
+from app.api.v1.signal_sheet.repository import SignalSheetRepository
 
 
 @dataclass
@@ -18,8 +21,8 @@ class FakeAllocation:
 
 class FakeDb:
     def __init__(self) -> None:
-        self.commits = 0
-        self.rollbacks = 0
+        self.commits: int = 0
+        self.rollbacks: int = 0
 
     async def commit(self) -> None:
         self.commits += 1
@@ -30,12 +33,12 @@ class FakeDb:
 
 class FakeRepo:
     def __init__(self, allocation: FakeAllocation | None = None) -> None:
-        self.allocation = allocation
-        self.channel_allocation = FakeAllocation(channel_id=11, signal_id=99)
-        self.updated_entries: list[dict[str, Any]] = []
+        self.allocation: FakeAllocation | None = allocation
+        self.channel_allocation: FakeAllocation = FakeAllocation(channel_id=11, signal_id=99)
+        self.updated_entries: list[dict[str, object]] = []
         self.swapped: tuple[int, int, int] | None = None
-        self.events: list[dict[str, Any]] = []
-        self.auto_allocate_result = SignalSheetAutoAllocateResult(
+        self.events: list[dict[str, object]] = []
+        self.auto_allocate_result: SignalSheetAutoAllocateResult = SignalSheetAutoAllocateResult(
             requested=3,
             assigned=2,
             skipped=1,
@@ -45,20 +48,23 @@ class FakeRepo:
         )
 
     async def get_allocation_by_signal_id(self, workspace_id: int, signal_id: int) -> FakeAllocation | None:
+        _ = (workspace_id, signal_id)
         return self.allocation
 
     async def get_allocation_by_channel_id(self, workspace_id: int, channel_id: int) -> FakeAllocation | None:
+        _ = (workspace_id, channel_id)
         return self.channel_allocation
 
     async def update_allocations(
         self,
         workspace_id: int,
-        entries: list[dict[str, Any]],
+        entries: list[dict[str, object]],
         *,
         commit: bool,
     ) -> list[int]:
+        _ = (workspace_id, commit)
         self.updated_entries.extend(entries)
-        return [int(item["signal_id"]) for item in entries]
+        return [int(cast(int, item["signal_id"])) for item in entries]
 
     async def swap_allocations(
         self,
@@ -68,30 +74,39 @@ class FakeRepo:
         channel_id: int,
         commit: bool,
     ) -> list[int]:
+        _ = commit
         self.swapped = (workspace_id, signal_id, channel_id)
         return [signal_id, 99]
 
-    async def auto_allocate(self, **kwargs) -> SignalSheetAutoAllocateResult:
+    async def auto_allocate(self, **kwargs: object) -> SignalSheetAutoAllocateResult:
+        _ = kwargs
         return self.auto_allocate_result
 
-    async def record_allocation_event(self, **kwargs) -> None:
+    async def record_allocation_event(self, **kwargs: object) -> None:
         self.events.append(dict(kwargs))
 
 
 T = TypeVar("T")
 
 
-def run_async(awaitable: Any) -> T:
+def run_async(awaitable: Awaitable[T]) -> T:
     return asyncio.run(awaitable)
+
+
+def _service(db: FakeDb, repo: FakeRepo) -> SignalSheetWriteService:
+    return SignalSheetWriteService(
+        db=cast(AsyncSession, cast(object, db)),
+        repo=cast(SignalSheetRepository, cast(object, repo)),
+    )
 
 
 def test_assign_allocation_rejects_already_allocated_signal() -> None:
     db = FakeDb()
     repo = FakeRepo(allocation=FakeAllocation(channel_id=10))
-    service = SignalSheetWriteService(db=db, repo=repo)  # type: ignore[arg-type]
+    service = _service(db, repo)
 
     with pytest.raises(ValueError, match="already allocated"):
-        run_async(service.assign_allocation(workspace_id=1, signal_id=2, channel_id=11))
+        _ = run_async(service.assign_allocation(workspace_id=1, signal_id=2, channel_id=11))
 
     assert db.rollbacks == 1
     assert repo.updated_entries == []
@@ -101,7 +116,7 @@ def test_assign_allocation_rejects_already_allocated_signal() -> None:
 def test_assign_allocation_updates_unassigned_signal() -> None:
     db = FakeDb()
     repo = FakeRepo()
-    service = SignalSheetWriteService(db=db, repo=repo)  # type: ignore[arg-type]
+    service = _service(db, repo)
 
     changed = run_async(service.assign_allocation(workspace_id=1, signal_id=2, channel_id=11))
 
@@ -126,10 +141,10 @@ def test_assign_allocation_updates_unassigned_signal() -> None:
 def test_reassign_allocation_requires_existing_allocation() -> None:
     db = FakeDb()
     repo = FakeRepo()
-    service = SignalSheetWriteService(db=db, repo=repo)  # type: ignore[arg-type]
+    service = _service(db, repo)
 
     with pytest.raises(ValueError, match="not allocated"):
-        run_async(service.reassign_allocation(workspace_id=1, signal_id=2, channel_id=11))
+        _ = run_async(service.reassign_allocation(workspace_id=1, signal_id=2, channel_id=11))
 
     assert db.rollbacks == 1
     assert repo.updated_entries == []
@@ -139,7 +154,7 @@ def test_reassign_allocation_requires_existing_allocation() -> None:
 def test_unassign_allocation_uses_explicit_null_channel() -> None:
     db = FakeDb()
     repo = FakeRepo(allocation=FakeAllocation(channel_id=10))
-    service = SignalSheetWriteService(db=db, repo=repo)  # type: ignore[arg-type]
+    service = _service(db, repo)
 
     changed = run_async(service.unassign_allocation(workspace_id=1, signal_id=2))
 
@@ -154,7 +169,7 @@ def test_unassign_allocation_uses_explicit_null_channel() -> None:
 def test_swap_allocations_delegates_to_repo_transaction() -> None:
     db = FakeDb()
     repo = FakeRepo()
-    service = SignalSheetWriteService(db=db, repo=repo)  # type: ignore[arg-type]
+    service = _service(db, repo)
 
     changed = run_async(service.swap_allocations(workspace_id=1, signal_id=2, channel_id=11))
 
@@ -162,13 +177,14 @@ def test_swap_allocations_delegates_to_repo_transaction() -> None:
     assert db.commits == 1
     assert repo.swapped == (1, 2, 11)
     assert repo.events[0]["operation"] == "swap"
-    assert repo.events[0]["payload"]["target_signal_id"] == 99
+    payload = cast(dict[str, object], repo.events[0]["payload"])
+    assert payload["target_signal_id"] == 99
 
 
 def test_bulk_update_records_summary_event() -> None:
     db = FakeDb()
     repo = FakeRepo()
-    service = SignalSheetWriteService(db=db, repo=repo)  # type: ignore[arg-type]
+    service = _service(db, repo)
 
     run_async(service.update_allocations(
         workspace_id=1,
@@ -199,7 +215,7 @@ def test_bulk_update_records_summary_event() -> None:
 def test_auto_allocate_records_summary_event() -> None:
     db = FakeDb()
     repo = FakeRepo()
-    service = SignalSheetWriteService(db=db, repo=repo)  # type: ignore[arg-type]
+    service = _service(db, repo)
 
     result = run_async(service.auto_allocate(
         workspace_id=1,

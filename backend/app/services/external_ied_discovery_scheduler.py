@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass
-from typing import Any, Callable, Literal, Protocol
+from typing import Literal, Protocol, cast
+from collections.abc import Callable
 from uuid import uuid4
 
 from app.core.config import get_settings
@@ -12,7 +13,7 @@ from app.infrastructure.redis.manager import RedisManager
 from app.schemas.ws.events import ExternalIedStatusRecord
 
 logger = get_logger("external_ied_discovery")
-_REDIS_SCHEDULER: ExternalIedDiscoveryScheduler | None = None
+_redis_scheduler_instance: ExternalIedDiscoveryScheduler | None = None
 EXTERNAL_IED_DISCOVERY_VERSION = "unitlab.external-ied.discovery.v2"
 
 DiscoveryScheduleReason = Literal[
@@ -84,7 +85,7 @@ class DiscoveryCacheMetadata:
     model_fingerprint: str | None = None
     planning_fingerprint: str | None = None
 
-    def to_payload(self) -> dict[str, Any]:
+    def to_payload(self) -> dict[str, object]:
         return {
             "discovery_version": self.discovery_version,
             "device_identity": self.device_identity,
@@ -225,7 +226,7 @@ class DiscoveryStateMachine:
     def isReadyForVerification(self) -> bool:
         return self.state == "Succeeded"
 
-    def to_payload(self) -> dict[str, Any]:
+    def to_payload(self) -> dict[str, object]:
         return {
             "state": self.state,
             "retry_at_ms": self.retry_at_ms,
@@ -278,7 +279,7 @@ class ExternalIedDiscoveryRequest:
     earliest_execution_at_ms: int
     dedupe: bool = True
 
-    def to_payload(self) -> dict[str, Any]:
+    def to_payload(self) -> dict[str, object]:
         return {
             "request_id": self.request_id,
             "workspace_id": self.workspace_id,
@@ -295,10 +296,10 @@ class ExternalIedDiscoveryRequest:
         }
 
     @classmethod
-    def from_payload(cls, payload: dict[str, Any]) -> ExternalIedDiscoveryRequest:
+    def from_payload(cls, payload: dict[str, object]) -> ExternalIedDiscoveryRequest:
         return cls(
             request_id=str(payload.get("request_id") or ""),
-            workspace_id=int(payload.get("workspace_id") or 0),
+            workspace_id=int(cast(int | str | float, payload.get("workspace_id") or 0)),
             endpoint=str(payload.get("endpoint") or ""),
             ip=str(payload.get("ip") or ""),
             port=_normalize_port(payload.get("port")),
@@ -321,6 +322,24 @@ class ExternalIedDiscoverySchedulerConfig:
 
 class ExternalIedDiscoveryJobSink(Protocol):
     async def enqueue(self, request: ExternalIedDiscoveryRequest) -> str: ...
+
+
+class ExternalIedDiscoveryRedisClient(Protocol):
+    async def get(self, name: str) -> str | None: ...
+
+    async def set(self, name: str, value: str, **kwargs: object) -> bool | None: ...
+
+    async def hget(self, name: str, key: str) -> str | None: ...
+
+    async def hset(self, name: str, key: str, value: str) -> int: ...
+
+    async def delete(self, *keys: str) -> int: ...
+
+    async def xadd(self, name: str, fields: dict[str, str], **kwargs: object) -> str: ...
+
+
+def _redis_client() -> ExternalIedDiscoveryRedisClient:
+    return cast(ExternalIedDiscoveryRedisClient, cast(object, RedisManager.get_instance()))
 
 
 class DiscoveryPolicy:
@@ -412,8 +431,8 @@ class DiscoveryPolicy:
                     reason="reachable_candidate_verification_pending",
                     priority="high",
                     earliest_execution_at_ms=now_ms,
-                    model_fingerprint=cache_metadata.model_fingerprint if cache_metadata is not None else None,
-                    planning_fingerprint=verification.planning_fingerprint or (cache_metadata.planning_fingerprint if cache_metadata is not None else None),
+                    model_fingerprint=cache_metadata.model_fingerprint,
+                    planning_fingerprint=verification.planning_fingerprint or cache_metadata.planning_fingerprint,
                 )
             return DiscoveryDecision(decision="WaitForStableConnection")
         return DiscoveryDecision(decision="NoAction")
@@ -422,7 +441,7 @@ class DiscoveryPolicy:
 class RedisExternalIedDiscoveryJobSink:
     async def enqueue(self, request: ExternalIedDiscoveryRequest) -> str:
         settings = get_settings()
-        redis = RedisManager.get_instance()
+        redis = _redis_client()
         dedupe_key = _dedupe_key(request.workspace_id, request.endpoint)
         dedupe_written = False
         if request.dedupe:
@@ -437,7 +456,7 @@ class RedisExternalIedDiscoveryJobSink:
                 )
             )
             if accepted:
-                await redis.set(dedupe_key, dedupe_payload, ex=settings.external_ied_discovery_job_dedupe_ttl_seconds)
+                _ = await redis.set(dedupe_key, dedupe_payload, ex=settings.external_ied_discovery_job_dedupe_ttl_seconds)
             else:
                 accepted = await redis.set(
                     dedupe_key,
@@ -471,7 +490,7 @@ class RedisExternalIedDiscoveryJobSink:
             return entry_id
         except Exception:  # noqa: BLE001
             if dedupe_written:
-                await redis.delete(dedupe_key)
+                _ = await redis.delete(dedupe_key)
             raise
 
 
@@ -484,10 +503,10 @@ class ExternalIedDiscoveryScheduler:
         config: ExternalIedDiscoverySchedulerConfig | None = None,
         now_ms: Callable[[], int] | None = None,
     ) -> None:
-        self._sink = sink
-        self._policy = policy or DiscoveryPolicy()
-        self._config = config or ExternalIedDiscoverySchedulerConfig()
-        self._now_ms = now_ms or (lambda: int(time.time() * 1000))
+        self._sink: ExternalIedDiscoveryJobSink = sink
+        self._policy: DiscoveryPolicy = policy or DiscoveryPolicy()
+        self._config: ExternalIedDiscoverySchedulerConfig = config or ExternalIedDiscoverySchedulerConfig()
+        self._now_ms: Callable[[], int] = now_ms or (lambda: int(time.time() * 1000))
         self._pending: dict[str, ExternalIedDiscoveryRequest] = {}
         self._discovery_states: dict[str, DiscoveryStateMachine] = {}
 
@@ -645,7 +664,7 @@ class ExternalIedDiscoveryScheduler:
             ip=endpoint_state.ip,
             port=endpoint_state.port,
             signal_ids=endpoint_state.signal_ids,
-            reason=decision.reason,
+            reason=cast(DiscoveryScheduleReason, decision.reason),
             priority=decision.priority,
             model_fingerprint=decision.model_fingerprint,
             planning_fingerprint=decision.planning_fingerprint,
@@ -653,7 +672,7 @@ class ExternalIedDiscoveryScheduler:
             earliest_execution_at_ms=decision.earliest_execution_at_ms,
             dedupe=decision.dedupe,
         )
-        await self._sink.enqueue(request)
+        _ = await self._sink.enqueue(request)
         current_lifecycle.markQueued(
             now_ms=now_ms,
             request_id=request.request_id,
@@ -669,7 +688,7 @@ def endpoint_state_from_status_payload(
     *,
     workspace_id: int,
     endpoint: str,
-    payload: str | dict[str, Any] | None,
+    payload: str | dict[str, object] | None,
 ) -> ExternalIedDiscoveryEndpointState | None:
     parsed = _parse_payload(payload)
     if parsed is None:
@@ -684,8 +703,8 @@ def endpoint_state_from_status_payload(
         status=str(parsed.get("status") or "expected"),
         signal_ids=_normalize_signal_ids(parsed.get("signal_ids")),
         priority_reason=str(parsed.get("priority_reason") or ""),
-        failure_code=parsed.get("failure_code") if isinstance(parsed.get("failure_code"), str) else None,
-        last_checked_at=parsed.get("last_checked_at") if isinstance(parsed.get("last_checked_at"), str) else None,
+        failure_code=str(parsed.get("failure_code")) if isinstance(parsed.get("failure_code"), str) else None,
+        last_checked_at=str(parsed.get("last_checked_at")) if isinstance(parsed.get("last_checked_at"), str) else None,
     )
 
 
@@ -711,7 +730,7 @@ async def schedule_external_ied_discovery_from_watcher_payload(
     *,
     workspace_id: int,
     endpoint: str,
-    payload: str | dict[str, Any],
+    payload: str | dict[str, object],
     verification_pending: bool = False,
 ) -> ExternalIedDiscoveryRequest | None:
     endpoint_state = endpoint_state_from_status_payload(workspace_id=workspace_id, endpoint=endpoint, payload=payload)
@@ -758,7 +777,7 @@ async def schedule_external_ied_discovery_for_verification(
 
 
 async def load_external_ied_state(*, workspace_id: int, endpoint: str) -> ExternalIedDiscoveryEndpointState | None:
-    redis = RedisManager.get_instance()
+    redis = _redis_client()
     payload = await redis.hget(_status_key(workspace_id), endpoint)
     return endpoint_state_from_status_payload(workspace_id=workspace_id, endpoint=endpoint, payload=payload)
 
@@ -768,7 +787,7 @@ async def load_external_ied_discovery_cache(
     workspace_id: int,
     endpoint: str,
 ) -> ExternalIedDiscoveryCacheRecord | None:
-    redis = RedisManager.get_instance()
+    redis = _redis_client()
     payload = await redis.hget(_cache_key(workspace_id), endpoint)
     parsed = _parse_payload(payload)
     if parsed is None:
@@ -781,7 +800,7 @@ async def load_external_ied_discovery_state(
     workspace_id: int,
     endpoint: str,
 ) -> DiscoveryStateMachine:
-    redis = RedisManager.get_instance()
+    redis = _redis_client()
     payload = await redis.hget(_discovery_state_key(workspace_id), endpoint)
     return discovery_state_from_payload(payload)
 
@@ -801,10 +820,12 @@ async def recover_external_ied_discovery_running_timeout(
         now_ms=checked_at_ms,
         timeout_ms=timeout_ms if timeout_ms is not None else settings.external_ied_discovery_running_timeout_ms,
     )
+    if recovered is None:
+        recovered = DiscoveryStateMachine()
     if recovered is not state:
         await record_external_ied_discovery_state(workspace_id=workspace_id, endpoint=endpoint, state=recovered)
-        redis = RedisManager.get_instance()
-        await redis.delete(_dedupe_key(workspace_id, endpoint))
+        redis = _redis_client()
+        _ = await redis.delete(_dedupe_key(workspace_id, endpoint))
     return recovered
 
 
@@ -871,7 +892,7 @@ async def record_external_ied_discovery_state(
     endpoint: str,
     state: DiscoveryStateMachine,
 ) -> None:
-    redis = RedisManager.get_instance()
+    redis = _redis_client()
     await _store_external_ied_discovery_state(redis, workspace_id=workspace_id, endpoint=endpoint, state=state)
 
 
@@ -880,16 +901,16 @@ async def record_external_ied_discovery_result(
     workspace_id: int,
     endpoint: str,
     metadata: DiscoveryCacheMetadata,
-    model: dict[str, Any],
+    model: dict[str, object],
 ) -> DiscoveryCacheMetadata:
     now_ms = metadata.last_successful_discovery_at_ms or metadata.last_discovery_at_ms or int(time.time() * 1000)
     state = await load_external_ied_discovery_state(workspace_id=workspace_id, endpoint=endpoint)
     state.markCompleted(now_ms=now_ms)
-    redis = RedisManager.get_instance()
-    await redis.hset(_cache_key(workspace_id), endpoint, json.dumps(metadata.to_payload(), separators=(",", ":")))
-    await redis.hset(_discovery_model_key(workspace_id), endpoint, json.dumps(model, separators=(",", ":"), sort_keys=True))
-    await _store_external_ied_discovery_state(redis, workspace_id=workspace_id, endpoint=endpoint, state=state)
-    await redis.delete(_dedupe_key(workspace_id, endpoint))
+    redis = _redis_client()
+    _ = await redis.hset(_cache_key(workspace_id), endpoint, json.dumps(metadata.to_payload(), separators=(",", ":")))
+    _ = await redis.hset(_discovery_model_key(workspace_id), endpoint, json.dumps(model, separators=(",", ":"), sort_keys=True))
+    _ = await _store_external_ied_discovery_state(redis, workspace_id=workspace_id, endpoint=endpoint, state=state)
+    _ = await redis.delete(_dedupe_key(workspace_id, endpoint))
     return metadata
 
 
@@ -901,7 +922,7 @@ async def emit_external_ied_discovery_completed(
     metadata: DiscoveryCacheMetadata,
 ) -> str:
     settings = get_settings()
-    redis = RedisManager.get_instance()
+    redis = _redis_client()
     payload = {
         "event": "ExternalIedDiscoveryCompleted",
         "workspace_id": workspace_id,
@@ -952,17 +973,20 @@ async def record_external_ied_discovery_failure(
     if state.state == "Queued":
         state.markRunning(now_ms=failed_at_ms)
     if is_transient_discovery_error(error):
-        retry_delay_ms = min(
-            max(1, settings.external_ied_discovery_retry_base_ms) * (2 ** max(0, state.retry_count)),
-            max(settings.external_ied_discovery_retry_base_ms, settings.external_ied_discovery_retry_max_ms),
-        )
+        retry_base_ms = int(settings.external_ied_discovery_retry_base_ms)
+        retry_max_ms = int(settings.external_ied_discovery_retry_max_ms)
+        retry_count = int(state.retry_count)
+        retry_delay_ms = max(1, retry_base_ms)
+        retry_cap_ms = max(retry_base_ms, retry_max_ms)
+        for _ in range(max(0, retry_count)):
+            retry_delay_ms = min(retry_delay_ms * 2, retry_cap_ms)
         state.markRetry(now_ms=failed_at_ms, retry_at_ms=failed_at_ms + retry_delay_ms, error=error)
     else:
         state.markFailed(now_ms=failed_at_ms, error=error)
-    redis = RedisManager.get_instance()
-    await redis.hset(_cache_key(workspace_id), endpoint, json.dumps(metadata.to_payload(), separators=(",", ":")))
-    await _store_external_ied_discovery_state(redis, workspace_id=workspace_id, endpoint=endpoint, state=state)
-    await redis.delete(_dedupe_key(workspace_id, endpoint))
+    redis = _redis_client()
+    _ = await redis.hset(_cache_key(workspace_id), endpoint, json.dumps(metadata.to_payload(), separators=(",", ":")))
+    _ = await _store_external_ied_discovery_state(redis, workspace_id=workspace_id, endpoint=endpoint, state=state)
+    _ = await redis.delete(_dedupe_key(workspace_id, endpoint))
     return metadata
 
 
@@ -976,8 +1000,8 @@ async def record_external_ied_discovery_cache(
     completed_at_ms = record.last_successful_discovery_at_ms or record.last_discovery_at_ms or int(time.time() * 1000)
     state = await load_external_ied_discovery_state(workspace_id=workspace_id, endpoint=endpoint_state.endpoint)
     state.markCompleted(now_ms=completed_at_ms)
-    redis = RedisManager.get_instance()
-    await redis.hset(
+    redis = _redis_client()
+    _ = await redis.hset(
         _cache_key(workspace_id),
         endpoint_state.endpoint,
         json.dumps(record.to_payload(), separators=(",", ":")),
@@ -988,11 +1012,11 @@ async def record_external_ied_discovery_cache(
         endpoint=endpoint_state.endpoint,
         state=state,
     )
-    await redis.delete(_dedupe_key(workspace_id, endpoint_state.endpoint))
+    _ = await redis.delete(_dedupe_key(workspace_id, endpoint_state.endpoint))
     return record
 
 
-def discovery_cache_metadata_from_payload(payload: str | dict[str, Any] | None) -> DiscoveryCacheMetadata | None:
+def discovery_cache_metadata_from_payload(payload: str | dict[str, object] | None) -> DiscoveryCacheMetadata | None:
     parsed = _parse_payload(payload)
     if parsed is None:
         return None
@@ -1012,15 +1036,16 @@ def discovery_cache_metadata_from_payload(payload: str | dict[str, Any] | None) 
     )
 
 
-def discovery_state_from_payload(payload: str | dict[str, Any] | None) -> DiscoveryStateMachine:
+def discovery_state_from_payload(payload: str | dict[str, object] | None) -> DiscoveryStateMachine:
     parsed = _parse_payload(payload)
     if parsed is None:
         return DiscoveryStateMachine()
     state = parsed.get("state")
     if state not in {"NeverDiscovered", "Queued", "Running", "Succeeded", "Failed", "RetryWaiting", "Cancelled", "Stale"}:
         state = "NeverDiscovered"
+    last_error = parsed.get("last_error")
     return DiscoveryStateMachine(
-        state=state,
+        state=cast(DiscoveryLifecycleState, state),
         retry_at_ms=_int_or_none(parsed.get("retry_at_ms")),
         queued_at_ms=_int_or_none(parsed.get("queued_at_ms")),
         running_at_ms=_int_or_none(parsed.get("running_at_ms")),
@@ -1028,7 +1053,7 @@ def discovery_state_from_payload(payload: str | dict[str, Any] | None) -> Discov
         failed_at_ms=_int_or_none(parsed.get("failed_at_ms")),
         cancelled_at_ms=_int_or_none(parsed.get("cancelled_at_ms")),
         stale_at_ms=_int_or_none(parsed.get("stale_at_ms")),
-        last_error=parsed.get("last_error") if isinstance(parsed.get("last_error"), str) else None,
+        last_error=last_error if isinstance(last_error, str) else None,
         updated_at_ms=_int_or_none(parsed.get("updated_at_ms")),
         queued_request_id=_str_or_none(parsed.get("queued_request_id")),
         queued_priority="high" if parsed.get("queued_priority") == "high" else ("normal" if parsed.get("queued_priority") == "normal" else None),
@@ -1037,7 +1062,7 @@ def discovery_state_from_payload(payload: str | dict[str, Any] | None) -> Discov
     )
 
 
-def discovery_ui_fields_from_payload(payload: str | dict[str, Any] | None) -> dict[str, Any]:
+def discovery_ui_fields_from_payload(payload: str | dict[str, object] | None) -> dict[str, object]:
     state = discovery_state_from_payload(payload)
     return {
         "discovery_state": state.state,
@@ -1059,17 +1084,17 @@ def _is_discovery_allowed(endpoint_state: ExternalIedDiscoveryEndpointState) -> 
 
 
 def _redis_scheduler() -> ExternalIedDiscoveryScheduler:
-    global _REDIS_SCHEDULER
-    if _REDIS_SCHEDULER is None:
+    global _redis_scheduler_instance
+    if _redis_scheduler_instance is None:
         settings = get_settings()
-        _REDIS_SCHEDULER = ExternalIedDiscoveryScheduler(
+        _redis_scheduler_instance = ExternalIedDiscoveryScheduler(
             sink=RedisExternalIedDiscoveryJobSink(),
             config=ExternalIedDiscoverySchedulerConfig(
                 dedupe_ttl_seconds=settings.external_ied_discovery_job_dedupe_ttl_seconds,
                 running_timeout_ms=settings.external_ied_discovery_running_timeout_ms,
             ),
         )
-    return _REDIS_SCHEDULER
+    return _redis_scheduler_instance
 
 
 def _pending_key(endpoint_state: ExternalIedDiscoveryEndpointState) -> str:
@@ -1084,19 +1109,31 @@ def _cache_key(workspace_id: int) -> str:
     return f"external_ied:workspace:{workspace_id}:discovery_cache"
 
 
+def discovery_cache_key(workspace_id: int) -> str:
+    return _cache_key(workspace_id)
+
+
 def _discovery_state_key(workspace_id: int) -> str:
     return f"external_ied:workspace:{workspace_id}:discovery_state"
+
+
+def discovery_state_key(workspace_id: int) -> str:
+    return _discovery_state_key(workspace_id)
 
 
 def _discovery_model_key(workspace_id: int) -> str:
     return f"external_ied:workspace:{workspace_id}:discovery_model"
 
 
+def discovery_model_key(workspace_id: int) -> str:
+    return _discovery_model_key(workspace_id)
+
+
 def _dedupe_key(workspace_id: int, endpoint: str) -> str:
     return f"external_ied:workspace:{workspace_id}:discovery_pending:{endpoint}"
 
 
-def _dedupe_payload(request: ExternalIedDiscoveryRequest) -> dict[str, Any]:
+def _dedupe_payload(request: ExternalIedDiscoveryRequest) -> dict[str, object]:
     return {
         "request_id": request.request_id,
         "priority": request.priority,
@@ -1106,7 +1143,7 @@ def _dedupe_payload(request: ExternalIedDiscoveryRequest) -> dict[str, Any]:
     }
 
 
-def _request_stub_from_dedupe(payload: dict[str, Any]) -> ExternalIedDiscoveryRequest:
+def _request_stub_from_dedupe(payload: dict[str, object]) -> ExternalIedDiscoveryRequest:
     return ExternalIedDiscoveryRequest(
         request_id=str(payload.get("request_id") or ""),
         workspace_id=0,
@@ -1197,32 +1234,32 @@ def is_transient_discovery_error(error: str | None) -> bool:
 
 
 async def _store_external_ied_discovery_state(
-    redis,
+    redis: ExternalIedDiscoveryRedisClient,
     *,
     workspace_id: int,
     endpoint: str,
     state: DiscoveryStateMachine,
 ) -> None:
-    await redis.hset(
+    _ = await redis.hset(
         _discovery_state_key(workspace_id),
         endpoint,
         json.dumps(state.to_payload(), separators=(",", ":")),
     )
 
 
-def _parse_payload(payload: str | dict[str, Any] | None) -> dict[str, Any] | None:
+def _parse_payload(payload: str | dict[str, object] | None) -> dict[str, object] | None:
     if isinstance(payload, dict):
         return payload
     if not payload:
         return None
     try:
-        parsed = json.loads(payload)
+        parsed: object = cast(object, json.loads(payload))
     except json.JSONDecodeError:
         return None
-    return parsed if isinstance(parsed, dict) else None
+    return cast(dict[str, object], parsed) if isinstance(parsed, dict) else None
 
 
-def _discovery_reason_or_none(value: Any) -> DiscoveryScheduleReason | None:
+def _discovery_reason_or_none(value: object) -> DiscoveryScheduleReason | None:
     if value in {
         "reachable_stable",
         "reachable_candidate_verification_pending",
@@ -1231,11 +1268,11 @@ def _discovery_reason_or_none(value: Any) -> DiscoveryScheduleReason | None:
         "cache_stale",
         "verification_required",
     }:
-        return value
+        return cast(DiscoveryScheduleReason, value)
     return None
 
 
-def _normalize_ip(value: Any) -> str | None:
+def _normalize_ip(value: object) -> str | None:
     text = str(value or "").strip()
     parts = text.split(".")
     if len(parts) != 4:
@@ -1249,22 +1286,22 @@ def _normalize_ip(value: Any) -> str | None:
     return ".".join(str(octet) for octet in octets)
 
 
-def _normalize_port(value: Any) -> int:
+def _normalize_port(value: object) -> int:
     try:
-        port = int(value)
+        port = int(str(value))
     except (TypeError, ValueError):
         return 102
     return port if 1 <= port <= 65535 else 102
 
 
-def _normalize_signal_ids(values: Any) -> tuple[int, ...]:
+def _normalize_signal_ids(values: object) -> tuple[int, ...]:
     if not isinstance(values, list | tuple):
         return ()
     result: list[int] = []
     seen: set[int] = set()
-    for value in values:
+    for value in cast(list[object] | tuple[object, ...], values):
         try:
-            signal_id = int(value)
+            signal_id = int(str(value))
         except (TypeError, ValueError):
             continue
         if signal_id <= 0 or signal_id in seen:
@@ -1274,22 +1311,22 @@ def _normalize_signal_ids(values: Any) -> tuple[int, ...]:
     return tuple(sorted(result))
 
 
-def _int_or_none(value: Any) -> int | None:
+def _int_or_none(value: object) -> int | None:
     try:
-        parsed = int(value)
+        parsed = int(str(value))
     except (TypeError, ValueError):
         return None
     return parsed if parsed >= 0 else None
 
 
-def _str_or_none(value: Any) -> str | None:
+def _str_or_none(value: object) -> str | None:
     if not isinstance(value, str):
         return None
     stripped = value.strip()
     return stripped or None
 
 
-def _discovery_reason(value: Any) -> DiscoveryScheduleReason:
+def _discovery_reason(value: object) -> DiscoveryScheduleReason:
     if value in {
         "reachable_stable",
         "reachable_candidate_verification_pending",
@@ -1298,5 +1335,5 @@ def _discovery_reason(value: Any) -> DiscoveryScheduleReason:
         "cache_stale",
         "verification_required",
     }:
-        return value
+        return cast(DiscoveryScheduleReason, value)
     return "cache_missing"

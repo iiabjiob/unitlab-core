@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Literal, cast
 
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.infrastructure.db.database import AsyncSessionLocal
 from app.models.channel import Channel
 from app.models.sequence import Sequence, SequenceStep
-from app.models.sequence_run import SequenceRun, SequenceRunStatus, SequenceRunStepStatus
+from app.models.sequence_run import SequenceRun, SequenceRunStepStatus
 from app.schemas.sequence_run_schema import SequenceStateSchema
 from app.services.sequence_runner import SequenceNotFoundError
 
@@ -35,7 +36,7 @@ class SequenceStateService:
                 .limit(1)
             )
             result = await session.execute(stmt)
-            run: Optional[SequenceRun] = result.scalar_one_or_none()
+            run: SequenceRun | None = result.scalar_one_or_none()
 
             if run:
                 reference = run.finished_at or run.started_at or datetime.min.replace(tzinfo=timezone.utc)
@@ -65,10 +66,13 @@ class SequenceStateService:
                 for step in run.steps
                 if step.status == SequenceRunStepStatus.BLOCKED
             ]
-            status = run.status.value if isinstance(run.status, SequenceRunStatus) else str(run.status)
+            status = run.status.value
             return SequenceStateSchema(
                 sequence_id=sequence_id,
-                status=status,
+                status=cast(
+                    Literal["idle", "pending", "running", "cancelling", "completed", "completed_with_issues", "stopped", "error"],
+                    status,
+                ),
                 run_id=run.id,
                 current_step_index=run.current_step_index,
                 total_steps=total_steps,
@@ -80,7 +84,7 @@ class SequenceStateService:
             )
 
     @staticmethod
-    async def _load_sequence(session, sequence_id: int) -> Optional[Sequence]:
+    async def _load_sequence(session: AsyncSession, sequence_id: int) -> Sequence | None:
         stmt = (
             select(Sequence)
             .options(

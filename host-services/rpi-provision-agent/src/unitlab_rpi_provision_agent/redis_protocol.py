@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
+from typing import cast
 
 from redis.asyncio import Redis
 from redis.exceptions import ResponseError
@@ -12,11 +12,13 @@ from .models import CommandEnvelope
 
 logger = logging.getLogger("unitlab.provision_agent.redis")
 
+StreamEntries = list[tuple[str, list[tuple[str, dict[str, str]]]]]
+
 
 class RedisProtocol:
     def __init__(self, config: AgentConfig) -> None:
-        self.config = config
-        self.redis = Redis.from_url(config.redis_url, decode_responses=True, socket_connect_timeout=3, health_check_interval=30)
+        self.config: AgentConfig = config
+        self.redis: Redis = Redis.from_url(config.redis_url, decode_responses=True, socket_connect_timeout=3, health_check_interval=30)  # pyright: ignore[reportUnknownMemberType]
 
     async def close(self) -> None:
         await self.redis.aclose()
@@ -36,7 +38,7 @@ class RedisProtocol:
                 return
             raise
 
-    async def publish_event(self, event_type: str, payload: dict[str, Any]) -> None:
+    async def publish_event(self, event_type: str, payload: dict[str, object]) -> None:
         body = {"event": event_type, **payload}
         await self.redis.xadd(
             self.config.redis_event_stream,
@@ -45,16 +47,16 @@ class RedisProtocol:
             approximate=True,
         )
 
-    async def set_state(self, snapshot: dict[str, Any]) -> None:
+    async def set_state(self, snapshot: dict[str, object]) -> None:
         await self.redis.set(self.config.redis_state_key, json.dumps(snapshot, ensure_ascii=True))
 
     async def read_commands(self, count: int = 10) -> list[CommandEnvelope]:
-        entries = await self.redis.xreadgroup(
+        entries = cast(StreamEntries, await self.redis.xreadgroup(
             groupname=self.config.redis_consumer_group,
             consumername=self.config.redis_consumer_name,
             streams={self.config.redis_command_stream: ">"},
             count=count,
-        )
+        ))
         envelopes: list[CommandEnvelope] = []
         for _stream_name, stream_entries in entries:
             for entry_id, fields in stream_entries:
@@ -71,11 +73,12 @@ class RedisProtocol:
         if not raw_json:
             return None
         try:
-            payload = json.loads(raw_json)
+            payload = cast(object, json.loads(raw_json))
         except json.JSONDecodeError:
             return None
         if not isinstance(payload, dict):
             return None
+        payload = cast(dict[str, object], payload)
         action = str(payload.get("action") or "").strip()
         if not action:
             return None

@@ -7,7 +7,8 @@ from functools import lru_cache
 from pathlib import Path
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Iterable, Literal
+from typing import Literal, Protocol, cast
+from collections.abc import Iterable
 
 from app.core.config import get_settings
 from app.core.logger import get_logger
@@ -19,6 +20,23 @@ logger = get_logger("worker.health")
 WorkerStatus = Literal["online", "degraded", "offline", "unknown"]
 SNAPSHOT_KEY = "system:health:snapshot"
 CLOCK_ADJUSTMENT_GRACE_KEY = "system:health:clock-adjustment-grace"
+
+
+class _WorkerHealthRedis(Protocol):
+    async def get(self, name: str) -> object: ...
+
+    async def ttl(self, name: str) -> int: ...
+
+    async def set(self, name: str, value: str, **kwargs: object) -> object: ...
+
+    async def delete(self, name: str) -> int: ...
+
+
+JsonObject = dict[str, object]
+
+
+def _redis() -> _WorkerHealthRedis:
+    return cast(_WorkerHealthRedis, cast(object, RedisManager.get_instance()))
 
 
 @dataclass(frozen=True)
@@ -119,7 +137,7 @@ def _worker_key(worker_name: str) -> str:
 
 def _normalize_status(value: str | None) -> WorkerStatus:
     if value in {"online", "degraded", "offline", "unknown"}:
-        return value  # type: ignore[return-value]
+        return cast(WorkerStatus, value)
     return "unknown"
 
 
@@ -132,8 +150,8 @@ def _host_boot_id() -> str | None:
 
 
 async def write_worker_status(worker_name: str, *, status: WorkerStatus = "online", detail: str | None = None) -> None:
-    redis = RedisManager.get_instance()
-    payload = {
+    redis = _redis()
+    payload: JsonObject = {
         "status": status,
         "detail": detail,
         "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -143,25 +161,25 @@ async def write_worker_status(worker_name: str, *, status: WorkerStatus = "onlin
         payload.update(boot_id=boot_id, monotonic_at=time.monotonic())
         # Ten fixed registry keys: retain them across wall-clock steps. Liveness
         # expires by monotonic age; a host reboot invalidates the boot identity.
-        await redis.set(_worker_key(worker_name), json.dumps(payload))
+        _ = await redis.set(_worker_key(worker_name), json.dumps(payload))
     else:
-        await redis.set(_worker_key(worker_name), json.dumps(payload), ex=settings.worker_health_ttl)
+        _ = await redis.set(_worker_key(worker_name), json.dumps(payload), ex=settings.worker_health_ttl)
 
 
 async def clear_worker_status(worker_name: str) -> None:
-    redis = RedisManager.get_instance()
+    redis = _redis()
     try:
-        await redis.delete(_worker_key(worker_name))
+        _ = await redis.delete(_worker_key(worker_name))
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to clear worker status for %s: %s", worker_name, exc)
 
 
 async def mark_clock_adjustment_grace(seconds: int = 90) -> None:
     """Suppress false liveness transitions while the host clock is being corrected."""
-    redis = RedisManager.get_instance()
+    redis = _redis()
     boot_id = _host_boot_id()
     if boot_id:
-        await redis.set(
+        _ = await redis.set(
             CLOCK_ADJUSTMENT_GRACE_KEY,
             json.dumps({
                 "boot_id": boot_id,
@@ -169,12 +187,12 @@ async def mark_clock_adjustment_grace(seconds: int = 90) -> None:
             }),
         )
         return
-    await redis.set(CLOCK_ADJUSTMENT_GRACE_KEY, "1", ex=max(1, seconds))
+    _ = await redis.set(CLOCK_ADJUSTMENT_GRACE_KEY, "1", ex=max(1, seconds))
 
 
-async def is_clock_adjustment_grace_active(redis=None) -> bool:
+async def is_clock_adjustment_grace_active(redis: _WorkerHealthRedis | None = None) -> bool:
     """Return whether wall-clock based liveness transitions are temporarily unsafe."""
-    redis = redis or RedisManager.get_instance()
+    redis = redis or _redis()
     raw = await redis.get(CLOCK_ADJUSTMENT_GRACE_KEY)
     if not raw:
         return False
@@ -183,13 +201,17 @@ async def is_clock_adjustment_grace_active(redis=None) -> bool:
     if raw == "1":
         return True
     try:
-        payload = json.loads(raw)
+        payload = cast(object, json.loads(cast(str, raw)))
     except (TypeError, json.JSONDecodeError):
         return False
+    if not isinstance(payload, dict):
+        return False
+    payload = cast(JsonObject, payload)
+    expires_monotonic = payload.get("expires_monotonic")
     return (
         payload.get("boot_id") == _host_boot_id()
-        and isinstance(payload.get("expires_monotonic"), (int, float))
-        and time.monotonic() < payload["expires_monotonic"]
+        and isinstance(expires_monotonic, (int, float))
+        and time.monotonic() < float(expires_monotonic)
     )
 
 
@@ -208,7 +230,7 @@ def start_worker_heartbeat(worker_name: str, *, status: WorkerStatus = "online",
 
 
 async def collect_worker_health() -> list[WorkerHealth]:
-    redis = RedisManager.get_instance()
+    redis = _redis()
     clock_adjustment_grace = await is_clock_adjustment_grace_active(redis)
     statuses: list[WorkerHealth] = []
 
@@ -224,12 +246,18 @@ async def collect_worker_health() -> list[WorkerHealth]:
             status = "online"
         elif raw:
             try:
-                data = json.loads(raw)
-                status = _normalize_status(data.get("status"))
-                detail = data.get("detail")
+                data = cast(object, json.loads(cast(str, raw)))
+                if not isinstance(data, dict):
+                    raise ValueError("worker health payload is not an object")
+                data = cast(JsonObject, data)
+                status_raw = data.get("status")
+                status = _normalize_status(status_raw if isinstance(status_raw, str) else None)
+                detail_raw = data.get("detail")
+                detail = detail_raw if isinstance(detail_raw, str) else None
                 updated_at = data.get("updated_at")
                 if updated_at:
-                    last_seen = datetime.fromisoformat(updated_at)
+                    if isinstance(updated_at, str):
+                        last_seen = datetime.fromisoformat(updated_at)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Failed to parse health payload for %s: %s", definition.name, exc)
                 status = "unknown"
@@ -330,16 +358,21 @@ def snapshot_from_dict(payload: dict[str, object]) -> SystemHealthSnapshot:
     checked_at_raw = payload.get("checked_at")
     checked_at = datetime.fromisoformat(checked_at_raw) if isinstance(checked_at_raw, str) else datetime.now(timezone.utc)
     workers_payload = payload.get("workers")
-    workers = [_worker_from_dict(item) for item in workers_payload or []]
+    workers_payload_items = cast(list[object], workers_payload) if isinstance(workers_payload, list) else []
+    workers = [
+        _worker_from_dict(cast(dict[str, object], item))
+        for item in workers_payload_items
+        if isinstance(item, dict)
+    ]
     issues_payload = payload.get("issues")
     if isinstance(issues_payload, list):
-        issues = [str(item) for item in issues_payload]
+        issues = [str(item) for item in cast(list[object], issues_payload)]
     else:
         issues = []
     status_raw = payload.get("status")
     status = status_raw if isinstance(status_raw, str) and status_raw in {"online", "degraded", "offline"} else "degraded"
     return SystemHealthSnapshot(
-        status=status,
+        status=cast(Literal["online", "degraded", "offline"], status),
         checked_at=checked_at,
         issues=issues,
         workers=workers,
@@ -347,16 +380,17 @@ def snapshot_from_dict(payload: dict[str, object]) -> SystemHealthSnapshot:
 
 
 async def store_system_snapshot(snapshot: SystemHealthSnapshot) -> None:
-    redis = RedisManager.get_instance()
-    await redis.set(SNAPSHOT_KEY, json.dumps(snapshot_to_dict(snapshot)))
+    redis = _redis()
+    _ = await redis.set(SNAPSHOT_KEY, json.dumps(snapshot_to_dict(snapshot)))
 
 
 async def get_cached_system_snapshot() -> SystemHealthSnapshot | None:
-    redis = RedisManager.get_instance()
+    redis = _redis()
     raw = await redis.get(SNAPSHOT_KEY)
     if not raw:
         return None
-    return snapshot_from_dict(json.loads(raw))
+    payload = cast(object, json.loads(cast(str, raw)))
+    return snapshot_from_dict(cast(dict[str, object], payload)) if isinstance(payload, dict) else None
 
 
 def diff_snapshots(

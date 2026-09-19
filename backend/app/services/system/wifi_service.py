@@ -1,11 +1,13 @@
 import subprocess
+from typing import cast
+
 from app.core.logger import logger
 from app.core.utils import ensure_linux
 
 class WifiService:
 
     @staticmethod
-    def scan_wifi_linux():
+    def scan_wifi_linux() -> dict[str, str] | list[dict[str, str]]:
         if not ensure_linux("Wi-Fi connection"):
             return {"error": "Only Linux is supported for Wi-Fi connections."}
 
@@ -18,7 +20,7 @@ class WifiService:
                 check=True
             )
 
-            networks = []
+            networks: list[dict[str, str]] = []
             for line in result.stdout.splitlines():
                 parts = line.split(":")
                 if len(parts) >= 2 and parts[0].strip():
@@ -32,7 +34,8 @@ class WifiService:
             return {"error": "No networks found"}
 
         except subprocess.CalledProcessError as e:
-            logger.error(f"💥 nmcli error: {e.stderr.strip()}")
+            stderr = cast(object, e.stderr)
+            logger.error(f"💥 nmcli error: {str(stderr).strip() if stderr else ''}")
         except FileNotFoundError:
             logger.error("💥 nmcli command not found.")
         except Exception as e:
@@ -47,7 +50,7 @@ class WifiService:
         
         try:
             logger.info(f"🔗 Connecting to Wi-Fi: {ssid}...")
-            subprocess.run(
+            _ = subprocess.run(
                 ["nmcli", "dev", "wifi", "connect", ssid, "password", password],
                 capture_output=True,
                 text=True,
@@ -57,7 +60,8 @@ class WifiService:
             return {"status": "connected", "ssid": ssid}
 
         except subprocess.CalledProcessError as e:
-            error_msg = e.stderr.strip()
+            stderr = cast(object, e.stderr)
+            error_msg = str(stderr).strip() if stderr else ""
             logger.error(f"💥 Failed to connect to Wi-Fi `{ssid}`: {error_msg}")
             return {"error": error_msg}
         except FileNotFoundError:
@@ -87,7 +91,8 @@ class WifiService:
             return "Not connected"
 
         except subprocess.CalledProcessError as e:
-            logger.error(f"💥 nmcli error: {e.stderr.strip()}")
+            stderr = cast(object, e.stderr)
+            logger.error(f"💥 nmcli error: {str(stderr).strip() if stderr else ''}")
         except FileNotFoundError:
             logger.error("💥 nmcli command not found.")
         except Exception as e:
@@ -115,7 +120,8 @@ class WifiService:
             return "N/A"
 
         except subprocess.CalledProcessError as e:
-            logger.error(f"💥 nmcli error: {e.stderr.strip()}")
+            stderr = cast(object, e.stderr)
+            logger.error(f"💥 nmcli error: {str(stderr).strip() if stderr else ''}")
         except FileNotFoundError:
             logger.error("💥 nmcli command not found.")
         except Exception as e:

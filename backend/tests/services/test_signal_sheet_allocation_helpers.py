@@ -1,19 +1,26 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
+from typing import TypeVar, cast
+
+import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.signal_sheet import repository as signal_sheet_repository
+from app.api.v1.signal_sheet.allocation_policy import (
+    channel_auto_allocate_sort_key,
+    is_channel_compatible,
+    pick_candidate_channel,
+    required_channel_type,
+)
 from app.api.v1.signal_sheet.repository import (
-    _build_allocation_health,
-    _channel_auto_allocate_sort_key,
-    _is_channel_compatible,
-    _parse_tested_at,
-    _pick_candidate_channel,
-    _resolve_allocation_status,
-    _required_channel_type,
     SignalSheetRepository,
+    _build_allocation_health,  # pyright: ignore[reportPrivateUsage]
+    _parse_tested_at,  # pyright: ignore[reportPrivateUsage]
+    _resolve_allocation_status,  # pyright: ignore[reportPrivateUsage]
 )
 from app.models.channel import Channel
 from app.models.device import Device
@@ -21,26 +28,33 @@ from app.models.signal import Signal, SignalIODirection
 from app.models.signal_sheet import SignalAllocation
 
 
-def run_async(awaitable):
+T = TypeVar("T")
+
+
+def run_async(awaitable: Awaitable[T]) -> T:
     return asyncio.run(awaitable)
 
 
+def _repository(db: object) -> SignalSheetRepository:
+    return SignalSheetRepository(db=cast(AsyncSession, db))
+
+
 def test_required_channel_type_maps_inverse_direction() -> None:
-    assert _required_channel_type("DI") == "do"
-    assert _required_channel_type("DO") == "di"
-    assert _required_channel_type("AI") == "ao"
-    assert _required_channel_type("AO") == "ai"
-    assert _required_channel_type("unknown") is None
+    assert required_channel_type("DI") == "do"
+    assert required_channel_type("DO") == "di"
+    assert required_channel_type("AI") == "ao"
+    assert required_channel_type("AO") == "ai"
+    assert required_channel_type("unknown") is None
 
 
 def test_channel_compatibility_uses_inverse_mapping() -> None:
-    assert _is_channel_compatible(SignalIODirection.DI, "do") is True
-    assert _is_channel_compatible(SignalIODirection.DO, "di") is True
-    assert _is_channel_compatible(SignalIODirection.AI, "ao") is True
-    assert _is_channel_compatible(SignalIODirection.AO, "ai") is True
+    assert is_channel_compatible(SignalIODirection.DI, "do") is True
+    assert is_channel_compatible(SignalIODirection.DO, "di") is True
+    assert is_channel_compatible(SignalIODirection.AI, "ao") is True
+    assert is_channel_compatible(SignalIODirection.AO, "ai") is True
 
-    assert _is_channel_compatible(SignalIODirection.DI, "di") is False
-    assert _is_channel_compatible(SignalIODirection.DO, "do") is False
+    assert is_channel_compatible(SignalIODirection.DI, "di") is False
+    assert is_channel_compatible(SignalIODirection.DO, "do") is False
 
 
 def test_allocation_health_marks_unassigned_as_clean() -> None:
@@ -136,7 +150,7 @@ def test_pick_candidate_channel_skips_used_ids() -> None:
     first = Channel(id=1, device_id=1, channel_index=0, channel_type="do")
     second = Channel(id=2, device_id=1, channel_index=1, channel_type="do")
 
-    candidate = _pick_candidate_channel(candidates=[first, second], used_channel_ids={1})
+    candidate = pick_candidate_channel(candidates=[first, second], used_channel_ids={1})
 
     assert candidate is not None
     assert candidate.id == 2
@@ -164,7 +178,7 @@ def test_pick_candidate_channel_prefers_online_unit_when_enabled() -> None:
         device=online_device,
     )
 
-    candidate = _pick_candidate_channel(
+    candidate = pick_candidate_channel(
         candidates=[offline, online],
         used_channel_ids=set(),
         prefer_online=True,
@@ -191,7 +205,7 @@ def test_pick_candidate_channel_falls_back_when_no_online_available() -> None:
         device=Device(id=2, unit_id="unit-b", last_seen_at=None),
     )
 
-    candidate = _pick_candidate_channel(
+    candidate = pick_candidate_channel(
         candidates=[first, second],
         used_channel_ids=set(),
         prefer_online=True,
@@ -216,7 +230,7 @@ def test_channel_auto_allocate_sort_key_prefers_online_then_channel_index() -> N
 
     ordered = sorted(
         channels,
-        key=lambda channel: _channel_auto_allocate_sort_key(channel, prefer_online=True),
+        key=lambda channel: channel_auto_allocate_sort_key(channel, prefer_online=True),
     )
 
     assert [channel.id for channel in ordered] == [201, 202, 101]
@@ -237,26 +251,27 @@ def test_channel_auto_allocate_sort_key_without_online_priority() -> None:
 
     ordered = sorted(
         channels,
-        key=lambda channel: _channel_auto_allocate_sort_key(channel, prefer_online=False),
+        key=lambda channel: channel_auto_allocate_sort_key(channel, prefer_online=False),
     )
 
     assert [channel.id for channel in ordered] == [101, 201, 202]
 
 
-def test_auto_allocate_applies_free_compatible_channel(monkeypatch) -> None:
+def test_auto_allocate_applies_free_compatible_channel(monkeypatch: pytest.MonkeyPatch) -> None:
     class FakeDb:
         def __init__(self) -> None:
             self.added: list[SignalAllocation] = []
-            self.flushed = 0
+            self.flushed: int = 0
 
-        def add(self, item) -> None:
+        def add(self, item: object) -> None:
+            assert isinstance(item, SignalAllocation)
             self.added.append(item)
 
         async def flush(self) -> None:
             self.flushed += 1
 
     db = FakeDb()
-    repo = SignalSheetRepository(db=db)  # type: ignore[arg-type]
+    repo = _repository(db)
     signal = Signal(id=1, workspace_id=1, key="S1", name="Signal 1", io_direction=SignalIODirection.DI)
     channel = Channel(
         id=20,
@@ -266,23 +281,27 @@ def test_auto_allocate_applies_free_compatible_channel(monkeypatch) -> None:
         device=Device(id=2, unit_id="unit-a"),
     )
 
-    async def active_signals_by_ids(workspace_id: int, signal_ids: set[int]):
+    async def active_signals_by_ids(workspace_id: int, signal_ids: set[int]) -> dict[int, Signal]:
+        _ = workspace_id, signal_ids
         return {1: signal}
 
-    async def allocations_by_signal_id(workspace_id: int):
+    async def allocations_by_signal_id(workspace_id: int) -> dict[int, SignalAllocation]:
+        _ = workspace_id
         return {}
 
-    async def list_channels():
+    async def list_channels() -> list[Channel]:
         return [channel]
 
     class FakePresenceService:
-        async def get_presence_map(self, unit_ids):
+        async def get_presence_map(self, unit_ids: object) -> dict[str, SimpleNamespace]:
+            _ = unit_ids
             return {"unit-a": SimpleNamespace(online=True)}
 
     monkeypatch.setattr(repo, "_active_signals_by_ids", active_signals_by_ids)
     monkeypatch.setattr(repo, "_allocations_by_signal_id", allocations_by_signal_id)
     monkeypatch.setattr(repo, "_list_channels", list_channels)
-    async def cleanup_orphan_allocations(workspace_id: int):
+    async def cleanup_orphan_allocations(workspace_id: int) -> None:
+        _ = workspace_id
         return None
 
     monkeypatch.setattr(repo, "cleanup_orphan_allocations", cleanup_orphan_allocations)
@@ -309,27 +328,30 @@ def test_auto_allocate_applies_free_compatible_channel(monkeypatch) -> None:
     assert db.flushed == 1
 
 
-def test_auto_allocate_returns_skipped_reason_when_no_channel_available(monkeypatch) -> None:
+def test_auto_allocate_returns_skipped_reason_when_no_channel_available(monkeypatch: pytest.MonkeyPatch) -> None:
     class FakeDb:
         async def flush(self) -> None:
             return None
 
-    repo = SignalSheetRepository(db=FakeDb())  # type: ignore[arg-type]
+    repo = _repository(FakeDb())
     signal = Signal(id=1, workspace_id=1, key="S1", name="Signal 1", io_direction=SignalIODirection.DI)
 
-    async def active_signals_by_ids(workspace_id: int, signal_ids: set[int]):
+    async def active_signals_by_ids(workspace_id: int, signal_ids: set[int]) -> dict[int, Signal]:
+        _ = workspace_id, signal_ids
         return {1: signal}
 
-    async def allocations_by_signal_id(workspace_id: int):
+    async def allocations_by_signal_id(workspace_id: int) -> dict[int, SignalAllocation]:
+        _ = workspace_id
         return {}
 
-    async def list_channels():
+    async def list_channels() -> list[Channel]:
         return []
 
     monkeypatch.setattr(repo, "_active_signals_by_ids", active_signals_by_ids)
     monkeypatch.setattr(repo, "_allocations_by_signal_id", allocations_by_signal_id)
     monkeypatch.setattr(repo, "_list_channels", list_channels)
-    async def cleanup_orphan_allocations(workspace_id: int):
+    async def cleanup_orphan_allocations(workspace_id: int) -> None:
+        _ = workspace_id
         return None
 
     monkeypatch.setattr(repo, "cleanup_orphan_allocations", cleanup_orphan_allocations)
@@ -350,7 +372,7 @@ def test_auto_allocate_returns_skipped_reason_when_no_channel_available(monkeypa
     assert result.unassigned_signal_ids == [1]
     assert result.changed_signal_ids == []
     assert result.skipped_items[0].code == "no_channel_available"
-def test_execution_binding_reads_only_current_hardware_facts(monkeypatch) -> None:
+def test_execution_binding_reads_only_current_hardware_facts(monkeypatch: pytest.MonkeyPatch) -> None:
     allocation = SignalAllocation(id=10, workspace_id=1, signal_id=7, channel_id=20)
     allocation.channel = Channel(
         id=20,
@@ -361,7 +383,8 @@ def test_execution_binding_reads_only_current_hardware_facts(monkeypatch) -> Non
     )
 
     class FakeDb:
-        async def scalar(self, statement):
+        async def scalar(self, statement: object) -> SignalAllocation:
+            _ = statement
             return allocation
 
     class FakePresenceService:
@@ -370,7 +393,7 @@ def test_execution_binding_reads_only_current_hardware_facts(monkeypatch) -> Non
             return SimpleNamespace(online=True)
 
     monkeypatch.setattr(signal_sheet_repository, "DevicePresenceService", lambda: FakePresenceService())
-    binding = run_async(SignalSheetRepository(FakeDb()).get_execution_binding(1, 7))
+    binding = run_async(_repository(FakeDb()).get_execution_binding(1, 7))
 
     assert binding is not None
     assert binding.allocation_id == 10
@@ -381,7 +404,7 @@ def test_execution_binding_reads_only_current_hardware_facts(monkeypatch) -> Non
     assert binding.unit_online is True
 
 
-def test_execution_binding_with_recovery_uses_single_db_result(monkeypatch) -> None:
+def test_execution_binding_with_recovery_uses_single_db_result(monkeypatch: pytest.MonkeyPatch) -> None:
     allocation = SignalAllocation(id=10, workspace_id=1, signal_id=7, channel_id=20)
     allocation.channel = Channel(
         id=20,
@@ -392,7 +415,7 @@ def test_execution_binding_with_recovery_uses_single_db_result(monkeypatch) -> N
     )
 
     class FakeDb:
-        async def execute(self, statement):
+        async def execute(self, statement: object) -> SimpleNamespace:
             assert "recovery_required" in str(statement)
             return SimpleNamespace(first=lambda: (allocation, True))
 
@@ -402,7 +425,7 @@ def test_execution_binding_with_recovery_uses_single_db_result(monkeypatch) -> N
             return SimpleNamespace(online=True)
 
     monkeypatch.setattr(signal_sheet_repository, "DevicePresenceService", lambda: FakePresenceService())
-    binding = run_async(SignalSheetRepository(FakeDb()).get_execution_binding_with_recovery(1, 7))
+    binding = run_async(_repository(FakeDb()).get_execution_binding_with_recovery(1, 7))
 
     assert binding is not None
     assert binding.recovery_required is True

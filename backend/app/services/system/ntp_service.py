@@ -1,13 +1,14 @@
 import os
 import subprocess
+from typing import ClassVar
 from app.core.logger import logger
 
 class NTPService:
     """Service for managing NTP servers"""
 
-    CHRONY_SOURCES_DIR = "/etc/chrony/sources.d"
-    CHRONY_SOURCE_FILE = os.path.join(CHRONY_SOURCES_DIR, "unitlab-ntp.sources")
-    DEFAULT_SERVERS = ("pool.ntp.org", "time.google.com")
+    CHRONY_SOURCES_DIR: ClassVar[str] = "/etc/chrony/sources.d"
+    CHRONY_SOURCE_FILE: ClassVar[str] = os.path.join(CHRONY_SOURCES_DIR, "unitlab-ntp.sources")
+    DEFAULT_SERVERS: ClassVar[tuple[str, ...]] = ("pool.ntp.org", "time.google.com")
 
     @staticmethod
     def apply_ntp_config(servers: list[str] | tuple[str, ...] | None = None):
@@ -31,11 +32,11 @@ class NTPService:
         # Write NTP servers to the configuration file
         try:
             with open(NTPService.CHRONY_SOURCE_FILE, "w") as f:
-                f.write(config)
+                _ = f.write(config)
             logger.info(f"✅ NTP configuration written to {NTPService.CHRONY_SOURCE_FILE}")
 
             # Reload sources without restarting `chronyd`
-            subprocess.run(["sudo", "chronyc", "reload", "sources"], check=True)
+            _ = subprocess.run(["sudo", "chronyc", "reload", "sources"], check=True)
             logger.info("🔄 NTP sources reloaded successfully.")
 
         except subprocess.CalledProcessError as e:

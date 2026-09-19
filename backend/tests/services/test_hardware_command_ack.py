@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from types import SimpleNamespace
+from typing import cast, final
 from unittest.mock import AsyncMock
 
 import pytest
@@ -21,10 +22,11 @@ from app.services.hardware_command_intent import (
     requires_physical_recovery,
 )
 from app.workers.signal_test_run_runner import (
-    _deliver_durable_command,
-    _wait_for_bit_readback,
-    _wait_for_float_readback,
-    _wait_for_fresh_bitmask_snapshot,
+    SignalTestRunRedisClient,
+    _deliver_durable_command,  # pyright: ignore[reportPrivateUsage]
+    _wait_for_bit_readback,  # pyright: ignore[reportPrivateUsage]
+    _wait_for_float_readback,  # pyright: ignore[reportPrivateUsage]
+    _wait_for_fresh_bitmask_snapshot,  # pyright: ignore[reportPrivateUsage]
 )
 
 
@@ -41,7 +43,7 @@ async def test_ack_updates_only_matching_command_and_unit() -> None:
         payload={},
     )
     db = AsyncMock()
-    db.execute.return_value = SimpleNamespace(scalar_one_or_none=lambda: intent)
+    db.execute.return_value = SimpleNamespace(scalar_one_or_none=lambda: intent)  # pyright: ignore[reportAny]
 
     matched = await record_hardware_command_ack(
         db,
@@ -56,13 +58,13 @@ async def test_ack_updates_only_matching_command_and_unit() -> None:
     assert intent.execution_status == "acknowledged"
     assert intent.ack_packet_id == 42
     assert intent.ack_status == "OK"
-    db.commit.assert_awaited_once()
+    db.commit.assert_awaited_once()  # pyright: ignore[reportAny]
 
 
 @pytest.mark.anyio
 async def test_ack_for_unknown_command_does_not_commit() -> None:
     db = AsyncMock()
-    db.execute.return_value = SimpleNamespace(scalar_one_or_none=lambda: None)
+    db.execute.return_value = SimpleNamespace(scalar_one_or_none=lambda: None)  # pyright: ignore[reportAny]
 
     matched = await record_hardware_command_ack(
         db,
@@ -74,21 +76,26 @@ async def test_ack_for_unknown_command_does_not_commit() -> None:
     )
 
     assert matched is False
-    db.commit.assert_not_awaited()
+    db.commit.assert_not_awaited()  # pyright: ignore[reportAny]
 
 
 @pytest.mark.anyio
-async def test_ack_diagnostic_is_appended_for_late_or_duplicate_response(monkeypatch) -> None:
+async def test_ack_diagnostic_is_appended_for_late_or_duplicate_response(monkeypatch: pytest.MonkeyPatch) -> None:
+    @final
     class FakeRedis:
         def __init__(self) -> None:
-            self.calls = []
+            self.calls: list[tuple[str, dict[str, object], dict[str, object]]] = []
 
-        async def xadd(self, stream, fields, **kwargs):
+        async def xadd(self, stream: str, fields: dict[str, object], **kwargs: object) -> str:
             self.calls.append((stream, fields, kwargs))
             return "1-0"
 
     redis = FakeRedis()
-    monkeypatch.setattr(RedisManager, "get_instance", classmethod(lambda cls: redis))
+
+    def get_instance(_cls: type[RedisManager]) -> FakeRedis:
+        return redis
+
+    monkeypatch.setattr(RedisManager, "get_instance", classmethod(get_instance))
 
     await record_hardware_command_ack_diagnostic(
         command_id="cmd-1",
@@ -107,7 +114,7 @@ async def test_ack_diagnostic_is_appended_for_late_or_duplicate_response(monkeyp
 @pytest.mark.anyio
 async def test_wait_for_command_acks_returns_terminal_states() -> None:
     db = AsyncMock()
-    db.execute.return_value = SimpleNamespace(
+    db.execute.return_value = SimpleNamespace(  # pyright: ignore[reportAny]
         all=lambda: [("cmd-1", "acknowledged"), ("cmd-2", "negative_ack")]
     )
 
@@ -123,7 +130,7 @@ async def test_wait_for_command_acks_returns_terminal_states() -> None:
 @pytest.mark.anyio
 async def test_wait_timeout_marks_command_for_recovery() -> None:
     db = AsyncMock()
-    db.execute.return_value = SimpleNamespace(all=lambda: [])
+    db.execute.return_value = SimpleNamespace(all=lambda: cast(list[object], []))  # pyright: ignore[reportAny]
 
     states = await wait_for_hardware_command_acks(
         db,
@@ -132,9 +139,9 @@ async def test_wait_timeout_marks_command_for_recovery() -> None:
     )
 
     assert states == {"cmd-do": "timeout"}
-    timeout_update = db.execute.await_args.args[0]
-    assert "execution_status" in str(timeout_update)
-    assert "status" in str(timeout_update)
+    timeout_update = db.execute.await_args.args[0]  # pyright: ignore[reportAny]
+    assert "execution_status" in str(timeout_update)  # pyright: ignore[reportAny]
+    assert "status" in str(timeout_update)  # pyright: ignore[reportAny]
 
 
 @pytest.mark.anyio
@@ -151,7 +158,7 @@ async def test_wait_for_command_acks_returns_immediately_when_cancelled() -> Non
     )
 
     assert states == {"__cancelled__": "cancelled"}
-    db.execute.assert_not_awaited()
+    db.execute.assert_not_awaited()  # pyright: ignore[reportAny]
 
 
 @pytest.mark.anyio
@@ -171,7 +178,7 @@ async def test_wait_for_command_acks_uses_shared_cancellation_probe() -> None:
     )
 
     assert states == {"__cancelled__": "cancelled"}
-    db.execute.assert_not_awaited()
+    db.execute.assert_not_awaited()  # pyright: ignore[reportAny]
 
 
 @pytest.mark.anyio
@@ -188,7 +195,7 @@ async def test_late_ack_does_not_overwrite_timeout() -> None:
         execution_status="timeout",
     )
     db = AsyncMock()
-    db.execute.return_value = SimpleNamespace(scalar_one_or_none=lambda: intent)
+    db.execute.return_value = SimpleNamespace(scalar_one_or_none=lambda: intent)  # pyright: ignore[reportAny]
 
     matched = await record_hardware_command_ack(
         db,
@@ -201,7 +208,7 @@ async def test_late_ack_does_not_overwrite_timeout() -> None:
 
     assert matched is False
     assert intent.execution_status == "timeout"
-    db.commit.assert_not_awaited()
+    db.commit.assert_not_awaited()  # pyright: ignore[reportAny]
 
 
 @pytest.mark.anyio
@@ -214,8 +221,8 @@ async def test_delivery_failure_status_is_persisted() -> None:
         status="recovery_required",
     )
 
-    db.execute.assert_awaited_once()
-    db.flush.assert_awaited_once()
+    db.execute.assert_awaited_once()  # pyright: ignore[reportAny]
+    db.flush.assert_awaited_once()  # pyright: ignore[reportAny]
 
 
 @pytest.mark.anyio
@@ -224,24 +231,24 @@ async def test_completed_intent_status_is_persisted_as_terminal() -> None:
 
     await mark_hardware_command_intent_completed(db, command_id="cmd-completed")
 
-    statement = db.execute.await_args.args[0]
-    compiled = str(statement.compile(compile_kwargs={"literal_binds": True}))
+    statement = db.execute.await_args.args[0]  # pyright: ignore[reportAny]
+    compiled = str(statement.compile(compile_kwargs={"literal_binds": True}))  # pyright: ignore[reportAny]
     assert "completed" in compiled
     assert "queued" in compiled
     assert "acknowledged" in compiled
-    db.flush.assert_awaited_once()
+    db.flush.assert_awaited_once()  # pyright: ignore[reportAny]
 
 
 @pytest.mark.anyio
 async def test_interrupted_pulse_requires_physical_recovery() -> None:
     intent = SimpleNamespace(action="do_pulse", status="queued")
     db = AsyncMock()
-    db.execute.return_value = SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [intent]))
+    db.execute.return_value = SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [intent]))  # pyright: ignore[reportAny]
 
     reconciled = await reconcile_unfinished_hardware_command_intents(db, job_id="run-1")
 
     assert reconciled == 1
-    assert intent.status == "recovery_required"
+    assert intent.status == "recovery_required"  # pyright: ignore[reportAny]
 
 
 @pytest.mark.anyio
@@ -250,21 +257,21 @@ async def test_orphaned_manual_intents_fail_closed_at_startup() -> None:
     pulse = SimpleNamespace(owner_kind="manual", action="do_pulse", status="created")
     completed = SimpleNamespace(owner_kind="manual", action="do_set", status="completed")
     db = AsyncMock()
-    db.execute.return_value = SimpleNamespace(
+    db.execute.return_value = SimpleNamespace(  # pyright: ignore[reportAny]
         scalars=lambda: SimpleNamespace(all=lambda: [manual, pulse])
     )
 
     reconciled = await reconcile_orphaned_manual_hardware_command_intents(db)
 
     assert reconciled == 2
-    assert manual.status == "unknown"
-    assert pulse.status == "recovery_required"
-    assert completed.status == "completed"
-    statement = db.execute.await_args.args[0]
-    compiled = str(statement.compile(compile_kwargs={"literal_binds": True}))
+    assert manual.status == "unknown"  # pyright: ignore[reportAny]
+    assert pulse.status == "recovery_required"  # pyright: ignore[reportAny]
+    assert completed.status == "completed"  # pyright: ignore[reportAny]
+    statement = db.execute.await_args.args[0]  # pyright: ignore[reportAny]
+    compiled = str(statement.compile(compile_kwargs={"literal_binds": True}))  # pyright: ignore[reportAny]
     assert "created" in compiled
     assert "queued" in compiled
-    db.flush.assert_awaited_once()
+    db.flush.assert_awaited_once()  # pyright: ignore[reportAny]
 
 
 def test_pulse_and_restore_require_physical_recovery() -> None:
@@ -276,26 +283,26 @@ def test_pulse_and_restore_require_physical_recovery() -> None:
 @pytest.mark.anyio
 async def test_recovery_required_lookup_returns_channel_block() -> None:
     db = AsyncMock()
-    db.execute.return_value = SimpleNamespace(scalar=lambda: True)
+    db.execute.return_value = SimpleNamespace(scalar=lambda: True)  # pyright: ignore[reportAny]
 
     blocked = await has_hardware_recovery_required(db, workspace_id=7, channel_id=101)
 
     assert blocked is True
-    db.execute.assert_awaited_once()
+    db.execute.assert_awaited_once()  # pyright: ignore[reportAny]
 
 
 @pytest.mark.anyio
 async def test_bulk_recovery_lookup_returns_only_blocked_requested_channels() -> None:
     db = AsyncMock()
-    db.execute.return_value = SimpleNamespace(
+    db.execute.return_value = SimpleNamespace(  # pyright: ignore[reportAny]
         scalars=lambda: SimpleNamespace(all=lambda: [101, 303])
     )
 
     blocked = await list_hardware_recovery_required_channels(db, channel_ids=[101, 202, 303])
 
     assert blocked == {101, 303}
-    statement = db.execute.await_args.args[0]
-    compiled = str(statement.compile(compile_kwargs={"literal_binds": True}))
+    statement = db.execute.await_args.args[0]  # pyright: ignore[reportAny]
+    compiled = str(statement.compile(compile_kwargs={"literal_binds": True}))  # pyright: ignore[reportAny]
     assert "recovery_required" in compiled
     assert "unknown" in compiled
 
@@ -303,8 +310,8 @@ async def test_bulk_recovery_lookup_returns_only_blocked_requested_channels() ->
 @pytest.mark.anyio
 async def test_pair_state_lookup_uses_missing_ack_cooldown() -> None:
     db = AsyncMock()
-    db.execute.return_value = SimpleNamespace(
-        scalars=lambda: SimpleNamespace(all=lambda: [])
+    db.execute.return_value = SimpleNamespace(  # pyright: ignore[reportAny]
+        scalars=lambda: SimpleNamespace(all=lambda: cast(list[object], []))
     )
 
     blocked = await list_hardware_recovery_required_channels(
@@ -314,8 +321,8 @@ async def test_pair_state_lookup_uses_missing_ack_cooldown() -> None:
     )
 
     assert blocked == set()
-    statement = db.execute.await_args.args[0]
-    compiled = str(statement.compile(compile_kwargs={"literal_binds": True}))
+    statement = db.execute.await_args.args[0]  # pyright: ignore[reportAny]
+    compiled = str(statement.compile(compile_kwargs={"literal_binds": True}))  # pyright: ignore[reportAny]
     assert "recovery_required" in compiled
     assert "unknown" in compiled
     assert "hardware_command_intents.created_at <=" in compiled
@@ -324,44 +331,48 @@ async def test_pair_state_lookup_uses_missing_ack_cooldown() -> None:
 @pytest.mark.anyio
 async def test_pending_queued_command_is_part_of_recovery_lookup() -> None:
     db = AsyncMock()
-    db.execute.return_value = SimpleNamespace(scalar=lambda: True)
+    db.execute.return_value = SimpleNamespace(scalar=lambda: True)  # pyright: ignore[reportAny]
 
     blocked = await has_hardware_recovery_required(db, workspace_id=7, channel_id=101)
 
     assert blocked is True
-    assert "execution_status" in str(db.execute.await_args.args[0])
+    assert "execution_status" in str(db.execute.await_args.args[0])  # pyright: ignore[reportAny]
 
 
 @pytest.mark.anyio
 async def test_legacy_publish_failed_command_is_part_of_recovery_lookup() -> None:
     db = AsyncMock()
-    db.execute.return_value = SimpleNamespace(scalar=lambda: True)
+    db.execute.return_value = SimpleNamespace(scalar=lambda: True)  # pyright: ignore[reportAny]
 
     blocked = await has_hardware_recovery_required(db, workspace_id=7, channel_id=101)
 
     assert blocked is True
-    statement = db.execute.await_args.args[0]
-    assert "publish_failed" in str(statement.compile(compile_kwargs={"literal_binds": True}))
+    statement = db.execute.await_args.args[0]  # pyright: ignore[reportAny]
+    assert "publish_failed" in str(statement.compile(compile_kwargs={"literal_binds": True}))  # pyright: ignore[reportAny]
 
 
 @pytest.mark.anyio
 async def test_multi_channel_recovery_lookup_blocks_secondary_channel() -> None:
     db = AsyncMock()
-    db.execute.return_value = SimpleNamespace(scalar=lambda: True)
+    db.execute.return_value = SimpleNamespace(scalar=lambda: True)  # pyright: ignore[reportAny]
 
     blocked = await has_hardware_recovery_required(db, workspace_id=9, channel_id=202)
 
     assert blocked is True
-    assert "hardware_command_intent_channels" in str(db.execute.await_args.args[0])
+    assert "hardware_command_intent_channels" in str(db.execute.await_args.args[0])  # pyright: ignore[reportAny]
 
 
 @pytest.mark.anyio
 async def test_record_intent_persists_every_multi_channel_scope() -> None:
     db = AsyncMock()
-    db.add = lambda item: db._added.append(item)
-    db._added = []
+    added: list[object] = []
 
-    await record_hardware_command_intent(
+    def add(item: object) -> None:
+        added.append(item)
+
+    db.add = add
+
+    _ = await record_hardware_command_intent(
         db,
         command_id="cmd-multi",
         workspace_id=7,
@@ -377,7 +388,7 @@ async def test_record_intent_persists_every_multi_channel_scope() -> None:
         fencing_epoch=1,
     )
 
-    links = [item for item in db._added if isinstance(item, HardwareCommandIntentChannel)]
+    links = [item for item in added if isinstance(item, HardwareCommandIntentChannel)]
     assert [(item.command_id, item.channel_id) for item in links] == [
         ("cmd-multi", 101),
         ("cmd-multi", 202),
@@ -389,7 +400,7 @@ async def test_record_intent_rejects_malformed_multi_channel_scope() -> None:
     db = AsyncMock()
 
     with pytest.raises(ValueError, match="invalid channel"):
-        await record_hardware_command_intent(
+        _ = await record_hardware_command_intent(
             db,
             command_id="cmd-invalid",
             workspace_id=7,
@@ -405,7 +416,7 @@ async def test_record_intent_rejects_malformed_multi_channel_scope() -> None:
             fencing_epoch=1,
         )
 
-    db.flush.assert_not_awaited()
+    db.flush.assert_not_awaited()  # pyright: ignore[reportAny]
 
 
 @pytest.mark.anyio
@@ -413,7 +424,7 @@ async def test_record_intent_rejects_empty_multi_channel_scope() -> None:
     db = AsyncMock()
 
     with pytest.raises(ValueError, match="must not be empty"):
-        await record_hardware_command_intent(
+        _ = await record_hardware_command_intent(
             db,
             command_id="cmd-empty",
             workspace_id=7,
@@ -429,7 +440,7 @@ async def test_record_intent_rejects_empty_multi_channel_scope() -> None:
             fencing_epoch=1,
         )
 
-    db.flush.assert_not_awaited()
+    db.flush.assert_not_awaited()  # pyright: ignore[reportAny]
 
 
 @pytest.mark.anyio
@@ -450,8 +461,8 @@ async def test_restore_delivery_retries_once_with_same_command_id() -> None:
     )
 
     assert attempts == ["cmd-restore", "cmd-restore"]
-    assert db.rollback.await_count == 1
-    assert db.commit.await_count == 1
+    assert db.rollback.await_count == 1  # pyright: ignore[reportAny]
+    assert db.commit.await_count == 1  # pyright: ignore[reportAny]
 
 
 @pytest.mark.anyio
@@ -472,8 +483,8 @@ async def test_regular_delivery_does_not_retry_after_publish_failure() -> None:
         )
 
     assert attempts == ["cmd-do"]
-    assert db.rollback.await_count == 1
-    assert db.commit.await_count == 1
+    assert db.rollback.await_count == 1  # pyright: ignore[reportAny]
+    assert db.commit.await_count == 1  # pyright: ignore[reportAny]
 
 
 @pytest.mark.anyio
@@ -492,8 +503,8 @@ async def test_pulse_publish_failure_is_recorded_as_recovery_required() -> None:
             command_sender=sender,
         )
 
-    statement = db.execute.await_args.args[0]
-    assert "recovery_required" in str(statement.compile(compile_kwargs={"literal_binds": True}))
+    statement = db.execute.await_args.args[0]  # pyright: ignore[reportAny]
+    assert "recovery_required" in str(statement.compile(compile_kwargs={"literal_binds": True}))  # pyright: ignore[reportAny]
 
 
 @pytest.mark.anyio
@@ -525,7 +536,7 @@ async def test_reconcile_unfinished_intents_marks_restore_for_recovery() -> None
         status="created",
     )
     db = AsyncMock()
-    db.execute.return_value = SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [restore, regular]))
+    db.execute.return_value = SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [restore, regular]))  # pyright: ignore[reportAny]
 
     count = await reconcile_unfinished_hardware_command_intents(
         db,
@@ -536,7 +547,7 @@ async def test_reconcile_unfinished_intents_marks_restore_for_recovery() -> None
     assert count == 2
     assert restore.status == "recovery_required"
     assert regular.status == "unknown"
-    db.flush.assert_awaited_once()
+    db.flush.assert_awaited_once()  # pyright: ignore[reportAny]
 
 
 @pytest.mark.anyio
@@ -547,7 +558,7 @@ async def test_bit_readback_wait_accepts_expected_channel_value() -> None:
             return "4"
 
     assert await _wait_for_bit_readback(
-        Redis(),
+        cast(SignalTestRunRedisClient, cast(object, Redis())),
         unit_id="UNIT-1",
         channel_index=2,
         expected_value=1,
@@ -564,7 +575,7 @@ async def test_bit_readback_rejects_old_packet_value() -> None:
             return "4"
 
     assert await _wait_for_bit_readback(
-        Redis(),
+        cast(SignalTestRunRedisClient, cast(object, Redis())),
         unit_id="UNIT-1",
         channel_index=2,
         expected_value=1,
@@ -582,7 +593,7 @@ async def test_initial_bitmask_snapshot_rejects_old_packet_value() -> None:
             return "4"
 
     assert await _wait_for_fresh_bitmask_snapshot(
-        Redis(),
+        cast(SignalTestRunRedisClient, cast(object, Redis())),
         unit_id="UNIT-1",
         packet_id=41,
         timeout_ms=100,
@@ -598,7 +609,7 @@ async def test_float_readback_wait_accepts_small_measurement_tolerance() -> None
             return "12.345"
 
     assert await _wait_for_float_readback(
-        Redis(),
+        cast(SignalTestRunRedisClient, cast(object, Redis())),
         unit_id="UNIT-1",
         channel_index=3,
         expected_value=12.34,

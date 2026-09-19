@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -15,14 +15,14 @@ class SignalSheetSchema(BaseModel):
     source_hash: str | None = None
     rows_count: int = 0
     schema_version: int = 2
-    data: dict[str, Any] = Field(default_factory=dict)
+    data: dict[str, object] = Field(default_factory=dict)
     import_meta: SignalImportMetaSchema | None = None
     signals_count: int = 0
     allocated_count: int = 0
     created_at: datetime
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config: ClassVar[ConfigDict] = ConfigDict(from_attributes=True)
 
 
 class SignalSheetPresetSchema(BaseModel):
@@ -33,7 +33,7 @@ class SignalSheetPresetSchema(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config: ClassVar[ConfigDict] = ConfigDict(from_attributes=True)
 
 
 class SignalSheetPresetCreateSchema(BaseModel):
@@ -50,7 +50,7 @@ class SignalSheetImportPreviewSheetSchema(BaseModel):
     index: int
     headers: list[str] = Field(default_factory=list)
     rows_count: int = 0
-    rows: list[dict[str, Any]] = Field(default_factory=list)
+    rows: list[dict[str, object]] = Field(default_factory=list)
 
 
 class SignalSheetImportPreviewResponseSchema(BaseModel):
@@ -67,7 +67,7 @@ class SignalAllocationRowSchema(BaseModel):
     signal_name: str
     signal_direction: str
     signal_category: str | None = None
-    signal_metadata: dict[str, Any] = Field(default_factory=dict)
+    signal_metadata: dict[str, object] = Field(default_factory=dict)
     allocation_id: int | None = None
     allocation_status: str = "unassigned"
     allocation_health: dict[str, bool] = Field(default_factory=dict)
@@ -85,7 +85,7 @@ class SignalAllocationRowSchema(BaseModel):
 class SignalAllocationUpdateItemSchema(BaseModel):
     signal_id: int
     channel_id: int | None = None
-    allocation_meta: dict[str, Any] | None = None
+    allocation_meta: dict[str, object] | None = None
 
 
 class SignalAllocationBulkUpdateSchema(BaseModel):
@@ -95,7 +95,7 @@ class SignalAllocationBulkUpdateSchema(BaseModel):
 class SignalAllocationAssignActionSchema(BaseModel):
     signal_id: int
     channel_id: int
-    allocation_meta: dict[str, Any] | None = None
+    allocation_meta: dict[str, object] | None = None
 
 
 class SignalAllocationUnassignActionSchema(BaseModel):
@@ -105,7 +105,7 @@ class SignalAllocationUnassignActionSchema(BaseModel):
 class SignalAllocationReassignActionSchema(BaseModel):
     signal_id: int
     channel_id: int
-    allocation_meta: dict[str, Any] | None = None
+    allocation_meta: dict[str, object] | None = None
 
 
 class SignalAllocationSwapActionSchema(BaseModel):
@@ -167,7 +167,7 @@ class SignalListRevisionSchema(BaseModel):
     created_at: datetime
     activated_at: datetime | None = None
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config: ClassVar[ConfigDict] = ConfigDict(from_attributes=True)
 
 
 class SignalTestRunJobSchema(BaseModel):
@@ -212,8 +212,8 @@ class SignalJobStatusSchema(BaseModel):
     progress_done: int = 0
     message: str | None = None
     error: str | None = None
-    result: dict[str, Any] = Field(default_factory=dict)
-    progress_cursor: dict[str, Any] | None = None
+    result: dict[str, object] = Field(default_factory=dict)
+    progress_cursor: dict[str, object] | None = None
     created_at: datetime
     updated_at: datetime
 

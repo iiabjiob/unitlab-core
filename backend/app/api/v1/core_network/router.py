@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -25,7 +23,7 @@ class CoreNetworkCommandAcceptedResponse(BaseModel):
 
 
 class CoreNetworkStateResponse(BaseModel):
-    state: dict[str, Any]
+    state: dict[str, object]
 
 
 def _accepted_to_response(accepted: CoreNetworkCommandAccepted) -> CoreNetworkCommandAcceptedResponse:
@@ -52,7 +50,7 @@ async def request_core_network_status() -> CoreNetworkCommandAcceptedResponse:
 
 @router.post("/scan", response_model=CoreNetworkCommandAcceptedResponse)
 async def scan_core_networks(payload: CoreNetworkCommandScanPayload | None = None) -> CoreNetworkCommandAcceptedResponse:
-    body: dict[str, Any] = {}
+    body: dict[str, object] = {}
     if payload and payload.timeout_sec is not None:
         body["timeout_sec"] = payload.timeout_sec
     accepted = await enqueue_core_network_command("scan", payload=body)

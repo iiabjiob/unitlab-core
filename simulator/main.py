@@ -1,15 +1,17 @@
 """CLI entry point for the UnitLab MQTT device simulator."""
+# pyright: reportUnusedCallResult=false
 
 from __future__ import annotations
 
 import argparse
 import asyncio
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import TypeVar, cast
 
-import yaml  # pyright: ignore[reportMissingModuleSource]
+import yaml
 
 from simulator.devices.ao_device import SimulatedAODevice
 from simulator.devices.di_device import SimulatedDIDevice
@@ -38,29 +40,32 @@ def _is_broken_pipe_error(exc: BaseException | None) -> bool:
         return False
     if isinstance(exc, BrokenPipeError):
         return True
-    return getattr(exc, "errno", None) == 32
+    errno = getattr(exc, "errno", None)
+    return isinstance(errno, int) and errno == 32
 
 
 def _is_gmqtt_close_task(task: object | None) -> bool:
-    coro = getattr(task, "get_coro", lambda: None)()
+    get_coro = getattr(task, "get_coro", None)
+    if not callable(get_coro):
+        return False
+    coro = get_coro()
     if coro is None:
         return False
-    code = getattr(coro, "cr_code", None)
-    qualname = getattr(code, "co_qualname", "")
-    filename = getattr(code, "co_filename", "")
+    code = cast(object, getattr(coro, "cr_code", None))
+    qualname = str(getattr(code, "co_qualname", ""))
+    filename = str(getattr(code, "co_filename", ""))
     return "MQTTConnection.close" in qualname and "gmqtt" in filename
 
 
-def _should_suppress_gmqtt_close_broken_pipe(context: dict[str, Any]) -> bool:
-    exc = context.get("exception")
+def _should_suppress_gmqtt_close_broken_pipe(context: dict[str, object]) -> bool:
+    raw_exc = context.get("exception")
+    exc = raw_exc if isinstance(raw_exc, BaseException) else None
     if not _is_broken_pipe_error(exc):
         return False
     if _is_gmqtt_close_task(context.get("task")):
         return True
     source_future = context.get("future")
-    if _is_gmqtt_close_task(source_future):
-        return True
-    return False
+    return _is_gmqtt_close_task(source_future)
 
 
 @dataclass(slots=True)
@@ -69,10 +74,10 @@ class DeviceGroupConfig:
     signals: int
     interval: float
 
-    def scaled(self, factor: float) -> "DeviceGroupConfig":
+    def scaled(self, factor: float) -> DeviceGroupConfig:
         if factor == 1.0:
             return self
-        new_count = int(round(self.count * factor))
+        new_count = round(self.count * factor)
         if self.count > 0:
             new_count = max(1, new_count)
         else:
@@ -86,7 +91,7 @@ class DevicesConfig:
     di: DeviceGroupConfig
     ao: DeviceGroupConfig
 
-    def scaled(self, factor: float) -> "DevicesConfig":
+    def scaled(self, factor: float) -> DevicesConfig:
         if factor == 1.0:
             return self
         return DevicesConfig(
@@ -102,7 +107,7 @@ class SimulatorConfig:
     devices: DevicesConfig
     behavior: BehaviorSettings
 
-    def scaled(self, factor: float) -> "SimulatorConfig":
+    def scaled(self, factor: float) -> SimulatorConfig:
         if factor == 1.0:
             return self
         return SimulatorConfig(
@@ -112,7 +117,36 @@ class SimulatorConfig:
         )
 
 
-def parse_args(argv: Optional[Iterable[str]] = None) -> argparse.Namespace:
+@dataclass(frozen=True, slots=True)
+class SimulatorArguments:
+    config: Path
+    profile: str
+    do_count: int | None
+    di_count: int | None
+    ao_count: int | None
+    hex_dump: bool
+    chaos: bool
+    max_runtime: float | None
+    verbose: bool
+
+
+_T = TypeVar("_T")
+
+
+def _argument(namespace: argparse.Namespace, name: str, default: _T) -> _T:
+    values = cast(dict[str, object], cast(object, vars(namespace)))
+    return cast(_T, values.get(name, default))
+
+
+def _mapping(value: object) -> dict[str, object]:
+    return cast(dict[str, object], value) if isinstance(value, dict) else {}
+
+
+def _optional_text(value: object) -> str | None:
+    return value if isinstance(value, str) else None
+
+
+def parse_args(argv: Iterable[str] | None = None) -> SimulatorArguments:
     parser = argparse.ArgumentParser(description="UnitLab MQTT simulator")
     parser.add_argument("--config", type=Path, default=_DEFAULT_CONFIG, help="Path to YAML config")
     parser.add_argument("--profile", choices=sorted(_PROFILE_FACTORS), default="default", help="Load profile name")
@@ -123,32 +157,43 @@ def parse_args(argv: Optional[Iterable[str]] = None) -> argparse.Namespace:
     parser.add_argument("--chaos", action="store_true", help="Enable aggressive reconnects and packet drops")
     parser.add_argument("--max-runtime", type=float, help="Stop after N seconds (useful for tests)")
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
-    return parser.parse_args(list(argv) if argv is not None else None)
+    parsed = parser.parse_args(list(argv) if argv is not None else None)
+    return SimulatorArguments(
+        config=_argument(parsed, "config", _DEFAULT_CONFIG),
+        profile=_argument(parsed, "profile", "default"),
+        do_count=_argument(parsed, "do_count", None),
+        di_count=_argument(parsed, "di_count", None),
+        ao_count=_argument(parsed, "ao_count", None),
+        hex_dump=_argument(parsed, "hex_dump", False),
+        chaos=_argument(parsed, "chaos", False),
+        max_runtime=_argument(parsed, "max_runtime", None),
+        verbose=_argument(parsed, "verbose", False),
+    )
 
 
 def load_config(path: Path) -> SimulatorConfig:
     if not path.exists():
         raise FileNotFoundError(f"Configuration file not found: {path}")
     with path.open("r", encoding="utf-8") as fh:
-        data = yaml.safe_load(fh) or {}
-    return _parse_config_dict(data)
+        data = cast(object, yaml.safe_load(fh))
+    return _parse_config_dict(_mapping(data))
 
 
-def _parse_config_dict(data: dict[str, Any]) -> SimulatorConfig:
-    broker = data.get("broker") or {}
-    devices = data.get("devices") or {}
-    behavior = data.get("behavior") or {}
+def _parse_config_dict(data: dict[str, object]) -> SimulatorConfig:
+    broker = _mapping(data.get("broker"))
+    devices = _mapping(data.get("devices"))
+    behavior = _mapping(data.get("behavior"))
 
     broker_cfg = BrokerSettings(
         host=str(broker.get("host", "localhost")),
-        port=int(broker.get("port", 1883)),
-        keepalive=int(broker.get("keepalive", 30)),
-        username=broker.get("username"),
-        password=broker.get("password"),
+        port=_ensure_int(broker.get("port", 1883), "broker.port", min_value=1),
+        keepalive=_ensure_int(broker.get("keepalive", 30), "broker.keepalive", min_value=1),
+        username=_optional_text(broker.get("username")),
+        password=_optional_text(broker.get("password")),
     )
 
     def _device(section: str) -> DeviceGroupConfig:
-        cfg = devices.get(section) or {}
+        cfg = _mapping(devices.get(section))
         return DeviceGroupConfig(
             count=_ensure_int(cfg.get("count", 0), f"devices.{section}.count", min_value=0),
             signals=_ensure_int(cfg.get("signals", 1), f"devices.{section}.signals", min_value=1),
@@ -189,10 +234,12 @@ def _parse_config_dict(data: dict[str, Any]) -> SimulatorConfig:
     return SimulatorConfig(broker=broker_cfg, devices=devices_cfg, behavior=behavior_cfg)
 
 
-def _ensure_int(value, name: str, *, min_value: int = 0) -> int:
+def _ensure_int(value: object, name: str, *, min_value: int = 0) -> int:
+    if not isinstance(value, (int, str, float)):
+        raise TypeError(f"Expected integer for {name}")
     if not isinstance(value, int):
         try:
-            value = int(value)
+            value = int(cast(int | str | float, value))
         except (TypeError, ValueError) as exc:  # pragma: no cover - defensive
             raise ValueError(f"Expected integer for {name}") from exc
     if value < min_value:
@@ -200,8 +247,10 @@ def _ensure_int(value, name: str, *, min_value: int = 0) -> int:
     return value
 
 
-def _ensure_float(value, name: str, *, min_value: float = 0.0, max_value: Optional[float] = None) -> float:
+def _ensure_float(value: object, name: str, *, min_value: float = 0.0, max_value: float | None = None) -> float:
     try:
+        if not isinstance(value, (int, str, float)):
+            raise TypeError(f"Expected float for {name}")
         value = float(value)
     except (TypeError, ValueError) as exc:  # pragma: no cover - defensive
         raise ValueError(f"Expected float for {name}") from exc
@@ -212,11 +261,11 @@ def _ensure_float(value, name: str, *, min_value: float = 0.0, max_value: Option
     return value
 
 
-async def run_simulator(args: argparse.Namespace) -> None:
+async def run_simulator(args: SimulatorArguments) -> None:
     loop = asyncio.get_running_loop()
     previous_exception_handler = loop.get_exception_handler()
 
-    def _loop_exception_handler(loop: asyncio.AbstractEventLoop, context: dict[str, Any]) -> None:
+    def _loop_exception_handler(loop: asyncio.AbstractEventLoop, context: dict[str, object]) -> None:
         if _should_suppress_gmqtt_close_broken_pipe(context):
             logger.debug("Suppressed gmqtt close broken-pipe during reconnect/shutdown")
             return
@@ -273,21 +322,21 @@ async def run_simulator(args: argparse.Namespace) -> None:
         except asyncio.CancelledError:  # pragma: no cover - cooperative cancellation
             pass
 
-    timeout_task: Optional[asyncio.Task[None]] = None
+    timeout_task: asyncio.Task[None] | None = None
     if args.max_runtime:
         timeout_task = asyncio.create_task(_stop_after_timeout(args.max_runtime))
 
     try:
-        await stop_event.wait()
+        _ = await stop_event.wait()
     except asyncio.CancelledError:  # pragma: no cover - cooperative cancellation
         logger.info("Cancellation requested")
     finally:
         if timeout_task:
-            timeout_task.cancel()
-        await asyncio.gather(*(device.stop() for device in devices), return_exceptions=True)
+            _ = timeout_task.cancel()
+        _ = await asyncio.gather(*(device.stop() for device in devices), return_exceptions=True)
         for task in tasks:
-            task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
+            _ = task.cancel()
+        _ = await asyncio.gather(*tasks, return_exceptions=True)
         loop.set_exception_handler(previous_exception_handler)
 
 
@@ -348,7 +397,7 @@ def _build_ao_devices(config: SimulatorConfig, hex_dump: bool) -> list[Simulated
     return devices
 
 
-def run_cli(argv: Optional[Iterable[str]] = None) -> None:
+def run_cli(argv: Iterable[str] | None = None) -> None:
     args = parse_args(argv)
     setup_logging(logging.DEBUG if args.verbose else logging.INFO)
     try:

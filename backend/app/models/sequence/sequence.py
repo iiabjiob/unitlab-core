@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -10,15 +9,9 @@ from sqlalchemy.sql import func, expression
 from app.infrastructure.db.database import Base
 from app.models.types import BIGINT_PK
 
-if TYPE_CHECKING:  # pragma: no cover - import for annotations only
-    from app.models.sequence_run import SequenceRun
-    from .sequence_step import SequenceStep
-    from app.models.workspace import Workspace, WorkspaceSequence
-
-
 class Sequence(Base):
-    __tablename__ = "sequences"
-    __table_args__: tuple = ()
+    __tablename__: str = "sequences"
+    __table_args__: tuple[()] = ()
 
     id: Mapped[int] = mapped_column(BIGINT_PK, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
@@ -43,7 +36,7 @@ class Sequence(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    steps: Mapped[list["SequenceStep"]] = relationship(
+    steps: Mapped[list[object]] = relationship(
         "SequenceStep",
         back_populates="sequence",
         cascade="all, delete-orphan",
@@ -51,19 +44,19 @@ class Sequence(Base):
         lazy="selectin",
     )
 
-    runs: Mapped[list["SequenceRun"]] = relationship(
+    runs: Mapped[list[object]] = relationship(
         "SequenceRun",
         back_populates="sequence",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    workspace_links: Mapped[list["WorkspaceSequence"]] = relationship(
+    workspace_links: Mapped[list[object]] = relationship(
         "WorkspaceSequence",
         back_populates="sequence",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    workspaces: Mapped[list["Workspace"]] = relationship(
+    workspaces: Mapped[list[object]] = relationship(
         "Workspace",
         secondary="workspace_sequences",
         viewonly=True,

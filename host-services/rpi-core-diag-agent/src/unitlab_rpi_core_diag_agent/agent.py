@@ -1,12 +1,19 @@
+# pyright: reportUnusedCallResult=false
 from __future__ import annotations
 
 import asyncio
-from contextlib import suppress
 import logging
+from contextlib import suppress
 
 from .config import AgentConfig
 from .diag_collector import DiagnosticsCollector
-from .models import CommandEnvelope, CoreDiagSnapshot, CpuDiagnostics, DiskDiagnostics, MemoryDiagnostics
+from .models import (
+    CommandEnvelope,
+    CoreDiagSnapshot,
+    CpuDiagnostics,
+    DiskDiagnostics,
+    MemoryDiagnostics,
+)
 from .redis_protocol import RedisProtocol
 
 logger = logging.getLogger("unitlab.core_diag_agent")
@@ -14,13 +21,13 @@ logger = logging.getLogger("unitlab.core_diag_agent")
 
 class CoreDiagAgent:
     def __init__(self, config: AgentConfig) -> None:
-        self.config = config
-        self.redis = RedisProtocol(config)
-        self.collector = DiagnosticsCollector(config)
-        self._stop = asyncio.Event()
+        self.config: AgentConfig = config
+        self.redis: RedisProtocol = RedisProtocol(config)
+        self.collector: DiagnosticsCollector = DiagnosticsCollector(config)
+        self._stop: asyncio.Event = asyncio.Event()
         self._status_task: asyncio.Task[None] | None = None
         self._command_task: asyncio.Task[None] | None = None
-        self._snapshot = CoreDiagSnapshot(
+        self._snapshot: CoreDiagSnapshot = CoreDiagSnapshot(
             mode="unknown",
             hostname=None,
             model=None,
@@ -58,8 +65,8 @@ class CoreDiagAgent:
                 await self._refresh_status(publish=True)
             except asyncio.CancelledError:
                 raise
-            except Exception as exc:  # noqa: BLE001
-                logger.exception("Status loop failed: %s", exc)
+            except Exception as exc:
+                logger.exception("Status loop failed")
                 await self._publish_error_safely("status_loop_error", str(exc))
             await asyncio.sleep(self.config.status_publish_interval_sec)
 
@@ -72,8 +79,8 @@ class CoreDiagAgent:
                 await asyncio.sleep(self.config.command_poll_interval_sec)
             except asyncio.CancelledError:
                 raise
-            except Exception as exc:  # noqa: BLE001
-                logger.exception("Command loop failed: %s", exc)
+            except Exception as exc:
+                logger.exception("Command loop failed")
                 await self._publish_error_safely("command_loop_error", str(exc))
                 await asyncio.sleep(1)
 
@@ -94,7 +101,7 @@ class CoreDiagAgent:
                         "reason": f"Unknown action: {cmd.action}",
                     },
                 )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.exception("Command failed | request=%s action=%s", cmd.request_id, cmd.action)
             await self.redis.publish_event(
                 "command_failed",

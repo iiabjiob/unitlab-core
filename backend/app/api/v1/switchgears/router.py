@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,14 +16,14 @@ from app.schemas.switchgear_schema import (
 router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/switchgears", tags=["Switchgears"])
 
 
-def get_repository(db: AsyncSession = Depends(get_db)) -> SwitchgearRepository:
+def get_repository(db: Annotated[AsyncSession, Depends(get_db)]) -> SwitchgearRepository:
     return SwitchgearRepository(db)
 
 
 @router.get("", response_model=list[SwitchgearSchema])
 async def list_switchgears(
     workspace_id: int,
-    repo: SwitchgearRepository = Depends(get_repository),
+    repo: Annotated[SwitchgearRepository, Depends(get_repository)],
 ):
     return await repo.list(workspace_id)
 
@@ -30,7 +32,7 @@ async def list_switchgears(
 async def get_switchgear(
     workspace_id: int,
     switchgear_id: int,
-    repo: SwitchgearRepository = Depends(get_repository),
+    repo: Annotated[SwitchgearRepository, Depends(get_repository)],
 ):
     switchgear = await repo.get(workspace_id, switchgear_id)
     if not switchgear:
@@ -42,7 +44,7 @@ async def get_switchgear(
 async def create_switchgear(
     workspace_id: int,
     payload: SwitchgearCreateSchema,
-    repo: SwitchgearRepository = Depends(get_repository),
+    repo: Annotated[SwitchgearRepository, Depends(get_repository)],
 ):
     return await repo.create(workspace_id, payload.model_dump())
 
@@ -52,7 +54,7 @@ async def update_switchgear(
     workspace_id: int,
     switchgear_id: int,
     payload: SwitchgearUpdateSchema,
-    repo: SwitchgearRepository = Depends(get_repository),
+    repo: Annotated[SwitchgearRepository, Depends(get_repository)],
 ):
     updated = await repo.update(
         workspace_id,
@@ -68,7 +70,7 @@ async def update_switchgear(
 async def delete_switchgear(
     workspace_id: int,
     switchgear_id: int,
-    repo: SwitchgearRepository = Depends(get_repository),
+    repo: Annotated[SwitchgearRepository, Depends(get_repository)],
 ):
     deleted = await repo.delete(workspace_id, switchgear_id)
     if not deleted:

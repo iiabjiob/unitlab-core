@@ -11,7 +11,7 @@ logger = get_logger("mqtt")
 
 
 @registry.mqtt_handler(topics.DEVICE_STATE)
-async def handle_device_state(topic: str, payload: bytes, unit_id: str):
+async def handle_device_state(_topic: str, payload: bytes, unit_id: str):
 
     logger.debug(f"STATE payload len={len(payload)} hex={payload.hex()}")
 
@@ -21,6 +21,9 @@ async def handle_device_state(topic: str, payload: bytes, unit_id: str):
         return
 
     hdr = parser.hdr
+    if hdr is None:
+        logger.error(f"💥 STATE packet has no header from {unit_id}")
+        return
     body = parser.payload()
 
     logger.debug(f"STATE parsed hdr={hdr} body={body.hex()}")
@@ -48,7 +51,7 @@ async def handle_device_state(topic: str, payload: bytes, unit_id: str):
         logger.error(f"💥 Failed to decode STATE from {unit_id}, mode=0x{hdr.mode:02X}")
         return
 
-    changed, event = await DeviceStateService.update_state(unit_id, hdr, decoded)
+    _, event = await DeviceStateService.update_state(unit_id, hdr, decoded)
 
     if not event:
         logger.debug(f"⏩ No state change for {unit_id}, skip WS broadcast")

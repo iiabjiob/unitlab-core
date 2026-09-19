@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from typing import cast
+
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.orm.interfaces import LoaderOption
 
 from app.models.switchgear import Switchgear, SwitchgearChannelBinding
 from app.models.workspace import WorkspaceSwitchgear
@@ -13,11 +16,11 @@ class SwitchgearRepository:
     """CRUD helpers for workspace-scoped switchgears."""
 
     def __init__(self, db: AsyncSession):
-        self.db = db
-        self._binding_loader = selectinload(Switchgear.bindings).selectinload(
+        self.db: AsyncSession = db
+        self._binding_loader: LoaderOption = selectinload(Switchgear.bindings).selectinload(
             SwitchgearChannelBinding.channel
         )
-        self._workspace_loader = selectinload(Switchgear.workspaces)
+        self._workspace_loader: LoaderOption = selectinload(Switchgear.workspaces)
 
     def _base_query(self):
         return select(Switchgear).options(self._binding_loader, self._workspace_loader)
@@ -44,9 +47,10 @@ class SwitchgearRepository:
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def create(self, workspace_id: int, data: dict) -> Switchgear:
+    async def create(self, workspace_id: int, data: dict[str, object]) -> Switchgear:
         try:
-            bindings_data = data.pop("bindings", [])
+            raw_bindings = data.pop("bindings", [])
+            bindings_data = cast(list[dict[str, object]], raw_bindings) if isinstance(raw_bindings, list) else []
             switchgear = Switchgear(**data)
             for binding in bindings_data:
                 switchgear.bindings.append(SwitchgearChannelBinding(**binding))
@@ -62,11 +66,12 @@ class SwitchgearRepository:
             await self.db.rollback()
             raise RuntimeError(f"DB error creating switchgear: {exc}") from exc
 
-    async def update(self, workspace_id: int, switchgear_id: int, changes: dict) -> Switchgear | None:
+    async def update(self, workspace_id: int, switchgear_id: int, changes: dict[str, object]) -> Switchgear | None:
         switchgear = await self.get(workspace_id, switchgear_id)
         if not switchgear:
             return None
-        bindings_data = changes.pop("bindings", None)
+        raw_bindings = changes.pop("bindings", None)
+        bindings_data = cast(list[dict[str, object]], raw_bindings) if isinstance(raw_bindings, list) else None
         for key, value in changes.items():
             setattr(switchgear, key, value)
 

@@ -22,8 +22,6 @@ async def _run() -> None:
     try:
         while True:
             await asyncio.sleep(3600)
-    except asyncio.CancelledError:
-        raise
     finally:
         await agent.stop()
 
@@ -34,4 +32,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

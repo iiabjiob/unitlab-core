@@ -1,7 +1,7 @@
 # app/infrastructure/mqtt/manager.py
 from __future__ import annotations
 
-from typing import Iterable, Optional
+from collections.abc import Iterable
 
 from app.infrastructure.mqtt.gmqtt_client import OnMessageAsync, UnitLabMqttClient
 from app.core.config import get_settings
@@ -20,7 +20,7 @@ class MqttManager:
         cls,
         *,
         client_id: str = "unitlab-core",
-        subscriptions: Optional[Iterable[str]] = CORE_TOPICS,
+        subscriptions: Iterable[str] | None = CORE_TOPICS,
         on_message: OnMessageAsync | None = None,
     ) -> UnitLabMqttClient:
         if cls._instance is not None:
@@ -40,7 +40,7 @@ class MqttManager:
             tls_cert_file=settings.mqtt_tls_cert_file,
             tls_key_file=settings.mqtt_tls_key_file,
         )
-        await client.connected.wait()
+        _ = await client.connected.wait()
 
         if subscriptions:
             for topic in subscriptions:

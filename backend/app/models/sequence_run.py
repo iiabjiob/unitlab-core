@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import TypeVar, cast
 
 from sqlalchemy import (
     CheckConstraint,
@@ -20,6 +20,18 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.infrastructure.db.database import Base
 from app.models.types import BIGINT_PK
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # pragma: no cover - only needed for typing
+    from app.models.sequence import Sequence
+
+
+_SequenceEnum = TypeVar("_SequenceEnum", bound=Enum)
+
+
+def _enum_values(enum: type[_SequenceEnum]) -> list[str]:
+    return [str(cast(object, member.value)) for member in enum]
 
 
 class SequenceRunStatus(str, Enum):
@@ -44,9 +56,9 @@ class SequenceRunStepStatus(str, Enum):
 
 class SequenceRun(Base):
     """Sequence execution record produced by the standalone runner."""
-    __tablename__ = "sequence_runs"
+    __tablename__: str = "sequence_runs"
 
-    __table_args__ = (
+    __table_args__: tuple[object, ...] = (
         CheckConstraint(
             "status IN ('pending','running','cancelling','completed','completed_with_issues','stopped','error')",
             name="ck_sequence_runs_status",
@@ -68,7 +80,7 @@ class SequenceRun(Base):
         SAEnum(
             SequenceRunStatus,
             name="sequence_run_status_enum",
-            values_callable=lambda enum: [member.value for member in enum],
+            values_callable=_enum_values,
         ),
         nullable=False,
         server_default=SequenceRunStatus.PENDING.value,
@@ -76,14 +88,14 @@ class SequenceRun(Base):
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    finished_at: Mapped[Optional[datetime]] = mapped_column(
+    finished_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     current_step_index: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
 
-    sequence = relationship("Sequence", back_populates="runs")
-    steps = relationship(
+    sequence: Mapped["Sequence"] = relationship("Sequence", back_populates="runs")
+    steps: Mapped[list["SequenceRunStep"]] = relationship(
         "SequenceRunStep",
         back_populates="run",
         cascade="all, delete-orphan",
@@ -93,9 +105,9 @@ class SequenceRun(Base):
 
 
 class SequenceRunStep(Base):
-    __tablename__ = "sequence_run_steps"
+    __tablename__: str = "sequence_run_steps"
 
-    __table_args__ = (
+    __table_args__: tuple[object, ...] = (
         CheckConstraint(
             "status IN ('pending','running','completed','error','blocked','cancelled')",
             name="ck_sequence_run_steps_status",
@@ -115,18 +127,18 @@ class SequenceRunStep(Base):
         SAEnum(
             SequenceRunStepStatus,
             name="sequence_run_step_status_enum",
-            values_callable=lambda enum: [member.value for member in enum],
+            values_callable=_enum_values,
         ),
         nullable=False,
         server_default=SequenceRunStepStatus.PENDING.value,
     )
-    started_at: Mapped[Optional[datetime]] = mapped_column(
+    started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    finished_at: Mapped[Optional[datetime]] = mapped_column(
+    finished_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    elapsed_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    elapsed_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
-    run = relationship("SequenceRun", back_populates="steps")
+    run: Mapped["SequenceRun"] = relationship("SequenceRun", back_populates="steps")

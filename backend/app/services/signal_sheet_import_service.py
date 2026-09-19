@@ -5,7 +5,7 @@ import math
 import re
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Any
+from typing import cast
 
 import xlrd
 from openpyxl import load_workbook
@@ -19,6 +19,14 @@ _INTERNAL_TYPE_TO_DIRECTION: dict[str, str] = {
     "ai": "AI",
     "ao": "AO",
 }
+
+
+def _object_list(value: object) -> list[object]:
+    return list(cast(list[object], value)) if isinstance(value, list) else []
+
+
+def _object_dict_list(value: object) -> list[dict[str, object]]:
+    return [cast(dict[str, object], item) for item in _object_list(value) if isinstance(item, dict)]
 
 
 @dataclass(frozen=True)
@@ -81,12 +89,12 @@ class ImportedSignalProjection:
     name: str
     io_direction: str
     category: str | None
-    signal_metadata: dict[str, Any]
+    signal_metadata: dict[str, object]
 
 
 @dataclass(frozen=True)
 class ImportedSheetPayload:
-    data: dict[str, Any]
+    data: dict[str, object]
     rows_count: int
     signals: list[ImportedSignalProjection]
 
@@ -102,7 +110,7 @@ class SignalSheetImportService:
         metadata: SignalImportMetaSchema | None,
     ) -> ImportedSheetPayload:
         matrices = SignalSheetImportService._read_workbook(file_bytes, filename)
-        sheets: list[dict[str, Any]] = []
+        sheets: list[dict[str, object]] = []
         total_rows = 0
 
         for sheet_index, (sheet_name, matrix) in enumerate(matrices):
@@ -154,13 +162,13 @@ class SignalSheetImportService:
         }
 
         return ImportedSheetPayload(
-            data=sheet_data,
+            data=cast(dict[str, object], sheet_data),
             rows_count=total_rows,
             signals=projected_signals,
         )
 
     @staticmethod
-    def _read_workbook(file_bytes: bytes, filename: str | None) -> list[tuple[str, list[list[Any]]]]:
+    def _read_workbook(file_bytes: bytes, filename: str | None) -> list[tuple[str, list[list[object]]]]:
         extension = (filename or "").lower().split(".")[-1] if filename and "." in filename else ""
 
         if extension == "xls":
@@ -172,29 +180,29 @@ class SignalSheetImportService:
             return SignalSheetImportService._read_xls(file_bytes)
 
     @staticmethod
-    def _read_xlsx(file_bytes: bytes) -> list[tuple[str, list[list[Any]]]]:
+    def _read_xlsx(file_bytes: bytes) -> list[tuple[str, list[list[object]]]]:
         workbook = load_workbook(io.BytesIO(file_bytes), data_only=True, read_only=True)
-        result: list[tuple[str, list[list[Any]]]] = []
+        result: list[tuple[str, list[list[object]]]] = []
         for ws in workbook.worksheets:
-            matrix: list[list[Any]] = []
+            matrix: list[list[object]] = []
             for row in ws.iter_rows(values_only=True):
                 matrix.append(list(row))
             result.append((ws.title or "Sheet", matrix))
         return result
 
     @staticmethod
-    def _read_xls(file_bytes: bytes) -> list[tuple[str, list[list[Any]]]]:
+    def _read_xls(file_bytes: bytes) -> list[tuple[str, list[list[object]]]]:
         workbook = xlrd.open_workbook(file_contents=file_bytes)
-        result: list[tuple[str, list[list[Any]]]] = []
+        result: list[tuple[str, list[list[object]]]] = []
         for sheet in workbook.sheets():
-            matrix: list[list[Any]] = []
+            matrix: list[list[object]] = []
             for row_index in range(sheet.nrows):
-                matrix.append(sheet.row_values(row_index))
+                matrix.append(list(sheet.row_values(row_index)))
             result.append((sheet.name or "Sheet", matrix))
         return result
 
     @staticmethod
-    def _normalize_headers(raw_headers: list[Any]) -> list[str]:
+    def _normalize_headers(raw_headers: list[object]) -> list[str]:
         normalized: list[str] = []
         seen: dict[str, int] = {}
 
@@ -209,7 +217,7 @@ class SignalSheetImportService:
         return normalized
 
     @staticmethod
-    def _resolve_header_row_index(matrix: list[list[Any]], metadata: SignalImportMetaSchema | None) -> int:
+    def _resolve_header_row_index(matrix: list[list[object]], metadata: SignalImportMetaSchema | None) -> int:
         if not matrix:
             return 0
 
@@ -223,7 +231,7 @@ class SignalSheetImportService:
         return SignalSheetImportService._detect_header_row_index(matrix)
 
     @staticmethod
-    def _detect_header_row_index(matrix: list[list[Any]]) -> int:
+    def _detect_header_row_index(matrix: list[list[object]]) -> int:
         best_index: int | None = None
         best_score = -1
         first_non_empty_index: int | None = None
@@ -252,11 +260,11 @@ class SignalSheetImportService:
         return 0
 
     @staticmethod
-    def _count_non_empty_cells(row: list[Any]) -> int:
+    def _count_non_empty_cells(row: list[object]) -> int:
         return sum(1 for cell in row if SignalSheetImportService._stringify_cell(cell).strip())
 
     @staticmethod
-    def _count_data_like_rows_after(matrix: list[list[Any]], header_index: int, max_rows: int = 25) -> int:
+    def _count_data_like_rows_after(matrix: list[list[object]], header_index: int, max_rows: int = 25) -> int:
         count = 0
         for row in matrix[header_index + 1 : header_index + 1 + max_rows]:
             if SignalSheetImportService._count_non_empty_cells(row) > 0:
@@ -264,13 +272,13 @@ class SignalSheetImportService:
         return count
 
     @staticmethod
-    def _rows_to_objects(rows: list[list[Any]], headers: list[str]) -> list[dict[str, Any]]:
+    def _rows_to_objects(rows: list[list[object]], headers: list[str]) -> list[dict[str, object]]:
         if not headers:
             return []
 
-        payload: list[dict[str, Any]] = []
+        payload: list[dict[str, object]] = []
         for row in rows:
-            item: dict[str, Any] = {}
+            item: dict[str, object] = {}
             non_empty = False
             for col_idx, header in enumerate(headers):
                 value = SignalSheetImportService._normalize_cell(row[col_idx] if col_idx < len(row) else None)
@@ -282,7 +290,7 @@ class SignalSheetImportService:
         return payload
 
     @staticmethod
-    def _normalize_cell(value: Any) -> Any:
+    def _normalize_cell(value: object) -> object:
         if value is None:
             return None
         if isinstance(value, datetime):
@@ -300,24 +308,24 @@ class SignalSheetImportService:
 
     @staticmethod
     def _select_default_sheet_index(
-        sheets: list[dict[str, Any]],
+        sheets: list[dict[str, object]],
         metadata: SignalImportMetaSchema | None,
     ) -> int:
         if metadata and metadata.sheet_name:
             for sheet in sheets:
                 if sheet["name"] == metadata.sheet_name:
-                    return int(sheet["index"])
+                    return int(str(sheet["index"]))
 
         for sheet in sheets:
-            if int(sheet.get("rows_count") or 0) > 0:
-                return int(sheet["index"])
+            if int(str(sheet.get("rows_count") or 0)) > 0:
+                return int(str(sheet["index"]))
 
         return 0
 
     @staticmethod
     def _project_signals(
         *,
-        sheets: list[dict[str, Any]],
+        sheets: list[dict[str, object]],
         default_sheet_index: int,
         filename: str | None,
         metadata: SignalImportMetaSchema | None,
@@ -326,11 +334,11 @@ class SignalSheetImportService:
         if not selected:
             return []
 
-        rows = selected.get("rows") or []
+        rows = _object_dict_list(selected.get("rows"))
         if not rows:
             return []
 
-        headers = selected.get("headers") or []
+        headers = [str(header) for header in _object_list(selected.get("headers"))]
         signal_name_column = SignalSheetImportService._pick_signal_name_column(headers)
         internal_type_column = SignalSheetImportService._pick_internal_type_column(headers, metadata)
         type_column = metadata.type_column if metadata and metadata.type_column in headers else None
@@ -433,7 +441,7 @@ class SignalSheetImportService:
                 continue
 
             key = SignalSheetImportService._make_unique_signal_key(display_name, seen_keys)
-            signal_metadata = {
+            signal_metadata: dict[str, object] = {
                 "source": "signal_sheet_import",
                 "source_filename": filename,
                 "sheet_name": selected.get("name"),
@@ -444,9 +452,13 @@ class SignalSheetImportService:
                     selected_columns=selected_columns,
                 ),
             }
+            row_payload = signal_metadata.get("row")
+            if not isinstance(row_payload, dict):
+                row_payload = {}
+            row_payload = cast(dict[str, object], row_payload)
             signal_metadata["row"], verification_payload = SignalSheetImportService._apply_verification_payload(
                 row=row,
-                row_payload=signal_metadata["row"],
+                row_payload=row_payload,
                 verification=verification_meta,
             )
             if verification_payload is not None:
@@ -488,7 +500,7 @@ class SignalSheetImportService:
     @staticmethod
     def _resolve_type_info(
         *,
-        row: dict[str, Any],
+        row: dict[str, object],
         internal_type_column: str | None,
         type_column: str | None,
         type_mapping: dict[str, str],
@@ -523,7 +535,7 @@ class SignalSheetImportService:
         return _PACKED_SIGNAL_PROFILES.get(normalized)
 
     @staticmethod
-    def _normalize_type_token(value: Any) -> str:
+    def _normalize_type_token(value: object) -> str:
         token = SignalSheetImportService._stringify_cell(value).strip().lower()
         token = re.sub(r"\s+", " ", token)
         return token
@@ -542,7 +554,7 @@ class SignalSheetImportService:
     @staticmethod
     def _split_terminal_values(
         *,
-        row: dict[str, Any],
+        row: dict[str, object],
         terminal_column: str | None,
         expected: int,
     ) -> list[str] | None:
@@ -560,7 +572,7 @@ class SignalSheetImportService:
         return parts[:expected]
 
     @staticmethod
-    def _project_row_payload(*, row: dict[str, Any], selected_columns: list[str]) -> dict[str, Any]:
+    def _project_row_payload(*, row: dict[str, object], selected_columns: list[str]) -> dict[str, object]:
         if not selected_columns:
             return dict(row)
         return {column: row.get(column) for column in selected_columns}
@@ -568,14 +580,14 @@ class SignalSheetImportService:
     @staticmethod
     def _apply_verification_payload(
         *,
-        row: dict[str, Any],
-        row_payload: dict[str, Any],
+        row: dict[str, object],
+        row_payload: dict[str, object],
         verification: SignalImportVerificationSchema | None,
-    ) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    ) -> tuple[dict[str, object], dict[str, object] | None]:
         if verification is None:
             return row_payload, None
 
-        verification_payload: dict[str, Any] = {"enabled": True}
+        verification_payload: dict[str, object] = {"enabled": True}
 
         host_column = SignalSheetImportService._resolve_verification_column_name(
             verification.transport_host_column,
@@ -615,26 +627,26 @@ class SignalSheetImportService:
     @staticmethod
     def _project_sheet_data_columns(
         *,
-        sheets: list[dict[str, Any]],
+        sheets: list[dict[str, object]],
         default_sheet_index: int,
         metadata: SignalImportMetaSchema | None,
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, object]]:
         selected_columns = set(((metadata.selected_columns if metadata else []) or []))
         if not selected_columns:
             return [
                 {
                     **sheet,
-                    "headers": list(sheet.get("headers") or []),
-                    "rows": [dict(row) for row in (sheet.get("rows") or []) if isinstance(row, dict)],
+                    "headers": [str(header) for header in _object_list(sheet.get("headers"))],
+                    "rows": [dict(row) for row in _object_dict_list(sheet.get("rows"))],
                 }
                 for sheet in sheets
             ]
 
-        projected_sheets: list[dict[str, Any]] = []
+        projected_sheets: list[dict[str, object]] = []
         for sheet in sheets:
-            headers = [str(header) for header in (sheet.get("headers") or [])]
-            rows = [row for row in (sheet.get("rows") or []) if isinstance(row, dict)]
-            if int(sheet.get("index") or 0) == int(default_sheet_index):
+            headers = [str(header) for header in _object_list(sheet.get("headers"))]
+            rows = _object_dict_list(sheet.get("rows"))
+            if int(str(sheet.get("index") or 0)) == int(default_sheet_index):
                 filtered_headers = [header for header in headers if header in selected_columns]
                 filtered_rows = [
                     {header: row.get(header) for header in filtered_headers}
@@ -665,7 +677,7 @@ class SignalSheetImportService:
         return slug or "signal"
 
     @staticmethod
-    def _stringify_cell(value: Any) -> str:
+    def _stringify_cell(value: object) -> str:
         if value is None:
             return ""
         if isinstance(value, str):

@@ -10,8 +10,8 @@ from app.models.types import BIGINT_PK
 
 
 class CoreDiagnosticsAcknowledgement(Base):
-    __tablename__ = "core_diagnostics_acknowledgements"
-    __table_args__ = (
+    __tablename__: str = "core_diagnostics_acknowledgements"
+    __table_args__: tuple[object, ...] = (
         Index("ix_core_diag_ack_incident", "hostname", "incident_id", "acknowledged_at"),
         Index("ix_core_diag_ack_time", "acknowledged_at"),
     )

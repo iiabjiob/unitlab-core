@@ -5,11 +5,15 @@ from dataclasses import dataclass
 from datetime import datetime
 import re
 import time
-from typing import Callable, Literal
+from typing import Literal, cast
+from collections.abc import Callable, Sequence
 
 from app.core.logger import get_logger
 from app.schemas.verification_schema import VerificationExecutionContextSchema
-from app.services.iec61850.client_control import Iec61850ClientControlService
+from app.services.iec61850.client_control import (
+    Iec61850ClientControlService,
+    Iec61850ClientControlSnapshot,
+)
 from app.services.iec61850.mms_adapter import Iec61850MmsEndpointCatalog
 from app.services.iec61850.report_runtime import (
     Iec61850DeviceEndpoint,
@@ -36,6 +40,24 @@ logger = get_logger("service.verification_runtime_selection")
 VerificationRuntimeMode = Literal["simulator", "mms"]
 VerificationRuntimeTransportSource = Literal["simulator", "explicit_request", "settings_catalog", "loaded_scd", "validation_override", "signal_list_fallback", "unavailable"]
 VerificationRuntimeModelSource = Literal["simulator", "loaded_scd", "discovery_fallback"]
+JsonObject = dict[str, object]
+
+
+def _json_object(value: object) -> JsonObject | None:
+    if not isinstance(value, dict):
+        return None
+    return cast(JsonObject, value)
+
+
+def _json_object_list(value: object) -> list[JsonObject]:
+    if not isinstance(value, list):
+        return []
+    result: list[JsonObject] = []
+    for item in cast(list[object], value):
+        item_object = _json_object(item)
+        if item_object is not None:
+            result.append(item_object)
+    return result
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,15 +80,15 @@ class _ClientControlMmsRuntimeAdapter:
         client_id: str = "unitlab-backend-simulator",
         control_service_factory: Callable[..., Iec61850ClientControlService] = Iec61850ClientControlService,
     ) -> None:
-        self._client_id = client_id
-        self._control_service_factory = control_service_factory
+        self._client_id: str = client_id
+        self._control_service_factory: Callable[..., Iec61850ClientControlService] = control_service_factory
 
     def connect(
         self,
         *,
         session_id: str,
         endpoint: Iec61850DeviceEndpoint,
-        candidates: list[Iec61850ReportControlCandidate] | tuple[Iec61850ReportControlCandidate, ...],
+        candidates: Sequence[Iec61850ReportControlCandidate],
     ) -> Iec61850ReportSession:
         if endpoint.mode.name != "MMS":
             raise Iec61850ReportRuntimeError(
@@ -92,11 +114,11 @@ class _ClientControlMmsSession:
         session_id: str,
         client_id: str,
     ) -> None:
-        self._control_service_factory = control_service_factory
-        self._candidates = candidates
-        self._endpoint = endpoint
-        self._session_id = session_id
-        self._client_id = client_id
+        self._control_service_factory: Callable[..., Iec61850ClientControlService] = control_service_factory
+        self._candidates: tuple[Iec61850ReportControlCandidate, ...] = candidates
+        self._endpoint: Iec61850DeviceEndpoint = endpoint
+        self._session_id: str = session_id
+        self._client_id: str = client_id
         self._candidate_states: dict[str, dict[str, bool]] = {}
         self._discovery_service: Iec61850ClientControlService | None = None
         self._discovery_selected_candidate_key: str | None = None
@@ -140,11 +162,12 @@ class _ClientControlMmsSession:
         return self._build_state(candidate, runtime_status="reserved", reserved_by=client_id)
 
     def release_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:
+        _ = client_id
         candidate = self._candidate_for_reference(reference)
         control_service = self._subscription_service_for_candidate(candidate)
         release_report_control = getattr(control_service, "release_report_control", None)
         if callable(release_report_control):
-            release_report_control()
+            _ = release_report_control()
         state = self._candidate_state(candidate)
         state["reserved"] = False
         state["enabled"] = False
@@ -159,7 +182,7 @@ class _ClientControlMmsSession:
             state["opened"] = True
             return self._build_state(candidate, runtime_status="enabled", enabled=True, reserved_by=client_id, owner=client_id)
         control_service = self._subscription_service_for_candidate(candidate)
-        control_service.enable_reporting()
+        _ = control_service.enable_reporting()
         state = self._candidate_state(candidate)
         state["enabled"] = True
         state["opened"] = True
@@ -168,18 +191,20 @@ class _ClientControlMmsSession:
         return self._build_state(candidate, runtime_status="enabled", enabled=True, reserved_by=client_id, owner=client_id)
 
     def disable_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:
+        _ = client_id
         candidate = self._candidate_for_reference(reference)
         control_service = self._subscription_service_for_candidate(candidate)
         disable_report_control = getattr(control_service, "disable_report_control", None)
         if callable(disable_report_control):
-            disable_report_control()
+            _ = disable_report_control()
         self._candidate_state(candidate)["enabled"] = False
         return self._build_state(candidate, runtime_status="disabled")
 
     def send_general_interrogation(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportEvent:
+        _ = client_id
         candidate = self._candidate_for_reference(reference)
         control_service = self._subscription_service_for_candidate(candidate)
-        control_service.send_general_interrogation()
+        _ = control_service.send_general_interrogation()
         snapshot = control_service.snapshot()
         report = snapshot.last_report
         if report is None:
@@ -201,6 +226,7 @@ class _ClientControlMmsSession:
         after_event_id: str | None = None,
         timeout_ms: int = 5000,
     ) -> Iec61850ReportEvent:
+        _ = client_id
         candidate = self._candidate_for_reference(reference)
         control_service = self._subscription_service_for_candidate(candidate)
         deadline = time.monotonic() + (max(1, int(timeout_ms)) / 1000)
@@ -211,11 +237,11 @@ class _ClientControlMmsSession:
                 remaining_ms = max(1, int((deadline - time.monotonic()) * 1000))
                 wait_for_external_report = getattr(control_service, "wait_for_external_report", None)
                 if callable(wait_for_external_report):
-                    wait_for_external_report(timeout_ms=remaining_ms)
+                    _ = wait_for_external_report(timeout_ms=remaining_ms)
                 else:
                     refresh_reporting = getattr(control_service, "refresh_reporting", None)
                     if callable(refresh_reporting):
-                        refresh_reporting()
+                        _ = refresh_reporting()
             else:
                 time.sleep(0.05)
             snapshot = control_service.snapshot()
@@ -249,10 +275,10 @@ class _ClientControlMmsSession:
     def disconnect(self) -> None:
         if self._discovery_service is not None:
             with suppress(Exception):
-                self._discovery_service.close_ied()
+                _ = self._discovery_service.close_ied()
         for control_service in tuple(self._subscription_services.values()):
             with suppress(Exception):
-                control_service.close_ied()
+                _ = control_service.close_ied()
         self._discovery_service = None
         self._discovery_selected_candidate_key = None
         self._subscription_services.clear()
@@ -289,7 +315,7 @@ class _ClientControlMmsSession:
         if self._discovery_selected_candidate_key != key:
             select_report_control = getattr(self._discovery_service, "select_report_control", None)
             if callable(select_report_control):
-                select_report_control(candidate.id)
+                _ = select_report_control(candidate.id)
             self._discovery_selected_candidate_key = key
         return self._discovery_service
 
@@ -321,10 +347,10 @@ class _ClientControlMmsSession:
         discover_ied = getattr(control_service, "discover_ied", None)
         if callable(discover_ied):
             if not self._seed_subscription_service_from_discovery(control_service):
-                discover_ied()
+                _ = discover_ied()
         select_report_control = getattr(control_service, "select_report_control", None)
         if callable(select_report_control):
-            select_report_control(candidate.id)
+            _ = select_report_control(candidate.id)
 
     def _seed_subscription_service_from_discovery(self, control_service: Iec61850ClientControlService) -> bool:
         discovery_service = self._discovery_service
@@ -335,7 +361,7 @@ class _ClientControlMmsSession:
             return False
         if not hasattr(control_service, "_external_discovered_rcbs"):
             return False
-        setattr(control_service, "_external_discovered_rcbs", list(discovered_rcbs))
+        setattr(control_service, "_external_discovered_rcbs", list(cast(list[object], discovered_rcbs)))
         setattr(control_service, "_external_discovered_rcbs_native", False)
         for attr in ("_external_live_discovery", "_last_discovery"):
             if hasattr(discovery_service, attr) and hasattr(control_service, attr):
@@ -360,7 +386,7 @@ class _ClientControlMmsSession:
         self,
         *,
         requested_candidate: Iec61850ReportControlCandidate,
-        discovery_snapshot,
+        discovery_snapshot: Iec61850ClientControlSnapshot,
     ) -> Iec61850ReportControlCandidate:
         discovered_candidate = getattr(discovery_snapshot, "candidate", None)
         selected = (
@@ -378,9 +404,9 @@ class _ClientControlMmsSession:
                 if isinstance(selection_candidate, Iec61850ReportControlCandidate):
                     selected = selection_candidate
         elif selected is requested_candidate and _candidate_needs_live_discovery(requested_candidate):
-            self._candidate_overrides.pop(report_control_key(to_report_control_ref(requested_candidate)), None)
+            _ = self._candidate_overrides.pop(report_control_key(to_report_control_ref(requested_candidate)), None)
 
-        if selected is not requested_candidate and isinstance(selected, Iec61850ReportControlCandidate):
+        if selected is not requested_candidate:
             self._candidate_overrides[report_control_key(to_report_control_ref(requested_candidate))] = selected
             self._discovery_selected_candidate_key = report_control_key(to_report_control_ref(selected))
             return selected
@@ -461,13 +487,13 @@ def _discovery_summary_diagnostics(
     *,
     candidate: Iec61850ReportControlCandidate,
     endpoint: Iec61850DeviceEndpoint,
-    discovery_snapshot,
+    discovery_snapshot: Iec61850ClientControlSnapshot,
 ) -> tuple[Iec61850RuntimeDiagnostic, ...]:
-    ui_state = getattr(discovery_snapshot, "ui_state", None)
+    ui_state = cast(object, getattr(discovery_snapshot, "ui_state", None))
     if not isinstance(ui_state, dict):
         return ()
-    discovery = ui_state.get("discovery")
-    if not isinstance(discovery, dict) or not bool(discovery.get("discovered")):
+    discovery = _json_object(cast(dict[object, object], ui_state).get("discovery"))
+    if discovery is None or not bool(discovery.get("discovered")):
         return ()
 
     logical_devices = _int_from_discovery(discovery, "logical_devices")
@@ -504,7 +530,7 @@ def _live_discovery_match_diagnostics(
     *,
     requested_candidate: Iec61850ReportControlCandidate,
     selected_candidate: Iec61850ReportControlCandidate,
-    discovery_snapshot,
+    discovery_snapshot: Iec61850ClientControlSnapshot,
 ) -> tuple[Iec61850RuntimeDiagnostic, ...]:
     if not _candidate_needs_live_discovery(requested_candidate):
         return ()
@@ -526,7 +552,7 @@ def _live_discovery_match_diagnostics(
     )
 
 
-def _int_from_discovery(discovery: dict, key: str) -> int:
+def _int_from_discovery(discovery: JsonObject, key: str) -> int:
     value = discovery.get(key)
     if isinstance(value, bool):
         return 0
@@ -539,12 +565,12 @@ def _int_from_discovery(discovery: dict, key: str) -> int:
 
 def _matching_discovered_rcb_ref(
     requested_candidate: Iec61850ReportControlCandidate,
-    discovery_snapshot,
+    discovery_snapshot: Iec61850ClientControlSnapshot,
 ) -> str | None:
     if not _candidate_needs_live_discovery(requested_candidate):
         return None
-    discovery = getattr(discovery_snapshot, "last_discovery", None)
-    if not isinstance(discovery, dict):
+    discovery = _json_object(getattr(discovery_snapshot, "last_discovery", None))
+    if discovery is None:
         return None
     desired_references = tuple(signal.reference for signal in requested_candidate.signals if signal.reference)
     if not desired_references:
@@ -552,13 +578,9 @@ def _matching_discovered_rcb_ref(
 
     data_set_members_by_ref = _data_set_members_by_reference(discovery)
     available_by_data_set = _available_report_controls_by_dataset(discovery_snapshot)
-    report_controls = discovery.get("reportControls")
-    if not isinstance(report_controls, list):
-        return None
+    report_controls = _json_object_list(discovery.get("reportControls"))
     best_match: tuple[int, str] | None = None
     for report_control in report_controls:
-        if not isinstance(report_control, dict):
-            continue
         data_set_ref = report_control.get("dataSetRef")
         if not isinstance(data_set_ref, str) or not data_set_ref:
             continue
@@ -585,47 +607,42 @@ def _matching_discovered_rcb_ref(
     return best_match[1] if best_match is not None else None
 
 
-def _data_set_members_by_reference(discovery: dict) -> dict[str, tuple[str, ...]]:
-    data_sets = discovery.get("dataSets")
-    if not isinstance(data_sets, list):
-        return {}
+def _data_set_members_by_reference(discovery: JsonObject) -> dict[str, tuple[str, ...]]:
+    data_sets = _json_object_list(discovery.get("dataSets"))
     result: dict[str, tuple[str, ...]] = {}
     for data_set in data_sets:
-        if not isinstance(data_set, dict):
-            continue
         reference = data_set.get("reference")
         members = data_set.get("members")
         if not isinstance(reference, str) or not isinstance(members, list):
             continue
-        member_refs = []
-        for member in members:
-            if not isinstance(member, dict):
+        member_refs: list[str] = []
+        for member in cast(list[object], members):
+            member_object = _json_object(member)
+            if member_object is None:
                 continue
             for key in ("mmsReference", "reference"):
-                value = member.get(key)
+                value = member_object.get(key)
                 if isinstance(value, str) and value.strip():
                     member_refs.append(value.strip())
         result[reference] = tuple(member_refs)
     return result
 
 
-def _available_report_controls_by_dataset(discovery_snapshot) -> dict[str, dict]:
-    ui_state = getattr(discovery_snapshot, "ui_state", None)
+def _available_report_controls_by_dataset(
+    discovery_snapshot: Iec61850ClientControlSnapshot,
+) -> dict[str, JsonObject]:
+    ui_state = cast(object, getattr(discovery_snapshot, "ui_state", None))
     if not isinstance(ui_state, dict):
         return {}
-    discovery = ui_state.get("discovery")
-    if not isinstance(discovery, dict):
+    discovery = _json_object(cast(dict[object, object], ui_state).get("discovery"))
+    if discovery is None:
         return {}
-    available = discovery.get("available_report_controls")
-    if not isinstance(available, list):
-        return {}
-    result: dict[str, dict] = {}
+    available = _json_object_list(discovery.get("available_report_controls"))
+    result: dict[str, JsonObject] = {}
     for item in available:
-        if not isinstance(item, dict):
-            continue
         data_set_ref = item.get("data_set_ref")
         if isinstance(data_set_ref, str) and data_set_ref.strip():
-            result.setdefault(data_set_ref.strip(), item)
+            _ = result.setdefault(data_set_ref.strip(), item)
     return result
 
 
@@ -640,7 +657,7 @@ def _dataset_contains_any_requested_signal(
     return False
 
 
-def _report_control_match_score(report_control: dict, members: tuple[str, ...], desired_references: tuple[str, ...]) -> int:
+def _report_control_match_score(report_control: JsonObject, members: tuple[str, ...], desired_references: tuple[str, ...]) -> int:
     if _dataset_contains_any_requested_signal(members, desired_references):
         return 100
     if not _report_control_matches_requested_domain(report_control, desired_references):
@@ -668,7 +685,7 @@ def _functional_constraints_from_signal_references(references: tuple[str, ...]) 
     return result
 
 
-def _functional_constraints_from_report_control(report_control: dict) -> set[str]:
+def _functional_constraints_from_report_control(report_control: JsonObject) -> set[str]:
     result: set[str] = set()
     for key in ("dataSetRef", "item", "name", "id", "rptId"):
         value = report_control.get(key)
@@ -685,7 +702,7 @@ def _functional_constraints_from_report_control(report_control: dict) -> set[str
     return result
 
 
-def _report_control_matches_requested_domain(report_control: dict, desired_references: tuple[str, ...]) -> bool:
+def _report_control_matches_requested_domain(report_control: JsonObject, desired_references: tuple[str, ...]) -> bool:
     domain = str(report_control.get("domain") or "").strip().lower()
     data_set_ref = str(report_control.get("dataSetRef") or "").strip().lower()
     if not domain and "/" in data_set_ref:

@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Literal, cast
 
 from app.schemas.verification_schema import (
     SignalVerificationEvidenceSchema,
     SignalVerificationEvidenceSetSchema,
+    SignalVerificationEvidenceSetSummarySchema,
     VerificationEvidenceDiagnosticSchema,
     VerificationRunEvidenceResponseSchema,
     VerificationRunStepDetailsSchema,
@@ -71,8 +73,11 @@ async def load_verification_run_evidence(
         evidence_set_schema = SignalVerificationEvidenceSetSchema(
             test_run_id=evidence_set.test_run_id,
             evidence=list(evidence_rows),
-            summary=evidence_set.summary,
-            diagnostics=evidence_set.diagnostics,
+            summary=SignalVerificationEvidenceSetSummarySchema.model_validate(evidence_set.summary),
+            diagnostics=[
+                VerificationEvidenceDiagnosticSchema.model_validate(item)
+                for item in evidence_set.diagnostics
+            ],
         )
         diagnostics = [VerificationEvidenceDiagnosticSchema.model_validate(item) for item in evidence_set.diagnostics]
 
@@ -105,12 +110,18 @@ def _project_verification_steps(
                 session_id=_resolve_session_id(test_run_id=test_run_id, evidence=evidence),
                 subscription_id=_resolve_subscription_id(test_run_id=test_run_id, evidence=evidence),
                 group_id=None,
-                step_state=step_state,
+                step_state=cast(
+                    Literal["draft", "planned", "armed", "running", "awaiting_confirmation", "completing", "completed", "aborted", "failed"],
+                    step_state,
+                ),
                 expected_path=evidence.expected_path,
                 expected_window_ms=0,
                 freshness=evidence.freshness,
                 evidence_status=evidence.evidence_status,
-                verdict_state=verdict_state,
+                verdict_state=cast(
+                    Literal["pending", "pass", "fail", "inconclusive", "aborted"],
+                    verdict_state,
+                ),
                 evidence_ids=[evidence.evidence_id],
                 actual_report_path=evidence.actual_report_path,
                 source_session_id=_resolve_session_id(test_run_id=test_run_id, evidence=evidence),
@@ -118,7 +129,18 @@ def _project_verification_steps(
                 source_generation=evidence.source_generation,
                 source_report_rpt_id=evidence.rpt_id,
                 source_report_dat_set=evidence.dataset,
-                verification_confidence=verification_confidence,
+                verification_confidence=cast(
+                    Literal[
+                        "exact_iec61850",
+                        "exact_report_match",
+                        "discovery_match",
+                        "simulated_fallback",
+                        "simulated",
+                        "degraded",
+                        "unknown",
+                    ],
+                    verification_confidence,
+                ),
                 confidence_reason=confidence_reason,
                 triggered_at=evidence.observed_at,
                 observed_at=evidence.observed_at,

@@ -10,20 +10,33 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Protocol, cast
+
+
+class _Arguments(Protocol):
+    manifest: Path
+    case: list[str]
+    require_tools: bool
 
 
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-def load_manifest(path: Path) -> dict[str, Any]:
+def load_manifest(path: Path) -> dict[str, object]:
     with path.open('r', encoding='utf-8') as handle:
-        data = json.load(handle)
+        data = cast(dict[str, object], cast(object, json.load(handle)))
     if data.get('version') != 1:
         raise ValueError(f'unsupported manifest version: {data.get("version")}')
-    if not isinstance(data.get('cases'), list):
-        raise ValueError('manifest cases must be a list')
+    raw_cases = data.get('cases')
+    if not isinstance(raw_cases, list):
+        raise TypeError('manifest cases must be a list')
+    cases: list[dict[str, object]] = []
+    for case in cast(list[object], cast(object, raw_cases)):
+        if not isinstance(case, dict):
+            raise TypeError('manifest cases must be objects')
+        cases.append(cast(dict[str, object], cast(object, case)))
+    data['cases'] = cases
     return data
 
 
@@ -35,21 +48,26 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def case_command(root: Path, case: dict[str, Any]) -> list[str]:
+def case_command(root: Path, case: dict[str, object]) -> list[str]:
     checker = case.get('checker')
     pcap = case.get('pcap')
     if not isinstance(checker, str) or not isinstance(pcap, str):
-        raise ValueError(f'case {case.get("name", "<unnamed>")} requires checker and pcap')
+        raise TypeError(f'case {case.get("name", "<unnamed>")} requires checker and pcap')
     args = case.get('args', [])
-    if not isinstance(args, list) or not all(isinstance(arg, str) for arg in args):
-        raise ValueError(f'case {case.get("name", "<unnamed>")} args must be a string list')
-    return [sys.executable, str(root / checker), str(root / pcap), *args]
+    if not isinstance(args, list):
+        raise TypeError(f'case {case.get("name", "<unnamed>")} args must be a string list')
+    string_args: list[str] = []
+    for arg in cast(list[object], cast(object, args)):
+        if not isinstance(arg, str):
+            raise TypeError(f'case {case.get("name", "<unnamed>")} args must be a string list')
+        string_args.append(arg)
+    return [sys.executable, str(root / checker), str(root / pcap), *string_args]
 
 
-def selected_cases(cases: list[dict[str, Any]], names: list[str]) -> list[dict[str, Any]]:
+def selected_cases(cases: list[dict[str, object]], names: list[str]) -> list[dict[str, object]]:
     if not names:
         return cases
-    selected = []
+    selected: list[dict[str, object]] = []
     known = {case.get('name') for case in cases}
     for name in names:
         if name not in known:
@@ -61,10 +79,10 @@ def selected_cases(cases: list[dict[str, Any]], names: list[str]) -> list[dict[s
 def main() -> int:
     root = repo_root()
     parser = argparse.ArgumentParser(description='Run IEC 61850 golden capture gates from a manifest.')
-    parser.add_argument('--manifest', type=Path, default=root / 'docs' / 'golden-captures.json')
-    parser.add_argument('--case', action='append', default=[], help='Run one named case; may be repeated.')
-    parser.add_argument('--require-tools', action='store_true', help='Fail instead of skip when tshark is unavailable.')
-    args = parser.parse_args()
+    _ = parser.add_argument('--manifest', type=Path, default=root / 'docs' / 'golden-captures.json')
+    _ = parser.add_argument('--case', action='append', default=[], help='Run one named case; may be repeated.')
+    _ = parser.add_argument('--require-tools', action='store_true', help='Fail instead of skip when tshark is unavailable.')
+    args = cast(_Arguments, cast(object, parser.parse_args()))
 
     if shutil.which('tshark') is None:
         message = 'FAIL: tshark is required for golden capture gates' if args.require_tools else 'SKIP: tshark is unavailable'
@@ -73,7 +91,7 @@ def main() -> int:
 
     try:
         manifest = load_manifest(args.manifest)
-        cases = selected_cases(manifest['cases'], args.case)
+        cases = selected_cases(cast(list[dict[str, object]], manifest['cases']), args.case)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         print(f'FAIL: {exc}')
         return 2
@@ -110,7 +128,7 @@ def main() -> int:
             failures += 1
             continue
 
-        result = subprocess.run(command, check=False, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        result = subprocess.run(command, check=False, text=True, capture_output=True)
         if result.stdout:
             print(result.stdout, end='' if result.stdout.endswith('\n') else '\n')
         if result.stderr:

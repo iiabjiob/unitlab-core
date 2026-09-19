@@ -1,5 +1,6 @@
 # app/infrastructure/mqtt/router.py
 import re
+from collections.abc import Awaitable, Callable
 from app.infrastructure.mqtt.handler_registry import registry
 from app.core.logger import get_logger
 
@@ -10,7 +11,7 @@ class MqttRouter:
     Routes MQTT messages to registered async handlers by topic pattern.
     """
     def __init__(self):
-        self._routes = []
+        self._routes: list[tuple[re.Pattern[str], Callable[..., Awaitable[object]], str]] = []
         for pattern, handler in registry.handlers:
             logger.debug(f"🔗 Registered handler: {pattern} -> {handler.__name__}")
             regex = re.compile("^" + pattern.replace("+", r"([^/]+)").replace("#", r".*") + "$")
@@ -28,7 +29,7 @@ class MqttRouter:
         return topic.split("/", 1)[0] if "/" in topic else topic
     
     async def route(self, topic: str, payload: bytes):
-        handler, pattern = self.find_handler(topic)
+        handler, _pattern = self.find_handler(topic)
         if not handler:
             logger.warning(f"No handler for {topic}")
             return
@@ -37,6 +38,6 @@ class MqttRouter:
         unit_id = self.extract_unit_id(topic)
 
         try:
-            await handler(topic, payload, unit_id=unit_id)
+            _ = await handler(topic, payload, unit_id=unit_id)
         except Exception as e:
             logger.error(f"💥 Error while handling {topic}: {e}")

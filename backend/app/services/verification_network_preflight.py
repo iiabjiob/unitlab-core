@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 import ipaddress
 import re
-from typing import Any
+from typing import Literal, TypedDict, cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,9 +21,12 @@ from app.services.core_network_service import get_core_network_state
 from app.services.iec61850.mms_adapter import build_mms_endpoint_catalog_from_scd_source
 from app.services.iec61850.scl_import import Iec61850SqlAlchemySclImportRepository
 from app.services.verification_endpoint_resolution import (
+    VerificationEndpointResolutionPolicyResult,
     build_verification_endpoint_resolution_diagnostic,
     resolve_verification_endpoint_resolution_policy,
 )
+from app.services.verification_planner import VerificationTargetSource
+from app.schemas.verification_schema import VerificationSubscriptionPlanGroupSchema
 from app.services.verification_planner import build_verification_subscription_plan, build_verification_target_sources
 from app.services.verification_signal_endpoint_catalog import build_verification_signal_endpoint_catalog
 
@@ -41,6 +44,17 @@ _HOST_KEY_TOKENS = (
     "server_ip",
     "ip",
 )
+NetworkReadinessState = Literal["ready", "attention_required", "unknown"]
+RuntimeVersion = Literal["simulator", "mms"]
+
+
+class _GroupHostResolution(TypedDict):
+    target_host: str | None
+    target_port: int | None
+    host_source: str
+    observed_ips: set[str]
+    observed_hints: set[str]
+    diagnostics: list[VerificationEvidenceDiagnosticSchema]
 
 
 @dataclass(frozen=True, slots=True)
@@ -279,9 +293,9 @@ async def build_verification_network_preflight_response(
         preflight=VerificationNetworkPreflightSchema(
             workspace_id=workspace_id,
             test_run_id=payload.test_run_id,
-            requested_runtime_version=requested_runtime_version,
+            requested_runtime_version=cast(RuntimeVersion, requested_runtime_version),
             recommended_runtime_version=recommended_runtime_version,
-            overall_state=overall_state,
+            overall_state=cast(NetworkReadinessState, overall_state),
             overall_hint=overall_hint,
             groups=group_responses,
             diagnostics=diagnostics,
@@ -315,14 +329,14 @@ async def build_verification_network_preflight_diagnostic(
     )
 
 
-async def _read_core_network_state() -> dict[str, Any] | None:
+async def _read_core_network_state() -> dict[str, object] | None:
     try:
         return await get_core_network_state()
     except Exception:  # noqa: BLE001
         return None
 
 
-def _build_core_network_advisory(core_network_state: dict[str, Any] | None) -> list[VerificationEvidenceDiagnosticSchema]:
+def _build_core_network_advisory(core_network_state: dict[str, object] | None) -> list[VerificationEvidenceDiagnosticSchema]:
     if core_network_state is None:
         return [
             VerificationEvidenceDiagnosticSchema(
@@ -355,14 +369,14 @@ def _build_core_network_advisory(core_network_state: dict[str, Any] | None) -> l
     ]
 
 
-def _build_network_interface_observations(core_network_state: dict[str, Any] | None) -> list[_InterfaceObservation]:
+def _build_network_interface_observations(core_network_state: dict[str, object] | None) -> list[_InterfaceObservation]:
     if core_network_state is None:
         return []
 
     observations: list[_InterfaceObservation] = []
     interfaces = core_network_state.get("interfaces")
     if isinstance(interfaces, list):
-        for item in interfaces:
+        for item in cast(list[object], interfaces):
             observation = _interface_from_mapping(item)
             if observation is not None:
                 observations.append(observation)
@@ -373,13 +387,14 @@ def _build_network_interface_observations(core_network_state: dict[str, Any] | N
     active_interfaces = core_network_state.get("active_interfaces")
     ip_addresses = core_network_state.get("ip_addresses") or core_network_state.get("addresses")
     if isinstance(active_interfaces, list) and isinstance(ip_addresses, dict):
-        for interface_name in active_interfaces:
-            raw_addresses = ip_addresses.get(interface_name)
+        address_map = cast(dict[object, object], ip_addresses)
+        for interface_name in cast(list[object], active_interfaces):
+            raw_addresses = address_map.get(interface_name)
             for entry in _normalize_interface_address_entries(raw_addresses):
                 observations.append(
                     _InterfaceObservation(
                         interface_name=str(interface_name),
-                        local_ip=entry["local_ip"],
+                        local_ip=entry["local_ip"] or "",
                         netmask=entry["netmask"],
                         network=entry["network"],
                     )
@@ -388,13 +403,14 @@ def _build_network_interface_observations(core_network_state: dict[str, Any] | N
     return observations
 
 
-def _interface_from_mapping(value: Any) -> _InterfaceObservation | None:
+def _interface_from_mapping(value: object) -> _InterfaceObservation | None:
     if not isinstance(value, dict):
         return None
-    interface_name = _first_text(value, ("interface_name", "name", "iface", "device"))
-    local_ip = _first_text(value, ("local_ip", "ip", "address", "ipv4", "ip_address"))
-    netmask = _first_text(value, ("netmask", "mask"))
-    network = _first_text(value, ("network", "subnet"))
+    mapping = cast(dict[str, object], value)
+    interface_name = _first_text(mapping, ("interface_name", "name", "iface", "device"))
+    local_ip = _first_text(mapping, ("local_ip", "ip", "address", "ipv4", "ip_address"))
+    netmask = _first_text(mapping, ("netmask", "mask"))
+    network = _first_text(mapping, ("network", "subnet"))
     if not interface_name or not local_ip:
         return None
     if network is None and netmask is not None:
@@ -410,25 +426,26 @@ def _interface_from_mapping(value: Any) -> _InterfaceObservation | None:
     )
 
 
-def _normalize_interface_address_entries(value: Any) -> list[dict[str, str | None]]:
+def _normalize_interface_address_entries(value: object) -> list[dict[str, str | None]]:
     entries: list[dict[str, str | None]] = []
     if isinstance(value, str):
         entries.append({"local_ip": value.strip(), "netmask": None, "network": None})
         return entries
     if isinstance(value, dict):
-        local_ip = _first_text(value, ("local_ip", "ip", "address", "ipv4", "ip_address"))
-        netmask = _first_text(value, ("netmask", "mask"))
-        network = _first_text(value, ("network", "subnet"))
+        mapping = cast(dict[str, object], value)
+        local_ip = _first_text(mapping, ("local_ip", "ip", "address", "ipv4", "ip_address"))
+        netmask = _first_text(mapping, ("netmask", "mask"))
+        network = _first_text(mapping, ("network", "subnet"))
         if local_ip:
             entries.append({"local_ip": local_ip, "netmask": netmask, "network": network})
         return entries
     if isinstance(value, list):
-        for item in value:
+        for item in cast(list[object], value):
             entries.extend(_normalize_interface_address_entries(item))
     return entries
 
 
-def _first_text(mapping: dict[str, Any], keys: tuple[str, ...]) -> str | None:
+def _first_text(mapping: dict[str, object], keys: tuple[str, ...]) -> str | None:
     for key in keys:
         raw = mapping.get(key)
         if raw is None:
@@ -441,10 +458,10 @@ def _first_text(mapping: dict[str, Any], keys: tuple[str, ...]) -> str | None:
 
 def _resolve_group_target_host(
     *,
-    group,
-    group_sources,
-    endpoint_resolution_policy,
-) -> dict[str, Any]:
+    group: VerificationSubscriptionPlanGroupSchema,
+    group_sources: list[VerificationTargetSource],
+    endpoint_resolution_policy: VerificationEndpointResolutionPolicyResult,
+) -> _GroupHostResolution:
     diagnostics: list[VerificationEvidenceDiagnosticSchema] = []
     observed_ips: set[str] = set()
     observed_hints: set[str] = set()
@@ -532,11 +549,12 @@ def _resolve_group_readiness(
     target_host: str | None,
     target_port: int | None,
     host_source: str,
-    core_network_state: dict[str, Any] | None,
+    core_network_state: dict[str, object] | None,
     interfaces: list[_InterfaceObservation],
     matches: list[_InterfaceObservation],
     requested_runtime_version: str,
-) -> tuple[str, str, _InterfaceObservation | None]:
+    ) -> tuple[NetworkReadinessState, str, _InterfaceObservation | None]:
+    _ = host_source
     target_label = _target_label(target_host, target_port)
     if target_host is None:
         if requested_runtime_version == "mms":
@@ -604,7 +622,7 @@ def _pick_recommended_interface(matches: list[_InterfaceObservation], interfaces
     return None
 
 
-def _resolve_core_network_status(core_network_state: dict[str, Any] | None) -> str | None:
+def _resolve_core_network_status(core_network_state: dict[str, object] | None) -> str | None:
     if core_network_state is None:
         return None
     for key in ("status", "state", "connection_status", "connectivity"):
@@ -617,7 +635,7 @@ def _resolve_core_network_status(core_network_state: dict[str, Any] | None) -> s
     return None
 
 
-def _resolve_overall_state(group_states: list[str], core_network_state: dict[str, Any] | None) -> str:
+def _resolve_overall_state(group_states: list[str], core_network_state: dict[str, object] | None) -> str:
     if not group_states:
         return "unknown"
     if any(state == "attention_required" for state in group_states):
@@ -635,7 +653,7 @@ def _resolve_overall_hint(
     groups: list[VerificationNetworkPreflightGroupSchema],
     requested_runtime_version: str,
     recommended_runtime_version: str,
-    core_network_state: dict[str, Any] | None,
+    core_network_state: dict[str, object] | None,
 ) -> str:
     if overall_state == "ready":
         if requested_runtime_version == "mms":
@@ -692,13 +710,13 @@ def _host_matches_network(target_host: str, network: str) -> bool:
 
 
 def _collect_network_metadata(
-    value: Any,
+    value: object,
     *,
     observed_ips: set[str],
     observed_hints: set[str],
 ) -> None:
     if isinstance(value, dict):
-        for key, child in value.items():
+        for key, child in cast(dict[object, object], value).items():
             key_text = str(key).strip().lower()
             if any(token in key_text for token in _HOST_KEY_TOKENS):
                 if isinstance(child, str):
@@ -709,67 +727,67 @@ def _collect_network_metadata(
             _collect_network_metadata(child, observed_ips=observed_ips, observed_hints=observed_hints)
         return
     if isinstance(value, (list, tuple, set)):
-        for item in value:
+        for item in cast(list[object] | tuple[object, ...] | set[object], value):
             _collect_network_metadata(item, observed_ips=observed_ips, observed_hints=observed_hints)
         return
     if isinstance(value, str):
         observed_ips.update(_extract_ipv4_strings(value))
 
 
-def _extract_target_host_candidates(sources: list[Any]) -> list[str]:
+def _extract_target_host_candidates(sources: list[VerificationTargetSource]) -> list[str]:
     prioritized: list[str] = []
     fallback: list[str] = []
     for source in sources:
         metadata = getattr(source, "signal_metadata", None)
         if not isinstance(metadata, dict) or not metadata:
             continue
-        keys = _extract_by_key_priority(metadata, _HOST_KEY_TOKENS)
+        keys = _extract_by_key_priority(cast(dict[str, object], metadata), _HOST_KEY_TOKENS)
         for candidate in keys:
             normalized = _normalize_ipv4_candidate(candidate)
             if normalized and normalized not in prioritized:
                 prioritized.append(normalized)
         if not prioritized:
-            for candidate in _extract_ipv4_strings(metadata):
+            for candidate in _extract_ipv4_strings(cast(dict[object, object], metadata)):
                 if candidate not in fallback:
                     fallback.append(candidate)
     return prioritized or fallback
 
 
-def _extract_by_key_priority(payload: Any, key_tokens: tuple[str, ...]) -> list[str]:
+def _extract_by_key_priority(payload: object, key_tokens: tuple[str, ...]) -> list[str]:
     values: list[str] = []
     if isinstance(payload, dict):
-        for key, child in payload.items():
+        for key, child in cast(dict[object, object], payload).items():
             key_text = str(key).strip().lower()
             if any(token == key_text or token in key_text for token in key_tokens):
                 values.extend(_extract_strings(child))
             values.extend(_extract_by_key_priority(child, key_tokens))
     elif isinstance(payload, (list, tuple, set)):
-        for item in payload:
+        for item in cast(list[object] | tuple[object, ...] | set[object], payload):
             values.extend(_extract_by_key_priority(item, key_tokens))
     return values
 
 
-def _extract_strings(value: Any) -> list[str]:
+def _extract_strings(value: object) -> list[str]:
     if isinstance(value, str):
         return [value]
     if isinstance(value, (list, tuple, set)):
         result: list[str] = []
-        for item in value:
+        for item in cast(list[object] | tuple[object, ...] | set[object], value):
             result.extend(_extract_strings(item))
         return result
     if isinstance(value, dict):
-        result: list[str] = []
-        for child in value.values():
-            result.extend(_extract_strings(child))
-        return result
+        mapping_result: list[str] = []
+        for child in cast(dict[object, object], value).values():
+            mapping_result.extend(_extract_strings(child))
+        return mapping_result
     return []
 
 
-def _extract_ipv4_strings(value: Any) -> list[str]:
+def _extract_ipv4_strings(value: object) -> list[str]:
     candidates: list[str] = []
     for raw in _extract_strings(value):
-        for match in _IP_PATTERN.findall(raw):
-            normalized = _normalize_ipv4_candidate(match)
+        for match in cast(list[str], cast(object, _IP_PATTERN.findall(raw))):
+            normalized = _normalize_ipv4_candidate(str(match))
             if normalized and normalized not in candidates:
                 candidates.append(normalized)
     return candidates

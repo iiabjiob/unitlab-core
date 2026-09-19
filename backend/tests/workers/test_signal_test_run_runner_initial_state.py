@@ -2,9 +2,16 @@ from __future__ import annotations
 
 import asyncio
 from types import SimpleNamespace
+from collections.abc import Awaitable
+from typing import TypeVar, cast
+
+import pytest
 
 from app.schemas.signal_sheet_schema import SignalAllocationRowSchema
+from app.api.v1.signal_sheet.repository import SignalSheetRepository
 from app.workers import signal_test_run_runner
+
+T = TypeVar("T")
 
 
 class FakeDb:
@@ -16,34 +23,40 @@ class FakeDb:
 
 
 class MissingBitmaskRedis:
-    async def get(self, key: str):
+    async def get(self, key: str) -> object:
+        _ = key
         return None
 
-    async def set(self, key: str, value, **kwargs) -> None:
+    async def set(self, key: str, value: object, **kwargs: object) -> None:
+        _ = (key, value, kwargs)
         return None
 
     async def expire(self, key: str, ttl: int) -> None:
+        _ = (key, ttl)
         return None
 
 
 class Repo:
     def __init__(self, row: SignalAllocationRowSchema) -> None:
-        self.db = FakeDb()
-        self.row = row
-        self.evidence: list[dict] = []
+        self.db: FakeDb = FakeDb()
+        self.row: SignalAllocationRowSchema = row
+        self.evidence: list[dict[str, object]] = []
 
-    async def list_allocation_rows_by_signal_ids(self, workspace_id: int, signal_ids: list[int]):
+    async def list_allocation_rows_by_signal_ids(
+        self, workspace_id: int, signal_ids: list[int]
+    ) -> list[SignalAllocationRowSchema]:
+        _ = workspace_id
         return [self.row] if int(self.row.signal_id) in {int(signal_id) for signal_id in signal_ids} else []
 
-    async def record_signal_test_run_step_evidence(self, **kwargs) -> None:
+    async def record_signal_test_run_step_evidence(self, **kwargs: object) -> None:
         self.evidence.append(dict(kwargs))
 
 
-def run_async(awaitable):
+def run_async(awaitable: Awaitable[T]) -> T:
     return asyncio.run(awaitable)
 
 
-def test_missing_initial_do_state_skips_before_admission_and_publish(monkeypatch) -> None:
+def test_missing_initial_do_state_skips_before_admission_and_publish(monkeypatch: pytest.MonkeyPatch) -> None:
     row = SignalAllocationRowSchema(
         row_id="signal-1",
         signal_id=1,
@@ -61,40 +74,43 @@ def test_missing_initial_do_state_skips_before_admission_and_publish(monkeypatch
         unit_online=True,
     )
     repo = Repo(row)
-    admission_calls: list[dict] = []
+    admission_calls: list[dict[str, object]] = []
     publish_calls: list[object] = []
-    command_calls: list[dict] = []
+    command_calls: list[dict[str, object]] = []
 
     class Admission:
-        def __init__(self, redis) -> None:
+        def __init__(self, redis: object) -> None:
+            _ = redis
             return None
 
-        async def acquire(self, **kwargs):
+        async def acquire(self, **kwargs: object) -> object:
             admission_calls.append(kwargs)
             return SimpleNamespace(lease_id="unexpected")
 
-    async def load_plan(repo, workspace_id: int, job_id: str):
+    async def load_plan(repo: Repo, workspace_id: int, job_id: str) -> list[SignalAllocationRowSchema]:
+        _ = (workspace_id, job_id)
         return [repo.row]
 
-    async def publish(event) -> None:
+    async def publish(event: object) -> None:
         publish_calls.append(event)
 
-    async def enqueue_command(**kwargs) -> None:
+    async def enqueue_command(**kwargs: object) -> None:
         command_calls.append(kwargs)
 
-    async def no_recovery(*args, **kwargs) -> bool:
+    async def no_recovery(*args: object, **kwargs: object) -> bool:
+        _ = (args, kwargs)
         return False
 
-    monkeypatch.setattr(signal_test_run_runner.RedisManager, "get_instance", lambda: MissingBitmaskRedis())
+    monkeypatch.setattr(signal_test_run_runner.RedisManager, "get_instance", lambda: MissingBitmaskRedis())  # pyright: ignore[reportPrivateLocalImportUsage]
     monkeypatch.setattr(signal_test_run_runner, "_load_immutable_plan_rows", load_plan)
     monkeypatch.setattr(signal_test_run_runner, "HardwareCommandAdmission", Admission)
-    monkeypatch.setattr(signal_test_run_runner.WsEventPublisher, "publish", publish)
+    monkeypatch.setattr(signal_test_run_runner.WsEventPublisher, "publish", publish)  # pyright: ignore[reportPrivateLocalImportUsage]
     monkeypatch.setattr(signal_test_run_runner, "has_hardware_recovery_required", no_recovery)
     monkeypatch.setattr(signal_test_run_runner, "enqueue_do_command", enqueue_command)
 
     result = run_async(
-        signal_test_run_runner._handle_test_run(
-            repo,
+        signal_test_run_runner._handle_test_run(  # pyright: ignore[reportPrivateUsage]
+            cast(SignalSheetRepository, cast(object, repo)),
             7,
             {
                 "job_id": "job-1",
@@ -112,9 +128,11 @@ def test_missing_initial_do_state_skips_before_admission_and_publish(monkeypatch
         )
     )
 
-    assert result["succeeded"] == 0
-    assert result["skipped"] == 1
-    assert result["skip_reasons"]["initial_state_unknown"] == 1
+    typed_result = result
+    skip_reasons = cast(dict[str, object], typed_result["skip_reasons"])
+    assert typed_result["succeeded"] == 0
+    assert typed_result["skipped"] == 1
+    assert skip_reasons["initial_state_unknown"] == 1
     assert admission_calls == []
     assert command_calls == []
     assert repo.evidence[0]["reason"] == "initial_state_unknown"

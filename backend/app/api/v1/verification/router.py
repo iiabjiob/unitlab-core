@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Annotated
+
 import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -54,7 +56,7 @@ router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/verification", tags
 _orchestrator = VerificationRuntimeOrchestrator()
 
 
-def get_verification_evidence_repo(db: AsyncSession = Depends(get_db)) -> VerificationEvidenceRepository:
+def get_verification_evidence_repo(db: Annotated[AsyncSession, Depends(get_db)]) -> VerificationEvidenceRepository:
     return VerificationEvidenceRepository(db)
 
 
@@ -62,7 +64,7 @@ def get_verification_evidence_repo(db: AsyncSession = Depends(get_db)) -> Verifi
 async def preflight_verification_run(
     workspace_id: int,
     payload: VerificationAutoRunStartSchema,
-    db: AsyncSession = Depends(get_db),
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
     try:
         result = await build_verification_network_preflight_response(
@@ -114,7 +116,7 @@ async def refresh_external_ied_discovery(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     if request is None:
         raise HTTPException(status_code=404, detail="External IED endpoint is not reachable or not configured")
-    await publish_external_ied_status_snapshot(workspace_id)
+    _ = await publish_external_ied_status_snapshot(workspace_id)
     return {"queued": True, "request_id": request.request_id, "endpoint": request.endpoint}
 
 
@@ -240,7 +242,7 @@ async def release_external_ied_report_lease(
 async def start_verification_run(
     workspace_id: int,
     payload: VerificationAutoRunStartSchema,
-    db: AsyncSession = Depends(get_db),
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
     try:
         result = await execute_single_signal_verification_run(
@@ -263,7 +265,7 @@ async def start_verification_run(
 async def get_verification_run(
     workspace_id: int,
     test_run_id: str,
-    db: AsyncSession = Depends(get_db),
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
     try:
         return await load_verification_run_detail(
@@ -321,7 +323,7 @@ async def start_verification_runtime_orchestration(
 async def start_verification_runtime_orchestration_from_signals(
     workspace_id: int,
     payload: VerificationAutoRunStartSchema,
-    db: AsyncSession = Depends(get_db),
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
     try:
         context = await build_verification_runtime_start_context(
@@ -405,7 +407,7 @@ async def reconnect_verification_runtime_orchestration(
 async def get_verification_run_evidence(
     workspace_id: int,
     test_run_id: str,
-    repo: VerificationEvidenceRepository = Depends(get_verification_evidence_repo),
+    repo: Annotated[VerificationEvidenceRepository, Depends(get_verification_evidence_repo)],
 ):
     result = await load_verification_run_evidence(
         workspace_id=workspace_id,
@@ -419,7 +421,7 @@ async def get_verification_run_evidence(
 async def get_verification_run_steps(
     workspace_id: int,
     test_run_id: str,
-    repo: VerificationEvidenceRepository = Depends(get_verification_evidence_repo),
+    repo: Annotated[VerificationEvidenceRepository, Depends(get_verification_evidence_repo)],
 ):
     result = await load_verification_run_evidence(
         workspace_id=workspace_id,

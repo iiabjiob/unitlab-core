@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import time
 from pathlib import Path
 
@@ -11,7 +10,7 @@ from .models import ProvisionActionResult, ProvisionCheck
 
 class ProvisionOps:
     def __init__(self, config: AgentConfig) -> None:
-        self.config = config
+        self.config: AgentConfig = config
 
     async def _run(self, *args: str, cwd: str | None = None, timeout: int | None = None) -> tuple[int, str, str]:
         proc = await asyncio.create_subprocess_exec(
@@ -25,7 +24,7 @@ class ProvisionOps:
         except asyncio.TimeoutError:
             proc.kill()
             return 124, "", f"Command timeout: {' '.join(args)}"
-        return proc.returncode, stdout.decode("utf-8", errors="ignore"), stderr.decode("utf-8", errors="ignore")
+        return int(proc.returncode or 0), stdout.decode("utf-8", errors="ignore"), stderr.decode("utf-8", errors="ignore")
 
     async def collect_checks(self) -> list[ProvisionCheck]:
         project = Path(self.config.project_root)

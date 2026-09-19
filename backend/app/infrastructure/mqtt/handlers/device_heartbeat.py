@@ -1,6 +1,9 @@
 import json
 import time
-from typing import Any
+from collections.abc import Awaitable
+from typing import Literal, cast
+
+from redis.asyncio import Redis
 
 from app.infrastructure.mqtt.handler_registry import registry
 from app.infrastructure.redis.manager import RedisManager
@@ -34,7 +37,7 @@ def _heartbeat_redis_key(unit_id: str, kind: str | None) -> str | None:
     return None
 
 
-def _parse_heartbeat_payload(payload: bytes) -> dict[str, Any] | None:
+def _parse_heartbeat_payload(payload: bytes) -> dict[str, object] | None:
     if not payload:
         return None
     if len(payload) > MAX_HEARTBEAT_JSON_BYTES:
@@ -45,14 +48,14 @@ def _parse_heartbeat_payload(payload: bytes) -> dict[str, Any] | None:
         )
         return None
     try:
-        decoded = json.loads(payload.decode('utf-8'))
+        decoded = cast(object, json.loads(payload.decode('utf-8')))
     except Exception as exc:
         logger.warning("Invalid heartbeat JSON payload: %s", exc)
         return None
     if not isinstance(decoded, dict):
         logger.warning("Unexpected heartbeat payload type: %s", type(decoded).__name__)
         return None
-    return decoded
+    return cast(dict[str, object], decoded)
 
 
 @registry.mqtt_handler(topics.DEVICE_HEARTBEAT_DIAG)
@@ -63,7 +66,7 @@ async def handle_device_heartbeat(topic: str, payload: bytes, unit_id: str):
     hb_kind = _heartbeat_kind_from_topic(topic)
     logger.debug(f"📥 IN ← {unit_id}: heartbeat ({hb_kind or 'unknown'}) @ {ts}")
 
-    redis = RedisManager.get_instance()
+    redis_client: Redis = RedisManager.get_instance()
 
     heartbeat_payload = _parse_heartbeat_payload(payload)
     heartbeat_fast = heartbeat_payload if hb_kind == 'fast' else None
@@ -73,12 +76,12 @@ async def handle_device_heartbeat(topic: str, payload: bytes, unit_id: str):
     telemetry_key = _heartbeat_redis_key(unit_id, hb_kind)
     if telemetry_key and heartbeat_payload is not None:
         start_telemetry_set = time.perf_counter()
-        await redis.set(telemetry_key, json.dumps(heartbeat_payload, separators=(",", ":")))
+        await redis_client.set(telemetry_key, json.dumps(heartbeat_payload, separators=(",", ":")))
         telemetry_set_latency = (time.perf_counter() - start_telemetry_set) * 1000
 
     # Update last_seen (this key uses TTL)
     start_redis_touch = time.perf_counter()
-    await redis.set(
+    await redis_client.set(
         f"device:{unit_id}:last_seen",
         str(ts).encode(),
         ex=settings.heartbeat_ttl
@@ -87,12 +90,12 @@ async def handle_device_heartbeat(topic: str, payload: bytes, unit_id: str):
 
     # Add the device into the global set if it is new
     start_redis_sadd = time.perf_counter()
-    await redis.sadd("devices:all", unit_id.encode())
+    _ = await cast(Awaitable[object], redis_client.sadd("devices:all", unit_id.encode()))
     redis_sadd_latency = (time.perf_counter() - start_redis_sadd) * 1000
 
     # Check cached status
     start_status_get = time.perf_counter()
-    prev_status_raw = await redis.get(f"device:{unit_id}:status")
+    prev_status_raw = cast(object, await redis_client.get(f"device:{unit_id}:status"))
     prev_status = to_str(prev_status_raw)
     status_get_latency = (time.perf_counter() - start_status_get) * 1000
 
@@ -104,14 +107,14 @@ async def handle_device_heartbeat(topic: str, payload: bytes, unit_id: str):
     if prev_status != "online":
         transitioned_online = True
         start_status_set = time.perf_counter()
-        await redis.set(f"device:{unit_id}:status", "online")
+        await redis_client.set(f"device:{unit_id}:status", "online")
         status_set_latency = (time.perf_counter() - start_status_set) * 1000
 
     event = DeviceHeartbeatEvent(
         unit_id=unit_id,
         status="online",
         last_seen=ts,
-        heartbeat_kind=hb_kind,
+        heartbeat_kind=cast(Literal["fast", "diag"] | None, hb_kind),
         heartbeat_fast=heartbeat_fast,
         heartbeat_diag=heartbeat_diag,
     )
@@ -124,20 +127,20 @@ async def handle_device_heartbeat(topic: str, payload: bytes, unit_id: str):
 
         # Request fresh device info and states
         start_enqueue_scan = time.perf_counter()
-        await enqueue_scan_devices(correlation_id=0, unit_id=unit_id)
+        await enqueue_scan_devices(correlation_id=f"heartbeat:{unit_id}", unit_id=unit_id)
         scan_enqueue_latency = (time.perf_counter() - start_enqueue_scan) * 1000
 
     total_latency = (time.perf_counter() - start_total) * 1000
     logger.debug(
         f"[HBRT] {unit_id} | "
-        f"kind={hb_kind or '-'}, "
-        f"touch={redis_touch_latency:.1f} ms, "
-        f"telemetry_set={telemetry_set_latency:.1f} ms, "
-        f"sadd={redis_sadd_latency:.1f} ms, "
-        f"status_get={status_get_latency:.1f} ms, "
-        f"transition={'yes' if transitioned_online else 'no'}, "
-        f"status_set={status_set_latency:.1f} ms, "
-        f"ws={ws_publish_latency:.1f} ms, "
-        f"scan={scan_enqueue_latency:.1f} ms, "
-        f"total={total_latency:.1f} ms"
+        + f"kind={hb_kind or '-'}, "
+        + f"touch={redis_touch_latency:.1f} ms, "
+        + f"telemetry_set={telemetry_set_latency:.1f} ms, "
+        + f"sadd={redis_sadd_latency:.1f} ms, "
+        + f"status_get={status_get_latency:.1f} ms, "
+        + f"transition={'yes' if transitioned_online else 'no'}, "
+        + f"status_set={status_set_latency:.1f} ms, "
+        + f"ws={ws_publish_latency:.1f} ms, "
+        + f"scan={scan_enqueue_latency:.1f} ms, "
+        + f"total={total_latency:.1f} ms"
     )

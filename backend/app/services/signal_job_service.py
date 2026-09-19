@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from typing import Any, Awaitable, Callable, Literal
+from typing import Literal, Protocol, cast
+from collections.abc import Awaitable, Callable
 from uuid import uuid4
 
 from app.core.config import get_settings
@@ -10,6 +11,28 @@ from app.infrastructure.redis.manager import RedisManager
 from app.infrastructure.redis.stream_bus import enqueue_signal_allocation_job, enqueue_signal_test_run_job
 
 settings = get_settings()
+
+
+class SignalJobRedisClient(Protocol):
+    async def get(self, name: str) -> str | None: ...
+
+    async def set(self, name: str, value: object, **kwargs: object) -> bool | None: ...
+
+    async def delete(self, *names: str) -> int: ...
+
+    async def eval(self, *args: object) -> int | str | bytes | None: ...
+
+    async def hincrby(self, name: str, key: str, amount: int) -> int: ...
+
+    async def hset(self, *args: object, **kwargs: object) -> None: ...
+
+    async def hgetall(self, name: str) -> dict[str, str]: ...
+
+    async def expire(self, name: str, time: int) -> bool: ...
+
+
+def _redis_client() -> SignalJobRedisClient:
+    return cast(SignalJobRedisClient, cast(object, RedisManager.get_instance()))
 SignalJobStatus = Literal[
     "queued",
     "running",
@@ -50,15 +73,19 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _normalize_job_payload(payload: dict[str, Any]) -> dict[str, Any]:
+def _to_int(value: object) -> int:
+    return int(cast(str | int | float | bytes | bytearray, value))
+
+
+def _normalize_job_payload(payload: dict[str, object]) -> dict[str, object]:
     result = dict(payload)
-    result.setdefault("progress_total", 0)
-    result.setdefault("progress_done", 0)
-    result.setdefault("message", None)
-    result.setdefault("error", None)
-    result.setdefault("result", {})
-    result.setdefault("created_at", _now_iso())
-    result.setdefault("updated_at", result["created_at"])
+    _ = result.setdefault("progress_total", 0)
+    _ = result.setdefault("progress_done", 0)
+    _ = result.setdefault("message", None)
+    _ = result.setdefault("error", None)
+    _ = result.setdefault("result", {})
+    _ = result.setdefault("created_at", _now_iso())
+    _ = result.setdefault("updated_at", result["created_at"])
     return result
 
 
@@ -66,29 +93,29 @@ async def create_signal_job(
     *,
     workspace_id: int,
     operation: SignalJobOperation,
-    payload: dict[str, Any],
-    initial_result: dict[str, Any] | None = None,
+    payload: dict[str, object],
+    initial_result: dict[str, object] | None = None,
     job_id: str | None = None,
     before_enqueue: Callable[[], Awaitable[None]] | None = None,
-) -> dict[str, Any]:
-    redis = RedisManager.get_instance()
+) -> dict[str, object]:
+    redis = _redis_client()
     job_id = str(job_id or uuid4().hex)
     now_iso = _now_iso()
     lock_key = _test_run_lock_key(workspace_id) if operation == "test_run" else None
 
     progress_total = 0
     if operation == "auto_allocate":
-        signal_ids = payload.get("signal_ids") if isinstance(payload, dict) else None
+        signal_ids = payload.get("signal_ids")
         if isinstance(signal_ids, list):
-            progress_total = len(signal_ids)
+            progress_total = len(cast(list[object], signal_ids))
     elif operation == "bulk_update":
-        entries = payload.get("entries") if isinstance(payload, dict) else None
+        entries = payload.get("entries")
         if isinstance(entries, list):
-            progress_total = len(entries)
+            progress_total = len(cast(list[object], entries))
     elif operation == "test_run":
-        signal_ids = payload.get("signal_ids") if isinstance(payload, dict) else None
+        signal_ids = payload.get("signal_ids")
         if isinstance(signal_ids, list):
-            progress_total = len(signal_ids)
+            progress_total = len(cast(list[object], signal_ids))
 
     job_state = {
         "job_id": job_id,
@@ -116,7 +143,7 @@ async def create_signal_job(
         if not acquired:
             lock_owner_job_id = str(await redis.get(lock_key) or "").strip()
             if not lock_owner_job_id:
-                await redis.delete(lock_key)
+                _ = await redis.delete(lock_key)
                 acquired = await redis.set(
                     lock_key,
                     job_id,
@@ -143,12 +170,12 @@ async def create_signal_job(
 
                 if lock_owner_state is None or lock_owner_status in {"succeeded", "failed", "cancelled"} or stale_non_terminal:
                     if stale_non_terminal:
-                        await update_signal_job(
+                        _ = await update_signal_job(
                             lock_owner_job_id,
                             status="cancelled",
                             message="Cancelled (stale test-run lock)",
                         )
-                    await redis.delete(lock_key)
+                    _ = await redis.delete(lock_key)
                     acquired = await redis.set(
                         lock_key,
                         job_id,
@@ -159,14 +186,14 @@ async def create_signal_job(
             suffix = f" (job_id={lock_owner_job_id or 'unknown'}, status={lock_owner_status or 'unknown'})"
             raise RuntimeError(f"Another test run is already active for this workspace{suffix}")
 
-    await redis.set(
+    _ = await redis.set(
         _job_key(job_id),
         json.dumps(job_state, separators=(",", ":")),
         ex=settings.signal_allocation_job_ttl_seconds,
     )
-    await redis.set(
+    _ = await redis.set(
         _job_status_key(job_id),
-        job_state["status"],
+        str(job_state["status"]),
         ex=settings.signal_allocation_job_ttl_seconds,
     )
 
@@ -181,25 +208,25 @@ async def create_signal_job(
         if before_enqueue is not None:
             await before_enqueue()
         if operation == "test_run":
-            await enqueue_signal_test_run_job(envelope)
+            _ = await enqueue_signal_test_run_job(envelope)
         else:
-            await enqueue_signal_allocation_job(envelope)
+            _ = await enqueue_signal_allocation_job(envelope)
     except Exception:
-        await redis.delete(_job_key(job_id))
+        _ = await redis.delete(_job_key(job_id))
         if lock_key is not None:
-            await redis.delete(lock_key)
+            _ = await redis.delete(lock_key)
         raise
 
-    return job_state
+    return cast(dict[str, object], job_state)
 
 
 async def release_signal_test_run_workspace_lock(workspace_id: int, job_id: str) -> None:
-    redis = RedisManager.get_instance()
+    redis = _redis_client()
     lock_key = _test_run_lock_key(workspace_id)
     lock_value = await redis.get(lock_key)
     if str(lock_value or "") != job_id:
         return
-    await redis.delete(lock_key)
+    _ = await redis.delete(lock_key)
 
 
 def _signal_test_run_execution_lease_ttl_seconds() -> int:
@@ -208,7 +235,7 @@ def _signal_test_run_execution_lease_ttl_seconds() -> int:
 
 
 async def acquire_signal_test_run_execution_lease(*, job_id: str, owner: str) -> bool:
-    redis = RedisManager.get_instance()
+    redis = _redis_client()
     acquired = await redis.set(
         _test_run_execution_lease_key(job_id),
         owner,
@@ -219,7 +246,7 @@ async def acquire_signal_test_run_execution_lease(*, job_id: str, owner: str) ->
 
 
 async def refresh_signal_test_run_execution_lease(*, job_id: str, owner: str) -> bool:
-    redis = RedisManager.get_instance()
+    redis = _redis_client()
     key = _test_run_execution_lease_key(job_id)
     ttl_seconds = _signal_test_run_execution_lease_ttl_seconds()
     # Refresh only if the same worker still owns the lease.
@@ -239,7 +266,7 @@ async def refresh_signal_test_run_execution_lease(*, job_id: str, owner: str) ->
 
 
 async def release_signal_test_run_execution_lease(*, job_id: str, owner: str) -> bool:
-    redis = RedisManager.get_instance()
+    redis = _redis_client()
     key = _test_run_execution_lease_key(job_id)
     # Release only if the same worker still owns the lease.
     script = """
@@ -258,15 +285,15 @@ async def release_signal_test_run_execution_lease(*, job_id: str, owner: str) ->
 
 
 async def increment_signal_test_run_execution_lease_stat(name: str, delta: int = 1) -> int:
-    redis = RedisManager.get_instance()
+    redis = _redis_client()
     key = _test_run_execution_lease_stats_key()
     value = await redis.hincrby(key, name, int(delta))
     await redis.hset(key, mapping={"updated_at": _now_iso()})
     return int(value)
 
 
-async def get_signal_test_run_execution_lease_stats() -> dict[str, Any]:
-    redis = RedisManager.get_instance()
+async def get_signal_test_run_execution_lease_stats() -> dict[str, object]:
+    redis = _redis_client()
     raw = await redis.hgetall(_test_run_execution_lease_stats_key())
     counters: dict[str, int] = {}
     updated_at = None
@@ -284,25 +311,25 @@ async def get_signal_test_run_execution_lease_stats() -> dict[str, Any]:
     }
 
 
-async def reset_signal_test_run_execution_lease_stats() -> dict[str, Any]:
-    redis = RedisManager.get_instance()
+async def reset_signal_test_run_execution_lease_stats() -> dict[str, object]:
+    redis = _redis_client()
     key = _test_run_execution_lease_stats_key()
-    await redis.delete(key)
+    _ = await redis.delete(key)
     return await get_signal_test_run_execution_lease_stats()
 
 
-async def get_signal_job(job_id: str) -> dict[str, Any] | None:
-    redis = RedisManager.get_instance()
+async def get_signal_job(job_id: str) -> dict[str, object] | None:
+    redis = _redis_client()
     raw = await redis.get(_job_key(job_id))
     if not raw:
         return None
     try:
-        payload = json.loads(raw)
+        payload = cast(object, json.loads(raw))
     except json.JSONDecodeError:
         return None
     if not isinstance(payload, dict):
         return None
-    normalized = _normalize_job_payload(payload)
+    normalized = _normalize_job_payload(cast(dict[str, object], payload))
     cursor = await get_signal_job_progress_cursor(job_id)
     if cursor is not None:
         normalized["progress_cursor"] = cursor
@@ -310,7 +337,7 @@ async def get_signal_job(job_id: str) -> dict[str, Any] | None:
 
 
 async def get_signal_job_status(job_id: str) -> str | None:
-    redis = RedisManager.get_instance()
+    redis = _redis_client()
     raw = await redis.get(_job_status_key(job_id))
     if raw is None:
         return None
@@ -326,9 +353,9 @@ async def update_signal_job(
     error: str | None = None,
     progress_done: int | None = None,
     progress_total: int | None = None,
-    result: dict[str, Any] | None = None,
-) -> dict[str, Any] | None:
-    redis = RedisManager.get_instance()
+    result: dict[str, object] | None = None,
+) -> dict[str, object] | None:
+    redis = _redis_client()
     current = await get_signal_job(job_id)
     if current is None:
         return None
@@ -347,12 +374,12 @@ async def update_signal_job(
     if result is not None:
         next_payload["result"] = result
 
-    await redis.set(
+    _ = await redis.set(
         _job_key(job_id),
         json.dumps(next_payload, separators=(",", ":")),
         ex=settings.signal_allocation_job_ttl_seconds,
     )
-    await redis.set(
+    _ = await redis.set(
         _job_status_key(job_id),
         next_payload["status"],
         ex=settings.signal_allocation_job_ttl_seconds,
@@ -360,29 +387,29 @@ async def update_signal_job(
     return next_payload
 
 
-async def set_signal_job_progress_cursor(job_id: str, cursor: dict[str, Any]) -> None:
-    redis = RedisManager.get_instance()
+async def set_signal_job_progress_cursor(job_id: str, cursor: dict[str, object]) -> None:
+    redis = _redis_client()
     payload = dict(cursor)
-    payload.setdefault("updated_at", _now_iso())
-    await redis.set(
+    _ = payload.setdefault("updated_at", _now_iso())
+    _ = await redis.set(
         _job_cursor_key(job_id),
         json.dumps(payload, separators=(",", ":")),
         ex=settings.signal_allocation_job_ttl_seconds,
     )
 
 
-async def get_signal_job_progress_cursor(job_id: str) -> dict[str, Any] | None:
-    redis = RedisManager.get_instance()
+async def get_signal_job_progress_cursor(job_id: str) -> dict[str, object] | None:
+    redis = _redis_client()
     raw = await redis.get(_job_cursor_key(job_id))
     if not raw:
         return None
     try:
-        payload = json.loads(raw)
+        payload = cast(object, json.loads(raw))
     except json.JSONDecodeError:
         return None
     if not isinstance(payload, dict):
         return None
-    return payload
+    return cast(dict[str, object], payload)
 
 
 async def refresh_signal_job_ttl(
@@ -391,23 +418,23 @@ async def refresh_signal_job_ttl(
     workspace_id: int | None = None,
     include_test_run_lock: bool = False,
 ) -> None:
-    redis = RedisManager.get_instance()
+    redis = _redis_client()
     ttl_seconds = max(1, int(settings.signal_allocation_job_ttl_seconds))
-    await redis.expire(_job_key(job_id), ttl_seconds)
-    await redis.expire(_job_status_key(job_id), ttl_seconds)
-    await redis.expire(_job_cursor_key(job_id), ttl_seconds)
+    _ = await redis.expire(_job_key(job_id), ttl_seconds)
+    _ = await redis.expire(_job_status_key(job_id), ttl_seconds)
+    _ = await redis.expire(_job_cursor_key(job_id), ttl_seconds)
 
     if include_test_run_lock and workspace_id and workspace_id > 0:
         lock_key = _test_run_lock_key(workspace_id)
         lock_value = await redis.get(lock_key)
         if str(lock_value or "") == job_id:
-            await redis.expire(lock_key, ttl_seconds)
+            _ = await redis.expire(lock_key, ttl_seconds)
 
 
 async def control_signal_job(
     job_id: str,
     action: Literal["pause", "resume", "stop"],
-) -> dict[str, Any] | None:
+) -> dict[str, object] | None:
     current = await get_signal_job(job_id)
     if current is None:
         return None
@@ -444,7 +471,7 @@ async def control_signal_job(
                 message="Cancelled",
             )
             if updated and operation == "test_run":
-                workspace_id = int(updated.get("workspace_id") or 0)
+                workspace_id = _to_int(updated.get("workspace_id") or 0)
                 if workspace_id > 0:
                     await release_signal_test_run_workspace_lock(workspace_id, job_id)
             return updated
@@ -455,7 +482,7 @@ async def control_signal_job(
                 message="Cancelled",
             )
             if updated and operation == "test_run":
-                workspace_id = int(updated.get("workspace_id") or 0)
+                workspace_id = _to_int(updated.get("workspace_id") or 0)
                 if workspace_id > 0:
                     await release_signal_test_run_workspace_lock(workspace_id, job_id)
             return updated

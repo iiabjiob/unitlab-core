@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, ForeignKey, Index, Integer, JSON, String, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import JSONB
@@ -15,9 +15,9 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 
 
 class SignalVerificationEvidence(Base):
-    __tablename__ = "signal_verification_evidence"
+    __tablename__: str = "signal_verification_evidence"
 
-    __table_args__ = (
+    __table_args__: tuple[object, ...] = (
         UniqueConstraint("workspace_id", "evidence_id", name="uq_signal_verification_evidence_workspace_evidence"),
         Index("ix_signal_verification_evidence_workspace_run_created", "workspace_id", "test_run_id", "created_at", "id"),
         Index("ix_signal_verification_evidence_workspace_signal_created", "workspace_id", "signal_id", "created_at"),
@@ -56,14 +56,14 @@ class SignalVerificationEvidence(Base):
     source_report_sequence_number: Mapped[int | None] = mapped_column(BIGINT_PK, nullable=True)
     source_report_sub_sequence_number: Mapped[int | None] = mapped_column(BIGINT_PK, nullable=True)
     report_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    signal_value: Mapped[Any | None] = mapped_column(JSONB().with_variant(JSON(), "sqlite"), nullable=True)
-    timestamp_summary: Mapped[dict[str, Any] | None] = mapped_column(
+    signal_value: Mapped[object | None] = mapped_column(JSONB().with_variant(JSON(), "sqlite"), nullable=True)
+    timestamp_summary: Mapped[dict[str, object] | None] = mapped_column(
         JSONB().with_variant(JSON(), "sqlite"),
         nullable=True,
     )
     stale_reason: Mapped[str | None] = mapped_column(String(128), nullable=True)
     evidence_kind: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    diagnostics: Mapped[list] = mapped_column(
+    diagnostics: Mapped[list[dict[str, object]]] = mapped_column(
         JSONB().with_variant(JSON(), "sqlite"),
         nullable=False,
         server_default=text("'[]'::jsonb"),
@@ -76,9 +76,9 @@ class SignalVerificationEvidence(Base):
 
 
 class SignalVerificationEvidenceSet(Base):
-    __tablename__ = "signal_verification_evidence_sets"
+    __tablename__: str = "signal_verification_evidence_sets"
 
-    __table_args__ = (
+    __table_args__: tuple[object, ...] = (
         UniqueConstraint("workspace_id", "test_run_id", name="uq_signal_verification_evidence_sets_run"),
         Index("ix_signal_verification_evidence_sets_workspace_created", "workspace_id", "created_at", "id"),
         Index("ix_signal_verification_evidence_sets_workspace_run", "workspace_id", "test_run_id"),
@@ -91,12 +91,12 @@ class SignalVerificationEvidenceSet(Base):
         nullable=False,
     )
     test_run_id: Mapped[str] = mapped_column(String(64), nullable=False)
-    summary: Mapped[dict] = mapped_column(
+    summary: Mapped[dict[str, object]] = mapped_column(
         JSONB().with_variant(JSON(), "sqlite"),
         nullable=False,
         server_default=text("'{}'::jsonb"),
     )
-    diagnostics: Mapped[list] = mapped_column(
+    diagnostics: Mapped[list[dict[str, object]]] = mapped_column(
         JSONB().with_variant(JSON(), "sqlite"),
         nullable=False,
         server_default=text("'[]'::jsonb"),

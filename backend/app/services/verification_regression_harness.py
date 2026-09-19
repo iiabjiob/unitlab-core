@@ -4,7 +4,8 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Callable, Literal, Sequence
+from typing import Literal, cast
+from collections.abc import Callable, Sequence
 from uuid import uuid4
 
 from app.schemas.verification_schema import (
@@ -28,10 +29,12 @@ from app.services.iec61850.ied_simulator_fixture import (
     ied_simulator_fixture_to_payload,
 )
 from app.services.verification_execution import build_runtime_subscription_plan, execute_simulated_verification_run
+from app.services.verification_evidence import VerificationEvidenceRepository
 from app.services.verification_runtime_orchestrator import VerificationRuntimeOrchestrator
 
 
 RegressionCaseMode = Literal["verification_run", "reconnect"]
+JsonObject = dict[str, object]
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,13 +75,13 @@ class VerificationRegressionResult:
     mode: RegressionCaseMode
     passed: bool
     checks: tuple[str, ...]
-    fixture_payload: dict[str, Any]
-    report_payload: dict[str, Any]
+    fixture_payload: JsonObject
+    report_payload: JsonObject
     verification_run: VerificationRunSchema | None = None
     evidence_set: SignalVerificationEvidenceSetSchema | None = None
     session_snapshots: tuple[VerificationSessionSnapshotSchema, ...] = ()
     subscription_snapshots: tuple[VerificationSubscriptionSnapshotSchema, ...] = ()
-    diagnostics: tuple[dict[str, Any], ...] = ()
+    diagnostics: tuple[JsonObject, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,9 +91,9 @@ class VerificationRegressionSuiteResult:
     started_at: datetime
     finished_at: datetime
     results: tuple[VerificationRegressionResult, ...]
-    summary: dict[str, Any]
+    summary: JsonObject
 
-    def to_report(self) -> dict[str, Any]:
+    def to_report(self) -> JsonObject:
         return {
             "suite_id": self.suite_id,
             "passed": self.passed,
@@ -104,14 +107,14 @@ class VerificationRegressionSuiteResult:
 def write_verification_regression_artifacts(
     suite: VerificationRegressionSuiteResult,
     output_dir: str | Path,
-) -> dict[str, Any]:
+) -> JsonObject:
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
     suite_report_path = output_path / "suite-report.json"
     _write_json_file(suite_report_path, suite.to_report())
 
-    case_artifacts: list[dict[str, Any]] = []
+    case_artifacts: list[JsonObject] = []
     for result in suite.results:
         case_dir = output_path / "cases" / result.scenario_id
         case_dir.mkdir(parents=True, exist_ok=True)
@@ -142,19 +145,19 @@ def write_verification_regression_artifacts(
         "cases": case_artifacts,
     }
     _write_json_file(output_path / "manifest.json", manifest)
-    return manifest
+    return cast(JsonObject, manifest)
 
 
 class _RegressionVerificationEvidenceRepository:
     def __init__(self) -> None:
-        self.rows: list[dict[str, Any]] = []
-        self.evidence_sets: list[dict[str, Any]] = []
+        self.rows: list[JsonObject] = []
+        self.evidence_sets: list[JsonObject] = []
 
-    async def record_signal_verification_evidence(self, **kwargs: Any) -> Any:
+    async def record_signal_verification_evidence(self, **kwargs: object) -> object:
         self.rows.append(dict(kwargs))
         return SimpleNamespace(**kwargs)
 
-    async def upsert_signal_verification_evidence_set(self, **kwargs: Any) -> Any:
+    async def upsert_signal_verification_evidence_set(self, **kwargs: object) -> object:
         self.evidence_sets.append(dict(kwargs))
         return SimpleNamespace(**kwargs)
 
@@ -213,14 +216,14 @@ async def run_verification_regression_suite(
         started_at=started_at,
         finished_at=finished_at,
         results=tuple(results),
-        summary=summary,
+        summary=cast(JsonObject, summary),
     )
 
 
 async def _run_verification_regression_case(
     case: VerificationRegressionCase,
     *,
-    fixture_payload: dict[str, Any],
+    fixture_payload: JsonObject,
     triggered_at: datetime | None,
     now: Callable[[], datetime] | None,
 ) -> VerificationRegressionResult:
@@ -232,7 +235,7 @@ async def _run_verification_regression_case(
         verification_targets=case.verification_targets,
         subscription_plan=case.subscription_plan,
         execution_context=case.execution_context,
-        repository=repo,  # type: ignore[arg-type]
+        repository=cast(VerificationEvidenceRepository, cast(object, repo)),
         triggered_at=started_at,
         latency_ms=case.latency_ms,
         client_id=case.client_id,
@@ -272,7 +275,7 @@ async def _run_verification_regression_case(
 def _run_reconnect_regression_case(
     case: VerificationRegressionCase,
     *,
-    fixture_payload: dict[str, Any],
+    fixture_payload: JsonObject,
     triggered_at: datetime | None,
     now: Callable[[], datetime] | None,
 ) -> VerificationRegressionResult:
@@ -378,7 +381,7 @@ def _compare_reconnect_expectation(
     return failures
 
 
-def _build_fixture_payload(subscription_plan: VerificationSubscriptionPlanSchema) -> dict[str, Any]:
+def _build_fixture_payload(subscription_plan: VerificationSubscriptionPlanSchema) -> JsonObject:
     runtime_plan = build_runtime_subscription_plan(subscription_plan)
     fixture = build_ied_simulator_fixture_from_subscription_plan(runtime_plan)
     return ied_simulator_fixture_to_payload(fixture)
@@ -387,12 +390,12 @@ def _build_fixture_payload(subscription_plan: VerificationSubscriptionPlanSchema
 def _build_run_case_report_payload(
     *,
     case: VerificationRegressionCase,
-    fixture_payload: dict[str, Any],
+    fixture_payload: JsonObject,
     verification_run: VerificationRunSchema,
     evidence_set: SignalVerificationEvidenceSetSchema,
     checks: Sequence[str],
     passed: bool,
-) -> dict[str, Any]:
+) -> JsonObject:
     return {
         "scenario_id": case.scenario_id,
         "mode": case.mode,
@@ -410,14 +413,14 @@ def _build_run_case_report_payload(
 def _build_reconnect_case_report_payload(
     *,
     case: VerificationRegressionCase,
-    fixture_payload: dict[str, Any],
+    fixture_payload: JsonObject,
     verification_run: VerificationRunSchema,
     session_snapshots: Sequence[VerificationSessionSnapshotSchema],
     subscription_snapshots: Sequence[VerificationSubscriptionSnapshotSchema],
     checks: Sequence[str],
     passed: bool,
     started_at: datetime,
-) -> dict[str, Any]:
+) -> JsonObject:
     return {
         "scenario_id": case.scenario_id,
         "mode": case.mode,
@@ -434,13 +437,14 @@ def _build_reconnect_case_report_payload(
     }
 
 
-def _diagnostics_to_payload(diagnostics: Sequence[Any]) -> list[dict[str, Any]]:
-    payload: list[dict[str, Any]] = []
+def _diagnostics_to_payload(diagnostics: Sequence[object]) -> list[JsonObject]:
+    payload: list[JsonObject] = []
     for diagnostic in diagnostics:
-        if hasattr(diagnostic, "model_dump"):
-            payload.append(diagnostic.model_dump(mode="json"))
+        model_dump = getattr(diagnostic, "model_dump", None)
+        if callable(model_dump):
+            payload.append(cast(JsonObject, model_dump(mode="json")))
         elif isinstance(diagnostic, dict):
-            payload.append(dict(diagnostic))
+            payload.append(cast(JsonObject, diagnostic))
         else:
             payload.append({"value": str(diagnostic)})
     return payload
@@ -450,10 +454,10 @@ def _now(now: Callable[[], datetime] | None) -> datetime:
     return now() if now is not None else datetime.now(UTC)
 
 
-def _write_json_file(path: Path, payload: Any) -> None:
+def _write_json_file(path: Path, payload: object) -> None:
     import json
 
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=True), encoding="utf-8")
+    _ = path.write_text(json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=True), encoding="utf-8")
 
 
 def _relative_artifact_path(root: Path, path: Path) -> str:

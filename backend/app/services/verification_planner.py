@@ -5,7 +5,8 @@ import json
 import re
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Mapping, Sequence
+from typing import Literal, TypedDict, cast
+from collections.abc import Mapping, Sequence
 
 from app.models.signal import Signal
 from app.schemas.signal_sheet_schema import SignalAllocationRowSchema
@@ -25,7 +26,7 @@ class VerificationTargetSource:
     signal_id: int
     signal_reference: str
     signal_path: str
-    signal_metadata: dict[str, Any]
+    signal_metadata: dict[str, object]
     allocation_id: int | None
     allocation_status: str
     allocation_health: dict[str, bool]
@@ -37,6 +38,20 @@ class VerificationTargetSource:
     source_row_index: int | None = None
     source_kind: str | None = None
     source_reason: str | None = None
+
+
+class _GroupContext(TypedDict):
+    endpoint_id: str | None
+    ied_name: str | None
+    access_point_name: str | None
+    report_control_reference: str | None
+    report_control_name: str | None
+    report_kind: str | None
+    rpt_id: str | None
+    data_set_reference: str | None
+    source_classification: Literal["from SCD", "from discovery", "fallback", "not found"]
+    source_reason: str | None
+    reason: str
 
 
 def build_verification_target_sources(
@@ -90,7 +105,7 @@ def build_verification_subscription_plan(
 ) -> VerificationSubscriptionPlanSchema:
     targets: list[VerificationTargetSchema] = []
     group_buckets: dict[tuple[str, ...], list[int]] = defaultdict(list)
-    group_contexts: dict[tuple[str, ...], dict[str, Any]] = {}
+    group_contexts: dict[tuple[str, ...], _GroupContext] = {}
     uncovered_targets: list[VerificationSubscriptionPlanUncoveredTargetSchema] = []
     endpoints: set[str] = set()
     exact_count = 0
@@ -157,7 +172,7 @@ def build_verification_subscription_plan(
             window_ms=window_ms,
             protocol=protocol,
             protocol_metadata=protocol_metadata,
-            coverage_state=coverage_state,
+            coverage_state=cast(Literal["exact", "partial", "uncovered"], coverage_state),
             coverage_reason=coverage_reason,
             source_row_index=source.source_row_index,
             source_kind=source.source_kind,
@@ -192,7 +207,7 @@ def build_verification_subscription_plan(
                 fallback_discovery_group_reference,
             )
             group_buckets[group_key].append(target_index)
-            group_contexts.setdefault(
+            _ = group_contexts.setdefault(
                 group_key,
                 {
                     "endpoint_id": endpoint_id,
@@ -203,7 +218,10 @@ def build_verification_subscription_plan(
                     "report_kind": report_kind,
                     "rpt_id": rpt_id,
                     "data_set_reference": data_set_reference,
-                    "source_classification": source_classification,
+                    "source_classification": cast(
+                        Literal["from SCD", "from discovery", "fallback", "not found"],
+                        source_classification,
+                    ),
                     "source_reason": source_reason,
                     "reason": group_reason,
                 },
@@ -403,22 +421,24 @@ def build_planner_confidence_report(
         groups_count=plan.coverage.groups_count,
         endpoints_count=plan.coverage.endpoints_count,
         planning_quality=plan.coverage.planning_quality,
-        risk_level=risk_level,
+        risk_level=cast(Literal["low", "medium", "high"], risk_level),
         source_classification_counts=dict(source_classification_counts),
         signals=signals,
         diagnostics=diagnostics,
     )
 
 
-def _extract_protocol_metadata(signal_metadata: dict[str, Any]) -> tuple[str | None, dict[str, Any]]:
-    if not isinstance(signal_metadata, dict) or not signal_metadata:
+def _extract_protocol_metadata(signal_metadata: dict[str, object]) -> tuple[str | None, dict[str, object]]:
+    if not signal_metadata:
         return None, {}
 
-    verification_metadata = signal_metadata.get("verification") if isinstance(signal_metadata.get("verification"), dict) else {}
-    row_metadata = signal_metadata.get("row") if isinstance(signal_metadata.get("row"), dict) else {}
+    raw_verification_metadata = signal_metadata.get("verification")
+    verification_metadata = cast(dict[str, object], raw_verification_metadata) if isinstance(raw_verification_metadata, dict) else {}
+    raw_row_metadata = signal_metadata.get("row")
+    row_metadata = cast(dict[str, object], raw_row_metadata) if isinstance(raw_row_metadata, dict) else {}
 
     if isinstance(signal_metadata.get("protocol_metadata"), dict):
-        protocol_metadata = dict(signal_metadata["protocol_metadata"])
+        protocol_metadata = cast(dict[str, object], signal_metadata["protocol_metadata"])
         _merge_signal_list_verification_metadata(
             protocol_metadata=protocol_metadata,
             verification_metadata=verification_metadata,
@@ -429,7 +449,7 @@ def _extract_protocol_metadata(signal_metadata: dict[str, Any]) -> tuple[str | N
         return protocol, protocol_metadata
 
     if isinstance(signal_metadata.get("iec61850"), dict):
-        protocol_metadata = dict(signal_metadata["iec61850"])
+        protocol_metadata = cast(dict[str, object], signal_metadata["iec61850"])
         _merge_signal_list_verification_metadata(
             protocol_metadata=protocol_metadata,
             verification_metadata=verification_metadata,
@@ -439,7 +459,7 @@ def _extract_protocol_metadata(signal_metadata: dict[str, Any]) -> tuple[str | N
         protocol = _resolve_protocol_name(signal_metadata, protocol_metadata, default="iec61850")
         return protocol, protocol_metadata
 
-    protocol_metadata: dict[str, Any] = {}
+    protocol_metadata: dict[str, object] = {}
     _merge_signal_list_verification_metadata(
         protocol_metadata=protocol_metadata,
         verification_metadata=verification_metadata,
@@ -459,13 +479,13 @@ def _extract_protocol_metadata(signal_metadata: dict[str, Any]) -> tuple[str | N
 
 def _merge_signal_list_verification_metadata(
     *,
-    protocol_metadata: dict[str, Any],
-    verification_metadata: Any,
-    row_metadata: Any,
-    signal_metadata: dict[str, Any],
+    protocol_metadata: dict[str, object],
+    verification_metadata: dict[str, object],
+    row_metadata: dict[str, object],
+    signal_metadata: dict[str, object],
 ) -> None:
-    verification = verification_metadata if isinstance(verification_metadata, dict) else {}
-    row = row_metadata if isinstance(row_metadata, dict) else {}
+    verification = verification_metadata
+    row = row_metadata
 
     transport_host = _first_non_empty_string(
         protocol_metadata.get("transport_host"),
@@ -478,7 +498,7 @@ def _merge_signal_list_verification_metadata(
         signal_metadata.get("transport_host"),
     )
     if transport_host is not None:
-        protocol_metadata.setdefault("transport_host", transport_host)
+        _ = protocol_metadata.setdefault("transport_host", transport_host)
 
     address = _first_non_empty_string(
         protocol_metadata.get("iec61850_address"),
@@ -492,17 +512,17 @@ def _merge_signal_list_verification_metadata(
         signal_metadata.get("iec61850_address"),
     )
     if address is not None:
-        protocol_metadata.setdefault("iec61850_address", address)
-        protocol_metadata.setdefault("expected_feedback_path", address)
-        protocol_metadata.setdefault("data_reference", address)
+        _ = protocol_metadata.setdefault("iec61850_address", address)
+        _ = protocol_metadata.setdefault("expected_feedback_path", address)
+        _ = protocol_metadata.setdefault("data_reference", address)
 
     if transport_host is not None:
-        protocol_metadata.setdefault("access_point_name", "AP1")
+        _ = protocol_metadata.setdefault("access_point_name", "AP1")
 
 
 def _resolve_protocol_name(
-    signal_metadata: dict[str, Any],
-    protocol_metadata: dict[str, Any],
+    signal_metadata: dict[str, object],
+    protocol_metadata: dict[str, object],
     *,
     default: str | None = None,
 ) -> str | None:
@@ -515,11 +535,13 @@ def _resolve_protocol_name(
     return default
 
 
-def _resolve_source_row_index(signal_metadata: dict[str, Any]) -> int | None:
+def _resolve_source_row_index(signal_metadata: dict[str, object]) -> int | None:
     for candidate in (
         signal_metadata.get("source_row_index"),
         signal_metadata.get("row_index"),
-        signal_metadata.get("row", {}).get("row_index") if isinstance(signal_metadata.get("row"), dict) else None,
+        cast(dict[str, object], signal_metadata.get("row")).get("row_index")
+        if isinstance(signal_metadata.get("row"), dict)
+        else None,
     ):
         if isinstance(candidate, int) and candidate >= 0:
             return candidate
@@ -530,10 +552,10 @@ def _resolve_source_row_index(signal_metadata: dict[str, Any]) -> int | None:
     return None
 
 
-def _resolve_source_kind(signal_metadata: dict[str, Any]) -> str | None:
+def _resolve_source_kind(signal_metadata: dict[str, object]) -> str | None:
     for candidate in (
         signal_metadata.get("source_kind"),
-        signal_metadata.get("protocol_metadata", {}).get("source_kind")
+        cast(dict[str, object], signal_metadata.get("protocol_metadata")).get("source_kind")
         if isinstance(signal_metadata.get("protocol_metadata"), dict)
         else None,
     ):
@@ -544,10 +566,10 @@ def _resolve_source_kind(signal_metadata: dict[str, Any]) -> str | None:
     return None
 
 
-def _resolve_source_reason(signal_metadata: dict[str, Any]) -> str | None:
+def _resolve_source_reason(signal_metadata: dict[str, object]) -> str | None:
     for candidate in (
         signal_metadata.get("source_reason"),
-        signal_metadata.get("protocol_metadata", {}).get("source_reason")
+        cast(dict[str, object], signal_metadata.get("protocol_metadata")).get("source_reason")
         if isinstance(signal_metadata.get("protocol_metadata"), dict)
         else None,
     ):
@@ -560,7 +582,7 @@ def _resolve_source_reason(signal_metadata: dict[str, Any]) -> str | None:
 
 def _resolve_endpoint_identity(
     source: VerificationTargetSource,
-    protocol_metadata: dict[str, Any],
+    protocol_metadata: dict[str, object],
 ) -> tuple[str | None, str | None, str | None]:
     transport_host = _first_non_empty_string(
         protocol_metadata.get("transport_host"),
@@ -613,9 +635,9 @@ def _fallback_discovery_group_reference(expected_feedback_path: str) -> str:
     reference = text.split("!", 1)[-1] if "!" in text else text
     functional_constraint = _fallback_functional_constraint(reference)
     reference = reference.split("[", 1)[0]
-    domain, separator, item = reference.partition("/")
+    domain, separator, _item = reference.partition("/")
     if not separator:
-        domain, _separator, item = reference.partition(".")
+        domain, _separator, _item = reference.partition(".")
     domain = domain.strip()
     if not domain:
         return ""
@@ -645,7 +667,7 @@ def _is_report_observable_fallback_scope(scope: str) -> bool:
 def _resolve_group_references(
     *,
     source: VerificationTargetSource,
-    protocol_metadata: dict[str, Any],
+    protocol_metadata: dict[str, object],
     expected_feedback_path: str,
 ) -> tuple[str | None, str | None, str | None, str | None, str | None, str]:
     explicit_reference = False
@@ -692,7 +714,7 @@ def _resolve_group_references(
 def _resolve_source_classification(
     *,
     source: VerificationTargetSource,
-    protocol_metadata: dict[str, Any],
+    protocol_metadata: dict[str, object],
     coverage_reason: str | None,
     has_explicit_group_references: bool,
 ) -> tuple[str, str | None, str]:
@@ -766,7 +788,7 @@ def _source_classification_reason(source_classification: str, reason: str | None
     return reason or "no endpoint metadata"
 
 
-def _first_non_empty_string(*candidates: Any) -> str | None:
+def _first_non_empty_string(*candidates: object) -> str | None:
     for candidate in candidates:
         if isinstance(candidate, str):
             value = candidate.strip()
@@ -803,7 +825,7 @@ def _build_plan_id(
     selected_signal_ids: Sequence[int],
     groups: Sequence[VerificationSubscriptionPlanGroupSchema],
     uncovered_targets: Sequence[VerificationSubscriptionPlanUncoveredTargetSchema],
-    coverage: dict[str, Any],
+    coverage: dict[str, object],
 ) -> str:
     payload = {
         "selected_signal_ids": list(selected_signal_ids),
@@ -882,8 +904,8 @@ def _planner_risk_level(
 def _resolve_expected_feedback_path(
     *,
     signal_path: str,
-    signal_metadata: dict[str, Any],
-    protocol_metadata: dict[str, Any],
+    signal_metadata: dict[str, object],
+    protocol_metadata: dict[str, object],
 ) -> tuple[str, str]:
     for candidate in (
         protocol_metadata.get("expected_feedback_path"),
@@ -903,7 +925,7 @@ def _resolve_expected_feedback_path(
 def _resolve_coverage_state(
     *,
     source: VerificationTargetSource,
-    protocol_metadata: dict[str, Any],
+    protocol_metadata: dict[str, object],
     expected_feedback_path_source: str,
 ) -> tuple[str, str | None]:
     has_signal_list_endpoint = _first_non_empty_string(

@@ -3,7 +3,7 @@ from alembic import context
 
 from sqlalchemy import create_engine, pool
 from app.infrastructure.db.database import Base
-import app.models  # noqa
+import app.models  # noqa: F401  # pyright: ignore[reportUnusedImport]  # imported for model registration side effects
 from app.core.config import get_settings
 
 settings = get_settings()

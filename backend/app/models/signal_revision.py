@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, ForeignKey, Index, Integer, JSON, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -14,8 +14,8 @@ if TYPE_CHECKING:
 
 
 class SignalListRevision(Base):
-    __tablename__ = "signal_list_revisions"
-    __table_args__ = (
+    __tablename__: str = "signal_list_revisions"
+    __table_args__: tuple[object, ...] = (
         UniqueConstraint("workspace_id", "revision_no", name="uq_signal_list_revisions_workspace_no"),
         Index("ix_signal_list_revisions_workspace_status", "workspace_id", "status", "created_at"),
     )
@@ -39,8 +39,8 @@ class SignalListRevision(Base):
 
 
 class SignalListRevisionItem(Base):
-    __tablename__ = "signal_list_revision_items"
-    __table_args__ = (
+    __tablename__: str = "signal_list_revision_items"
+    __table_args__: tuple[object, ...] = (
         UniqueConstraint("revision_id", "order_index", name="uq_signal_list_revision_items_order"),
         Index("ix_signal_list_revision_items_revision", "revision_id", "order_index"),
     )
@@ -50,13 +50,13 @@ class SignalListRevisionItem(Base):
     live_signal_id: Mapped[int | None] = mapped_column(BIGINT_PK, ForeignKey("signals.id", ondelete="SET NULL"), nullable=True)
     order_index: Mapped[int] = mapped_column(Integer, nullable=False)
     signal_key: Mapped[str] = mapped_column(String(128), nullable=False)
-    snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, server_default="{}")
+    snapshot: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, server_default="{}")
 
     revision: Mapped[SignalListRevision] = relationship("SignalListRevision", back_populates="items")
 
 
 class SignalTestRunPlan(Base):
-    __tablename__ = "signal_test_run_plans"
+    __tablename__: str = "signal_test_run_plans"
 
     job_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     workspace_id: Mapped[int] = mapped_column(BIGINT_PK, ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
@@ -70,13 +70,13 @@ class SignalTestRunPlan(Base):
 
 
 class SignalTestRunPlanItem(Base):
-    __tablename__ = "signal_test_run_plan_items"
-    __table_args__ = (UniqueConstraint("job_id", "order_index", name="uq_signal_test_run_plan_items_order"),)
+    __tablename__: str = "signal_test_run_plan_items"
+    __table_args__: tuple[object, ...] = (UniqueConstraint("job_id", "order_index", name="uq_signal_test_run_plan_items_order"),)
 
     id: Mapped[int] = mapped_column(BIGINT_PK, primary_key=True, autoincrement=True)
     job_id: Mapped[str] = mapped_column(String(64), ForeignKey("signal_test_run_plans.job_id", ondelete="CASCADE"), nullable=False)
     revision_item_id: Mapped[int] = mapped_column(BIGINT_PK, ForeignKey("signal_list_revision_items.id", ondelete="RESTRICT"), nullable=False)
     order_index: Mapped[int] = mapped_column(Integer, nullable=False)
-    snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, server_default="{}")
+    snapshot: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, server_default="{}")
 
     plan: Mapped[SignalTestRunPlan] = relationship("SignalTestRunPlan", back_populates="items")

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, ForeignKey, Index, JSON, String, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import JSONB
@@ -15,9 +15,9 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 
 
 class SignalVerificationRun(Base):
-    __tablename__ = "signal_verification_runs"
+    __tablename__: str = "signal_verification_runs"
 
-    __table_args__ = (
+    __table_args__: tuple[object, ...] = (
         UniqueConstraint("workspace_id", "test_run_id", name="uq_signal_verification_runs_workspace_run"),
         Index("ix_signal_verification_runs_workspace_created", "workspace_id", "created_at", "id"),
         Index("ix_signal_verification_runs_workspace_run", "workspace_id", "test_run_id"),
@@ -30,7 +30,7 @@ class SignalVerificationRun(Base):
         nullable=False,
     )
     test_run_id: Mapped[str] = mapped_column(String(64), nullable=False)
-    payload: Mapped[dict[str, Any]] = mapped_column(
+    payload: Mapped[dict[str, object]] = mapped_column(
         JSONB().with_variant(JSON(), "sqlite"),
         nullable=False,
         server_default=text("'{}'::jsonb"),

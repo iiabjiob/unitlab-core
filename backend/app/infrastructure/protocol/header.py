@@ -5,6 +5,7 @@
 # [mode:1][version:1][packet_id:2][timestamp_ms:8][flags:1][payload_len:2]
 
 from dataclasses import dataclass
+from typing import ClassVar
 from . import endian
 
 PROTOCOL_VERSION = 1
@@ -54,6 +55,6 @@ def unpack_header(buf: bytes) -> PacketHeader:
     return PacketHeader(mode, version, packet_id, timestamp_ms, flags, payload_len)
 
 class HeaderFlags:
-    TIME_SYNCED = 0x01
-    RESERVED2   = 0x02
-    RESERVED3   = 0x04
+    TIME_SYNCED: ClassVar[int] = 0x01
+    RESERVED2: ClassVar[int] = 0x02
+    RESERVED3: ClassVar[int] = 0x04

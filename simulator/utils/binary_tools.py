@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 import random
 import struct
-from typing import Iterable, Sequence
+from collections.abc import Iterable, Sequence
 
 
 def hex_dump(data: bytes, width: int = 16) -> str:

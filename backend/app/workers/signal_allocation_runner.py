@@ -4,13 +4,14 @@ import asyncio
 import time
 from contextlib import suppress
 from datetime import datetime, timezone
-from typing import Any
+from typing import cast
 
 from app.api.v1.signal_sheet import SignalSheetRepository
 from app.core.config import get_settings
 from app.core.logger import get_logger
 from app.infrastructure.db.database import AsyncSessionLocal
 from app.infrastructure.redis.manager import RedisManager
+from app.infrastructure.redis.types import RedisStreamClient, RedisStreamEntries
 from app.infrastructure.redis.stream_bus import parse_signal_allocation_job_entry
 from app.schemas.signal_sheet_schema import SignalAllocationBulkUpdateSchema, SignalAllocationRowSchema, SignalAutoAllocateSchema
 from app.schemas.ws.events import build_signal_job_event
@@ -37,7 +38,17 @@ CONSUMER_NAME = build_worker_consumer_name()
 WORKER_NAME = "signal_allocation_runner"
 
 
-def _serialize_allocation_job_row_patches(rows: list[SignalAllocationRowSchema]) -> list[dict[str, Any]]:
+def _required_int(value: object) -> int:
+    if value is None:
+        raise ValueError("workspace_id is required")
+    return int(cast(str | int | float, value))
+
+
+def _list_length(value: object) -> int:
+    return len(cast(list[object], value)) if isinstance(value, list) else 0
+
+
+def _serialize_allocation_job_row_patches(rows: list[SignalAllocationRowSchema]) -> list[dict[str, object]]:
     return [
         {
             "row_id": row.row_id,
@@ -59,7 +70,7 @@ def _serialize_allocation_job_row_patches(rows: list[SignalAllocationRowSchema])
     ]
 
 
-async def _ensure_group(redis) -> None:
+async def _ensure_group(redis: RedisStreamClient) -> None:
     await ensure_stream_consumer_group(
         redis,
         stream_name=STREAM_NAME,
@@ -70,7 +81,7 @@ async def _ensure_group(redis) -> None:
     )
 
 
-async def _fetch(redis, stream_id: str, block_ms: int = 5000):
+async def _fetch(redis: RedisStreamClient, stream_id: str, block_ms: int = 5000) -> RedisStreamEntries:
     return await fetch_stream_group_entries(
         redis,
         stream_name=STREAM_NAME,
@@ -82,7 +93,7 @@ async def _fetch(redis, stream_id: str, block_ms: int = 5000):
     )
 
 
-async def _drain_pending(redis) -> None:
+async def _drain_pending(redis: RedisStreamClient) -> None:
     await drain_pending_stream_entries(
         fetch_pending=lambda stream_id, block_ms: _fetch(redis, stream_id, block_ms=block_ms),
         process_entries=lambda entries: _process_entries(redis, entries),
@@ -95,12 +106,12 @@ async def _drain_pending(redis) -> None:
 async def _handle_auto_allocate(
     repo: SignalSheetRepository,
     workspace_id: int,
-    payload: dict[str, Any],
-    job_state: dict[str, Any],
-) -> dict[str, Any]:
+    payload: dict[str, object],
+    job_state: dict[str, object],
+) -> dict[str, object]:
     request = SignalAutoAllocateSchema.model_validate(payload)
 
-    total = len(request.signal_ids or []) if isinstance(request.signal_ids, list) else 0
+    total = len(request.signal_ids or [])
     update_every = max(1, total // 25) if total > 0 else 1
     last_emit_at = 0.0
 
@@ -131,7 +142,7 @@ async def _handle_auto_allocate(
         progress_callback=progress_callback,
         commit=False,
     )
-    await repo.record_allocation_event(
+    _ = await repo.record_allocation_event(
         workspace_id=workspace_id,
         operation="auto_allocate",
         source="worker",
@@ -165,11 +176,11 @@ async def _handle_auto_allocate(
 async def _handle_bulk_update(
     repo: SignalSheetRepository,
     workspace_id: int,
-    payload: dict[str, Any],
-    job_state: dict[str, Any],
-) -> dict[str, Any]:
+    payload: dict[str, object],
+    job_state: dict[str, object],
+) -> dict[str, object]:
     request = SignalAllocationBulkUpdateSchema.model_validate(payload)
-    entries = [item.model_dump() for item in request.entries]
+    entries = [cast(dict[str, object], item.model_dump()) for item in request.entries]
     total = len(entries)
     update_every = max(1, total // 25) if total > 0 else 1
     last_emit_at = 0.0
@@ -193,8 +204,8 @@ async def _handle_bulk_update(
         )
 
     changed_signal_ids = await repo.update_allocations(workspace_id, entries, progress_callback=progress_callback, commit=False)
-    signal_ids = sorted({int(item["signal_id"]) for item in entries})
-    await repo.record_allocation_event(
+    signal_ids = sorted({_required_int(item["signal_id"]) for item in entries})
+    _ = await repo.record_allocation_event(
         workspace_id=workspace_id,
         operation="bulk_update",
         source="worker",
@@ -217,17 +228,20 @@ async def _handle_bulk_update(
     }
 
 
-async def _process_entries(redis, entries) -> None:
+async def _process_entries(redis: RedisStreamClient, entries: RedisStreamEntries) -> None:
     for entry_id, fields in entries:
         job_id: str | None = None
+        workspace_id = 0
+        operation = ""
         should_ack = False
         op_started_at = time.monotonic()
         try:
             _, envelope = parse_signal_allocation_job_entry((entry_id, fields))
             job_id = str(envelope.get("job_id") or "").strip()
-            workspace_id = int(envelope.get("workspace_id"))
+            workspace_id = _required_int(envelope.get("workspace_id"))
             operation = str(envelope.get("operation") or "").strip()
-            payload = envelope.get("payload") if isinstance(envelope.get("payload"), dict) else {}
+            raw_payload = envelope.get("payload")
+            payload: dict[str, object] = cast(dict[str, object], raw_payload) if isinstance(raw_payload, dict) else {}
 
             if not job_id or workspace_id <= 0:
                 should_ack = True
@@ -235,11 +249,11 @@ async def _process_entries(redis, entries) -> None:
 
             progress_total = 0
             if operation == "auto_allocate" and isinstance(payload.get("signal_ids"), list):
-                progress_total = len(payload.get("signal_ids") or [])
+                progress_total = _list_length(payload.get("signal_ids"))
             if operation == "bulk_update" and isinstance(payload.get("entries"), list):
-                progress_total = len(payload.get("entries") or [])
+                progress_total = _list_length(payload.get("entries"))
             if operation == "test_run" and isinstance(payload.get("signal_ids"), list):
-                progress_total = len(payload.get("signal_ids") or [])
+                progress_total = _list_length(payload.get("signal_ids"))
 
             logger.info(
                 "▶️ Signal allocation job start | workspace=%s job_id=%s op=%s entries=%s entry_id=%s",
@@ -318,19 +332,19 @@ async def _process_entries(redis, entries) -> None:
                     await session.rollback()
                     raise
 
-            cancelled = bool((result or {}).get("cancelled")) if isinstance(result, dict) else False
+            cancelled = bool((result or {}).get("cancelled"))
             completed_state = await update_signal_job(
                 job_id,
                 status="cancelled" if cancelled else "succeeded",
                 message="Cancelled" if cancelled else "Completed",
-                progress_done=(result.get("processed", 0) if cancelled and isinstance(result, dict) else progress_total),
+                progress_done=(_required_int(result.get("processed", 0)) if cancelled else progress_total),
                 progress_total=progress_total,
                 result=result,
             )
             if completed_state:
                 await WsEventPublisher.publish(build_signal_job_event(completed_state))
                 duration_ms = (time.monotonic() - op_started_at) * 1000
-                result_data = result if isinstance(result, dict) else {}
+                result_data = result or {}
                 logger.info(
                     "✅ Signal allocation job complete | workspace=%s job_id=%s op=%s duration=%.1f ms assigned=%s updated=%s skipped=%s missing=%s changed=%s",
                     workspace_id,
@@ -341,7 +355,7 @@ async def _process_entries(redis, entries) -> None:
                     result_data.get("updated"),
                     result_data.get("skipped"),
                     result_data.get("missing"),
-                    len(result_data.get("changed_signal_ids") or []) if isinstance(result_data.get("changed_signal_ids"), list) else 0,
+                    _list_length(result_data.get("changed_signal_ids")),
                 )
                 should_ack = True
         except Exception as exc:  # noqa: BLE001
@@ -358,9 +372,9 @@ async def _process_entries(redis, entries) -> None:
                     duration_ms = (time.monotonic() - op_started_at) * 1000
                     logger.error(
                         "❌ Signal allocation job failed | workspace=%s job_id=%s op=%s duration=%.1f ms error=%s",
-                        workspace_id if 'workspace_id' in locals() else 0,
+                        workspace_id,
                         job_id,
-                        locals().get("operation", ""),
+                        operation if "operation" in locals() else "",
                         duration_ms,
                         str(exc),
                     )
@@ -369,18 +383,18 @@ async def _process_entries(redis, entries) -> None:
                 should_ack = True
         finally:
             if should_ack:
-                await redis.xack(STREAM_NAME, GROUP_NAME, entry_id)
+                _ = await redis.xack(STREAM_NAME, GROUP_NAME, entry_id)
             else:
                 logger.warning("⚠️ Leaving stream entry pending due to missing persisted terminal state: %s", entry_id)
 
 
 async def _publish_running_progress(
     *,
-    job_state: dict[str, Any],
+    job_state: dict[str, object],
     progress_done: int,
     progress_total: int,
     message: str,
-    result: dict[str, Any] | None = None,
+    result: dict[str, object] | None = None,
 ) -> None:
     next_state = dict(job_state)
     next_state["status"] = "running"
@@ -396,7 +410,7 @@ async def _publish_running_progress(
 
 async def main() -> None:
     await RedisManager.start()
-    redis = RedisManager.get_instance()
+    redis = cast(RedisStreamClient, cast(object, RedisManager.get_instance()))
 
     heartbeat_task = start_worker_heartbeat("signal_allocation_runner")
     stop_event = asyncio.Event()
@@ -424,7 +438,7 @@ async def main() -> None:
             logger=logger,
         )
     finally:
-        heartbeat_task.cancel()
+        _ = heartbeat_task.cancel()
         with suppress(asyncio.CancelledError):
             await heartbeat_task
         await clear_worker_status("signal_allocation_runner")

@@ -1,7 +1,8 @@
 import asyncio
 import time
+from importlib import import_module
 from collections import defaultdict
-from typing import List, Union, Dict, Any
+from typing import ClassVar, Protocol, cast
 from pydantic import BaseModel
 from fastapi import WebSocket
 from app.core.logger import get_logger
@@ -10,12 +11,21 @@ from app.core.config import get_settings
 logger = get_logger("ws")
 settings = get_settings()
 
+
+class _WsStateService(Protocol):
+    @staticmethod
+    async def sync_client(websocket: WebSocket) -> None: ...
+
+
+class _WsStateServiceModule(Protocol):
+    WsStateService: _WsStateService
+
 class WebSocketManager:
-    _instance = None
+    _instance: ClassVar["WebSocketManager | None"] = None
 
     def __init__(self):
-        self.active_connections: List[WebSocket] = []
-        self._outbound_queues: dict[WebSocket, asyncio.Queue[Dict[str, Any]]] = {}
+        self.active_connections: list[WebSocket] = []
+        self._outbound_queues: dict[WebSocket, asyncio.Queue[dict[str, object]]] = {}
         self._sender_tasks: dict[WebSocket, asyncio.Task[None]] = {}
         self._sync_tasks: dict[WebSocket, asyncio.Task[None]] = {}
         self._closing_sockets: set[WebSocket] = set()
@@ -34,7 +44,7 @@ class WebSocketManager:
         self.active_connections.append(websocket)
         self._inc("connect.calls")
         queue_size = max(int(settings.ws_outbound_queue_size or 2048), 16)
-        queue: asyncio.Queue[Dict[str, Any]] = asyncio.Queue(maxsize=queue_size)
+        queue: asyncio.Queue[dict[str, object]] = asyncio.Queue(maxsize=queue_size)
         self._outbound_queues[websocket] = queue
         self._sender_tasks[websocket] = asyncio.create_task(self._sender_loop(websocket, queue))
         self._sync_tasks[websocket] = asyncio.create_task(self._run_initial_sync(websocket))
@@ -56,16 +66,16 @@ class WebSocketManager:
         if websocket in self.active_connections:
             self.active_connections.remove(websocket)
             removed = True
-        self._outbound_queues.pop(websocket, None)
+        _ = self._outbound_queues.pop(websocket, None)
         sender_task = self._sender_tasks.pop(websocket, None)
         if sender_task is not None:
-            sender_task.cancel()
+            _ = sender_task.cancel()
         sync_task = self._sync_tasks.pop(websocket, None)
         if sync_task is not None:
-            sync_task.cancel()
+            _ = sync_task.cancel()
         if known_socket and websocket not in self._closing_sockets:
             self._closing_sockets.add(websocket)
-            asyncio.create_task(self._close_transport(websocket, reason))
+            _ = asyncio.create_task(self._close_transport(websocket, reason))
         if removed:
             self._inc("disconnect.calls")
             self._inc(f"disconnect.reason.{reason}")
@@ -86,12 +96,12 @@ class WebSocketManager:
         finally:
             self._closing_sockets.discard(websocket)
 
-    async def send_event(self, websocket: WebSocket, event: Union[BaseModel, Dict[str, Any]]):
+    async def send_event(self, websocket: WebSocket, event: BaseModel | dict[str, object]) -> None:
         """Send a Pydantic or dict event to a specific client."""
         payload, _ = self._serialize_event(event)
-        await self._enqueue_payload(websocket, payload, log_send=True)
+        _ = await self._enqueue_payload(websocket, payload, log_send=True)
 
-    async def broadcast(self, event: Union[BaseModel, Dict[str, Any]]):
+    async def broadcast(self, event: BaseModel | dict[str, object]) -> None:
         """Broadcast a Pydantic or dict event to all connected clients."""
         sockets = list(self.active_connections)
         if not sockets:
@@ -138,7 +148,7 @@ class WebSocketManager:
         if channel != "devices/status":
             logger.debug(
                 f"📡 Broadcast channel={channel} clients={clients} sent={sent} "
-                f"failed={failed} total={total_latency:.1f} ms"
+                + f"failed={failed} total={total_latency:.1f} ms"
             )
             return
 
@@ -154,19 +164,20 @@ class WebSocketManager:
         suffix = f" (+{suppressed} suppressed)" if suppressed > 0 else ""
         logger.debug(
             f"📡 Broadcast channel={channel} clients={clients} sent={sent} "
-            f"failed={failed} total={total_latency:.1f} ms{suffix}"
+            + f"failed={failed} total={total_latency:.1f} ms{suffix}"
         )
 
-    def _serialize_event(self, event: Union[BaseModel, Dict[str, Any]]) -> tuple[Dict[str, Any], str | None]:
+    def _serialize_event(self, event: BaseModel | dict[str, object]) -> tuple[dict[str, object], str | None]:
         if isinstance(event, BaseModel):
-            payload = event.model_dump(mode="json")
-            channel = getattr(event, "channel", None)
+            payload = cast(dict[str, object], cast(object, event.model_dump(mode="json")))
+            channel = cast(str | None, getattr(event, "channel", None))
         else:
             payload = event
-            channel = event.get("channel")
+            channel_value = event.get("channel")
+            channel = channel_value if isinstance(channel_value, str) else None
         return payload, channel
 
-    async def _enqueue_payload(self, websocket: WebSocket, payload: Dict[str, Any], *, log_send: bool) -> bool:
+    async def _enqueue_payload(self, websocket: WebSocket, payload: dict[str, object], *, log_send: bool) -> bool:
         queue = self._outbound_queues.get(websocket)
         if queue is None:
             return False
@@ -181,7 +192,7 @@ class WebSocketManager:
             self.disconnect(websocket, reason="queue_full")
             return False
 
-    async def _sender_loop(self, websocket: WebSocket, queue: asyncio.Queue[Dict[str, Any]]) -> None:
+    async def _sender_loop(self, websocket: WebSocket, queue: asyncio.Queue[dict[str, object]]) -> None:
         timeout_s = max(settings.ws_send_timeout_ms, 100) / 1000
         try:
             while True:
@@ -208,9 +219,8 @@ class WebSocketManager:
     async def _run_initial_sync(self, websocket: WebSocket) -> None:
         try:
             # Send stored states after connect without blocking the accept path.
-            from app.services.ws_state_service import WsStateService
-
-            await WsStateService.sync_client(websocket)
+            state_service_module = cast(_WsStateServiceModule, cast(object, import_module("app.services.ws_state_service")))
+            await state_service_module.WsStateService.sync_client(websocket)
         except asyncio.CancelledError:
             raise
         except Exception as e:
@@ -221,9 +231,9 @@ class WebSocketManager:
             task = self._sync_tasks.get(websocket)
             current = asyncio.current_task()
             if task is not None and task is current:
-                self._sync_tasks.pop(websocket, None)
+                _ = self._sync_tasks.pop(websocket, None)
 
-    def get_stats(self) -> dict[str, Any]:
+    def get_stats(self) -> dict[str, object]:
         return {
             "active_connections": len(self.active_connections),
             "outbound_queues": len(self._outbound_queues),
@@ -232,7 +242,7 @@ class WebSocketManager:
             "counters": dict(self._counters),
         }
 
-    def reset_stats(self) -> dict[str, Any]:
+    def reset_stats(self) -> dict[str, object]:
         self._counters.clear()
         return self.get_stats()
 

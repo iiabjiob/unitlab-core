@@ -25,9 +25,9 @@ class _FakeRedis:
 
 
 @pytest.mark.anyio
-async def test_enqueue_core_network_command_serializes_apply_settings_payload(monkeypatch) -> None:
+async def test_enqueue_core_network_command_serializes_apply_settings_payload(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = _FakeRedis()
-    monkeypatch.setattr(core_network_service.RedisManager, "get_instance", staticmethod(lambda: fake))
+    monkeypatch.setattr(core_network_service.RedisManager, "get_instance", staticmethod(lambda: fake))  # pyright: ignore[reportPrivateLocalImportUsage]
     monkeypatch.setattr(core_network_service, "settings", SimpleNamespace(core_net_command_stream="core_net:commands", core_net_command_stream_maxlen=1234))
 
     accepted = await enqueue_core_network_command(
@@ -72,9 +72,9 @@ async def test_enqueue_core_network_command_serializes_apply_settings_payload(mo
 
 
 @pytest.mark.anyio
-async def test_enqueue_core_network_command_serializes_probe_payload(monkeypatch) -> None:
+async def test_enqueue_core_network_command_serializes_probe_payload(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = _FakeRedis()
-    monkeypatch.setattr(core_network_service.RedisManager, "get_instance", staticmethod(lambda: fake))
+    monkeypatch.setattr(core_network_service.RedisManager, "get_instance", staticmethod(lambda: fake))  # pyright: ignore[reportPrivateLocalImportUsage]
     monkeypatch.setattr(core_network_service, "settings", SimpleNamespace(core_net_command_stream="core_net:commands", core_net_command_stream_maxlen=1234))
 
     accepted = await enqueue_core_network_command(

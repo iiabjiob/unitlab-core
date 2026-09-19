@@ -16,7 +16,7 @@ async def wait_for_database(
     for attempt in range(1, max_attempts + 1):
         try:
             async with engine.begin() as conn:
-                await conn.execute(text("SELECT 1"))
+                _ = await conn.execute(text("SELECT 1"))
                 logger.info("Database connection established")
                 return
         except Exception as exc:

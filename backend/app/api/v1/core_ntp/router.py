@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -23,7 +21,7 @@ class CoreNtpCommandAcceptedResponse(BaseModel):
 
 
 class CoreNtpStateResponse(BaseModel):
-    state: dict[str, Any]
+    state: dict[str, object]
 
 
 def _accepted_to_response(accepted: CoreNtpCommandAccepted) -> CoreNtpCommandAcceptedResponse:
@@ -73,4 +71,3 @@ async def set_core_ntp_time(payload: CoreNtpSetTimePayload) -> CoreNtpCommandAcc
         payload={"timestamp": payload.timestamp.isoformat()},
     )
     return _accepted_to_response(accepted)
-

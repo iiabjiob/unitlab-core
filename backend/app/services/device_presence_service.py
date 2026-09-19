@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Iterable
+from collections.abc import Iterable
+from typing import cast
+import redis.asyncio as redis
 
 from app.core.config import get_settings
 from app.core.logger import get_logger
@@ -38,9 +40,9 @@ class DevicePresence:
 
 class DevicePresenceService:
     def __init__(self) -> None:
-        self._redis = self._try_get_redis()
+        self._redis: redis.Redis | None = self._try_get_redis()
 
-    def _try_get_redis(self):
+    def _try_get_redis(self) -> redis.Redis | None:
         try:
             return RedisManager.get_instance()
         except RuntimeError:
@@ -70,10 +72,10 @@ class DevicePresenceService:
 
         pipe = self._redis.pipeline(transaction=False)
         for unit_id in normalized_unit_ids:
-            pipe.get(f"device:{unit_id}:status")
-            pipe.get(f"device:{unit_id}:last_seen")
+            _ = pipe.get(f"device:{unit_id}:status")
+            _ = pipe.get(f"device:{unit_id}:last_seen")
         try:
-            raw_values = await pipe.execute()
+            raw_values = cast(list[object], cast(object, await pipe.execute()))
         except Exception as exc:  # pragma: no cover - defensive fallback for degraded Redis
             logger.warning(f"Presence Redis lookup failed, fallback to offline map: {exc}")
             return {

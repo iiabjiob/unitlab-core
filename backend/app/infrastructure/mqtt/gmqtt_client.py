@@ -2,23 +2,44 @@
 import asyncio
 import ssl
 from pathlib import Path
-from gmqtt import Client as MQTTClient
-from typing import Callable, Awaitable, Optional
+from gmqtt import Client as MQTTClient  # pyright: ignore[reportMissingTypeStubs]
+from typing import Protocol, cast
+from collections.abc import Awaitable, Callable
 from app.core.logger import get_logger
 
 logger = get_logger("mqtt")
 
 OnMessageAsync = Callable[[str, bytes, int, object], Awaitable[None]]
 
+
+class _MqttClientProtocol(Protocol):
+    on_connect: object
+    on_disconnect: object
+    on_message: object
+    on_subscribe: object
+
+    def set_auth_credentials(self, username: str, password: str | None = None) -> None: ...
+
+    async def connect(self, host: str, port: int, *, ssl: ssl.SSLContext | bool = False) -> None: ...
+
+    async def disconnect(self) -> None: ...
+
+    def subscribe(self, topic: str, qos: int = 0) -> object: ...
+
+    def publish(self, topic: str, payload: bytes | str, qos: int = 0, retain: bool = False) -> object: ...
+
 class UnitLabMqttClient:
     """Low-level async MQTT client (gmqtt wrapper). Keeps zero app logic inside."""
+    client: _MqttClientProtocol
+    connected: asyncio.Event
+
     def __init__(self, client_id: str):
-        self.client = MQTTClient(client_id)
+        self.client = cast(_MqttClientProtocol, cast(object, MQTTClient(client_id)))
         self.connected = asyncio.Event()
         self._subscriptions: dict[str, int] = {}
 
         # External async message hook (set by manager)
-        self._on_message_async: Optional[OnMessageAsync] = None
+        self._on_message_async: OnMessageAsync | None = None
 
         # Bind gmqtt callbacks
         self.client.on_connect = self.on_connect
@@ -26,7 +47,7 @@ class UnitLabMqttClient:
         self.client.on_message = self.on_message
         self.client.on_subscribe = self.on_subscribe
 
-    def set_on_message(self, handler: OnMessageAsync):
+    def set_on_message(self, handler: OnMessageAsync) -> None:
         """Register async on_message hook owned by higher layer (manager)."""
         self._on_message_async = handler
 
@@ -41,7 +62,7 @@ class UnitLabMqttClient:
         tls_ca_file: str | None = None,
         tls_cert_file: str | None = None,
         tls_key_file: str | None = None,
-    ):
+    ) -> None:
         if username:
             self.client.set_auth_credentials(username, password or "")
         if tls:
@@ -60,38 +81,45 @@ class UnitLabMqttClient:
             await self.client.connect(host, port)
         logger.info("✅ MQTT client started")
 
-    async def disconnect(self):
+    async def disconnect(self) -> None:
         await self.client.disconnect()
         logger.info("🛑 MQTT client stopped")
     
-    def subscribe(self, topic: str, qos: int = 0):
+    def subscribe(self, topic: str, qos: int = 0) -> None:
         self._subscriptions[topic] = qos
         if self.connected.is_set():
-            self.client.subscribe(topic, qos)
+            _ = self.client.subscribe(topic, qos)
             logger.info(f"📡 Subscribing to topic: {topic}")
 
-    def publish(self, topic, payload, qos=0, retain=False):
+    def publish(self, topic: str, payload: bytes | str, qos: int = 0, retain: bool = False) -> object:
         return self.client.publish(topic, payload, qos=qos, retain=retain)
 
     # --- gmqtt callbacks ---
-    def on_connect(self, client, flags, rc, properties):
+    def on_connect(self, _client: MQTTClient, _flags: object, _rc: int, _properties: object) -> None:
         logger.info("✅ Connected to MQTT broker")
         self.connected.set()
         for topic, qos in self._subscriptions.items():
-            self.client.subscribe(topic, qos)
+            _ = self.client.subscribe(topic, qos)
             logger.info(f"📡 Subscribing to topic: {topic}")
 
-    def on_disconnect(self, client, packet, exc=None):
+    def on_disconnect(self, _client: MQTTClient, _packet: object, _exc: Exception | None = None) -> None:
         logger.warning("⚠️ Disconnected from MQTT broker")
         self.connected.clear()
 
-    def on_subscribe(self, client, mid, qos, properties):
+    def on_subscribe(self, _client: MQTTClient, mid: int, qos: int, _properties: object) -> None:
         logger.info(f"✅ Subscribed (mid={mid}, qos={qos})")
 
-    def on_message(self, client, topic, payload, qos, properties):
+    def on_message(
+        self,
+        _client: MQTTClient,
+        topic: str,
+        payload: bytes,
+        qos: int,
+        properties: object,
+    ) -> None:
         # Delegate to manager-provided async hook (don’t block gmqtt callback)
         if self._on_message_async:
-            asyncio.create_task(self._dispatch_message(topic, payload, qos, properties))
+            _ = asyncio.create_task(self._dispatch_message(topic, payload, qos, properties))
         else:
             logger.debug(f"📥 Received (no handler set): {topic} ({len(payload)} bytes)")
 

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any
+import redis.asyncio as redis_async
+from collections.abc import Awaitable, Callable
+from typing import Literal, Protocol, cast
 from fastapi import WebSocket
 from sqlalchemy import exists, select
 
@@ -32,8 +34,28 @@ MANUAL_COMMAND_ACK_TIMEOUT_MS = 3000
 MANUAL_READBACK_TIMEOUT_MS = 2000
 
 
+class _ManualRedis(Protocol):
+    async def get(self, name: str) -> object: ...
+
+    async def hget(self, name: str, key: str) -> object: ...
+
+    async def ttl(self, name: str) -> int: ...
+
+
+def _redis() -> _ManualRedis:
+    return cast(_ManualRedis, cast(object, RedisManager.get_instance()))
+
+
+def _to_int(value: object) -> int:
+    return int(cast(str | int | float | bytes | bytearray, value))
+
+
+def _to_float(value: object) -> float:
+    return float(cast(str | int | float | bytes | bytearray, value))
+
+
 async def _wait_for_manual_readback(
-    redis: Any,
+    redis: _ManualRedis,
     *,
     action: str,
     unit_id: str,
@@ -47,20 +69,20 @@ async def _wait_for_manual_readback(
         fresh = True
         if packet_id is not None:
             try:
-                fresh = int(await redis.get(f"device:{unit_id}:last_state_packet_id")) == int(packet_id)
+                fresh = _to_int(await redis.get(f"device:{unit_id}:last_state_packet_id")) == int(packet_id)
             except (TypeError, ValueError):
                 fresh = False
         if action == "ao_set":
             raw_value = await redis.hget(f"device:{unit_id}:ao", str(int(channel_index)))
             try:
-                actual_value = float(raw_value)
+                actual_value = _to_float(raw_value)
             except (TypeError, ValueError):
                 actual_value = None
             matched = fresh and actual_value is not None and abs(actual_value - float(expected_value)) <= 0.01
         else:
             raw_bitmask = await redis.get(f"device:{unit_id}:bitmask")
             try:
-                bitmask = int(raw_bitmask)
+                bitmask = _to_int(raw_bitmask)
             except (TypeError, ValueError):
                 bitmask = None
             matched = fresh and bitmask is not None and (1 if bitmask & (1 << int(channel_index)) else 0) == int(expected_value)
@@ -75,7 +97,7 @@ async def _result(
     ws: WebSocket,
     *,
     command_id: str | None,
-    delivery: str,
+    delivery: Literal["queued", "rejected"],
     reason: str | None = None,
 ) -> None:
     await ws.send_json(
@@ -155,7 +177,7 @@ async def _channels(
 
 
 async def _device_is_online(unit_id: str) -> bool:
-    redis = RedisManager.get_instance()
+    redis = _redis()
     status = await redis.get(f"device:{unit_id}:status")
     if isinstance(status, bytes):
         status = status.decode("utf-8", errors="ignore")
@@ -178,10 +200,10 @@ async def _enqueue_manual(
     unit_id: str,
     device_id: int,
     action: str,
-    payload: dict,
-    sender,
+    payload: dict[str, object],
+    sender: Callable[[str], Awaitable[str]],
 ) -> None:
-    redis = RedisManager.get_instance()
+    redis = _redis()
     owner_id = f"manual:{id(ws)}"
     async with AsyncSessionLocal() as recovery_session:
         blocked_channels = await list_hardware_recovery_required_channels(
@@ -197,7 +219,7 @@ async def _enqueue_manual(
             reason="hardware_recovery_required",
         )
         return
-    admission = HardwareCommandAdmission(redis)
+    admission = HardwareCommandAdmission(cast(redis_async.Redis, cast(object, redis)))
     leases = await admission.acquire_many(channel_ids=channel_ids, owner_kind="manual", owner_id=owner_id)
     if leases is None:
         await _result(ws, command_id=None, delivery="rejected", reason="channel_lease_busy")
@@ -207,7 +229,7 @@ async def _enqueue_manual(
     execution_reason: str | None = None
     try:
         async with AsyncSessionLocal() as session:
-            await record_hardware_command_intent(
+            _ = await record_hardware_command_intent(
                 session,
                 command_id=command_id,
                 workspace_id=workspace_id,
@@ -226,7 +248,7 @@ async def _enqueue_manual(
             is_current = getattr(admission, "is_current", None)
             if is_current is not None and not await is_current(leases[0]):
                 raise RuntimeError("Hardware channel lease lost before command publish")
-            await sender(command_id)
+            _ = await sender(command_id)
             await mark_hardware_command_intent_queued(session, command_id=command_id)
             await session.commit()
             ack_states = await wait_for_hardware_command_acks(
@@ -247,22 +269,24 @@ async def _enqueue_manual(
                     if channel_index is not None and expected_value is not None:
                         readback_targets.append(
                             (
-                                int(channel_index),
-                                float(expected_value) if action == "ao_set" else int(expected_value),
+                                _to_int(channel_index),
+                                _to_float(expected_value) if action == "ao_set" else _to_int(expected_value),
                             )
                         )
                 elif action == "do_all" and payload.get("bitmask") is not None:
-                    bitmask = int(payload["bitmask"])
+                    bitmask = _to_int(payload["bitmask"])
+                    raw_channel_ids = payload.get("channel_ids")
+                    channel_count = len(cast(list[object], raw_channel_ids)) if isinstance(raw_channel_ids, list) else 0
                     readback_targets.extend(
                         (index, 1 if bitmask & (1 << index) else 0)
-                        for index in range(len(payload.get("channel_ids") or []))
+                        for index in range(channel_count)
                     )
                 elif action == "do_pair" and payload.get("state2b") is not None:
-                    state2b = int(payload["state2b"]) & 0b11
+                    state2b = _to_int(payload["state2b"]) & 0b11
                     pair_indexes = (payload.get("chA"), payload.get("chB"))
                     pair_targets = (state2b & 0b01, (state2b >> 1) & 0b01)
                     readback_targets.extend(
-                        (int(index), int(target))
+                        (_to_int(index), _to_int(target))
                         for index, target in zip(pair_indexes, pair_targets)
                         if index is not None
                     )
@@ -270,7 +294,7 @@ async def _enqueue_manual(
                     channel_index = payload.get("ch")
                     expected_value = payload.get("value")
                     if channel_index is not None and expected_value is not None:
-                        readback_targets.append((int(channel_index), int(expected_value)))
+                        readback_targets.append((_to_int(channel_index), _to_int(expected_value)))
 
                 readback_ok = bool(readback_targets)
                 for target_index, target_value in readback_targets:
@@ -295,19 +319,19 @@ async def _enqueue_manual(
                     readback_ok = readback_ok and target_ok
                 if readback_ok and action == "do_pulse":
                     try:
-                        pulse_ms = max(0, min(65535, int(payload.get("pulse_ms") or 0)))
+                        pulse_ms = max(0, min(65535, _to_int(payload.get("pulse_ms") or 0)))
                         await asyncio.sleep(pulse_ms / 1000)
                         revert_packet_id = await enqueue_request_state(
                             unit_id=unit_id,
                             mode=State.REQ_SINGLE_BIT,
-                            ch=int(payload["ch"]),
+                            ch=_to_int(payload["ch"]),
                             correlation_id=f"manual:{command_id}:pulse-revert",
                         )
                         readback_ok = await _wait_for_manual_readback(
                             redis,
                             action=action,
                             unit_id=unit_id,
-                            channel_index=int(payload["ch"]),
+                            channel_index=_to_int(payload["ch"]),
                             expected_value=0,
                             timeout_ms=MANUAL_READBACK_TIMEOUT_MS,
                             packet_id=revert_packet_id,
@@ -346,7 +370,7 @@ async def _enqueue_manual(
         return
     finally:
         for lease in leases:
-            await admission.release(lease)
+            _ = await admission.release(lease)
     await _result(
         ws,
         command_id=command_id,
@@ -364,11 +388,12 @@ async def handle_manual_do(ws: WebSocket, msg: SetDoCommandMessage) -> None:
         if any(index is None for index in indexes):
             await _result(ws, command_id=None, delivery="rejected", reason="channel_indexes_required")
             return
+        valid_indexes = [int(index) for index in indexes if index is not None]
         channels = await _channels(
             msg.workspace_id,
             msg.channel_ids,
             msg.unit_id,
-            [int(index) for index in indexes],
+            valid_indexes,
             "do",
             require_allocation=False,
         )
@@ -385,7 +410,7 @@ async def handle_manual_do(ws: WebSocket, msg: SetDoCommandMessage) -> None:
             unit_id=msg.unit_id,
             device_id=channels[0].device_id,
             action="do_pair" if msg.mode.name == "SET_PAIR_BIT" else "do_all",
-            payload=msg.model_dump(mode="json"),
+            payload=cast(dict[str, object], cast(object, msg.model_dump(mode="json"))),
             sender=lambda command_id: enqueue_do_command(
                 unit_id=msg.unit_id,
                 mode=msg.mode,
@@ -424,7 +449,7 @@ async def handle_manual_do(ws: WebSocket, msg: SetDoCommandMessage) -> None:
         unit_id=msg.unit_id,
         device_id=channel.device_id,
         action="do_pulse" if msg.mode.name == "SET_PULSE_BIT" else "do_set",
-        payload=msg.model_dump(mode="json"),
+        payload=cast(dict[str, object], cast(object, msg.model_dump(mode="json"))),
         sender=lambda command_id: enqueue_do_command(
             unit_id=msg.unit_id,
             mode=msg.mode,
@@ -459,7 +484,7 @@ async def handle_manual_ao(ws: WebSocket, msg: SetAoCommandMessage) -> None:
         unit_id=msg.unit_id,
         device_id=channel.device_id,
         action="ao_set",
-        payload=msg.model_dump(mode="json"),
+        payload=cast(dict[str, object], cast(object, msg.model_dump(mode="json"))),
         sender=lambda command_id: enqueue_ao_command(
             unit_id=msg.unit_id,
             ch=msg.ch,

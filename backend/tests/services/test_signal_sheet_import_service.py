@@ -1,22 +1,28 @@
 from __future__ import annotations
 
 from io import BytesIO
+from typing import cast
 
 from openpyxl import Workbook
+from openpyxl.worksheet.worksheet import Worksheet
 
-from app.schemas.signal_import_schema import SignalImportMetaSchema
+from app.schemas.signal_import_schema import SignalImportMetaSchema, SignalImportVerificationSchema
 from app.services.signal_sheet_import_service import SignalSheetImportService
 
 
 def _build_workbook(rows: list[list[object]], title: str = "Signals") -> bytes:
     wb = Workbook()
-    ws = wb.active
+    ws = cast(Worksheet, wb.active)
     ws.title = title
     for row in rows:
         ws.append(row)
     buff = BytesIO()
     wb.save(buff)
     return buff.getvalue()
+
+
+def _object_dict(value: object) -> dict[str, object]:
+    return cast(dict[str, object], value)
 
 
 def test_parse_workbook_projects_signals_from_internal_type() -> None:
@@ -36,8 +42,9 @@ def test_parse_workbook_projects_signals_from_internal_type() -> None:
 
     payload = SignalSheetImportService.parse_workbook(raw, filename="demo.xlsx", metadata=meta)
 
-    assert payload.data["version"] == 2
-    assert payload.data["sheet_count"] == 1
+    data = _object_dict(payload.data)
+    assert data["version"] == 2
+    assert data["sheet_count"] == 1
     assert payload.rows_count == 3
     assert len(payload.signals) == 2
 
@@ -106,8 +113,8 @@ def test_parse_workbook_expands_dpc_row_into_two_do_signals() -> None:
     assert packed0["position"] == 0
     assert packed1["position"] == 1
     # terminal column is transparently split per expanded signal row
-    assert payload.signals[0].signal_metadata["row"]["Terminal"] == "X1:12"
-    assert payload.signals[1].signal_metadata["row"]["Terminal"] == "X1:13"
+    assert _object_dict(payload.signals[0].signal_metadata["row"])["Terminal"] == "X1:12"
+    assert _object_dict(payload.signals[1].signal_metadata["row"])["Terminal"] == "X1:13"
 
 
 def test_parse_workbook_expands_dps_alias_without_explicit_mapping() -> None:
@@ -142,8 +149,8 @@ def test_parse_workbook_keeps_terminal_unsplit_if_no_separator() -> None:
     payload = SignalSheetImportService.parse_workbook(raw, filename="dpc_single_terminal.xlsx", metadata=meta)
 
     assert len(payload.signals) == 2
-    assert payload.signals[0].signal_metadata["row"]["Terminal"] == "XT2:11"
-    assert payload.signals[1].signal_metadata["row"]["Terminal"] == "XT2:11"
+    assert _object_dict(payload.signals[0].signal_metadata["row"])["Terminal"] == "XT2:11"
+    assert _object_dict(payload.signals[1].signal_metadata["row"])["Terminal"] == "XT2:11"
 
 
 def test_parse_workbook_projects_only_selected_columns_for_metadata_row() -> None:
@@ -163,8 +170,8 @@ def test_parse_workbook_projects_only_selected_columns_for_metadata_row() -> Non
     payload = SignalSheetImportService.parse_workbook(raw, filename="packed_selected.xlsx", metadata=meta)
 
     assert len(payload.signals) == 2
-    first_row = payload.signals[0].signal_metadata["row"]
-    second_row = payload.signals[1].signal_metadata["row"]
+    first_row = _object_dict(payload.signals[0].signal_metadata["row"])
+    second_row = _object_dict(payload.signals[1].signal_metadata["row"])
 
     assert set(first_row.keys()) == {"Name", "Type", "Terminal", "Cabinet"}
     assert set(second_row.keys()) == {"Name", "Type", "Terminal", "Cabinet"}
@@ -172,10 +179,12 @@ def test_parse_workbook_projects_only_selected_columns_for_metadata_row() -> Non
     assert "Comment" not in second_row
     assert first_row["Terminal"] == "XT3:1"
     assert second_row["Terminal"] == "XT3:2"
-    sheet = payload.data["sheets"][0]
+    sheet = _object_dict(cast(list[object], _object_dict(payload.data)["sheets"])[0])
     assert sheet["headers"] == ["Name", "Type", "Terminal", "Cabinet"]
-    assert "Comment" not in sheet["headers"]
-    assert all(set(item.keys()) == {"Name", "Type", "Terminal", "Cabinet"} for item in sheet["rows"])
+    headers = cast(list[str], sheet["headers"])
+    rows = cast(list[dict[str, object]], sheet["rows"])
+    assert "Comment" not in headers
+    assert all(set(item.keys()) == {"Name", "Type", "Terminal", "Cabinet"} for item in rows)
 
 
 def test_parse_workbook_projects_explicit_verification_columns_into_canonical_metadata() -> None:
@@ -190,21 +199,23 @@ def test_parse_workbook_projects_explicit_verification_columns_into_canonical_me
         type_column="Type",
         type_mapping={"DI": "di"},
         selected_columns=["Name", "Type"],
-        verification={
-            "enabled": True,
-            "transport_host_column": "IP Address",
-            "iec61850_address_column": "61850 Address",
-        },
+        verification=SignalImportVerificationSchema(
+            enabled=True,
+            transport_host_column="IP Address",
+            iec61850_address_column="61850 Address",
+        ),
     )
 
     payload = SignalSheetImportService.parse_workbook(raw, filename="verification.xlsx", metadata=meta)
 
     assert len(payload.signals) == 1
     signal = payload.signals[0]
-    assert signal.signal_metadata["row"]["transport_host"] == "10.10.10.250"
-    assert signal.signal_metadata["row"]["iec61850_address"] == "IED-A/P1/LLN0.brA"
-    assert signal.signal_metadata["verification"]["transport_host_column"] == "IP Address"
-    assert signal.signal_metadata["verification"]["iec61850_address_column"] == "61850 Address"
+    row = _object_dict(signal.signal_metadata["row"])
+    verification = _object_dict(signal.signal_metadata["verification"])
+    assert row["transport_host"] == "10.10.10.250"
+    assert row["iec61850_address"] == "IED-A/P1/LLN0.brA"
+    assert verification["transport_host_column"] == "IP Address"
+    assert verification["iec61850_address_column"] == "61850 Address"
 
 
 def test_parse_workbook_detects_header_row_after_preamble() -> None:
@@ -222,7 +233,8 @@ def test_parse_workbook_detects_header_row_after_preamble() -> None:
     payload = SignalSheetImportService.parse_workbook(raw, filename="preamble.xlsx", metadata=meta)
 
     assert payload.rows_count == 2
-    assert payload.data["sheets"][0]["headers"] == ["Signal Name", "Vendor Type", "internal_type"]
+    sheet = _object_dict(cast(list[object], _object_dict(payload.data)["sheets"])[0])
+    assert sheet["headers"] == ["Signal Name", "Vendor Type", "internal_type"]
     assert len(payload.signals) == 2
     assert {signal.io_direction for signal in payload.signals} == {"DI", "DO"}
 
@@ -245,6 +257,7 @@ def test_parse_workbook_honors_explicit_header_row_index() -> None:
     payload = SignalSheetImportService.parse_workbook(raw, filename="explicit_header.xlsx", metadata=meta)
 
     assert payload.rows_count == 1
-    assert payload.data["sheets"][0]["headers"] == ["Signal Name", "Vendor Type", "internal_type"]
+    sheet = _object_dict(cast(list[object], _object_dict(payload.data)["sheets"])[0])
+    assert sheet["headers"] == ["Signal Name", "Vendor Type", "internal_type"]
     assert len(payload.signals) == 1
     assert payload.signals[0].name == "Pump Start"

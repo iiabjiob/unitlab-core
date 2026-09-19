@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,8 +19,8 @@ class DeviceService:
     """Business logic helpers for devices."""
 
     def __init__(self, db: AsyncSession):
-        self.db = db
-        self.repo = DeviceRepository(db)
+        self.db: AsyncSession = db
+        self.repo: DeviceRepository = DeviceRepository(db)
 
     async def list(self) -> list[DeviceSummary]:
         devices = await self.repo.list(with_channels=False)
@@ -28,7 +28,7 @@ class DeviceService:
         await self._overlay_presence_summaries(summaries)
         return summaries
 
-    async def get(self, device_id: int) -> Optional[DeviceSchema]:
+    async def get(self, device_id: int) -> DeviceSchema | None:
         dev = await self.repo.get(device_id, with_channels=True)
         if not dev:
             return None
@@ -36,7 +36,7 @@ class DeviceService:
         await self._overlay_presence_schema(schema)
         return schema
 
-    async def get_by_unit_id(self, unit_id: str, with_channels: bool = False) -> Optional[DeviceSchema]:
+    async def get_by_unit_id(self, unit_id: str, with_channels: bool = False) -> DeviceSchema | None:
         dev = await self.repo.get_by_unit_id(unit_id, with_channels=with_channels)
         if not dev:
             return None
@@ -44,7 +44,7 @@ class DeviceService:
         await self._overlay_presence_schema(schema)
         return schema
 
-    async def update(self, device_id: int, changes: dict) -> Optional[DeviceSchema]:
+    async def update(self, device_id: int, changes: dict[str, object]) -> DeviceSchema | None:
         dev = await self.repo.update(device_id, changes)
         if not dev:
             return None
@@ -56,15 +56,15 @@ class DeviceService:
         return await self.repo.delete(device_id)
 
     async def delete_many(self, ids: list[int]) -> int:
-        unique_ids = list({candidate for candidate in ids if isinstance(candidate, int) and not isinstance(candidate, bool)})
+        unique_ids = list(set(ids))
         return await self.repo.delete_many(unique_ids)
 
     async def register_or_update(
         self,
         unit_id: str,
-        num_channels: Optional[int] = None,
-        firmware_version: Optional[str] = None,
-        device_type: Optional[str] = None,
+        num_channels: int | None = None,
+        firmware_version: str | None = None,
+        device_type: str | None = None,
     ) -> tuple[DeviceSchema, bool]:
         normalized_type = device_type.lower() if device_type else None
 
@@ -72,7 +72,7 @@ class DeviceService:
         created = False
         now = datetime.now(timezone.utc)
         if dev:
-            changes = {
+            changes: dict[str, object] = {
                 "num_channels": num_channels,
                 "firmware_version": firmware_version,
                 "device_type": normalized_type,
@@ -80,6 +80,8 @@ class DeviceService:
             if dev.registered_at is None:
                 changes["registered_at"] = now
             dev = await self.repo.update(dev.id, changes)
+            if dev is None:
+                raise RuntimeError(f"Device {unit_id} disappeared during update")
         else:
             payload = {
                 "unit_id": unit_id,
@@ -97,7 +99,7 @@ class DeviceService:
         await self._overlay_presence_schema(schema)
         return schema, created
 
-    async def set_last_seen(self, unit_id: str, ts_ms: Optional[int]) -> Optional[DeviceSchema]:
+    async def set_last_seen(self, unit_id: str, ts_ms: int | None) -> DeviceSchema | None:
         timestamp = None
         if ts_ms is not None:
             timestamp = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc)
@@ -108,13 +110,16 @@ class DeviceService:
         await self._overlay_presence_schema(schema)
         return schema
 
-    async def _sync_channels(self, dev: Device, num_channels: Optional[int], dev_type: Optional[str]):
-        if not hasattr(dev, "channels") or dev.channels is None:
+    async def _sync_channels(self, dev: Device, num_channels: int | None, dev_type: str | None):
+        channels_value = cast(object, getattr(dev, "channels", None))
+        if channels_value is None:
             await self.db.refresh(dev, ["channels"])
+            channels_value = cast(object, getattr(dev, "channels", None))
+        channels = cast(list[Channel], channels_value or [])
         wrote_changes = False
 
         if dev_type:
-            for ch in dev.channels:
+            for ch in channels:
                 if ch.channel_type != dev_type:
                     ch.channel_type = dev_type
                     wrote_changes = True
@@ -124,7 +129,7 @@ class DeviceService:
                 await self.db.commit()
             return
 
-        existing = {ch.channel_index for ch in dev.channels}
+        existing = {ch.channel_index for ch in channels}
         for idx in range(num_channels):
             if idx not in existing:
                 channel = Channel(
@@ -135,7 +140,7 @@ class DeviceService:
                 self.db.add(channel)
                 wrote_changes = True
 
-        to_delete = [ch for ch in dev.channels if ch.channel_index >= num_channels]
+        to_delete = [ch for ch in channels if ch.channel_index >= num_channels]
         for ch in to_delete:
             await self.db.delete(ch)
             wrote_changes = True
@@ -143,21 +148,21 @@ class DeviceService:
         if wrote_changes:
             await self.db.commit()
 
-    def _to_schema(self, dev) -> DeviceSchema:
+    def _to_schema(self, dev: Device) -> DeviceSchema:
         schema = DeviceSchema.model_validate(dev)
         schema.last_seen = dev.last_seen
         schema.registered_at = dev.registered_at_ms
         schema.status = self._derive_status(schema.last_seen)
         return schema
 
-    def _to_summary(self, dev) -> DeviceSummary:
+    def _to_summary(self, dev: Device) -> DeviceSummary:
         summary = DeviceSummary.model_validate(dev)
         summary.last_seen = dev.last_seen
         summary.registered_at = dev.registered_at_ms
         summary.status = self._derive_status(summary.last_seen)
         return summary
 
-    def _derive_status(self, last_seen: Optional[int]) -> str:
+    def _derive_status(self, last_seen: int | None) -> str:
         if last_seen is None:
             return "offline"
         ttl_ms = settings.heartbeat_ttl * 1000

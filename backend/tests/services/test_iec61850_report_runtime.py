@@ -4,6 +4,8 @@ from dataclasses import replace
 import json
 import subprocess
 from datetime import UTC, datetime
+from pathlib import Path
+from typing import Callable, Never, cast, final
 
 import pytest
 
@@ -28,6 +30,7 @@ from app.services.iec61850 import (
     Iec61850RuntimeMode,
     Iec61850RuntimeStatus,
     Iec61850RuntimeTriggerOptions,
+    Iec61850IedSimulatorProcessSpec,
     Iec61850SelectedSignal,
     build_ied_simulator_process_spec,
     build_ied_simulator_fixture_from_subscription_plan,
@@ -72,6 +75,7 @@ from app.services.iec61850.unitlab_mms_core import (
 )
 
 import app.services.iec61850.unitlab_mms_core as unitlab_mms_core
+from app.services.iec61850.report_runtime import Iec61850ReportRuntimeAdapter
 
 
 def test_backend_runtime_simulator_objects_match_unitlab_mms_boundary_protocols() -> None:
@@ -83,7 +87,7 @@ def test_backend_runtime_simulator_objects_match_unitlab_mms_boundary_protocols(
 
     session = adapter.connect(session_id="session-boundary", endpoint=endpoint, candidates=[candidate])
     assert isinstance(session, UnitLabMmsSession)
-    assert session.read_report_control(to_report_control_ref(candidate)).runtime_status == Iec61850RuntimeStatus.READ
+    assert cast(Iec61850ReportControlState, cast(object, session.read_report_control(to_report_control_ref(candidate)))).runtime_status == Iec61850RuntimeStatus.READ
     session.disconnect()
 
 
@@ -123,11 +127,11 @@ def test_backend_runtime_unitlab_mms_in_memory_association_tracks_open_release_a
     assert association.release().released is True
 
     with pytest.raises(Iec61850ReportRuntimeError) as reopen_error:
-        association.open()
+        _ = association.open()
     assert reopen_error.value.code == "ASSOCIATION_ALREADY_CLOSED"
 
     with pytest.raises(Iec61850ReportRuntimeError) as release_error:
-        transport.send(b"request-1")
+        _ = transport.send(b"request-1")
     assert release_error.value.code == "TRANSPORT_CLOSED"
 
     abort_transport = UnitLabMmsScriptedTransport((b"response-2",))
@@ -137,7 +141,7 @@ def test_backend_runtime_unitlab_mms_in_memory_association_tracks_open_release_a
         transport=abort_transport,
     )
 
-    abort_association.open()
+    _ = abort_association.open()
     aborted_state = abort_association.abort("ABORTED", "association aborted")
 
     assert aborted_state.aborted is True
@@ -151,7 +155,7 @@ def test_backend_runtime_unitlab_mms_scripted_transport_fails_closed_after_close
     transport.close()
 
     with pytest.raises(Iec61850ReportRuntimeError) as error:
-        transport.send(b"request-1")
+        _ = transport.send(b"request-1")
 
     assert error.value.code == "TRANSPORT_CLOSED"
 
@@ -159,7 +163,7 @@ def test_backend_runtime_unitlab_mms_scripted_transport_fails_closed_after_close
 def test_backend_runtime_unitlab_mms_named_variable_access_reads_and_writes_when_association_is_open() -> None:
     transport = UnitLabMmsScriptedTransport((b"response-1",))
     association = UnitLabMmsInMemoryAssociation(session_id="session-3", endpoint=_endpoint(), transport=transport)
-    association.open()
+    _ = association.open()
     access = UnitLabMmsInMemoryNamedVariableAccess(
         association=association,
         variables=(
@@ -177,7 +181,7 @@ def test_backend_runtime_unitlab_mms_named_variable_access_reads_and_writes_when
 def test_backend_runtime_unitlab_mms_named_variable_access_fails_closed_for_missing_or_read_only_values() -> None:
     transport = UnitLabMmsScriptedTransport((b"response-1",))
     association = UnitLabMmsInMemoryAssociation(session_id="session-4", endpoint=_endpoint(), transport=transport)
-    association.open()
+    _ = association.open()
     access = UnitLabMmsInMemoryNamedVariableAccess(
         association=association,
         variables=(
@@ -186,16 +190,16 @@ def test_backend_runtime_unitlab_mms_named_variable_access_fails_closed_for_miss
     )
 
     with pytest.raises(Iec61850ReportRuntimeError) as missing_error:
-        access.read("LD0/LLN0$ST$Mod.q")
+        _ = access.read("LD0/LLN0$ST$Mod.q")
     assert missing_error.value.code == "NAMED_VARIABLE_NOT_FOUND"
 
     with pytest.raises(Iec61850ReportRuntimeError) as read_only_error:
-        access.write("LD0/LLN0$ST$Mod.stVal", True)
+        _ = access.write("LD0/LLN0$ST$Mod.stVal", True)
     assert read_only_error.value.code == "NAMED_VARIABLE_READ_ONLY"
 
-    association.release()
+    _ = association.release()
     with pytest.raises(Iec61850ReportRuntimeError) as closed_error:
-        access.snapshot()
+        _ = access.snapshot()
     assert closed_error.value.code == "ASSOCIATION_NOT_OPEN"
 
 
@@ -203,7 +207,7 @@ def test_backend_runtime_service_owns_simulator_session_flow() -> None:
     candidate = _candidate()
     endpoint = _endpoint()
     adapter = create_iec61850_simulator_adapter(now=lambda: datetime(2026, 5, 29, 12, 0, tzinfo=UTC))
-    service = Iec61850ReportRuntimeService(adapter)
+    service = Iec61850ReportRuntimeService(cast(Iec61850ReportRuntimeAdapter, cast(object, adapter)))
 
     service.open_session(session_id="session-1", endpoint=endpoint, candidates=[candidate])
     read_result = service.read_report_control(session_id="session-1", endpoint=endpoint, candidate=candidate)
@@ -318,7 +322,7 @@ def test_backend_runtime_service_accepts_read_result_from_session() -> None:
     candidate = _candidate()
     endpoint = _endpoint()
     adapter = _ReadResultAdapter(candidate)
-    service = Iec61850ReportRuntimeService(adapter)
+    service = Iec61850ReportRuntimeService(cast(Iec61850ReportRuntimeAdapter, cast(object, adapter)))
 
     service.open_session(session_id="session-read-result", endpoint=endpoint, candidates=[candidate])
     read_result = service.read_report_control(session_id="session-read-result", endpoint=endpoint, candidate=candidate)
@@ -328,6 +332,7 @@ def test_backend_runtime_service_accepts_read_result_from_session() -> None:
     assert read_result.candidate_id == candidate.id
 
 
+@final
 class _ReadResultAdapter:
     def __init__(self, candidate: Iec61850ReportControlCandidate) -> None:
         self._candidate = candidate
@@ -335,14 +340,15 @@ class _ReadResultAdapter:
     def connect(
         self,
         *,
-        session_id: str,
-        endpoint: Iec61850DeviceEndpoint,
+        session_id: str,  # pyright: ignore[reportUnusedParameter]
+        endpoint: Iec61850DeviceEndpoint,  # pyright: ignore[reportUnusedParameter]
         candidates: list[Iec61850ReportControlCandidate],
     ) -> "_ReadResultSession":
         assert candidates == [self._candidate]
         return _ReadResultSession(candidate=self._candidate)
 
 
+@final
 class _ReadResultSession:
     def __init__(self, *, candidate: Iec61850ReportControlCandidate) -> None:
         self._candidate = candidate
@@ -368,7 +374,7 @@ class _ReadResultSession:
             diagnostics=(),
         )
 
-    def reserve_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:
+    def reserve_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:  # pyright: ignore[reportUnusedParameter]
         return Iec61850ReportControlState(
             reference=reference,
             runtime_status=Iec61850RuntimeStatus.RESERVED,
@@ -392,7 +398,7 @@ class _ReadResultSession:
     def disable_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:
         return self.reserve_report_control(reference, client_id)
 
-    def send_general_interrogation(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportEvent:
+    def send_general_interrogation(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportEvent:  # pyright: ignore[reportUnusedParameter]
         raise AssertionError("not used")
 
     def disconnect(self) -> None:
@@ -531,27 +537,27 @@ def test_backend_runtime_rejects_missing_mms_endpoint() -> None:
     catalog = build_mms_endpoint_catalog(())
 
     with pytest.raises(Iec61850ReportRuntimeError) as error:
-        catalog.endpoint_for_plan_device(_subscription_plan(_candidate()).devices[0])
+        _ = catalog.endpoint_for_plan_device(_subscription_plan(_candidate()).devices[0])
 
     assert error.value.code == "MMS_ENDPOINT_NOT_CONFIGURED"
 
 
 def test_backend_runtime_rejects_invalid_mms_endpoint_catalog_entries() -> None:
     with pytest.raises(Iec61850ReportRuntimeError) as duplicate_error:
-        build_mms_endpoint_catalog((
+        _ = build_mms_endpoint_catalog((
             Iec61850MmsEndpointCatalogEntry(ied_name="IED1", access_point_name="AP1", host="127.0.0.1"),
             Iec61850MmsEndpointCatalogEntry(ied_name="ied1", access_point_name="ap1", host="127.0.0.2"),
         ))
     assert duplicate_error.value.code == "DUPLICATE_MMS_ENDPOINT"
 
     with pytest.raises(Iec61850ReportRuntimeError) as host_error:
-        build_mms_endpoint_catalog((
+        _ = build_mms_endpoint_catalog((
             Iec61850MmsEndpointCatalogEntry(ied_name="IED1", access_point_name="AP1", host=" "),
         ))
     assert host_error.value.code == "INVALID_MMS_ENDPOINT"
 
     with pytest.raises(Iec61850ReportRuntimeError) as port_error:
-        build_mms_endpoint_catalog((
+        _ = build_mms_endpoint_catalog((
             Iec61850MmsEndpointCatalogEntry(ied_name="IED1", access_point_name="AP1", host="127.0.0.1", port=70000),
         ))
     assert port_error.value.code == "INVALID_MMS_ENDPOINT"
@@ -683,16 +689,16 @@ def test_backend_runtime_rejects_ied_simulator_fixture_without_dataset_ref() -> 
     candidate = _candidate(data_set_ref=None)
 
     with pytest.raises(Iec61850ReportRuntimeError) as error:
-        build_ied_simulator_fixture_from_subscription_plan(_subscription_plan(candidate))
+        _ = build_ied_simulator_fixture_from_subscription_plan(_subscription_plan(candidate))
 
     assert error.value.code == "SIMULATOR_FIXTURE_DATASET_MISSING"
 
 
-def test_backend_runtime_prepares_external_ied_simulator_process(tmp_path) -> None:
+def test_backend_runtime_prepares_external_ied_simulator_process(tmp_path: Path) -> None:
     fixture = build_ied_simulator_fixture_from_subscription_plan(_subscription_plan(_candidate()))
     fixture_path = write_ied_simulator_fixture_file(fixture, tmp_path / "ied1.fixture.json")
     binary_path = tmp_path / "unitlab-iec61850-ied-sim"
-    binary_path.write_text("", encoding="utf-8")
+    _ = binary_path.write_text("", encoding="utf-8")
 
     spec = build_ied_simulator_process_spec(
         fixture=fixture,
@@ -721,12 +727,12 @@ def test_backend_runtime_prepares_external_ied_simulator_process(tmp_path) -> No
     assert spec.endpoint.id == "mms-simulator:IED1/AP1@127.0.0.1:1102"
 
 
-def test_backend_runtime_rejects_invalid_external_ied_simulator_process_config(tmp_path) -> None:
+def test_backend_runtime_rejects_invalid_external_ied_simulator_process_config(tmp_path: Path) -> None:
     fixture = build_ied_simulator_fixture_from_subscription_plan(_subscription_plan(_candidate()))
     fixture_path = tmp_path / "ied1.fixture.json"
 
     with pytest.raises(Iec61850ReportRuntimeError) as missing_binary:
-        build_ied_simulator_process_spec(
+        _ = build_ied_simulator_process_spec(
             fixture=fixture,
             binary_path=tmp_path / "missing-simulator",
             fixture_path=fixture_path,
@@ -735,9 +741,9 @@ def test_backend_runtime_rejects_invalid_external_ied_simulator_process_config(t
     assert missing_binary.value.code == "SIMULATOR_BINARY_NOT_FOUND"
 
     binary_path = tmp_path / "unitlab-iec61850-ied-sim"
-    binary_path.write_text("", encoding="utf-8")
+    _ = binary_path.write_text("", encoding="utf-8")
     with pytest.raises(Iec61850ReportRuntimeError) as missing_device:
-        build_ied_simulator_process_spec(
+        _ = build_ied_simulator_process_spec(
             fixture=fixture,
             binary_path=binary_path,
             fixture_path=fixture_path,
@@ -746,11 +752,11 @@ def test_backend_runtime_rejects_invalid_external_ied_simulator_process_config(t
     assert missing_device.value.code == "SIMULATOR_DEVICE_NOT_IN_FIXTURE"
 
 
-def test_backend_runtime_builds_native_wire_simulator_process_command(tmp_path) -> None:
+def test_backend_runtime_builds_native_wire_simulator_process_command(tmp_path: Path) -> None:
     fixture = build_ied_simulator_fixture_from_subscription_plan(_subscription_plan(_candidate()))
     fixture_path = write_ied_simulator_fixture_file(fixture, tmp_path / "ied1.fixture.json")
     binary_path = tmp_path / "unitlab-iec61850-ied-sim"
-    binary_path.write_text("", encoding="utf-8")
+    _ = binary_path.write_text("", encoding="utf-8")
 
     spec = build_ied_simulator_process_spec(
         fixture=fixture,
@@ -767,11 +773,11 @@ def test_backend_runtime_builds_native_wire_simulator_process_command(tmp_path) 
     assert spec.gi_probe_command[-1] == "--gi-probe"
 
 
-def test_backend_runtime_external_ied_simulator_startup_check_uses_safe_process_invocation(tmp_path) -> None:
+def test_backend_runtime_external_ied_simulator_startup_check_uses_safe_process_invocation(tmp_path: Path) -> None:
     fixture = build_ied_simulator_fixture_from_subscription_plan(_subscription_plan(_candidate()))
     fixture_path = tmp_path / "ied1.fixture.json"
     binary_path = tmp_path / "unitlab-iec61850-ied-sim"
-    binary_path.write_text("", encoding="utf-8")
+    _ = binary_path.write_text("", encoding="utf-8")
     spec = build_ied_simulator_process_spec(
         fixture=fixture,
         binary_path=binary_path,
@@ -779,7 +785,7 @@ def test_backend_runtime_external_ied_simulator_startup_check_uses_safe_process_
         ied_name="IED1",
     )
 
-    def runner(command, **kwargs):
+    def runner(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:
         assert isinstance(command, tuple)
         assert command[-1] == "--dry-run"
         assert kwargs == {
@@ -797,11 +803,11 @@ def test_backend_runtime_external_ied_simulator_startup_check_uses_safe_process_
     assert result.command[-1] == "--dry-run"
 
 
-def test_backend_runtime_external_ied_simulator_startup_check_fails_closed(tmp_path) -> None:
+def test_backend_runtime_external_ied_simulator_startup_check_fails_closed(tmp_path: Path) -> None:
     fixture = build_ied_simulator_fixture_from_subscription_plan(_subscription_plan(_candidate()))
     fixture_path = tmp_path / "ied1.fixture.json"
     binary_path = tmp_path / "unitlab-iec61850-ied-sim"
-    binary_path.write_text("", encoding="utf-8")
+    _ = binary_path.write_text("", encoding="utf-8")
     spec = build_ied_simulator_process_spec(
         fixture=fixture,
         binary_path=binary_path,
@@ -809,7 +815,7 @@ def test_backend_runtime_external_ied_simulator_startup_check_fails_closed(tmp_p
         ied_name="IED1",
     )
 
-    def runner(command, **kwargs):
+    def runner(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:  # pyright: ignore[reportUnusedParameter]
         return subprocess.CompletedProcess(
             args=command,
             returncode=69,
@@ -818,16 +824,16 @@ def test_backend_runtime_external_ied_simulator_startup_check_fails_closed(tmp_p
         )
 
     with pytest.raises(Iec61850ReportRuntimeError) as error:
-        run_ied_simulator_startup_check(spec, runner=runner)
+        _ = run_ied_simulator_startup_check(spec, runner=runner)
 
     assert error.value.code == "SIMULATOR_PROCESS_CHECK_FAILED"
     assert "LIBIEC61850_NOT_LINKED" in str(error.value)
 
 
-def test_backend_runtime_external_ied_simulator_metadata_probe_uses_safe_process_invocation(tmp_path) -> None:
+def test_backend_runtime_external_ied_simulator_metadata_probe_uses_safe_process_invocation(tmp_path: Path) -> None:
     spec = _external_simulator_process_spec(tmp_path)
 
-    def runner(command, **kwargs):
+    def runner(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:
         assert isinstance(command, tuple)
         assert command[-1] == "--metadata-probe"
         assert "--dry-run" not in command
@@ -846,10 +852,10 @@ def test_backend_runtime_external_ied_simulator_metadata_probe_uses_safe_process
     assert result.command[-1] == "--metadata-probe"
 
 
-def test_backend_runtime_external_ied_simulator_metadata_probe_fails_closed(tmp_path) -> None:
+def test_backend_runtime_external_ied_simulator_metadata_probe_fails_closed(tmp_path: Path) -> None:
     spec = _external_simulator_process_spec(tmp_path)
 
-    def runner(command, **kwargs):
+    def runner(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:  # pyright: ignore[reportUnusedParameter]
         return subprocess.CompletedProcess(
             args=command,
             returncode=69,
@@ -858,16 +864,16 @@ def test_backend_runtime_external_ied_simulator_metadata_probe_fails_closed(tmp_
         )
 
     with pytest.raises(Iec61850ReportRuntimeError) as error:
-        run_ied_simulator_metadata_probe(spec, runner=runner)
+        _ = run_ied_simulator_metadata_probe(spec, runner=runner)
 
     assert error.value.code == "SIMULATOR_METADATA_PROBE_FAILED"
     assert "IEC61850_METADATA_PROBE_RCB_READ_FAILED" in str(error.value)
 
 
-def test_backend_runtime_external_ied_simulator_metadata_probe_rejects_malformed_success_output(tmp_path) -> None:
+def test_backend_runtime_external_ied_simulator_metadata_probe_rejects_malformed_success_output(tmp_path: Path) -> None:
     spec = _external_simulator_process_spec(tmp_path)
 
-    def runner(command, **kwargs):
+    def runner(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:  # pyright: ignore[reportUnusedParameter]
         return subprocess.CompletedProcess(
             args=command,
             returncode=0,
@@ -883,16 +889,16 @@ def test_backend_runtime_external_ied_simulator_metadata_probe_rejects_malformed
         )
 
     with pytest.raises(Iec61850ReportRuntimeError) as error:
-        run_ied_simulator_metadata_probe(spec, runner=runner)
+        _ = run_ied_simulator_metadata_probe(spec, runner=runner)
 
     assert error.value.code == "SIMULATOR_METADATA_PROBE_OUTPUT_INVALID"
     assert 'expected ied="IED1"' in str(error.value)
 
 
-def test_backend_runtime_external_ied_simulator_gi_probe_uses_safe_process_invocation(tmp_path) -> None:
+def test_backend_runtime_external_ied_simulator_gi_probe_uses_safe_process_invocation(tmp_path: Path) -> None:
     spec = _external_simulator_process_spec(tmp_path)
 
-    def runner(command, **kwargs):
+    def runner(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:
         assert isinstance(command, tuple)
         assert command[-1] == "--gi-probe"
         assert "--dry-run" not in command
@@ -911,11 +917,11 @@ def test_backend_runtime_external_ied_simulator_gi_probe_uses_safe_process_invoc
     assert result.command[-1] == "--gi-probe"
 
 
-def test_backend_runtime_external_ied_simulator_gi_probe_can_target_report_key(tmp_path) -> None:
+def test_backend_runtime_external_ied_simulator_gi_probe_can_target_report_key(tmp_path: Path) -> None:
     spec = _external_simulator_process_spec(tmp_path)
     report_key = "IED1/AP1/LD0/LLN0/brcbEvents/buffered"
 
-    def runner(command, **kwargs):
+    def runner(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:  # pyright: ignore[reportUnusedParameter]
         assert command[-3:] == ("--gi-probe", "--report-key", report_key)
         return subprocess.CompletedProcess(args=command, returncode=0, stdout=_simulator_probe_stdout(command, probe="gi"), stderr="")
 
@@ -927,19 +933,19 @@ def test_backend_runtime_external_ied_simulator_gi_probe_can_target_report_key(t
     assert "reports=1\n" in result.stdout
 
 
-def test_backend_runtime_external_ied_simulator_gi_probe_rejects_empty_report_key(tmp_path) -> None:
+def test_backend_runtime_external_ied_simulator_gi_probe_rejects_empty_report_key(tmp_path: Path) -> None:
     spec = _external_simulator_process_spec(tmp_path)
 
     with pytest.raises(Iec61850ReportRuntimeError) as error:
-        run_ied_simulator_gi_probe(spec, report_key="  ")
+        _ = run_ied_simulator_gi_probe(spec, report_key="  ")
 
     assert error.value.code == "SIMULATOR_GI_PROBE_REPORT_KEY_INVALID"
 
 
-def test_backend_runtime_external_ied_simulator_gi_probe_fails_closed(tmp_path) -> None:
+def test_backend_runtime_external_ied_simulator_gi_probe_fails_closed(tmp_path: Path) -> None:
     spec = _external_simulator_process_spec(tmp_path)
 
-    def runner(command, **kwargs):
+    def runner(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:  # pyright: ignore[reportUnusedParameter]
         return subprocess.CompletedProcess(
             args=command,
             returncode=69,
@@ -948,16 +954,16 @@ def test_backend_runtime_external_ied_simulator_gi_probe_fails_closed(tmp_path) 
         )
 
     with pytest.raises(Iec61850ReportRuntimeError) as error:
-        run_ied_simulator_gi_probe(spec, runner=runner)
+        _ = run_ied_simulator_gi_probe(spec, runner=runner)
 
     assert error.value.code == "SIMULATOR_GI_PROBE_FAILED"
     assert "IEC61850_GI_PROBE_REPORT_TIMEOUT" in str(error.value)
 
 
-def test_backend_runtime_external_ied_simulator_gi_probe_rejects_malformed_success_output(tmp_path) -> None:
+def test_backend_runtime_external_ied_simulator_gi_probe_rejects_malformed_success_output(tmp_path: Path) -> None:
     spec = _external_simulator_process_spec(tmp_path)
 
-    def runner(command, **kwargs):
+    def runner(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:  # pyright: ignore[reportUnusedParameter]
         return subprocess.CompletedProcess(
             args=command,
             returncode=0,
@@ -972,17 +978,17 @@ def test_backend_runtime_external_ied_simulator_gi_probe_rejects_malformed_succe
         )
 
     with pytest.raises(Iec61850ReportRuntimeError) as error:
-        run_ied_simulator_gi_probe(spec, runner=runner)
+        _ = run_ied_simulator_gi_probe(spec, runner=runner)
 
     assert error.value.code == "SIMULATOR_GI_PROBE_OUTPUT_INVALID"
     assert 'expected libiec61850="linked"' in str(error.value)
 
 
-def test_backend_runtime_external_ied_simulator_targeted_gi_probe_rejects_malformed_success_output(tmp_path) -> None:
+def test_backend_runtime_external_ied_simulator_targeted_gi_probe_rejects_malformed_success_output(tmp_path: Path) -> None:
     spec = _external_simulator_process_spec(tmp_path)
     report_key = "IED1/AP1/LD0/LLN0/brcbEvents/buffered"
 
-    def runner(command, **kwargs):
+    def runner(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:  # pyright: ignore[reportUnusedParameter]
         return subprocess.CompletedProcess(
             args=command,
             returncode=0,
@@ -997,19 +1003,19 @@ def test_backend_runtime_external_ied_simulator_targeted_gi_probe_rejects_malfor
         )
 
     with pytest.raises(Iec61850ReportRuntimeError) as error:
-        run_ied_simulator_gi_probe(spec, report_key=report_key, runner=runner)
+        _ = run_ied_simulator_gi_probe(spec, report_key=report_key, runner=runner)
 
     assert error.value.code == "SIMULATOR_GI_PROBE_OUTPUT_INVALID"
     assert f'expected reportKey="{report_key}"' in str(error.value)
     assert 'expected reports="1"' in str(error.value)
 
 
-def test_backend_runtime_starts_and_stops_external_ied_simulator_process(tmp_path) -> None:
+def test_backend_runtime_starts_and_stops_external_ied_simulator_process(tmp_path: Path) -> None:
     spec = _external_simulator_process_spec(tmp_path)
     process = _FakeSimulatorProcess(pid=61850)
     commands: list[tuple[str, ...]] = []
 
-    def runner(command, **kwargs):
+    def runner(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:  # pyright: ignore[reportUnusedParameter]
         commands.append(command)
         if command[-1] == "--dry-run":
             return subprocess.CompletedProcess(args=command, returncode=0, stdout="fixture accepted\n", stderr="")
@@ -1017,7 +1023,7 @@ def test_backend_runtime_starts_and_stops_external_ied_simulator_process(tmp_pat
             return subprocess.CompletedProcess(args=command, returncode=0, stdout=_simulator_probe_stdout(command, probe="metadata"), stderr="")
         raise AssertionError(f"unexpected simulator helper command: {command}")
 
-    def process_factory(command, **kwargs):
+    def process_factory(command: tuple[str, ...], **kwargs: object) -> object:
         assert command == spec.command
         assert command[-1] != "--dry-run"
         assert kwargs == {
@@ -1033,7 +1039,7 @@ def test_backend_runtime_starts_and_stops_external_ied_simulator_process(tmp_pat
         spec,
         startup_grace_seconds=0,
         runner=runner,
-        process_factory=process_factory,
+        process_factory=cast(Callable[..., subprocess.Popen[str]], cast(object, process_factory)),
         readiness_connector=_ready_socket_connector,
     )
     stop = stop_ied_simulator_process(handle)
@@ -1046,18 +1052,18 @@ def test_backend_runtime_starts_and_stops_external_ied_simulator_process(tmp_pat
     assert stop.killed is False
 
 
-def test_backend_runtime_external_ied_simulator_process_readiness_uses_tcp_probe(tmp_path) -> None:
+def test_backend_runtime_external_ied_simulator_process_readiness_uses_tcp_probe(tmp_path: Path) -> None:
     spec = _external_simulator_process_spec(tmp_path)
     process = _FakeSimulatorProcess(pid=61850)
     attempts: list[tuple[tuple[str, int], float]] = []
 
-    def connector(address, timeout):
+    def connector(address: tuple[str, int], timeout: float) -> object:
         attempts.append((address, timeout))
         return _FakeSocket()
 
     wait_ied_simulator_process_ready(
         spec,
-        process,
+        cast(subprocess.Popen[str], cast(object, process)),
         timeout_seconds=1.0,
         connector=connector,
         sleep=lambda _: None,
@@ -1067,26 +1073,26 @@ def test_backend_runtime_external_ied_simulator_process_readiness_uses_tcp_probe
     assert 0 < attempts[0][1] <= 1.0
 
 
-def test_backend_runtime_external_ied_simulator_process_readiness_fails_closed_and_stops_process(tmp_path) -> None:
+def test_backend_runtime_external_ied_simulator_process_readiness_fails_closed_and_stops_process(tmp_path: Path) -> None:
     spec = _external_simulator_process_spec(tmp_path)
     process = _FakeSimulatorProcess(pid=61850)
 
-    def runner(command, **kwargs):
+    def runner(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:  # pyright: ignore[reportUnusedParameter]
         return subprocess.CompletedProcess(args=command, returncode=0, stdout="fixture accepted\n", stderr="")
 
-    def process_factory(command, **kwargs):
+    def process_factory(command: tuple[str, ...], **kwargs: object) -> object:  # pyright: ignore[reportUnusedParameter]
         return process
 
-    def connector(address, timeout):
+    def connector(address: tuple[str, int], timeout: float) -> object:  # pyright: ignore[reportUnusedParameter]
         raise OSError("connection refused")
 
     with pytest.raises(Iec61850ReportRuntimeError) as error:
-        start_ied_simulator_process(
+        _ = start_ied_simulator_process(
             spec,
             startup_grace_seconds=0,
             readiness_timeout_seconds=0,
             runner=runner,
-            process_factory=process_factory,
+            process_factory=cast(Callable[..., subprocess.Popen[str]], cast(object, process_factory)),
             readiness_connector=connector,
         )
 
@@ -1094,26 +1100,26 @@ def test_backend_runtime_external_ied_simulator_process_readiness_fails_closed_a
     assert process.terminated is True
 
 
-def test_backend_runtime_external_ied_simulator_metadata_probe_failure_stops_process(tmp_path) -> None:
+def test_backend_runtime_external_ied_simulator_metadata_probe_failure_stops_process(tmp_path: Path) -> None:
     spec = _external_simulator_process_spec(tmp_path)
     process = _FakeSimulatorProcess(pid=61850)
 
-    def runner(command, **kwargs):
+    def runner(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:  # pyright: ignore[reportUnusedParameter]
         if command[-1] == "--dry-run":
             return subprocess.CompletedProcess(args=command, returncode=0, stdout="fixture accepted\n", stderr="")
         if command[-1] == "--metadata-probe":
             return subprocess.CompletedProcess(args=command, returncode=69, stdout="", stderr="RCB read failed\n")
         raise AssertionError(f"unexpected simulator helper command: {command}")
 
-    def process_factory(command, **kwargs):
+    def process_factory(command: tuple[str, ...], **kwargs: object) -> object:  # pyright: ignore[reportUnusedParameter]
         return process
 
     with pytest.raises(Iec61850ReportRuntimeError) as error:
-        start_ied_simulator_process(
+        _ = start_ied_simulator_process(
             spec,
             startup_grace_seconds=0,
             runner=runner,
-            process_factory=process_factory,
+            process_factory=cast(Callable[..., subprocess.Popen[str]], cast(object, process_factory)),
             readiness_connector=_ready_socket_connector,
         )
 
@@ -1121,54 +1127,54 @@ def test_backend_runtime_external_ied_simulator_metadata_probe_failure_stops_pro
     assert process.terminated is True
 
 
-def test_backend_runtime_rejects_dry_run_spec_for_external_ied_simulator_process_start(tmp_path) -> None:
+def test_backend_runtime_rejects_dry_run_spec_for_external_ied_simulator_process_start(tmp_path: Path) -> None:
     spec = _external_simulator_process_spec(tmp_path, dry_run=True)
 
     with pytest.raises(Iec61850ReportRuntimeError) as error:
-        start_ied_simulator_process(spec)
+        _ = start_ied_simulator_process(spec)
 
     assert error.value.code == "SIMULATOR_PROCESS_START_DRY_RUN_SPEC"
 
 
-def test_backend_runtime_fails_when_external_ied_simulator_process_exits_during_startup(tmp_path) -> None:
+def test_backend_runtime_fails_when_external_ied_simulator_process_exits_during_startup(tmp_path: Path) -> None:
     spec = _external_simulator_process_spec(tmp_path)
     process = _FakeSimulatorProcess(pid=61850, return_code=69, stderr="LIBIEC61850_NOT_LINKED\n")
 
-    def runner(command, **kwargs):
+    def runner(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:  # pyright: ignore[reportUnusedParameter]
         return subprocess.CompletedProcess(args=command, returncode=0, stdout="fixture accepted\n", stderr="")
 
-    def process_factory(command, **kwargs):
+    def process_factory(command: tuple[str, ...], **kwargs: object) -> object:  # pyright: ignore[reportUnusedParameter]
         return process
 
     with pytest.raises(Iec61850ReportRuntimeError) as error:
-        start_ied_simulator_process(
+        _ = start_ied_simulator_process(
             spec,
             startup_grace_seconds=0,
             runner=runner,
-            process_factory=process_factory,
+            process_factory=cast(Callable[..., subprocess.Popen[str]], cast(object, process_factory)),
         )
 
     assert error.value.code == "SIMULATOR_PROCESS_EXITED"
     assert "LIBIEC61850_NOT_LINKED" in str(error.value)
 
 
-def test_backend_runtime_kills_external_ied_simulator_process_after_stop_timeout(tmp_path) -> None:
+def test_backend_runtime_kills_external_ied_simulator_process_after_stop_timeout(tmp_path: Path) -> None:
     spec = _external_simulator_process_spec(tmp_path)
     process = _FakeSimulatorProcess(pid=61850, wait_timeout=True)
 
-    def runner(command, **kwargs):
+    def runner(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:  # pyright: ignore[reportUnusedParameter]
         if command[-1] == "--metadata-probe":
             return subprocess.CompletedProcess(args=command, returncode=0, stdout=_simulator_probe_stdout(command, probe="metadata"), stderr="")
         return subprocess.CompletedProcess(args=command, returncode=0, stdout="fixture accepted\n", stderr="")
 
-    def process_factory(command, **kwargs):
+    def process_factory(command: tuple[str, ...], **kwargs: object) -> object:  # pyright: ignore[reportUnusedParameter]
         return process
 
     handle = start_ied_simulator_process(
         spec,
         startup_grace_seconds=0,
         runner=runner,
-        process_factory=process_factory,
+        process_factory=cast(Callable[..., subprocess.Popen[str]], cast(object, process_factory)),
         readiness_connector=_ready_socket_connector,
     )
     stop = stop_ied_simulator_process(handle, terminate_timeout_seconds=0.1)
@@ -1179,11 +1185,11 @@ def test_backend_runtime_kills_external_ied_simulator_process_after_stop_timeout
     assert stop.killed is True
 
 
-def test_backend_runtime_prepares_external_ied_simulator_process_plan_for_required_devices(tmp_path) -> None:
+def test_backend_runtime_prepares_external_ied_simulator_process_plan_for_required_devices(tmp_path: Path) -> None:
     plan = _multi_device_subscription_plan()
     fixture = build_ied_simulator_fixture_from_subscription_plan(plan)
     binary_path = tmp_path / "unitlab-iec61850-ied-sim"
-    binary_path.write_text("", encoding="utf-8")
+    _ = binary_path.write_text("", encoding="utf-8")
 
     process_plan = prepare_ied_simulator_process_plan(
         fixture=fixture,
@@ -1201,7 +1207,7 @@ def test_backend_runtime_prepares_external_ied_simulator_process_plan_for_requir
     ]
     assert process_plan.endpoint_for_plan_device(plan.devices[1]).id == "mms-simulator:IED2/AP1@127.0.0.1:12001"
 
-    def runner(command, **kwargs):
+    def runner(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:  # pyright: ignore[reportUnusedParameter]
         return subprocess.CompletedProcess(args=command, returncode=0, stdout=f"{command[4]} accepted\n", stderr="")
 
     checks = run_ied_simulator_process_plan_startup_checks(process_plan, runner=runner)
@@ -1210,11 +1216,11 @@ def test_backend_runtime_prepares_external_ied_simulator_process_plan_for_requir
     assert [check.command[-1] for check in checks] == ["--dry-run", "--dry-run"]
 
 
-def test_backend_runtime_external_ied_simulator_process_plan_runs_gi_probes(tmp_path) -> None:
+def test_backend_runtime_external_ied_simulator_process_plan_runs_gi_probes(tmp_path: Path) -> None:
     plan = _multi_device_subscription_plan()
     fixture = build_ied_simulator_fixture_from_subscription_plan(plan)
     binary_path = tmp_path / "unitlab-iec61850-ied-sim"
-    binary_path.write_text("", encoding="utf-8")
+    _ = binary_path.write_text("", encoding="utf-8")
     process_plan = prepare_ied_simulator_process_plan(
         fixture=fixture,
         binary_path=binary_path,
@@ -1223,7 +1229,7 @@ def test_backend_runtime_external_ied_simulator_process_plan_runs_gi_probes(tmp_
     )
     commands: list[tuple[str, ...]] = []
 
-    def runner(command, **kwargs):
+    def runner(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:  # pyright: ignore[reportUnusedParameter]
         commands.append(command)
         return subprocess.CompletedProcess(args=command, returncode=0, stdout=_simulator_probe_stdout(command, probe="gi"), stderr="")
 
@@ -1233,11 +1239,11 @@ def test_backend_runtime_external_ied_simulator_process_plan_runs_gi_probes(tmp_
     assert [command[-1] for command in commands] == ["--gi-probe", "--gi-probe"]
 
 
-def test_backend_runtime_external_ied_simulator_process_plan_runs_report_gi_probes(tmp_path) -> None:
+def test_backend_runtime_external_ied_simulator_process_plan_runs_report_gi_probes(tmp_path: Path) -> None:
     plan = _multi_device_subscription_plan()
     fixture = build_ied_simulator_fixture_from_subscription_plan(plan)
     binary_path = tmp_path / "unitlab-iec61850-ied-sim"
-    binary_path.write_text("", encoding="utf-8")
+    _ = binary_path.write_text("", encoding="utf-8")
     process_plan = prepare_ied_simulator_process_plan(
         fixture=fixture,
         binary_path=binary_path,
@@ -1246,7 +1252,7 @@ def test_backend_runtime_external_ied_simulator_process_plan_runs_report_gi_prob
     )
     commands: list[tuple[str, ...]] = []
 
-    def runner(command, **kwargs):
+    def runner(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:  # pyright: ignore[reportUnusedParameter]
         commands.append(command)
         return subprocess.CompletedProcess(args=command, returncode=0, stdout=_simulator_probe_stdout(command, probe="gi"), stderr="")
 
@@ -1259,10 +1265,10 @@ def test_backend_runtime_external_ied_simulator_process_plan_runs_report_gi_prob
     ]
 
 
-def test_backend_runtime_prepares_external_ied_simulator_process_plan_from_subscription_plan(tmp_path) -> None:
+def test_backend_runtime_prepares_external_ied_simulator_process_plan_from_subscription_plan(tmp_path: Path) -> None:
     plan = _multi_device_subscription_plan()
     binary_path = tmp_path / "unitlab-iec61850-ied-sim"
-    binary_path.write_text("", encoding="utf-8")
+    _ = binary_path.write_text("", encoding="utf-8")
 
     process_plan = prepare_ied_simulator_process_plan_from_subscription_plan(
         subscription_plan=plan,
@@ -1276,11 +1282,11 @@ def test_backend_runtime_prepares_external_ied_simulator_process_plan_from_subsc
     assert json.loads(tmp_path.joinpath("multi-device.fixture.json").read_text(encoding="utf-8"))["devices"][0]["reports"][0]["key"] == "IED1/AP1/LD0/LLN0/brcbEvents/buffered"
 
 
-def test_backend_runtime_external_ied_simulator_process_plan_endpoint_resolver_fails_closed(tmp_path) -> None:
+def test_backend_runtime_external_ied_simulator_process_plan_endpoint_resolver_fails_closed(tmp_path: Path) -> None:
     plan = _multi_device_subscription_plan()
     fixture = build_ied_simulator_fixture_from_subscription_plan(plan)
     binary_path = tmp_path / "unitlab-iec61850-ied-sim"
-    binary_path.write_text("", encoding="utf-8")
+    _ = binary_path.write_text("", encoding="utf-8")
     process_plan = prepare_ied_simulator_process_plan(
         fixture=fixture,
         binary_path=binary_path,
@@ -1293,7 +1299,7 @@ def test_backend_runtime_external_ied_simulator_process_plan_endpoint_resolver_f
     )
 
     with pytest.raises(Iec61850ReportRuntimeError) as missing_error:
-        process_plan.endpoint_for_plan_device(missing_device)
+        _ = process_plan.endpoint_for_plan_device(missing_device)
     assert missing_error.value.code == "SIMULATOR_PROCESS_ENDPOINT_NOT_CONFIGURED"
 
     duplicate_plan = process_plan.__class__(
@@ -1301,14 +1307,14 @@ def test_backend_runtime_external_ied_simulator_process_plan_endpoint_resolver_f
         specs=(process_plan.specs[0], process_plan.specs[0]),
     )
     with pytest.raises(Iec61850ReportRuntimeError) as duplicate_error:
-        duplicate_plan.endpoint_for_plan_device(plan.devices[0])
+        _ = duplicate_plan.endpoint_for_plan_device(plan.devices[0])
     assert duplicate_error.value.code == "SIMULATOR_PROCESS_ENDPOINT_DUPLICATE"
 
 
-def test_backend_runtime_external_ied_simulator_endpoints_feed_mms_adapter_boundary(tmp_path) -> None:
+def test_backend_runtime_external_ied_simulator_endpoints_feed_mms_adapter_boundary(tmp_path: Path) -> None:
     plan = _subscription_plan(_candidate())
     binary_path = tmp_path / "unitlab-iec61850-ied-sim"
-    binary_path.write_text("", encoding="utf-8")
+    _ = binary_path.write_text("", encoding="utf-8")
     process_plan = prepare_ied_simulator_process_plan_from_subscription_plan(
         subscription_plan=plan,
         binary_path=binary_path,
@@ -1327,11 +1333,11 @@ def test_backend_runtime_external_ied_simulator_endpoints_feed_mms_adapter_bound
     assert run.reports[0].error_code == "MMS_ADAPTER_NOT_IMPLEMENTED"
 
 
-def test_backend_runtime_external_ied_simulator_process_plan_cleans_up_on_partial_start_failure(tmp_path) -> None:
+def test_backend_runtime_external_ied_simulator_process_plan_cleans_up_on_partial_start_failure(tmp_path: Path) -> None:
     plan = _multi_device_subscription_plan()
     fixture = build_ied_simulator_fixture_from_subscription_plan(plan)
     binary_path = tmp_path / "unitlab-iec61850-ied-sim"
-    binary_path.write_text("", encoding="utf-8")
+    _ = binary_path.write_text("", encoding="utf-8")
     process_plan = prepare_ied_simulator_process_plan(
         fixture=fixture,
         binary_path=binary_path,
@@ -1341,20 +1347,20 @@ def test_backend_runtime_external_ied_simulator_process_plan_cleans_up_on_partia
     failed_process = _FakeSimulatorProcess(pid=2, return_code=69, stderr="LIBIEC61850_NOT_LINKED\n")
     processes = [started_process, failed_process]
 
-    def runner(command, **kwargs):
+    def runner(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:  # pyright: ignore[reportUnusedParameter]
         if command[-1] == "--metadata-probe":
             return subprocess.CompletedProcess(args=command, returncode=0, stdout=_simulator_probe_stdout(command, probe="metadata"), stderr="")
         return subprocess.CompletedProcess(args=command, returncode=0, stdout="fixture accepted\n", stderr="")
 
-    def process_factory(command, **kwargs):
+    def process_factory(command: tuple[str, ...], **kwargs: object) -> object:  # pyright: ignore[reportUnusedParameter]
         return processes.pop(0)
 
     with pytest.raises(Iec61850ReportRuntimeError) as error:
-        start_ied_simulator_process_plan(
+        _ = start_ied_simulator_process_plan(
             process_plan,
             startup_grace_seconds=0,
             runner=runner,
-            process_factory=process_factory,
+            process_factory=cast(Callable[..., subprocess.Popen[str]], cast(object, process_factory)),
             readiness_connector=_ready_socket_connector,
         )
 
@@ -1363,11 +1369,11 @@ def test_backend_runtime_external_ied_simulator_process_plan_cleans_up_on_partia
     assert failed_process.terminated is False
 
 
-def test_backend_runtime_external_ied_simulator_process_plan_gi_validation_cleans_up(tmp_path) -> None:
+def test_backend_runtime_external_ied_simulator_process_plan_gi_validation_cleans_up(tmp_path: Path) -> None:
     plan = _multi_device_subscription_plan()
     fixture = build_ied_simulator_fixture_from_subscription_plan(plan)
     binary_path = tmp_path / "unitlab-iec61850-ied-sim"
-    binary_path.write_text("", encoding="utf-8")
+    _ = binary_path.write_text("", encoding="utf-8")
     process_plan = prepare_ied_simulator_process_plan(
         fixture=fixture,
         binary_path=binary_path,
@@ -1376,7 +1382,7 @@ def test_backend_runtime_external_ied_simulator_process_plan_gi_validation_clean
     processes = [_FakeSimulatorProcess(pid=1), _FakeSimulatorProcess(pid=2)]
     commands: list[str] = []
 
-    def runner(command, **kwargs):
+    def runner(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:  # pyright: ignore[reportUnusedParameter]
         commands.append(command[-1])
         if command[-1] == "--dry-run":
             return subprocess.CompletedProcess(args=command, returncode=0, stdout="fixture accepted\n", stderr="")
@@ -1386,14 +1392,14 @@ def test_backend_runtime_external_ied_simulator_process_plan_gi_validation_clean
             return subprocess.CompletedProcess(args=command, returncode=0, stdout=_simulator_probe_stdout(command, probe="gi"), stderr="")
         raise AssertionError(f"unexpected simulator helper command: {command}")
 
-    def process_factory(command, **kwargs):
+    def process_factory(command: tuple[str, ...], **kwargs: object) -> object:  # pyright: ignore[reportUnusedParameter]
         return processes.pop(0)
 
     result = run_ied_simulator_process_plan_gi_validation(
         process_plan,
         startup_grace_seconds=0,
         runner=runner,
-        process_factory=process_factory,
+        process_factory=cast(Callable[..., subprocess.Popen[str]], cast(object, process_factory)),
         readiness_connector=_ready_socket_connector,
     )
 
@@ -1403,11 +1409,11 @@ def test_backend_runtime_external_ied_simulator_process_plan_gi_validation_clean
     assert result.stop_results[0].killed is False
 
 
-def test_backend_runtime_external_ied_simulator_process_plan_gi_validation_stops_after_probe_failure(tmp_path) -> None:
+def test_backend_runtime_external_ied_simulator_process_plan_gi_validation_stops_after_probe_failure(tmp_path: Path) -> None:
     plan = _subscription_plan(_candidate())
     fixture = build_ied_simulator_fixture_from_subscription_plan(plan)
     binary_path = tmp_path / "unitlab-iec61850-ied-sim"
-    binary_path.write_text("", encoding="utf-8")
+    _ = binary_path.write_text("", encoding="utf-8")
     process_plan = prepare_ied_simulator_process_plan(
         fixture=fixture,
         binary_path=binary_path,
@@ -1415,7 +1421,7 @@ def test_backend_runtime_external_ied_simulator_process_plan_gi_validation_stops
     )
     process = _FakeSimulatorProcess(pid=61850)
 
-    def runner(command, **kwargs):
+    def runner(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:  # pyright: ignore[reportUnusedParameter]
         if command[-1] == "--dry-run":
             return subprocess.CompletedProcess(args=command, returncode=0, stdout="fixture accepted\n", stderr="")
         if command[-1] == "--metadata-probe":
@@ -1424,15 +1430,15 @@ def test_backend_runtime_external_ied_simulator_process_plan_gi_validation_stops
             return subprocess.CompletedProcess(args=command, returncode=69, stdout="", stderr="GI timeout\n")
         raise AssertionError(f"unexpected simulator helper command: {command}")
 
-    def process_factory(command, **kwargs):
+    def process_factory(command: tuple[str, ...], **kwargs: object) -> object:  # pyright: ignore[reportUnusedParameter]
         return process
 
     with pytest.raises(Iec61850ReportRuntimeError) as error:
-        run_ied_simulator_process_plan_gi_validation(
+        _ = run_ied_simulator_process_plan_gi_validation(
             process_plan,
             startup_grace_seconds=0,
             runner=runner,
-            process_factory=process_factory,
+            process_factory=cast(Callable[..., subprocess.Popen[str]], cast(object, process_factory)),
             readiness_connector=_ready_socket_connector,
         )
 
@@ -1440,11 +1446,11 @@ def test_backend_runtime_external_ied_simulator_process_plan_gi_validation_stops
     assert process.terminated is True
 
 
-def test_backend_runtime_external_ied_simulator_process_plan_report_gi_validation_cleans_up(tmp_path) -> None:
+def test_backend_runtime_external_ied_simulator_process_plan_report_gi_validation_cleans_up(tmp_path: Path) -> None:
     plan = _multi_device_subscription_plan()
     fixture = build_ied_simulator_fixture_from_subscription_plan(plan)
     binary_path = tmp_path / "unitlab-iec61850-ied-sim"
-    binary_path.write_text("", encoding="utf-8")
+    _ = binary_path.write_text("", encoding="utf-8")
     process_plan = prepare_ied_simulator_process_plan(
         fixture=fixture,
         binary_path=binary_path,
@@ -1453,7 +1459,7 @@ def test_backend_runtime_external_ied_simulator_process_plan_report_gi_validatio
     processes = [_FakeSimulatorProcess(pid=1), _FakeSimulatorProcess(pid=2)]
     commands: list[str] = []
 
-    def runner(command, **kwargs):
+    def runner(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:  # pyright: ignore[reportUnusedParameter]
         commands.append(_probe_command_label(command))
         if command[-1] == "--dry-run":
             return subprocess.CompletedProcess(args=command, returncode=0, stdout="fixture accepted\n", stderr="")
@@ -1463,7 +1469,7 @@ def test_backend_runtime_external_ied_simulator_process_plan_report_gi_validatio
             return subprocess.CompletedProcess(args=command, returncode=0, stdout=_simulator_probe_stdout(command, probe="gi"), stderr="")
         raise AssertionError(f"unexpected simulator helper command: {command}")
 
-    def process_factory(command, **kwargs):
+    def process_factory(command: tuple[str, ...], **kwargs: object) -> object:  # pyright: ignore[reportUnusedParameter]
         return processes.pop(0)
 
     result = run_ied_simulator_process_plan_report_gi_validation(
@@ -1471,7 +1477,7 @@ def test_backend_runtime_external_ied_simulator_process_plan_report_gi_validatio
         plan,
         startup_grace_seconds=0,
         runner=runner,
-        process_factory=process_factory,
+        process_factory=cast(Callable[..., subprocess.Popen[str]], cast(object, process_factory)),
         readiness_connector=_ready_socket_connector,
     )
 
@@ -1487,14 +1493,14 @@ def test_backend_runtime_external_ied_simulator_process_plan_report_gi_validatio
     assert [stop.pid for stop in result.stop_results] == [2, 1]
 
 
-def test_backend_runtime_external_ied_simulator_subscription_plan_gi_validation(tmp_path) -> None:
+def test_backend_runtime_external_ied_simulator_subscription_plan_gi_validation(tmp_path: Path) -> None:
     plan = _multi_device_subscription_plan()
     binary_path = tmp_path / "unitlab-iec61850-ied-sim"
-    binary_path.write_text("", encoding="utf-8")
+    _ = binary_path.write_text("", encoding="utf-8")
     processes = [_FakeSimulatorProcess(pid=1), _FakeSimulatorProcess(pid=2)]
     commands: list[str] = []
 
-    def runner(command, **kwargs):
+    def runner(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:  # pyright: ignore[reportUnusedParameter]
         commands.append(_probe_command_label(command))
         if command[-1] == "--dry-run":
             return subprocess.CompletedProcess(args=command, returncode=0, stdout="fixture accepted\n", stderr="")
@@ -1504,7 +1510,7 @@ def test_backend_runtime_external_ied_simulator_subscription_plan_gi_validation(
             return subprocess.CompletedProcess(args=command, returncode=0, stdout=_simulator_probe_stdout(command, probe="gi"), stderr="")
         raise AssertionError(f"unexpected simulator helper command: {command}")
 
-    def process_factory(command, **kwargs):
+    def process_factory(command: tuple[str, ...], **kwargs: object) -> object:  # pyright: ignore[reportUnusedParameter]
         return processes.pop(0)
 
     result = validate_report_subscription_plan_with_external_ied_simulators(
@@ -1514,12 +1520,13 @@ def test_backend_runtime_external_ied_simulator_subscription_plan_gi_validation(
         base_port=12102,
         startup_grace_seconds=0,
         runner=runner,
-        process_factory=process_factory,
+        process_factory=cast(Callable[..., subprocess.Popen[str]], cast(object, process_factory)),
         readiness_connector=_ready_socket_connector,
     )
 
-    fixture_payload = json.loads(tmp_path.joinpath("multi-device.fixture.json").read_text(encoding="utf-8"))
-    assert fixture_payload["devices"][1]["iedName"] == "IED2"
+    fixture_payload = cast(dict[str, object], json.loads(tmp_path.joinpath("multi-device.fixture.json").read_text(encoding="utf-8")))
+    devices = cast(list[dict[str, object]], fixture_payload["devices"])
+    assert devices[1]["iedName"] == "IED2"
     assert [endpoint.port for endpoint in result.process_plan.endpoints] == [12102, 12103]
     assert commands == [
         "--dry-run",
@@ -1533,18 +1540,18 @@ def test_backend_runtime_external_ied_simulator_subscription_plan_gi_validation(
     assert [stop.pid for stop in result.stop_results] == [2, 1]
 
 
-def test_backend_runtime_external_ied_simulator_wrapper_runs_through_mms_boundary_and_cleans_up(tmp_path) -> None:
+def test_backend_runtime_external_ied_simulator_wrapper_runs_through_mms_boundary_and_cleans_up(tmp_path: Path) -> None:
     plan = _subscription_plan(_candidate())
     binary_path = tmp_path / "unitlab-iec61850-ied-sim"
-    binary_path.write_text("", encoding="utf-8")
+    _ = binary_path.write_text("", encoding="utf-8")
     process = _FakeSimulatorProcess(pid=61850)
 
-    def runner(command, **kwargs):
+    def runner(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:  # pyright: ignore[reportUnusedParameter]
         if command[-1] == "--metadata-probe":
             return subprocess.CompletedProcess(args=command, returncode=0, stdout=_simulator_probe_stdout(command, probe="metadata"), stderr="")
         return subprocess.CompletedProcess(args=command, returncode=0, stdout="fixture accepted\n", stderr="")
 
-    def process_factory(command, **kwargs):
+    def process_factory(command: tuple[str, ...], **kwargs: object) -> object:  # pyright: ignore[reportUnusedParameter]
         return process
 
     result = run_report_subscription_plan_with_external_ied_simulators(
@@ -1555,7 +1562,7 @@ def test_backend_runtime_external_ied_simulator_wrapper_runs_through_mms_boundar
         fixture_path=tmp_path / "ied1.fixture.json",
         startup_grace_seconds=0,
         runner=runner,
-        process_factory=process_factory,
+        process_factory=cast(Callable[..., subprocess.Popen[str]], cast(object, process_factory)),
         readiness_connector=_ready_socket_connector,
     )
 
@@ -1565,22 +1572,22 @@ def test_backend_runtime_external_ied_simulator_wrapper_runs_through_mms_boundar
     assert process.terminated is True
 
 
-def test_backend_runtime_external_ied_simulator_wrapper_cleans_up_after_runtime_exception(tmp_path) -> None:
+def test_backend_runtime_external_ied_simulator_wrapper_cleans_up_after_runtime_exception(tmp_path: Path) -> None:
     plan = _subscription_plan(_candidate())
     binary_path = tmp_path / "unitlab-iec61850-ied-sim"
-    binary_path.write_text("", encoding="utf-8")
+    _ = binary_path.write_text("", encoding="utf-8")
     process = _FakeSimulatorProcess(pid=61850)
 
-    def runner(command, **kwargs):
+    def runner(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:  # pyright: ignore[reportUnusedParameter]
         if command[-1] == "--metadata-probe":
             return subprocess.CompletedProcess(args=command, returncode=0, stdout=_simulator_probe_stdout(command, probe="metadata"), stderr="")
         return subprocess.CompletedProcess(args=command, returncode=0, stdout="fixture accepted\n", stderr="")
 
-    def process_factory(command, **kwargs):
+    def process_factory(command: tuple[str, ...], **kwargs: object) -> object:  # pyright: ignore[reportUnusedParameter]
         return process
 
     with pytest.raises(RuntimeError):
-        run_report_subscription_plan_with_external_ied_simulators(
+        _ = run_report_subscription_plan_with_external_ied_simulators(
             subscription_plan=plan,
             adapter=_ExplodingAdapter(),
             client_id="unitlab",
@@ -1588,7 +1595,7 @@ def test_backend_runtime_external_ied_simulator_wrapper_cleans_up_after_runtime_
             fixture_path=tmp_path / "ied1.fixture.json",
             startup_grace_seconds=0,
             runner=runner,
-            process_factory=process_factory,
+            process_factory=cast(Callable[..., subprocess.Popen[str]], cast(object, process_factory)),
             readiness_connector=_ready_socket_connector,
         )
 
@@ -1668,33 +1675,6 @@ def _matched_signals() -> tuple[Iec61850ReportSubscriptionPlanSignal, ...]:
     )
 
 
-def _data_change_event(candidate: Iec61850ReportControlCandidate) -> Iec61850ReportEvent:
-    return Iec61850ReportEvent(
-        id="event-1",
-        endpoint_id="sim:IED1/AP1",
-        received_at="2026-05-29T12:00:03Z",
-        report_control=to_report_control_ref(candidate),
-        rpt_id=candidate.rpt_id,
-        data_set_ref=candidate.data_set_ref,
-        conf_rev=candidate.conf_rev,
-        sequence_number=3,
-        time_of_entry="2026-05-29T12:00:03Z",
-        entry_id="entry-3",
-        buffer_overflow=False,
-        reason=Iec61850ReportReason.DATA_CHANGE,
-        values=(
-            Iec61850ReportEventValue(
-                data_set_index=0,
-                reference="LD0/XCBR1.Pos.stVal[ST]",
-                data_reference="IED1LD0/XCBR1$ST$Pos$stVal",
-                value=True,
-                reason_code=Iec61850ReportReason.DATA_CHANGE,
-                timestamp="2026-05-29T12:00:03Z",
-            ),
-        ),
-    )
-
-
 def _subscription_plan(candidate: Iec61850ReportControlCandidate) -> Iec61850ReportSubscriptionPlan:
     return Iec61850ReportSubscriptionPlan(
         selected_signal_count=2,
@@ -1758,11 +1738,11 @@ def _multi_device_subscription_plan() -> Iec61850ReportSubscriptionPlan:
     )
 
 
-def _external_simulator_process_spec(tmp_path, *, dry_run: bool = False):
+def _external_simulator_process_spec(tmp_path: Path, *, dry_run: bool = False) -> Iec61850IedSimulatorProcessSpec:
     fixture = build_ied_simulator_fixture_from_subscription_plan(_subscription_plan(_candidate()))
     fixture_path = tmp_path / "ied1.fixture.json"
     binary_path = tmp_path / "unitlab-iec61850-ied-sim"
-    binary_path.write_text("", encoding="utf-8")
+    _ = binary_path.write_text("", encoding="utf-8")
     return build_ied_simulator_process_spec(
         fixture=fixture,
         binary_path=binary_path,
@@ -1807,6 +1787,7 @@ def _probe_command_label(command: tuple[str, ...]) -> str:
     return command[-1]
 
 
+@final
 class _FakeSimulatorProcess:
     def __init__(
         self,
@@ -1835,7 +1816,7 @@ class _FakeSimulatorProcess:
 
     def wait(self, timeout: float | None = None) -> int | None:
         if self._wait_timeout and not self.killed:
-            raise subprocess.TimeoutExpired(cmd="unitlab-iec61850-ied-sim", timeout=timeout)
+            raise subprocess.TimeoutExpired(cmd="unitlab-iec61850-ied-sim", timeout=timeout or 0.0)
         return self._return_code
 
     def kill(self) -> None:
@@ -1846,6 +1827,7 @@ class _FakeSimulatorProcess:
         return self._stdout, self._stderr
 
 
+@final
 class _FakeSocket:
     def __init__(self) -> None:
         self.closed = False
@@ -1854,15 +1836,17 @@ class _FakeSocket:
         self.closed = True
 
 
-def _ready_socket_connector(address, timeout):
+def _ready_socket_connector(address: tuple[str, int], timeout: float) -> object:  # pyright: ignore[reportUnusedParameter]
     return _FakeSocket()
 
 
+@final
 class _ExplodingAdapter:
-    def connect(self, **kwargs):
+    def connect(self, **kwargs: object) -> Never:  # pyright: ignore[reportUnusedParameter]
         raise RuntimeError("runtime exploded")
 
 
+@final
 class _EnableFailureAdapter:
     def __init__(self, candidate: Iec61850ReportControlCandidate) -> None:
         self._candidate = candidate
@@ -1871,14 +1855,15 @@ class _EnableFailureAdapter:
     def connect(
         self,
         *,
-        session_id: str,
-        endpoint: Iec61850DeviceEndpoint,
+        session_id: str,  # pyright: ignore[reportUnusedParameter]
+        endpoint: Iec61850DeviceEndpoint,  # pyright: ignore[reportUnusedParameter]
         candidates: list[Iec61850ReportControlCandidate],
     ) -> "_EnableFailureSession":
         assert candidates == [self._candidate]
         return _EnableFailureSession(candidate=self._candidate, adapter=self)
 
 
+@final
 class _EnableFailureSession:
     def __init__(self, *, candidate: Iec61850ReportControlCandidate, adapter: _EnableFailureAdapter) -> None:
         self._candidate = candidate
@@ -1897,37 +1882,38 @@ class _EnableFailureSession:
             signal_count=candidate.signal_count,
         )
 
-    def read_report_control(self, reference: Iec61850ReportControlRef) -> Iec61850ReportControlState:
+    def read_report_control(self, reference: Iec61850ReportControlRef) -> Iec61850ReportControlState:  # pyright: ignore[reportUnusedParameter]
         self._state.runtime_status = Iec61850RuntimeStatus.READ
         return self._state
 
-    def reserve_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:
+    def reserve_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:  # pyright: ignore[reportUnusedParameter]
         self._state.reserved_by = client_id
         self._state.owner = client_id
         self._state.runtime_status = Iec61850RuntimeStatus.RESERVED
         return self._state
 
-    def release_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:
+    def release_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:  # pyright: ignore[reportUnusedParameter]
         self._adapter.release_called = True
         self._state.reserved_by = None
         self._state.owner = None
         self._state.runtime_status = Iec61850RuntimeStatus.RELEASED
         return self._state
 
-    def enable_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:
+    def enable_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:  # pyright: ignore[reportUnusedParameter]
         self._state.runtime_status = Iec61850RuntimeStatus.FAILED
         raise Iec61850ReportRuntimeError("ENABLE_FAILED", "enable failed")
 
-    def disable_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:
+    def disable_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:  # pyright: ignore[reportUnusedParameter]
         raise AssertionError("disable should not be called after failed enable")
 
-    def send_general_interrogation(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportEvent:
+    def send_general_interrogation(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportEvent:  # pyright: ignore[reportUnusedParameter]
         raise AssertionError("GI should not be called after failed enable")
 
     def disconnect(self) -> None:
         return None
 
 
+@final
 class _ReadMismatchAdapter:
     def __init__(self, candidate: Iec61850ReportControlCandidate) -> None:
         self._candidate = candidate
@@ -1936,14 +1922,15 @@ class _ReadMismatchAdapter:
     def connect(
         self,
         *,
-        session_id: str,
-        endpoint: Iec61850DeviceEndpoint,
+        session_id: str,  # pyright: ignore[reportUnusedParameter]
+        endpoint: Iec61850DeviceEndpoint,  # pyright: ignore[reportUnusedParameter]
         candidates: list[Iec61850ReportControlCandidate],
     ) -> "_ReadMismatchSession":
         assert candidates == [self._candidate]
         return _ReadMismatchSession(candidate=self._candidate, adapter=self)
 
 
+@final
 class _ReadMismatchSession:
     def __init__(self, *, candidate: Iec61850ReportControlCandidate, adapter: _ReadMismatchAdapter) -> None:
         self._candidate = candidate
@@ -1962,24 +1949,24 @@ class _ReadMismatchSession:
             signal_count=candidate.signal_count,
         )
 
-    def read_report_control(self, reference: Iec61850ReportControlRef) -> Iec61850ReportControlState:
+    def read_report_control(self, reference: Iec61850ReportControlRef) -> Iec61850ReportControlState:  # pyright: ignore[reportUnusedParameter]
         self._state.runtime_status = Iec61850RuntimeStatus.READ
         return self._state
 
-    def reserve_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:
+    def reserve_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:  # pyright: ignore[reportUnusedParameter]
         self._adapter.reserve_called = True
         raise AssertionError("reserve should not be called when read precheck fails")
 
-    def release_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:
+    def release_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:  # pyright: ignore[reportUnusedParameter]
         raise AssertionError("release should not be called without reservation")
 
-    def enable_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:
+    def enable_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:  # pyright: ignore[reportUnusedParameter]
         raise AssertionError("enable should not be called when read precheck fails")
 
-    def disable_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:
+    def disable_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:  # pyright: ignore[reportUnusedParameter]
         raise AssertionError("disable should not be called when read precheck fails")
 
-    def send_general_interrogation(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportEvent:
+    def send_general_interrogation(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportEvent:  # pyright: ignore[reportUnusedParameter]
         raise AssertionError("GI should not be called when read precheck fails")
 
     def disconnect(self) -> None:

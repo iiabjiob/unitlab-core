@@ -1,3 +1,5 @@
+from typing import cast
+
 from app.infrastructure.protocol.packet_io import PacketParser
 from app.infrastructure.protocol.decode import sys as sys_decode
 from app.infrastructure.protocol.packet_structures import RespStatus, RespError
@@ -17,13 +19,19 @@ logger = get_logger("mqtt")
 
 
 @registry.mqtt_handler(topics.DEVICE_RESP)
-async def handle_device_resp(topic: str, payload: bytes, unit_id: str):
+async def handle_device_resp(_topic: str, payload: bytes, unit_id: str):
     
     try:
         parser = PacketParser(payload)
         if not parser.parse_header():
             logger.error(f"💥 Invalid RESP packet from {unit_id}")
             return
+        header = parser.hdr
+        if header is None:
+            logger.error(f"💥 RESP packet has no header from {unit_id}")
+            return
+        packet_id = int(cast(int | str | float, header.packet_id))
+        timestamp_ms = int(cast(int | str | float, header.timestamp_ms))
 
         resp = sys_decode.resp(parser.payload())
         if not resp:
@@ -35,9 +43,9 @@ async def handle_device_resp(topic: str, payload: bytes, unit_id: str):
 
         command_id = None
         try:
-            command_id = await RedisManager.get_instance().get(f"hardware:command:{unit_id}:{parser.hdr.packet_id}")
+            command_id = cast(object, await RedisManager.get_instance().get(f"hardware:command:{unit_id}:{packet_id}"))
         except Exception:  # noqa: BLE001
-            logger.debug("Command correlation lookup unavailable for %s/%s", unit_id, parser.hdr.packet_id)
+            logger.debug("Command correlation lookup unavailable for %s/%s", unit_id, packet_id)
 
         if command_id:
             try:
@@ -46,7 +54,7 @@ async def handle_device_resp(topic: str, payload: bytes, unit_id: str):
                         session,
                         command_id=str(command_id).strip(),
                         unit_id=unit_id,
-                        packet_id=parser.hdr.packet_id,
+                        packet_id=packet_id,
                         status=status.name,
                         error=error.name,
                     )
@@ -55,36 +63,36 @@ async def handle_device_resp(topic: str, payload: bytes, unit_id: str):
                         await record_hardware_command_ack_diagnostic(
                             command_id=str(command_id).strip(),
                             unit_id=unit_id,
-                            packet_id=parser.hdr.packet_id,
+                            packet_id=packet_id,
                             status=status.name,
                             error=error.name,
                             reason="late_duplicate_or_terminal_intent",
                         )
                     except Exception:  # noqa: BLE001
-                        logger.exception("Unable to persist ACK diagnostic for %s/%s", unit_id, parser.hdr.packet_id)
+                        logger.exception("Unable to persist ACK diagnostic for %s/%s", unit_id, packet_id)
             except Exception:  # noqa: BLE001
-                logger.exception("Unable to persist command ACK for %s/%s", unit_id, parser.hdr.packet_id)
+                logger.exception("Unable to persist command ACK for %s/%s", unit_id, packet_id)
         else:
             try:
                 await record_hardware_command_ack_diagnostic(
                     command_id="",
                     unit_id=unit_id,
-                    packet_id=parser.hdr.packet_id,
+                    packet_id=packet_id,
                     status=status.name,
                     error=error.name,
                     reason="missing_command_correlation",
                 )
             except Exception:  # noqa: BLE001
-                logger.exception("Unable to persist uncorrelated ACK diagnostic for %s/%s", unit_id, parser.hdr.packet_id)
+                logger.exception("Unable to persist uncorrelated ACK diagnostic for %s/%s", unit_id, packet_id)
 
         # Build WS event
         event = DeviceRespEvent(
             unit_id=unit_id,
-            packet_id=parser.hdr.packet_id,
+            packet_id=packet_id,
             command_id=str(command_id).strip() if command_id else None,
             status=status,
             error=error,
-            timestamp=parser.hdr.timestamp_ms,
+            timestamp=timestamp_ms,
         )
 
     except Exception as e:
@@ -92,8 +100,8 @@ async def handle_device_resp(topic: str, payload: bytes, unit_id: str):
         return
 
     logger.debug(
-        f"📥 IN ← {unit_id}: RESP packetId={parser.hdr.packet_id} "
-        f"status={status.name} err={error.name}"
+        f"📥 IN ← {unit_id}: RESP packetId={packet_id} "
+        + f"status={status.name} err={error.name}"
     )
 
     await WsEventPublisher.publish(event)

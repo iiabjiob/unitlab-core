@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, override
 
 from simulator.mqtt_client import (
     SimulatedDeviceBase,
@@ -12,21 +11,21 @@ from simulator.mqtt_client import (
 )
 from simulator.packet_structures import (
     Cmd,
+    DiagAllDi,
     Mode,
+    PacketHeader,
     RespError,
     RespStatus,
     StateAllBit,
-    StateSingleBit,
     StateChangedBit,
-    DiagAllDi,
     StateLatchedBit,
+    StateSingleBit,
     encode_state_all_bit,
-    encode_state_single_bit,
     encode_state_changed_bit,
     encode_state_diag_di,
     encode_state_latched_bit,
+    encode_state_single_bit,
 )
-
 
 if TYPE_CHECKING:  # pragma: no cover - hints only
     from simulator.mqtt_client import BehaviorSettings, BrokerSettings
@@ -46,8 +45,8 @@ class SimulatedDIDevice(SimulatedDeviceBase):
         unit_id: str,
         signals: int,
         interval: float,
-        broker: "BrokerSettings",
-        behavior: "BehaviorSettings",
+        broker: BrokerSettings,
+        behavior: BehaviorSettings,
         test_mode: bool = False,
     ) -> None:
         super().__init__(
@@ -58,20 +57,22 @@ class SimulatedDIDevice(SimulatedDeviceBase):
             behavior=behavior,
             test_mode=test_mode,
         )
-        self._bitmask = self._rng.getrandbits(max(signals, 1))
-        self._lock = asyncio.Lock()
-        self._diag_lock = asyncio.Lock()
-        self._diag_seen = 0
-        self._diag_stuck = 0
-        self._diag_lost = 0
-        self._latched_mask = 0
-        self._diag_latched_delta = 0
-        self._diag_latched_cause = 0
+        self._bitmask: int = self._rng.getrandbits(max(signals, 1))
+        self._lock: asyncio.Lock = asyncio.Lock()
+        self._diag_lock: asyncio.Lock = asyncio.Lock()
+        self._diag_seen: int = 0
+        self._diag_stuck: int = 0
+        self._diag_lost: int = 0
+        self._latched_mask: int = 0
+        self._diag_latched_delta: int = 0
+        self._diag_latched_cause: int = 0
 
     @property
+    @override
     def device_type_code(self) -> str:
         return "DI  "
 
+    @override
     def randomize_state(self) -> None:
         if self.signals <= 0:
             return
@@ -90,7 +91,8 @@ class SimulatedDIDevice(SimulatedDeviceBase):
             )
             self._register_aux_task(task)
 
-    async def publish_state(self, *, packet_id: Optional[int] = None) -> None:
+    @override
+    async def publish_state(self, *, packet_id: int | None = None) -> None:
         async with self._lock:
             payload = encode_state_all_bit(
                 StateAllBit(bitmask=self._bitmask & self._mask())
@@ -103,7 +105,8 @@ class SimulatedDIDevice(SimulatedDeviceBase):
             retain=True,
         )
 
-    async def handle_packet(self, topic: str, header, payload: bytes) -> None:
+    @override
+    async def handle_packet(self, topic: str, header: PacketHeader, payload: bytes) -> None:
         mode_value = header.mode
         try:
             cmd = Cmd(mode_value)
@@ -175,7 +178,7 @@ class SimulatedDIDevice(SimulatedDeviceBase):
         value: int,
         *,
         event: str,
-        latched_active: Optional[bool],
+        latched_active: bool | None,
     ) -> None:
         if ch < 0 or ch >= self.signals:
             return
@@ -216,7 +219,7 @@ class SimulatedDIDevice(SimulatedDeviceBase):
         mask: int,
         *,
         event: str,
-        latched_active: Optional[bool],
+        latched_active: bool | None,
     ) -> None:
         async def _task() -> None:
             await self._update_diag_counters(mask, event=event, latched_active=latched_active)
@@ -233,7 +236,7 @@ class SimulatedDIDevice(SimulatedDeviceBase):
         mask: int,
         *,
         event: str,
-        latched_active: Optional[bool],
+        latched_active: bool | None,
     ) -> None:
         limited_mask = mask & self._mask()
         if not limited_mask:
@@ -283,7 +286,7 @@ class SimulatedDIDevice(SimulatedDeviceBase):
     async def _publish_di_diagnostics(
         self,
         *,
-        packet_id: Optional[int] = None,
+        packet_id: int | None = None,
         mode: Mode = Mode.DIAG_DI_BIT,
     ) -> None:
         seen, stuck, lost, latched, changed, cause = await self._diag_snapshot()
@@ -305,7 +308,7 @@ class SimulatedDIDevice(SimulatedDeviceBase):
             retain=True,
         )
 
-    async def _publish_latched_state(self, *, packet_id: Optional[int] = None) -> None:
+    async def _publish_latched_state(self, *, packet_id: int | None = None) -> None:
         async with self._diag_lock:
             payload = encode_state_latched_bit(
                 StateLatchedBit(

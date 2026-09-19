@@ -39,7 +39,7 @@ def test_do_pair_rejects_duplicate_channel_ids() -> None:
     ctx = _pair_context(first=channel, second=channel)
 
     with pytest.raises(SequenceNotApplicableError, match="different channels"):
-        asyncio.run(executor._execute_step(ctx, asyncio.Event(), _noop_probe))
+        asyncio.run(executor._execute_step(ctx, asyncio.Event(), _noop_probe))  # pyright: ignore[reportPrivateUsage]
 
 
 def test_do_pair_rejects_non_integer_state() -> None:
@@ -47,7 +47,7 @@ def test_do_pair_rejects_non_integer_state() -> None:
     ctx = _pair_context(state2b="bad-value")
 
     with pytest.raises(SequenceNotApplicableError, match="integer in range 0..3"):
-        asyncio.run(executor._execute_step(ctx, asyncio.Event(), _noop_probe))
+        asyncio.run(executor._execute_step(ctx, asyncio.Event(), _noop_probe))  # pyright: ignore[reportPrivateUsage]
 
 
 def test_do_pair_rejects_out_of_range_state() -> None:
@@ -55,7 +55,7 @@ def test_do_pair_rejects_out_of_range_state() -> None:
     ctx = _pair_context(state2b=4)
 
     with pytest.raises(SequenceNotApplicableError, match="range 0..3"):
-        asyncio.run(executor._execute_step(ctx, asyncio.Event(), _noop_probe))
+        asyncio.run(executor._execute_step(ctx, asyncio.Event(), _noop_probe))  # pyright: ignore[reportPrivateUsage]
 
 
 def test_do_pair_enqueues_pair_command(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -63,12 +63,12 @@ def test_do_pair_enqueues_pair_command(monkeypatch: pytest.MonkeyPatch) -> None:
     ctx = _pair_context(state2b=2)
     captured: dict[str, object] = {}
 
-    async def _fake_enqueue_do_command(**kwargs):
+    async def _fake_enqueue_do_command(**kwargs: object) -> None:
         captured.update(kwargs)
 
     monkeypatch.setattr("app.services.sequence_executor.enqueue_do_command", _fake_enqueue_do_command)
 
-    asyncio.run(executor._execute_step(ctx, asyncio.Event(), _noop_probe))
+    asyncio.run(executor._execute_step(ctx, asyncio.Event(), _noop_probe))  # pyright: ignore[reportPrivateUsage]
 
     assert captured == {
         "unit_id": "DO-001",

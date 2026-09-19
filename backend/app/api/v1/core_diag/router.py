@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -21,7 +19,7 @@ class CoreDiagCommandAcceptedResponse(BaseModel):
 
 
 class CoreDiagStateResponse(BaseModel):
-    state: dict[str, Any]
+    state: dict[str, object]
 
 
 def _accepted_to_response(accepted: CoreDiagCommandAccepted) -> CoreDiagCommandAcceptedResponse:
@@ -44,4 +42,3 @@ async def core_diag_state() -> CoreDiagStateResponse:
 async def request_core_diag_status() -> CoreDiagCommandAcceptedResponse:
     accepted = await enqueue_core_diag_command("status")
     return _accepted_to_response(accepted)
-

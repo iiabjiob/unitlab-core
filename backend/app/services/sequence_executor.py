@@ -4,7 +4,8 @@ import asyncio
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import cast
+from collections.abc import Awaitable, Callable
 
 from app.infrastructure.protocol.modes import Cmd
 from app.models.sequence.types import SequenceStepType
@@ -28,8 +29,8 @@ class ChannelInfo:
 class DeviceInfo:
     id: int
     unit_id: str
-    channel_ids: List[int] = field(default_factory=list)
-    channel_indexes: List[int] = field(default_factory=list)
+    channel_ids: list[int] = field(default_factory=list)
+    channel_indexes: list[int] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -37,11 +38,11 @@ class StepContext:
     index: int
     sequence_step_id: int
     step_type: SequenceStepType
-    payload: Dict[str, Any]
-    primary_channel: Optional[ChannelInfo]
-    pair_channels: List[ChannelInfo]
-    target_device: Optional[DeviceInfo]
-    run_step_id: Optional[int] = None
+    payload: dict[str, object]
+    primary_channel: ChannelInfo | None
+    pair_channels: list[ChannelInfo]
+    target_device: DeviceInfo | None
+    run_step_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -60,7 +61,7 @@ class StepLifecycleEvent:
 
 @dataclass(frozen=True)
 class StepCompletedEvent(StepLifecycleEvent):
-    completed_step_ids: List[int]
+    completed_step_ids: list[int]
     total_steps: int
     step_elapsed_ms: int
     run_elapsed_ms: int
@@ -69,13 +70,13 @@ class StepCompletedEvent(StepLifecycleEvent):
 @dataclass(frozen=True)
 class StepFailedEvent(StepLifecycleEvent):
     message: str
-    exception: Optional[BaseException] = None
+    exception: BaseException | None = None
 
 
 @dataclass(frozen=True)
 class CancellationEvent:
-    current_step: Optional[StepContext]
-    started_monotonic: Optional[float]
+    current_step: StepContext | None
+    started_monotonic: float | None
     fallback_index: int
 
 
@@ -83,10 +84,10 @@ class CancellationEvent:
 class SequenceExecutionResult:
     status: str
     current_step_index: int
-    completed_step_ids: List[int]
+    completed_step_ids: list[int]
     started_at: datetime
     finished_at: datetime
-    last_error: Optional[str] = None
+    last_error: str | None = None
 
 
 RunStartedHook = Callable[[RunStartedEvent], Awaitable[None]]
@@ -97,12 +98,12 @@ CancellationHook = Callable[[CancellationEvent], Awaitable[int]]
 RunFinishedHook = Callable[[SequenceExecutionResult], Awaitable[None]]
 CancellationProbe = Callable[[], Awaitable[None]]
 HardwareCommandAdmission = Callable[
-    [StepContext, str, int | list[int] | None, int | None, str, dict[str, Any], Callable[[str], Awaitable[Any]]],
-    Awaitable[Any],
+    [StepContext, str, int | list[int] | None, int | None, str, dict[str, object], Callable[[str], Awaitable[object]]],
+    Awaitable[object],
 ]
 
 
-async def _noop_async(*_args, **_kwargs) -> None:  # pragma: no cover - trivial
+async def _noop_async(*_args: object, **_kwargs: object) -> None:  # pragma: no cover - trivial
     return None
 
 
@@ -124,16 +125,16 @@ class SequenceExecutor:
     """Context-free sequence orchestrator that only knows how to execute steps."""
 
     def __init__(self) -> None:
-        self._cancellation_probe_min_interval = 0.3
-        self._last_probe_at: Dict[int, float] = {}
+        self._cancellation_probe_min_interval: float = 0.3
+        self._last_probe_at: dict[int, float] = {}
 
     async def run(
         self,
         *,
-        contexts: List[StepContext],
+        contexts: list[StepContext],
         cancel_event: asyncio.Event,
-        hooks: Optional[SequenceExecutorHooks] = None,
-        cancellation_probe: Optional[CancellationProbe] = None,
+        hooks: SequenceExecutorHooks | None = None,
+        cancellation_probe: CancellationProbe | None = None,
     ) -> SequenceExecutionResult:
         hooks = hooks or SequenceExecutorHooks()
         total_steps = len(contexts)
@@ -144,7 +145,7 @@ class SequenceExecutor:
             RunStartedEvent(total_steps=total_steps, started_at=started_at, start_time=start_time)
         )
 
-        completed_step_ids: List[int] = []
+        completed_step_ids: list[int] = []
 
         async def _probe() -> None:
             if not cancellation_probe:
@@ -159,8 +160,8 @@ class SequenceExecutor:
         for ctx in contexts:
             await _probe()
             if cancel_event.is_set():
-                result = await self._handle_cancellation(ctx, completed_step_ids, hooks, started_at, start_time)
-                self._last_probe_at.pop(id(cancel_event), None)
+                result = await self._handle_cancellation(ctx, completed_step_ids, hooks, started_at)
+                _ = self._last_probe_at.pop(id(cancel_event), None)
                 return result
 
             step_started_at = datetime.now(timezone.utc)
@@ -181,10 +182,9 @@ class SequenceExecutor:
                     completed_step_ids,
                     hooks,
                     started_at,
-                    start_time,
                     step_started_monotonic,
                 )
-                self._last_probe_at.pop(id(cancel_event), None)
+                _ = self._last_probe_at.pop(id(cancel_event), None)
                 return result
             except DomainError as exc:
                 failure = StepFailedEvent(
@@ -204,7 +204,7 @@ class SequenceExecutor:
                     last_error=failure.message,
                 )
                 await hooks.on_finished(result)
-                self._last_probe_at.pop(id(cancel_event), None)
+                _ = self._last_probe_at.pop(id(cancel_event), None)
                 return result
             except Exception as exc:  # noqa: BLE001
                 failure = StepFailedEvent(
@@ -225,7 +225,7 @@ class SequenceExecutor:
                     last_error=failure.message,
                 )
                 await hooks.on_finished(result)
-                self._last_probe_at.pop(id(cancel_event), None)
+                _ = self._last_probe_at.pop(id(cancel_event), None)
                 return result
 
             completed_step_ids.append(ctx.sequence_step_id)
@@ -253,7 +253,7 @@ class SequenceExecutor:
             last_error=None,
         )
         await hooks.on_finished(result)
-        self._last_probe_at.pop(id(cancel_event), None)
+        _ = self._last_probe_at.pop(id(cancel_event), None)
         return result
 
     async def execute_step(
@@ -261,8 +261,8 @@ class SequenceExecutor:
         *,
         ctx: StepContext,
         cancel_event: asyncio.Event,
-        cancellation_probe: Optional[CancellationProbe] = None,
-        command_admission: Optional[HardwareCommandAdmission] = None,
+        cancellation_probe: CancellationProbe | None = None,
+        command_admission: HardwareCommandAdmission | None = None,
     ) -> None:
         async def _probe() -> None:
             if not cancellation_probe:
@@ -277,16 +277,15 @@ class SequenceExecutor:
         try:
             await self._execute_step(ctx, cancel_event, _probe, command_admission)
         finally:
-            self._last_probe_at.pop(id(cancel_event), None)
+            _ = self._last_probe_at.pop(id(cancel_event), None)
 
     async def _handle_cancellation(
         self,
         ctx: StepContext,
-        completed_step_ids: List[int],
+        completed_step_ids: list[int],
         hooks: SequenceExecutorHooks,
         started_at: datetime,
-        start_time: float,
-        step_started_monotonic: Optional[float] = None,
+        step_started_monotonic: float | None = None,
     ) -> SequenceExecutionResult:
         cancellation_index = await hooks.on_cancellation(
             CancellationEvent(
@@ -312,7 +311,7 @@ class SequenceExecutor:
         ctx: StepContext,
         cancel_event: asyncio.Event,
         cancellation_probe: CancellationProbe,
-        command_admission: Optional[HardwareCommandAdmission] = None,
+        command_admission: HardwareCommandAdmission | None = None,
     ) -> None:
         step_type = ctx.step_type
         payload = ctx.payload or {}
@@ -323,9 +322,9 @@ class SequenceExecutor:
             channel_id: int | list[int] | None,
             device_id: int | None,
             unit_id: str,
-            command_payload: dict[str, Any],
-            sender: Callable[[str], Awaitable[Any]],
-        ) -> Any:
+            command_payload: dict[str, object],
+            sender: Callable[[str], Awaitable[object]],
+        ) -> object:
             if command_admission is not None:
                 return await command_admission(
                     ctx,
@@ -338,8 +337,44 @@ class SequenceExecutor:
                 )
             return await sender("")
 
+        async def send_ao(
+            *, unit_id: str, channel: int, value: float, command_id: str
+        ) -> str:
+            if command_id:
+                return await enqueue_ao_command(unit_id=unit_id, ch=channel, value=value, command_id=command_id)
+            return await enqueue_ao_command(unit_id=unit_id, ch=channel, value=value)
+
+        async def send_do(
+            *,
+            unit_id: str,
+            mode: Cmd,
+            command_id: str,
+            ch: int | None = None,
+            value: int | None = None,
+            bitmask: int | None = None,
+            ch_a: int | None = None,
+            ch_b: int | None = None,
+            state2b: int | None = None,
+            pulse_ms: int = 0,
+        ) -> str:
+            if mode == Cmd.SET_SINGLE_BIT:
+                if command_id:
+                    return await enqueue_do_command(unit_id=unit_id, mode=mode, ch=ch, value=value, command_id=command_id)
+                return await enqueue_do_command(unit_id=unit_id, mode=mode, ch=ch, value=value)
+            if mode == Cmd.SET_PULSE_BIT:
+                if command_id:
+                    return await enqueue_do_command(unit_id=unit_id, mode=mode, ch=ch, value=value, pulse_ms=pulse_ms, command_id=command_id)
+                return await enqueue_do_command(unit_id=unit_id, mode=mode, ch=ch, value=value, pulse_ms=pulse_ms)
+            if mode == Cmd.SET_PAIR_BIT:
+                if command_id:
+                    return await enqueue_do_command(unit_id=unit_id, mode=mode, chA=ch_a, chB=ch_b, state2b=state2b, command_id=command_id)
+                return await enqueue_do_command(unit_id=unit_id, mode=mode, chA=ch_a, chB=ch_b, state2b=state2b)
+            if command_id:
+                return await enqueue_do_command(unit_id=unit_id, mode=mode, bitmask=bitmask, command_id=command_id)
+            return await enqueue_do_command(unit_id=unit_id, mode=mode, bitmask=bitmask)
+
         if step_type == SequenceStepType.WAIT:
-            delay_ms = int(payload.get("ms", 0))
+            delay_ms = int(cast(int | str | float, payload.get("ms", 0)))
             if delay_ms > 0:
                 await self._wait_with_cancellation(cancel_event, delay_ms, cancellation_probe)
             return
@@ -347,18 +382,19 @@ class SequenceExecutor:
         if step_type == SequenceStepType.AO_SET:
             if not ctx.primary_channel:
                 raise SequenceNotApplicableError("AO_SET step requires a primary channel")
-            value = float(payload.get("value", 0))
-            await send_hardware(
+            channel = ctx.primary_channel
+            value = float(cast(int | str | float, payload.get("value", 0)))
+            _ = await send_hardware(
                 action="ao_set",
-                channel_id=ctx.primary_channel.id,
-                device_id=ctx.primary_channel.device_id,
-                unit_id=ctx.primary_channel.unit_id,
-                command_payload={"channel_index": ctx.primary_channel.channel_index, "value": value},
-                sender=lambda command_id: enqueue_ao_command(
-                    unit_id=ctx.primary_channel.unit_id,
-                    ch=ctx.primary_channel.channel_index,
+                channel_id=channel.id,
+                device_id=channel.device_id,
+                unit_id=channel.unit_id,
+                command_payload={"channel_index": channel.channel_index, "value": value},
+                sender=lambda command_id: send_ao(
+                    unit_id=channel.unit_id,
+                    channel=channel.channel_index,
                     value=value,
-                    **({"command_id": command_id} if command_id else {}),
+                    command_id=command_id,
                 ),
             )
             return
@@ -366,19 +402,20 @@ class SequenceExecutor:
         if step_type == SequenceStepType.DO_LATCH:
             if not ctx.primary_channel:
                 raise SequenceNotApplicableError("DO_LATCH step requires a primary channel")
-            value = int(payload.get("value", 0))
-            await send_hardware(
+            channel = ctx.primary_channel
+            value = int(cast(int | str | float, payload.get("value", 0)))
+            _ = await send_hardware(
                 action="do_set",
-                channel_id=ctx.primary_channel.id,
-                device_id=ctx.primary_channel.device_id,
-                unit_id=ctx.primary_channel.unit_id,
-                command_payload={"channel_index": ctx.primary_channel.channel_index, "value": value},
-                sender=lambda command_id: enqueue_do_command(
-                    unit_id=ctx.primary_channel.unit_id,
+                channel_id=channel.id,
+                device_id=channel.device_id,
+                unit_id=channel.unit_id,
+                command_payload={"channel_index": channel.channel_index, "value": value},
+                sender=lambda command_id: send_do(
+                    unit_id=channel.unit_id,
                     mode=Cmd.SET_SINGLE_BIT,
-                    ch=ctx.primary_channel.channel_index,
+                    ch=channel.channel_index,
                     value=value,
-                    **({"command_id": command_id} if command_id else {}),
+                    command_id=command_id,
                 ),
             )
             return
@@ -386,25 +423,26 @@ class SequenceExecutor:
         if step_type == SequenceStepType.DO_PULSE:
             if not ctx.primary_channel:
                 raise SequenceNotApplicableError("DO_PULSE step requires a primary channel")
-            value = int(payload.get("value", 0))
-            pulse_ms = int(payload.get("pulse_ms", 0))
-            await send_hardware(
+            channel = ctx.primary_channel
+            value = int(cast(int | str | float, payload.get("value", 0)))
+            pulse_ms = int(cast(int | str | float, payload.get("pulse_ms", 0)))
+            _ = await send_hardware(
                 action="do_pulse",
-                channel_id=ctx.primary_channel.id,
-                device_id=ctx.primary_channel.device_id,
-                unit_id=ctx.primary_channel.unit_id,
+                channel_id=channel.id,
+                device_id=channel.device_id,
+                unit_id=channel.unit_id,
                 command_payload={
-                    "channel_index": ctx.primary_channel.channel_index,
+                    "channel_index": channel.channel_index,
                     "value": value,
                     "pulse_ms": pulse_ms,
                 },
-                sender=lambda command_id: enqueue_do_command(
-                    unit_id=ctx.primary_channel.unit_id,
+                sender=lambda command_id: send_do(
+                    unit_id=channel.unit_id,
                     mode=Cmd.SET_PULSE_BIT,
-                    ch=ctx.primary_channel.channel_index,
+                    ch=channel.channel_index,
                     value=value,
                     pulse_ms=pulse_ms,
-                    **({"command_id": command_id} if command_id else {}),
+                    command_id=command_id,
                 ),
             )
             return
@@ -419,12 +457,12 @@ class SequenceExecutor:
                 raise SequenceNotApplicableError("Pair channels must be different channels")
             raw_state = payload.get("state2b", 0)
             try:
-                state2b = int(raw_state)
+                state2b = int(cast(int | str | float, raw_state))
             except (TypeError, ValueError) as exc:
                 raise SequenceNotApplicableError("DO_PAIR state must be an integer in range 0..3") from exc
             if state2b < 0 or state2b > 3:
                 raise SequenceNotApplicableError("DO_PAIR state must be in range 0..3")
-            await send_hardware(
+            _ = await send_hardware(
                 action="do_pair",
                 channel_id=[first.id, second.id],
                 device_id=first.device_id,
@@ -434,13 +472,13 @@ class SequenceExecutor:
                     "channel_indexes": [first.channel_index, second.channel_index],
                     "state2b": state2b,
                 },
-                sender=lambda command_id: enqueue_do_command(
+                sender=lambda command_id: send_do(
                     unit_id=first.unit_id,
                     mode=Cmd.SET_PAIR_BIT,
-                    chA=first.channel_index,
-                    chB=second.channel_index,
+                    ch_a=first.channel_index,
+                    ch_b=second.channel_index,
                     state2b=state2b,
-                    **({"command_id": command_id} if command_id else {}),
+                    command_id=command_id,
                 ),
             )
             return
@@ -448,24 +486,25 @@ class SequenceExecutor:
         if step_type == SequenceStepType.DO_BITMASK:
             if not ctx.target_device:
                 raise SequenceNotApplicableError("DO_BITMASK step requires device context")
-            bitmask = int(payload.get("bitmask", 0))
+            device = ctx.target_device
+            bitmask = int(cast(int | str | float, payload.get("bitmask", 0)))
             if not ctx.target_device.channel_ids:
                 raise SequenceNotApplicableError("DO_BITMASK requires resolved device channels")
-            await send_hardware(
+            _ = await send_hardware(
                 action="do_all",
-                channel_id=list(ctx.target_device.channel_ids),
-                device_id=ctx.target_device.id,
-                unit_id=ctx.target_device.unit_id,
+                channel_id=list(device.channel_ids),
+                device_id=device.id,
+                unit_id=device.unit_id,
                 command_payload={
                     "channel_ids": list(ctx.target_device.channel_ids),
                     "channel_indexes": list(ctx.target_device.channel_indexes),
                     "bitmask": bitmask,
                 },
-                sender=lambda command_id: enqueue_do_command(
-                    unit_id=ctx.target_device.unit_id,
+                sender=lambda command_id: send_do(
+                    unit_id=device.unit_id,
                     mode=Cmd.SET_ALL_BIT,
                     bitmask=bitmask,
-                    **({"command_id": command_id} if command_id else {}),
+                    command_id=command_id,
                 ),
             )
             return
@@ -488,7 +527,7 @@ class SequenceExecutor:
             await cancellation_probe()
             chunk = min(0.25, remaining)
             try:
-                await asyncio.wait_for(cancel_event.wait(), timeout=chunk)
+                _ = await asyncio.wait_for(cancel_event.wait(), timeout=chunk)
                 raise SequenceCancellationRequested()
             except asyncio.TimeoutError:
                 remaining -= chunk

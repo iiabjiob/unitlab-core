@@ -102,7 +102,7 @@ def test_resolve_verification_endpoint_policy_marks_loaded_scd_model_binding() -
 
 def test_resolve_verification_endpoint_policy_rejects_invalid_settings_catalog_json() -> None:
     with pytest.raises(Iec61850ReportRuntimeError) as error:
-        resolve_verification_endpoint_resolution_policy(
+        _ = resolve_verification_endpoint_resolution_policy(
             execution_context=_build_context("mms"),
             settings_mms_endpoint_catalog_json="not-json",
         )
@@ -142,8 +142,8 @@ def test_resolve_verification_endpoint_policy_uses_validation_override_for_trans
 def test_resolve_verification_endpoint_policy_uses_loaded_scd_for_transport() -> None:
     catalog = build_mms_endpoint_catalog_from_scd_source(
         b"<SCL><Communication><SubNetwork type='8-MMS'>"
-        b"<ConnectedAP apName='P1' iedName='IED-A'><Address><P type='IP'>10.10.10.250</P></Address></ConnectedAP>"
-        b"</SubNetwork></Communication></SCL>",
+        + b"<ConnectedAP apName='P1' iedName='IED-A'><Address><P type='IP'>10.10.10.250</P></Address></ConnectedAP>"
+        + b"</SubNetwork></Communication></SCL>",
         selected_ied='IED-A',
     )
 
@@ -166,9 +166,9 @@ def test_resolve_verification_endpoint_policy_uses_loaded_scd_for_transport() ->
 def test_build_mms_endpoint_catalog_from_scd_source_extracts_connected_ap_hosts() -> None:
     catalog = build_mms_endpoint_catalog_from_scd_source(
         b"<SCL><Communication><SubNetwork type='8-MMS'>"
-        b"<ConnectedAP apName='P1' iedName='IED-A'><Address><P type='IP'>10.10.10.250</P></Address></ConnectedAP>"
-        b"<ConnectedAP apName='P2' iedName='IED-B'><Address><P type='IP'>10.10.10.251</P></Address></ConnectedAP>"
-        b"</SubNetwork></Communication></SCL>",
+        + b"<ConnectedAP apName='P1' iedName='IED-A'><Address><P type='IP'>10.10.10.250</P></Address></ConnectedAP>"
+        + b"<ConnectedAP apName='P2' iedName='IED-B'><Address><P type='IP'>10.10.10.251</P></Address></ConnectedAP>"
+        + b"</SubNetwork></Communication></SCL>",
         selected_ied='IED-A',
     )
 
@@ -182,7 +182,7 @@ def test_build_mms_endpoint_catalog_from_scd_source_extracts_connected_ap_hosts(
     assert endpoint.id == 'mms:IED-A/P1@10.10.10.250:102'
     assert 'transport host resolved from endpoint catalog' in notes
     with pytest.raises(Iec61850ReportRuntimeError):
-        catalog.resolve_transport_endpoint(
+        _ = catalog.resolve_transport_endpoint(
             ied_name='IED-B',
             access_point_name='P2',
             requested_host=None,

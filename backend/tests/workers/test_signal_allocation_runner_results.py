@@ -4,42 +4,85 @@ import asyncio
 import re
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from collections.abc import Awaitable, Callable, Coroutine
+from typing import Any, cast, final
 from unittest.mock import AsyncMock
 
 import pytest
 
+from app.core.events.ws_event_publisher import WsEventPublisher
+from app.infrastructure.redis.manager import RedisManager
 from app.schemas.signal_sheet_schema import SignalAllocationRowSchema
 from app.schemas.verification_schema import (
     SignalVerificationEvidenceSchema,
     VerificationEvidenceDiagnosticSchema,
     VerificationStepSchema,
 )
-from app.schemas.ws.events import SignalRowsPatchedEvent, SignalTestRuntimePatchEvent, WSChannel
+from app.api.v1.signal_sheet.repository import SignalSheetRepository
+from app.services.verification_run_service import VerificationRuntimeStartContext
+from app.schemas.ws.events import SignalRowsPatchedEvent, SignalRowsPatchedRowPatch, SignalTestRuntimePatchEvent, WSChannel
 from app.workers import signal_test_run_runner
-from app.workers.signal_allocation_runner import _serialize_allocation_job_row_patches
+from app.workers.signal_allocation_runner import _serialize_allocation_job_row_patches as serialize_allocation_job_row_patches  # pyright: ignore[reportPrivateUsage]
+from app.workers.signal_test_run_runner import (
+    _derive_terminal_job_status as derive_terminal_job_status,  # pyright: ignore[reportPrivateUsage]
+    _derive_test_status_from_verification as derive_test_status_from_verification,  # pyright: ignore[reportPrivateUsage]
+    _handle_test_run as handle_test_run,  # pyright: ignore[reportPrivateUsage]
+    _mms_subscription_plan_blockers as mms_subscription_plan_blockers,  # pyright: ignore[reportPrivateUsage]
+    _processed_marker_recovery_result as processed_marker_recovery_result,  # pyright: ignore[reportPrivateUsage]
+    _reconcile_unfinished_intents_after_runner_exit as reconcile_unfinished_intents_after_runner_exit,  # pyright: ignore[reportPrivateUsage]
+    _sleep_before_restore as sleep_before_restore,  # pyright: ignore[reportPrivateUsage]
+    _step_evidence_status as step_evidence_status,  # pyright: ignore[reportPrivateUsage]
+    _unique_positive_signal_ids as unique_positive_signal_ids,  # pyright: ignore[reportPrivateUsage]
+)
 
 
-def run_async(awaitable):
+def _derive_test_status(evidence: object, *, expected_value: bool) -> str:
+    return derive_test_status_from_verification(
+        cast(SignalVerificationEvidenceSchema, cast(object, evidence)),  # pyright: ignore[reportUnnecessaryCast]
+        expected_value=expected_value,
+    )
+
+
+def _handle_test_run(repo: object, payload: object, job_state: object) -> Coroutine[Any, Any, dict[str, Any]]:  # pyright: ignore[reportExplicitAny]
+    return handle_test_run(
+        cast(SignalSheetRepository, cast(object, repo)),  # pyright: ignore[reportUnnecessaryCast]
+        7,
+        cast(dict[str, Any], cast(object, payload)),  # pyright: ignore[reportExplicitAny,reportUnnecessaryCast]
+        cast(dict[str, Any], cast(object, job_state)),  # pyright: ignore[reportExplicitAny,reportUnnecessaryCast]
+    )
+
+
+def _result(value: object) -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
+    return cast(dict[str, Any], value)  # pyright: ignore[reportExplicitAny]
+
+
+def _event_result(event: dict[str, Any]) -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
+    return _result(event.get("result"))
+
+
+def run_async(awaitable: Coroutine[Any, Any, object]) -> object:  # pyright: ignore[reportExplicitAny]
     return asyncio.run(awaitable)
 
 
+@final
 class FakeNoRowsRepo:
     def __init__(self) -> None:
         self.db = FakeRepoDb()
-        self.evidence: list[dict] = []
+        self.evidence: list[dict[str, Any]] = []  # pyright: ignore[reportExplicitAny]
 
-    async def list_allocation_rows_by_signal_ids(self, workspace_id: int, signal_ids: list[int]):
+    async def list_allocation_rows_by_signal_ids(self, _workspace_id: int, _signal_ids: list[int]) -> list[SignalAllocationRowSchema]:
         return []
 
-    async def record_signal_test_run_step_evidence(self, **kwargs):
+    async def record_signal_test_run_step_evidence(self, **kwargs: object) -> None:
         self.evidence.append(dict(kwargs))
 
 
+@final
 class FakeRepoDb:
     def __init__(self) -> None:
         self.commit_count = 0
 
-    def add(self, item) -> None:
+    def add(self, item: object) -> None:
         del item
 
     async def flush(self) -> None:
@@ -52,55 +95,54 @@ class FakeRepoDb:
     async def rollback(self) -> None:
         return None
 
-    async def execute(self, statement):
+    async def execute(self, statement: object) -> SimpleNamespace:
         del statement
         return SimpleNamespace(scalar=lambda: False)
 
 
 @pytest.fixture(autouse=True)
-def legacy_worker_contract_fixture(monkeypatch: pytest.MonkeyPatch):
-    async def load_plan(repo, workspace_id: int, job_id: str):
+def legacy_worker_contract_fixture(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def load_plan(repo: object, workspace_id: int, job_id: str) -> list[SignalAllocationRowSchema]:
         del job_id
         tracked_calls = getattr(repo, "calls", None)
-        original_calls = list(tracked_calls) if tracked_calls is not None else None
+        original_calls = list(tracked_calls) if tracked_calls is not None else None  # pyright: ignore[reportAny]
         rows: list[SignalAllocationRowSchema] = []
         list_rows = getattr(repo, "list_allocation_rows_by_signal_ids", None)
         if list_rows is not None:
             for signal_id in (1, 2, 3, 4):
-                rows.extend(await list_rows(workspace_id, [signal_id]))
+                rows.extend(await list_rows(workspace_id, [signal_id]))  # pyright: ignore[reportAny]
         if tracked_calls is not None and original_calls is not None:
             tracked_calls[:] = original_calls
         if not rows:
             raise RuntimeError("Immutable test-run plan is missing")
         return rows
 
-    async def acknowledge_commands(db, *, command_ids, timeout_ms):
+    async def acknowledge_commands(db: object, *, command_ids: list[object], timeout_ms: int) -> dict[str, str]:
         del db, timeout_ms
         return {str(command_id): "acknowledged" for command_id in command_ids}
 
-    async def readback_ok(*args, **kwargs):
-        del args, kwargs
+    async def readback_ok(*_args: object, **_kwargs: object) -> bool:
         return True
 
-    async def record_intent(*args, **kwargs):
+    async def record_intent(*_args: object, **kwargs: object) -> SimpleNamespace:
         return SimpleNamespace(fencing_epoch=kwargs.get("fencing_epoch"))
 
-    async def mark_queued(*args, **kwargs):
+    async def mark_queued(*_args: object, **_kwargs: object) -> None:
         return None
 
-    async def deliver(db, *, command_id, action, command_sender):
+    async def deliver(db: object, *, command_id: str, action: str, command_sender: Callable[[str], Awaitable[object]]) -> None:
         del db, action
-        await command_sender(command_id)
+        _ = await command_sender(command_id)
 
-    async def to_thread(func, /, *args, **kwargs):
+    async def to_thread(func: Callable[..., object], /, *args: object, **kwargs: object) -> object:
         return func(*args, **kwargs)
 
     class Admission:
-        def __init__(self, redis) -> None:
-            self.redis = redis
-            self.epoch = 0
+        def __init__(self, redis: object) -> None:
+            self.redis: object = redis
+            self.epoch: int = 0
 
-        async def acquire(self, *, channel_id: int, owner_kind: str, owner_id: str):
+        async def acquire(self, *, channel_id: int, owner_kind: str, owner_id: str) -> SimpleNamespace:
             self.epoch += 1
             return SimpleNamespace(
                 channel_id=channel_id,
@@ -109,11 +151,11 @@ def legacy_worker_contract_fixture(monkeypatch: pytest.MonkeyPatch):
                 fencing_epoch=self.epoch,
             )
 
-        async def release(self, lease):
+        async def release(self, lease: object) -> bool:
             del lease
             return True
 
-    async def schedule_discovery(**kwargs):
+    async def schedule_discovery(**kwargs: object) -> None:
         del kwargs
         return None
 
@@ -126,17 +168,17 @@ def legacy_worker_contract_fixture(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(signal_test_run_runner, "_deliver_durable_command", deliver)
     monkeypatch.setattr(signal_test_run_runner, "HardwareCommandAdmission", Admission)
     monkeypatch.setattr(signal_test_run_runner, "_schedule_external_ied_discovery_for_verification_run", schedule_discovery)
-    monkeypatch.setattr(signal_test_run_runner.asyncio, "to_thread", to_thread)
+    monkeypatch.setattr(asyncio, "to_thread", to_thread)
 
 
 class FakeLiveRowsRepo:
     def __init__(self) -> None:
-        self.db = FakeRepoDb()
+        self.db: FakeRepoDb = FakeRepoDb()
         self.calls: list[list[int]] = []
         self.tested_at_by_signal: dict[int, str] = {}
-        self.evidence: list[dict] = []
+        self.evidence: list[dict[str, Any]] = []  # pyright: ignore[reportExplicitAny]
 
-    async def list_allocation_rows_by_signal_ids(self, workspace_id: int, signal_ids: list[int]):
+    async def list_allocation_rows_by_signal_ids(self, _workspace_id: int, signal_ids: list[int]) -> list[SignalAllocationRowSchema]:
         normalized_ids = [int(signal_id) for signal_id in signal_ids]
         self.calls.append(normalized_ids)
         if len(normalized_ids) != 1:
@@ -146,29 +188,31 @@ class FakeLiveRowsRepo:
 
     async def mark_signals_tested_at(
         self,
-        workspace_id: int,
+        _workspace_id: int,
         tested_at_by_signal: dict[int, str],
         *,
         commit: bool,
     ) -> list[int]:
+        del commit
         self.tested_at_by_signal.update(tested_at_by_signal)
         return sorted(tested_at_by_signal)
 
-    async def record_signal_test_run_step_evidence(self, **kwargs):
+    async def record_signal_test_run_step_evidence(self, **kwargs: object) -> None:
         self.evidence.append(dict(kwargs))
 
 
+@final
 class FakeRedis:
     def __init__(self) -> None:
         self._epochs: dict[str, int] = {}
 
-    async def get(self, key: str):
+    async def get(self, _key: str) -> str:
         return "0"
 
-    async def expire(self, key: str, ttl: int) -> None:
+    async def expire(self, _key: str, _ttl: int) -> None:
         return None
 
-    async def set(self, key: str, value, **kwargs) -> bool:
+    async def set(self, key: str, value: object, **kwargs: object) -> bool:
         del key, value, kwargs
         return True
 
@@ -187,8 +231,8 @@ def _valid_mms_plan_group() -> SimpleNamespace:
     )
 
 
-def build_allocation_row(signal_id: int, **overrides) -> SignalAllocationRowSchema:
-    data = {
+def build_allocation_row(signal_id: int, **overrides: object) -> SignalAllocationRowSchema:
+    data: dict[str, Any] = {  # pyright: ignore[reportExplicitAny]
         "row_id": f"signal-{signal_id}",
         "signal_id": signal_id,
         "signal_key": f"S{signal_id}",
@@ -205,10 +249,10 @@ def build_allocation_row(signal_id: int, **overrides) -> SignalAllocationRowSche
         "unit_online": True,
     }
     data.update(overrides)
-    return SignalAllocationRowSchema(**data)
+    return SignalAllocationRowSchema.model_validate(data)
 
 
-def test_serialize_allocation_job_row_patches_returns_json_safe_grid_patch_rows() -> None:
+def testserialize_allocation_job_row_patches_returns_json_safe_grid_patch_rows() -> None:
     rows = [
         SignalAllocationRowSchema(
             row_id="signal-1",
@@ -223,7 +267,7 @@ def test_serialize_allocation_job_row_patches_returns_json_safe_grid_patch_rows(
         )
     ]
 
-    payload = _serialize_allocation_job_row_patches(rows)
+    payload = serialize_allocation_job_row_patches(rows)
 
     assert payload[0]["row_id"] == "signal-1"
     assert payload[0]["signal_id"] == 1
@@ -250,23 +294,23 @@ def test_signal_test_runtime_patch_event_serializes_tested_at_by_signal() -> Non
     assert payload["patch_type"] == "tested_at"
     assert payload["tested_at_by_signal"] == {"1": "2026-01-01T12:30:00+00:00"}
     assert payload["test_status_by_signal"] == {"1": "late"}
-    assert payload["emitted_at"].startswith("2026-01-01T12:30:00")
+    assert payload["emitted_at"].startswith("2026-01-01T12:30:00")  # pyright: ignore[reportAny]
 
 
 def test_signal_test_status_derives_operator_verification_statuses() -> None:
-    assert signal_test_run_runner._derive_test_status_from_verification(
+    assert _derive_test_status(
         SimpleNamespace(evidence_status="observed", signal_value=True, diagnostics=[]),
         expected_value=True,
     ) == "verified"
-    assert signal_test_run_runner._derive_test_status_from_verification(
+    assert _derive_test_status(
         SimpleNamespace(evidence_status="late", signal_value=True, diagnostics=[]),
         expected_value=True,
     ) == "late"
-    assert signal_test_run_runner._derive_test_status_from_verification(
+    assert _derive_test_status(
         SimpleNamespace(evidence_status="timeout", signal_value=None, diagnostics=[]),
         expected_value=True,
     ) == "missing"
-    assert signal_test_run_runner._derive_test_status_from_verification(
+    assert _derive_test_status(
         SimpleNamespace(
             evidence_status="timeout",
             signal_value=None,
@@ -279,53 +323,54 @@ def test_signal_test_status_derives_operator_verification_statuses() -> None:
         ),
         expected_value=True,
     ) == "unexpected"
-    assert signal_test_run_runner._derive_test_status_from_verification(
+    assert _derive_test_status(
         SimpleNamespace(evidence_status="observed", signal_value=False, diagnostics=[]),
         expected_value=True,
     ) == "inverted"
 
 
 def test_step_evidence_status_does_not_hide_verdict_failure_after_ack() -> None:
-    assert signal_test_run_runner._step_evidence_status("tested") == "succeeded"
-    assert signal_test_run_runner._step_evidence_status("verified") == "succeeded"
-    assert signal_test_run_runner._step_evidence_status("late") == "failed"
-    assert signal_test_run_runner._step_evidence_status("not_validated") == "failed"
-    assert signal_test_run_runner._step_evidence_status("value_mismatch") == "failed"
+    assert step_evidence_status("tested") == "succeeded"
+    assert step_evidence_status("verified") == "succeeded"
+    assert step_evidence_status("late") == "failed"
+    assert step_evidence_status("not_validated") == "failed"
+    assert step_evidence_status("value_mismatch") == "failed"
 
 
 def test_terminal_job_status_does_not_promote_skips_or_verification_failures() -> None:
-    base = {"processed": 2, "succeeded": 2, "skipped": 0, "verification_failed": 0}
-    assert signal_test_run_runner._derive_terminal_job_status(base, progress_total=2) == "succeeded"
-    assert signal_test_run_runner._derive_terminal_job_status(
+    base: dict[str, Any] = {"processed": 2, "succeeded": 2, "skipped": 0, "verification_failed": 0}  # pyright: ignore[reportExplicitAny]
+    assert derive_terminal_job_status(base, progress_total=2) == "succeeded"
+    assert derive_terminal_job_status(
         {**base, "skipped": 1}, progress_total=2
     ) == "failed"
-    assert signal_test_run_runner._derive_terminal_job_status(
+    assert derive_terminal_job_status(
         {**base, "verification_failed": 1}, progress_total=2
     ) == "failed"
-    assert signal_test_run_runner._derive_terminal_job_status(
+    assert derive_terminal_job_status(
         {**base, "succeeded": 1}, progress_total=2
     ) == "failed"
 
 
 def test_unique_positive_signal_ids_define_execution_progress() -> None:
-    assert signal_test_run_runner._unique_positive_signal_ids([3, 3, 0, -1, "4", "bad"]) == [3, 4]
+    assert unique_positive_signal_ids([3, 3, 0, -1, "4", "bad"]) == [3, 4]
 
 
-def test_sleep_before_restore_defers_task_cancellation(monkeypatch) -> None:
-    async def cancelled_sleep(seconds: float) -> None:
+def test_sleep_before_restore_defers_task_cancellation(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def cancelled_sleep(_seconds: float) -> None:
         raise asyncio.CancelledError
 
-    monkeypatch.setattr(signal_test_run_runner.asyncio, "sleep", cancelled_sleep)
+    monkeypatch.setattr(asyncio, "sleep", cancelled_sleep)
 
-    assert run_async(signal_test_run_runner._sleep_before_restore(1.0)) is True
+    assert run_async(sleep_before_restore(1.0)) is True
 
 
-def test_runner_exit_reconciles_unfinished_intents(monkeypatch) -> None:
+def test_runner_exit_reconciles_unfinished_intents(monkeypatch: pytest.MonkeyPatch) -> None:
     class FakeSession:
-        async def __aenter__(self):
+        committed: bool = False
+        async def __aenter__(self) -> "FakeSession":
             return self
 
-        async def __aexit__(self, exc_type, exc, traceback):
+        async def __aexit__(self, _exc_type: object, _exc: object, _traceback: object) -> bool:
             return False
 
         async def commit(self):
@@ -337,7 +382,7 @@ def test_runner_exit_reconciles_unfinished_intents(monkeypatch) -> None:
     monkeypatch.setattr(signal_test_run_runner, "reconcile_unfinished_hardware_command_intents", reconcile)
 
     assert run_async(
-        signal_test_run_runner._reconcile_unfinished_intents_after_runner_exit(
+        reconcile_unfinished_intents_after_runner_exit(
             job_id="job-1",
             attempt_id="attempt-1",
         )
@@ -351,7 +396,7 @@ def test_signal_rows_patched_event_serializes_grid_patch_contract() -> None:
         workspace_id=7,
         sequence=42,
         source="allocation",
-        patches=[
+        patches=cast(list[SignalRowsPatchedRowPatch], [
             {
                 "row_id": "signal-1",
                 "signal_id": 1,
@@ -361,7 +406,7 @@ def test_signal_rows_patched_event_serializes_grid_patch_contract() -> None:
                 },
                 "columns": ["allocation_status", "channel_select"],
             }
-        ],
+        ]),
         emitted_at=datetime(2026, 1, 1, 12, 30, tzinfo=timezone.utc),
     )
 
@@ -384,11 +429,11 @@ def test_signal_rows_patched_event_serializes_grid_patch_contract() -> None:
             "columns": ["allocation_status", "channel_select"],
         }
     ]
-    assert payload["emitted_at"].startswith("2026-01-01T12:30:00")
+    assert payload["emitted_at"].startswith("2026-01-01T12:30:00")  # pyright: ignore[reportAny]
 
 
-def test_signal_test_run_skips_missing_signal_without_sheet_revision_metadata(monkeypatch) -> None:
-    async def publish_noop(event) -> None:
+def test_signal_test_run_skips_missing_signal_without_sheet_revision_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def publish_noop(_event: object) -> None:
         return None
 
     payload = {
@@ -397,8 +442,8 @@ def test_signal_test_run_skips_missing_signal_without_sheet_revision_metadata(mo
         "signal_interval_ms": 100,
         "toggle_mode": "single",
     }
-    monkeypatch.setattr(signal_test_run_runner.RedisManager, "get_instance", lambda: FakeRedis())
-    monkeypatch.setattr(signal_test_run_runner.WsEventPublisher, "publish", publish_noop)
+    monkeypatch.setattr(RedisManager, "get_instance", lambda: FakeRedis())
+    monkeypatch.setattr(WsEventPublisher, "publish", publish_noop)
 
     job_state = {
         "job_id": "job-1",
@@ -410,11 +455,11 @@ def test_signal_test_run_skips_missing_signal_without_sheet_revision_metadata(mo
 
     repo = FakeNoRowsRepo()
     with pytest.raises(RuntimeError, match="Immutable test-run plan is missing"):
-        run_async(signal_test_run_runner._handle_test_run(repo, 7, payload, job_state))  # type: ignore[arg-type]
+        _ = run_async(_handle_test_run(repo, payload, job_state))  # type: ignore[arg-type]
 
 
 def test_processed_marker_recovery_result_is_explicit_and_fail_closed() -> None:
-    result = signal_test_run_runner._processed_marker_recovery_result(3)
+    result = processed_marker_recovery_result(3)
 
     assert result == {
         "recovery_policy": "fail_closed_on_processed_marker",
@@ -424,25 +469,25 @@ def test_processed_marker_recovery_result_is_explicit_and_fail_closed() -> None:
     }
 
 
-def test_signal_test_run_resolves_current_binding_per_signal(monkeypatch) -> None:
+def test_signal_test_run_resolves_current_binding_per_signal(monkeypatch: pytest.MonkeyPatch) -> None:
     repo = FakeLiveRowsRepo()
-    commands: list[tuple[str, dict]] = []
+    commands: list[tuple[str, dict[str, Any]]] = []  # pyright: ignore[reportExplicitAny]
 
-    async def publish_noop(event) -> None:
+    async def publish_noop(_event: object) -> None:
         return None
 
-    async def sleep_noop(seconds: float) -> None:
+    async def sleep_noop(_seconds: float) -> None:
         return None
 
-    async def enqueue_do_noop(**kwargs) -> None:
+    async def enqueue_do_noop(**kwargs: object) -> None:
         commands.append(("do", dict(kwargs)))
 
-    async def enqueue_state_noop(**kwargs) -> None:
+    async def enqueue_state_noop(**kwargs: object) -> None:
         commands.append(("state", dict(kwargs)))
 
-    monkeypatch.setattr(signal_test_run_runner.RedisManager, "get_instance", lambda: FakeRedis())
-    monkeypatch.setattr(signal_test_run_runner.WsEventPublisher, "publish", publish_noop)
-    monkeypatch.setattr(signal_test_run_runner.asyncio, "sleep", sleep_noop)
+    monkeypatch.setattr(RedisManager, "get_instance", lambda: FakeRedis())
+    monkeypatch.setattr(WsEventPublisher, "publish", publish_noop)
+    monkeypatch.setattr(asyncio, "sleep", sleep_noop)
     monkeypatch.setattr(signal_test_run_runner, "enqueue_do_command", enqueue_do_noop)
     monkeypatch.setattr(signal_test_run_runner, "enqueue_request_state", enqueue_state_noop)
 
@@ -460,9 +505,9 @@ def test_signal_test_run_resolves_current_binding_per_signal(monkeypatch) -> Non
         "toggle_mode": "single",
     }
 
-    result = run_async(
-        signal_test_run_runner._handle_test_run(repo, 7, payload, job_state)  # type: ignore[arg-type]
-    )
+    result = _result(run_async(
+        _handle_test_run(repo, payload, job_state)  # type: ignore[arg-type]
+    ))
 
     assert repo.calls == [[1], [2]]
     assert [(kind, item["unit_id"], item["ch"]) for kind, item in commands if kind == "do"] == [
@@ -487,37 +532,37 @@ def test_signal_test_run_resolves_current_binding_per_signal(monkeypatch) -> Non
     [([True, True], 1), ([True, False], 0)],
 )
 def test_signal_test_run_double_toggle_requires_set_and_restore_readback(
-    monkeypatch, readback_results: list[bool], expected_succeeded: int
+    monkeypatch: pytest.MonkeyPatch, readback_results: list[bool], expected_succeeded: int
 ) -> None:
     repo = FakeLiveRowsRepo()
-    commands: list[tuple[str, dict]] = []
-    readbacks: list[dict] = []
+    commands: list[tuple[str, dict[str, Any]]] = []  # pyright: ignore[reportExplicitAny]
+    readbacks: list[dict[str, Any]] = []  # pyright: ignore[reportExplicitAny]
 
-    async def publish_noop(event) -> None:
+    async def publish_noop(_event: object) -> None:
         return None
 
-    async def sleep_noop(seconds: float) -> None:
+    async def sleep_noop(_seconds: float) -> None:
         return None
 
-    async def enqueue_do_noop(**kwargs) -> None:
+    async def enqueue_do_noop(**kwargs: object) -> None:
         commands.append(("do", dict(kwargs)))
 
-    async def enqueue_state_noop(**kwargs) -> int:
+    async def enqueue_state_noop(**kwargs: object) -> int:
         commands.append(("state", dict(kwargs)))
         return len([kind for kind, _ in commands if kind == "state"])
 
-    async def readback(*args, **kwargs) -> bool:
+    async def readback(*args: object, **kwargs: object) -> bool:
         del args
         readbacks.append(dict(kwargs))
         return readback_results.pop(0)
 
-    async def fresh_bitmask(*args, **kwargs) -> int:
+    async def fresh_bitmask(*args: object, **kwargs: object) -> int:
         del args, kwargs
         return 0
 
-    monkeypatch.setattr(signal_test_run_runner.RedisManager, "get_instance", lambda: FakeRedis())
-    monkeypatch.setattr(signal_test_run_runner.WsEventPublisher, "publish", publish_noop)
-    monkeypatch.setattr(signal_test_run_runner.asyncio, "sleep", sleep_noop)
+    monkeypatch.setattr(RedisManager, "get_instance", lambda: FakeRedis())
+    monkeypatch.setattr(WsEventPublisher, "publish", publish_noop)
+    monkeypatch.setattr(asyncio, "sleep", sleep_noop)
     monkeypatch.setattr(signal_test_run_runner, "enqueue_do_command", enqueue_do_noop)
     monkeypatch.setattr(signal_test_run_runner, "enqueue_request_state", enqueue_state_noop)
     monkeypatch.setattr(signal_test_run_runner, "_wait_for_bit_readback", readback)
@@ -537,7 +582,7 @@ def test_signal_test_run_double_toggle_requires_set_and_restore_readback(
         "toggle_mode": "double",
     }
 
-    result = run_async(signal_test_run_runner._handle_test_run(repo, 7, payload, job_state))  # type: ignore[arg-type]
+    result = _result(run_async(_handle_test_run(repo, payload, job_state)))  # type: ignore[arg-type]
 
     assert result["succeeded"] == expected_succeeded
     if expected_succeeded == 0:
@@ -547,12 +592,12 @@ def test_signal_test_run_double_toggle_requires_set_and_restore_readback(
     assert repo.evidence[0]["command_payload"]["expected_feedback_value"] == 0
 
 
-def test_signal_test_run_requires_iec61850_report_when_verification_enabled(monkeypatch) -> None:
-    commands: list[tuple[str, dict]] = []
-    persisted_verification: list[dict] = []
+def test_signal_test_run_requires_iec61850_report_when_verification_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    commands: list[tuple[str, dict[str, Any]]] = []  # pyright: ignore[reportExplicitAny]
+    persisted_verification: list[dict[str, Any]] = []  # pyright: ignore[reportExplicitAny]
 
     class MappedRowsRepo(FakeLiveRowsRepo):
-        async def list_allocation_rows_by_signal_ids(self, workspace_id: int, signal_ids: list[int]):
+        async def list_allocation_rows_by_signal_ids(self, workspace_id: int, signal_ids: list[int]):  # pyright: ignore[reportImplicitOverride]
             self.calls.append([int(signal_id) for signal_id in signal_ids])
             return [
                 build_allocation_row(
@@ -568,41 +613,42 @@ def test_signal_test_run_requires_iec61850_report_when_verification_enabled(monk
                 for signal_id in signal_ids
             ]
 
-    async def publish_noop(event) -> None:
+    async def publish_noop(_event: object) -> None:
         return None
 
-    async def enqueue_do_noop(**kwargs) -> None:
+    async def enqueue_do_noop(**kwargs: object) -> None:
         commands.append(("do", dict(kwargs)))
 
-    async def enqueue_state_noop(**kwargs) -> None:
+    async def enqueue_state_noop(**kwargs: object) -> None:
         commands.append(("state", dict(kwargs)))
 
-    async def build_context_noop(**kwargs):
+    async def build_context_noop(**kwargs: Any) -> object:  # pyright: ignore[reportAny,reportExplicitAny]
         return SimpleNamespace(
             subscription_plan=SimpleNamespace(targets=[], groups=[_valid_mms_plan_group()]),
-            execution_context=kwargs["payload"].execution_context,
-            runtime_selection=SimpleNamespace(adapter=object(), endpoint_for_device=lambda device: device),
+            execution_context=kwargs["payload"].execution_context,  # pyright: ignore[reportAny]
+            runtime_selection=SimpleNamespace(adapter=object(), endpoint_for_device=lambda device: device),  # pyright: ignore[reportUnknownLambdaType]
             diagnostics=(),
         )
 
     class FakeVerificationEvidenceRepository:
-        def __init__(self, db) -> None:
-            self.db = db
+        def __init__(self, db) -> None:  # pyright: ignore[reportMissingParameterType,reportUnknownParameterType]
+            self.db: object = db
 
-        async def record_signal_verification_evidence(self, **kwargs):
+        async def record_signal_verification_evidence(self, **kwargs: object) -> None:
             persisted_verification.append({"kind": "row", **kwargs})
 
-        async def upsert_signal_verification_evidence_set(self, **kwargs):
+        async def upsert_signal_verification_evidence_set(self, **kwargs: object) -> None:
             persisted_verification.append({"kind": "set", **kwargs})
 
     class FakeVerificationRuntimeOrchestrator:
-        def start(self, **kwargs):
+        def start(self, **_kwargs: object):
             return SimpleNamespace(orchestration_id="local-orch-1")
 
-        def capture_triggered_signal(self, orchestration_id: str, **kwargs):
+        def capture_triggered_signal(self, orchestration_id: str, **kwargs):  # pyright: ignore[reportMissingParameterType,reportUnknownParameterType]
+            del orchestration_id
             evidence = SignalVerificationEvidenceSchema(
                 evidence_id="ev-1",
-                signal_id=int(kwargs["signal_id"]),
+                signal_id=int(kwargs["signal_id"]),  # pyright: ignore[reportUnknownArgumentType]
                 signal_path="breaker_close",
                 expected_path="LD0/XCBR1.Pos.stVal[ST]",
                 actual_report_path="LD0/XCBR1.Pos.stVal[ST]",
@@ -626,7 +672,7 @@ def test_signal_test_run_requires_iec61850_report_when_verification_enabled(monk
             )
             step = VerificationStepSchema(
                 step_id="step-1",
-                signal_id=int(kwargs["signal_id"]),
+                signal_id=int(kwargs["signal_id"]),  # pyright: ignore[reportUnknownArgumentType]
                 target_index=0,
                 session_id="job-1:sim:IED-A/P1",
                 subscription_id="job-1:group-1",
@@ -644,7 +690,7 @@ def test_signal_test_run_requires_iec61850_report_when_verification_enabled(monk
                 source_generation=1,
                 source_report_rpt_id=evidence.rpt_id,
                 source_report_dat_set=evidence.dataset,
-                triggered_at=kwargs["triggered_at"],
+                triggered_at=kwargs["triggered_at"],  # pyright: ignore[reportUnknownArgumentType]
                 observed_at=evidence.observed_at,
                 latency_ms=1,
                 reason="report_received",
@@ -652,10 +698,11 @@ def test_signal_test_run_requires_iec61850_report_when_verification_enabled(monk
             return SimpleNamespace(evidence=evidence, step=step, diagnostics=())
 
         def stop(self, orchestration_id: str):
+            del orchestration_id
             return SimpleNamespace()
 
-    monkeypatch.setattr(signal_test_run_runner.RedisManager, "get_instance", lambda: FakeRedis())
-    monkeypatch.setattr(signal_test_run_runner.WsEventPublisher, "publish", publish_noop)
+    monkeypatch.setattr(RedisManager, "get_instance", lambda: FakeRedis())
+    monkeypatch.setattr(WsEventPublisher, "publish", publish_noop)
     monkeypatch.setattr(signal_test_run_runner, "enqueue_do_command", enqueue_do_noop)
     monkeypatch.setattr(signal_test_run_runner, "enqueue_request_state", enqueue_state_noop)
     monkeypatch.setattr(signal_test_run_runner, "build_verification_runtime_start_context", build_context_noop)
@@ -681,7 +728,7 @@ def test_signal_test_run_requires_iec61850_report_when_verification_enabled(monk
     }
 
     repo = MappedRowsRepo()
-    result = run_async(signal_test_run_runner._handle_test_run(repo, 7, payload, job_state))  # type: ignore[arg-type]
+    result = _result(run_async(_handle_test_run(repo, payload, job_state)))  # type: ignore[arg-type]
 
     assert result["succeeded"] == 1
     assert result["verification_observed"] == 1
@@ -702,12 +749,12 @@ def test_signal_test_run_requires_iec61850_report_when_verification_enabled(monk
     assert repo.db.commit_count >= 3
 
 
-def test_signal_test_run_publishes_iec61850_preparation_steps_before_commands(monkeypatch) -> None:
-    commands: list[tuple[str, dict]] = []
-    published_events: list[dict] = []
+def test_signal_test_run_publishes_iec61850_preparation_steps_before_commands(monkeypatch: pytest.MonkeyPatch) -> None:
+    commands: list[tuple[str, dict[str, Any]]] = []  # pyright: ignore[reportExplicitAny]
+    published_events: list[dict[str, Any]] = []  # pyright: ignore[reportExplicitAny]
 
     class MappedRowsRepo(FakeLiveRowsRepo):
-        async def list_allocation_rows_by_signal_ids(self, workspace_id: int, signal_ids: list[int]):
+        async def list_allocation_rows_by_signal_ids(self, workspace_id: int, signal_ids: list[int]):  # pyright: ignore[reportImplicitOverride]
             self.calls.append([int(signal_id) for signal_id in signal_ids])
             return [
                 build_allocation_row(
@@ -723,44 +770,48 @@ def test_signal_test_run_publishes_iec61850_preparation_steps_before_commands(mo
                 for signal_id in signal_ids
             ]
 
-    async def publish_capture(event) -> None:
-        published_events.append(event.model_dump(mode="json") if hasattr(event, "model_dump") else dict(event))
+    async def publish_capture(event: SignalTestRuntimePatchEvent | dict[str, object]) -> None:
+        if isinstance(event, dict):
+            published_events.append(cast(dict[str, Any], event))  # pyright: ignore[reportExplicitAny]
+        else:
+            published_events.append(cast(dict[str, Any], event.model_dump(mode="json")))  # pyright: ignore[reportExplicitAny,reportUnnecessaryCast]
 
-    async def sleep_noop(seconds: float) -> None:
+    async def sleep_noop(_seconds: float) -> None:
         return None
 
-    async def enqueue_do_noop(**kwargs) -> None:
+    async def enqueue_do_noop(**kwargs: object) -> None:
         commands.append(("do", dict(kwargs)))
 
-    async def enqueue_state_noop(**kwargs) -> None:
+    async def enqueue_state_noop(**kwargs: object) -> None:
         commands.append(("state", dict(kwargs)))
 
-    async def build_context_noop(**kwargs):
+    async def build_context_noop(**kwargs: Any) -> object:  # pyright: ignore[reportAny,reportExplicitAny]
         return SimpleNamespace(
             subscription_plan=SimpleNamespace(targets=[object()], groups=[_valid_mms_plan_group()]),
-            execution_context=kwargs["payload"].execution_context,
-            runtime_selection=SimpleNamespace(adapter=object(), endpoint_for_device=lambda device: device),
+            execution_context=kwargs["payload"].execution_context,  # pyright: ignore[reportAny]
+            runtime_selection=SimpleNamespace(adapter=object(), endpoint_for_device=lambda device: device),  # pyright: ignore[reportUnknownLambdaType]
             diagnostics=(),
         )
 
     class FakeVerificationEvidenceRepository:
-        def __init__(self, db) -> None:
-            self.db = db
+        def __init__(self, db) -> None:  # pyright: ignore[reportMissingParameterType,reportUnknownParameterType]
+            self.db: object = db
 
-        async def record_signal_verification_evidence(self, **kwargs):
+        async def record_signal_verification_evidence(self, **_kwargs: object) -> None:
             return None
 
-        async def upsert_signal_verification_evidence_set(self, **kwargs):
+        async def upsert_signal_verification_evidence_set(self, **_kwargs: object) -> None:
             return None
 
     class FakeVerificationRuntimeOrchestrator:
         def __init__(self) -> None:
-            self.snapshot_calls = 0
+            self.snapshot_calls: int = 0
 
-        def start_deferred(self, **kwargs):
+        def start_deferred(self, **_kwargs: object):
             return SimpleNamespace(orchestration_id="local-orch-1")
 
         def snapshot(self, orchestration_id: str):
+            del orchestration_id
             self.snapshot_calls += 1
             reporting = self.snapshot_calls >= 2
             return SimpleNamespace(
@@ -786,10 +837,11 @@ def test_signal_test_run_publishes_iec61850_preparation_steps_before_commands(mo
                 ],
             )
 
-        def capture_triggered_signal(self, orchestration_id: str, **kwargs):
+        def capture_triggered_signal(self, orchestration_id: str, **kwargs):  # pyright: ignore[reportMissingParameterType,reportUnknownParameterType]
+            del orchestration_id
             evidence = SignalVerificationEvidenceSchema(
                 evidence_id="ev-1",
-                signal_id=int(kwargs["signal_id"]),
+                signal_id=int(kwargs["signal_id"]),  # pyright: ignore[reportUnknownArgumentType]
                 signal_path="breaker_close",
                 expected_path="LD0/XCBR1.Pos.stVal[ST]",
                 actual_report_path="LD0/XCBR1.Pos.stVal[ST]",
@@ -801,7 +853,7 @@ def test_signal_test_run_publishes_iec61850_preparation_steps_before_commands(mo
             )
             step = VerificationStepSchema(
                 step_id="step-1",
-                signal_id=int(kwargs["signal_id"]),
+                signal_id=int(kwargs["signal_id"]),  # pyright: ignore[reportUnknownArgumentType]
                 target_index=0,
                 session_id="session-1",
                 subscription_id="sub-1",
@@ -813,7 +865,7 @@ def test_signal_test_run_publishes_iec61850_preparation_steps_before_commands(mo
                 evidence_status="observed",
                 verdict_state="pass",
                 evidence_ids=[evidence.evidence_id],
-                triggered_at=kwargs["triggered_at"],
+                triggered_at=kwargs["triggered_at"],  # pyright: ignore[reportUnknownArgumentType]
                 observed_at=evidence.observed_at,
                 latency_ms=1,
                 reason="report_received",
@@ -821,11 +873,12 @@ def test_signal_test_run_publishes_iec61850_preparation_steps_before_commands(mo
             return SimpleNamespace(evidence=evidence, step=step, diagnostics=())
 
         def stop(self, orchestration_id: str):
+            del orchestration_id
             return SimpleNamespace()
 
-    monkeypatch.setattr(signal_test_run_runner.RedisManager, "get_instance", lambda: FakeRedis())
-    monkeypatch.setattr(signal_test_run_runner.WsEventPublisher, "publish", publish_capture)
-    monkeypatch.setattr(signal_test_run_runner.asyncio, "sleep", sleep_noop)
+    monkeypatch.setattr(RedisManager, "get_instance", lambda: FakeRedis())
+    monkeypatch.setattr(WsEventPublisher, "publish", publish_capture)
+    monkeypatch.setattr(asyncio, "sleep", sleep_noop)
     monkeypatch.setattr(signal_test_run_runner, "enqueue_do_command", enqueue_do_noop)
     monkeypatch.setattr(signal_test_run_runner, "enqueue_request_state", enqueue_state_noop)
     monkeypatch.setattr(signal_test_run_runner, "build_verification_runtime_start_context", build_context_noop)
@@ -849,15 +902,15 @@ def test_signal_test_run_publishes_iec61850_preparation_steps_before_commands(mo
         "verification_signal_list_revision_id": 2,
     }
 
-    result = run_async(signal_test_run_runner._handle_test_run(MappedRowsRepo(), 7, payload, job_state))  # type: ignore[arg-type]
+    result = _result(run_async(_handle_test_run(MappedRowsRepo(), payload, job_state)))  # type: ignore[arg-type]
 
     prepare_results = [
-        event.get("result") for event in published_events
-        if isinstance(event.get("result"), dict) and event["result"].get("phase") == "preparing_iec61850"
+        _event_result(event) for event in published_events
+        if isinstance(event.get("result"), dict) and event["result"].get("phase") == "preparing_iec61850"  # pyright: ignore[reportAny]
     ]
     assert result["verification_observed"] == 1
     assert [item[0] for item in commands[:2]] == ["state", "do"]
-    assert commands[0][1]["mode"].name == "REQ_ALL_BIT"
+    assert commands[0][1]["mode"].name == "REQ_ALL_BIT"  # pyright: ignore[reportAny]
     assert prepare_results
     assert prepare_results[-1]["verification_prepare_steps"][-1]["id"] == "start_test"
     assert prepare_results[-1]["verification_prepare_steps"][-1]["status"] == "done"
@@ -865,13 +918,13 @@ def test_signal_test_run_publishes_iec61850_preparation_steps_before_commands(mo
     prepare_messages = [
         str(event.get("message") or "")
         for event in published_events
-        if isinstance(event.get("result"), dict) and event["result"].get("phase") == "preparing_iec61850"
+        if isinstance(event.get("result"), dict) and event["result"].get("phase") == "preparing_iec61850"  # pyright: ignore[reportAny]
     ]
     assert prepare_messages
     assert not any(re.search(r"\d+\s*/\s*\d+", message) for message in prepare_messages)
 
 
-def test_signal_test_run_verifies_only_mapped_iec61850_rows(monkeypatch) -> None:
+def test_signal_test_run_verifies_only_mapped_iec61850_rows(monkeypatch: pytest.MonkeyPatch) -> None:
     rows_by_signal_id = {
         1: build_allocation_row(
             1,
@@ -885,42 +938,43 @@ def test_signal_test_run_verifies_only_mapped_iec61850_rows(monkeypatch) -> None
         ),
         2: build_allocation_row(2, signal_metadata={}),
     }
-    commands: list[tuple[str, dict]] = []
+    commands: list[tuple[str, dict[str, Any]]] = []  # pyright: ignore[reportExplicitAny]
     context_signal_ids: list[list[int]] = []
     captured_signal_ids: list[int] = []
 
     class MixedRowsRepo(FakeLiveRowsRepo):
-        async def list_allocation_rows_by_signal_ids(self, workspace_id: int, signal_ids: list[int]):
+        async def list_allocation_rows_by_signal_ids(self, workspace_id: int, signal_ids: list[int]):  # pyright: ignore[reportImplicitOverride]
             self.calls.append([int(signal_id) for signal_id in signal_ids])
             return [rows_by_signal_id[int(signal_id)] for signal_id in signal_ids if int(signal_id) in rows_by_signal_id]
 
-    async def publish_noop(event) -> None:
+    async def publish_noop(_event: object) -> None:
         return None
 
-    async def enqueue_do_noop(**kwargs) -> None:
+    async def enqueue_do_noop(**kwargs: object) -> None:
         commands.append(("do", dict(kwargs)))
 
-    async def enqueue_state_noop(**kwargs) -> None:
+    async def enqueue_state_noop(**kwargs: object) -> None:
         commands.append(("state", dict(kwargs)))
 
-    async def build_context_noop(**kwargs):
-        context_signal_ids.append(list(kwargs["payload"].signal_ids))
+    async def build_context_noop(**kwargs: Any) -> object:  # pyright: ignore[reportAny,reportExplicitAny]
+        context_signal_ids.append(list(kwargs["payload"].signal_ids))  # pyright: ignore[reportAny]
         return SimpleNamespace(
             subscription_plan=SimpleNamespace(targets=[], groups=[_valid_mms_plan_group()]),
-            execution_context=kwargs["payload"].execution_context,
-            runtime_selection=SimpleNamespace(adapter=object(), endpoint_for_device=lambda device: device),
+            execution_context=kwargs["payload"].execution_context,  # pyright: ignore[reportAny]
+            runtime_selection=SimpleNamespace(adapter=object(), endpoint_for_device=lambda device: device),  # pyright: ignore[reportUnknownLambdaType]
             diagnostics=(),
         )
 
     class FakeVerificationRuntimeOrchestrator:
-        def start(self, **kwargs):
+        def start(self, **_kwargs: object):
             return SimpleNamespace(orchestration_id="local-orch-1")
 
-        def capture_triggered_signal(self, orchestration_id: str, **kwargs):
-            captured_signal_ids.append(int(kwargs["signal_id"]))
+        def capture_triggered_signal(self, orchestration_id: str, **kwargs):  # pyright: ignore[reportMissingParameterType,reportUnknownParameterType]
+            del orchestration_id
+            captured_signal_ids.append(int(kwargs["signal_id"]))  # pyright: ignore[reportUnknownArgumentType]
             evidence = SignalVerificationEvidenceSchema(
                 evidence_id=f"ev-{kwargs['signal_id']}",
-                signal_id=int(kwargs["signal_id"]),
+                signal_id=int(kwargs["signal_id"]),  # pyright: ignore[reportUnknownArgumentType]
                 signal_path="sig",
                 expected_path="IEDLD0/GGIO1.stVal[ST]",
                 actual_report_path="IEDLD0/GGIO1.stVal[ST]",
@@ -932,7 +986,7 @@ def test_signal_test_run_verifies_only_mapped_iec61850_rows(monkeypatch) -> None
             )
             step = VerificationStepSchema(
                 step_id=f"step-{kwargs['signal_id']}",
-                signal_id=int(kwargs["signal_id"]),
+                signal_id=int(kwargs["signal_id"]),  # pyright: ignore[reportUnknownArgumentType]
                 target_index=0,
                 session_id="session-1",
                 subscription_id="sub-1",
@@ -944,7 +998,7 @@ def test_signal_test_run_verifies_only_mapped_iec61850_rows(monkeypatch) -> None
                 evidence_status="observed",
                 verdict_state="pass",
                 evidence_ids=[evidence.evidence_id],
-                triggered_at=kwargs["triggered_at"],
+                triggered_at=kwargs["triggered_at"],  # pyright: ignore[reportUnknownArgumentType]
                 observed_at=evidence.observed_at,
                 latency_ms=1,
                 reason="report_received",
@@ -952,20 +1006,21 @@ def test_signal_test_run_verifies_only_mapped_iec61850_rows(monkeypatch) -> None
             return SimpleNamespace(evidence=evidence, step=step, diagnostics=())
 
         def stop(self, orchestration_id: str):
+            del orchestration_id
             return SimpleNamespace()
 
     class FakeVerificationEvidenceRepository:
-        def __init__(self, db) -> None:
-            self.db = db
+        def __init__(self, db) -> None:  # pyright: ignore[reportMissingParameterType,reportUnknownParameterType]
+            self.db: object = db
 
-        async def record_signal_verification_evidence(self, **kwargs):
+        async def record_signal_verification_evidence(self, **_kwargs: object) -> None:
             return None
 
-        async def upsert_signal_verification_evidence_set(self, **kwargs):
+        async def upsert_signal_verification_evidence_set(self, **_kwargs: object) -> None:
             return None
 
-    monkeypatch.setattr(signal_test_run_runner.RedisManager, "get_instance", lambda: FakeRedis())
-    monkeypatch.setattr(signal_test_run_runner.WsEventPublisher, "publish", publish_noop)
+    monkeypatch.setattr(RedisManager, "get_instance", lambda: FakeRedis())
+    monkeypatch.setattr(WsEventPublisher, "publish", publish_noop)
     monkeypatch.setattr(signal_test_run_runner, "enqueue_do_command", enqueue_do_noop)
     monkeypatch.setattr(signal_test_run_runner, "enqueue_request_state", enqueue_state_noop)
     monkeypatch.setattr(signal_test_run_runner, "build_verification_runtime_start_context", build_context_noop)
@@ -989,7 +1044,7 @@ def test_signal_test_run_verifies_only_mapped_iec61850_rows(monkeypatch) -> None
         "verification_signal_list_revision_id": 2,
     }
 
-    result = run_async(signal_test_run_runner._handle_test_run(MixedRowsRepo(), 7, payload, job_state))  # type: ignore[arg-type]
+    result = _result(run_async(_handle_test_run(MixedRowsRepo(), payload, job_state)))  # type: ignore[arg-type]
 
     assert context_signal_ids == [[1]]
     assert captured_signal_ids == [1]
@@ -999,11 +1054,11 @@ def test_signal_test_run_verifies_only_mapped_iec61850_rows(monkeypatch) -> None
     assert [item[0] for item in commands].count("do") == 2
 
 
-def test_signal_test_run_continues_commands_when_iec61850_preparation_is_not_ready(monkeypatch) -> None:
-    commands: list[tuple[str, dict]] = []
+def test_signal_test_run_continues_commands_when_iec61850_preparation_is_not_ready(monkeypatch: pytest.MonkeyPatch) -> None:
+    commands: list[tuple[str, dict[str, Any]]] = []  # pyright: ignore[reportExplicitAny]
 
     class MappedRowsRepo(FakeLiveRowsRepo):
-        async def list_allocation_rows_by_signal_ids(self, workspace_id: int, signal_ids: list[int]):
+        async def list_allocation_rows_by_signal_ids(self, workspace_id: int, signal_ids: list[int]):  # pyright: ignore[reportImplicitOverride]
             self.calls.append([int(signal_id) for signal_id in signal_ids])
             return [
                 build_allocation_row(
@@ -1019,20 +1074,20 @@ def test_signal_test_run_continues_commands_when_iec61850_preparation_is_not_rea
                 for signal_id in signal_ids
             ]
 
-    async def publish_noop(event) -> None:
+    async def publish_noop(_event: object) -> None:
         return None
 
-    async def enqueue_do_noop(**kwargs) -> None:
+    async def enqueue_do_noop(**kwargs: object) -> None:
         commands.append(("do", dict(kwargs)))
 
-    async def enqueue_state_noop(**kwargs) -> None:
+    async def enqueue_state_noop(**kwargs: object) -> None:
         commands.append(("state", dict(kwargs)))
 
-    async def build_context_failed(**kwargs):
+    async def build_context_failed(**_kwargs: object) -> object:
         raise ValueError("IEC 61850 verification plan is not ready for selected signal_id values: [1]")
 
-    monkeypatch.setattr(signal_test_run_runner.RedisManager, "get_instance", lambda: FakeRedis())
-    monkeypatch.setattr(signal_test_run_runner.WsEventPublisher, "publish", publish_noop)
+    monkeypatch.setattr(RedisManager, "get_instance", lambda: FakeRedis())
+    monkeypatch.setattr(WsEventPublisher, "publish", publish_noop)
     monkeypatch.setattr(signal_test_run_runner, "enqueue_do_command", enqueue_do_noop)
     monkeypatch.setattr(signal_test_run_runner, "enqueue_request_state", enqueue_state_noop)
     monkeypatch.setattr(signal_test_run_runner, "build_verification_runtime_start_context", build_context_failed)
@@ -1054,7 +1109,7 @@ def test_signal_test_run_continues_commands_when_iec61850_preparation_is_not_rea
         "verification_signal_list_revision_id": 2,
     }
 
-    result = run_async(signal_test_run_runner._handle_test_run(MappedRowsRepo(), 7, payload, job_state))  # type: ignore[arg-type]
+    result = _result(run_async(_handle_test_run(MappedRowsRepo(), payload, job_state)))  # type: ignore[arg-type]
 
     assert result["succeeded"] == 1
     assert result["verification_available"] is False
@@ -1062,16 +1117,17 @@ def test_signal_test_run_continues_commands_when_iec61850_preparation_is_not_rea
     assert result["verification_observed"] == 0
     assert result["verification_prepare_error"] == "IEC 61850 verification plan is not ready for selected signal_id values: [1]"
     assert [item[0] for item in commands[:2]] == ["state", "do"]
-    assert commands[0][1]["mode"].name == "REQ_ALL_BIT"
+    assert commands[0][1]["mode"].name == "REQ_ALL_BIT"  # pyright: ignore[reportAny]
 
 
-def test_signal_test_run_skips_offline_peripheral_rows_and_runs_online_selection(monkeypatch) -> None:
-    commands: list[tuple[str, dict]] = []
-    published_events: list[dict] = []
+def test_signal_test_run_skips_offline_peripheral_rows_and_runs_online_selection(monkeypatch: pytest.MonkeyPatch) -> None:
+    commands: list[tuple[str, dict[str, Any]]] = []  # pyright: ignore[reportExplicitAny]
+    published_events: list[dict[str, Any]] = []  # pyright: ignore[reportExplicitAny]
     context_signal_ids: list[list[int]] = []
 
     class MappedRowsRepo(FakeLiveRowsRepo):
-        async def list_allocation_rows_by_signal_ids(self, workspace_id: int, signal_ids: list[int]):
+        async def list_allocation_rows_by_signal_ids(self, workspace_id: int, signal_ids: list[int]):  # pyright: ignore[reportImplicitOverride]
+            del workspace_id
             self.calls.append([int(signal_id) for signal_id in signal_ids])
             return [
                 build_allocation_row(
@@ -1088,21 +1144,24 @@ def test_signal_test_run_skips_offline_peripheral_rows_and_runs_online_selection
                 for signal_id in signal_ids
             ]
 
-    async def publish_capture(event) -> None:
-        published_events.append(event.model_dump(mode="json") if hasattr(event, "model_dump") else dict(event))
+    async def publish_capture(event: SignalTestRuntimePatchEvent | dict[str, object]) -> None:
+        if isinstance(event, dict):
+            published_events.append(cast(dict[str, Any], event))  # pyright: ignore[reportExplicitAny]
+        else:
+            published_events.append(cast(dict[str, Any], event.model_dump(mode="json")))  # pyright: ignore[reportExplicitAny,reportUnnecessaryCast]
 
-    async def enqueue_do_noop(**kwargs) -> None:
+    async def enqueue_do_noop(**kwargs: object) -> None:
         commands.append(("do", dict(kwargs)))
 
-    async def enqueue_state_noop(**kwargs) -> None:
+    async def enqueue_state_noop(**kwargs: object) -> None:
         commands.append(("state", dict(kwargs)))
 
-    async def build_context_failed(**kwargs):
-        context_signal_ids.append(list(kwargs["payload"].signal_ids))
+    async def build_context_failed(**kwargs: Any) -> object:  # pyright: ignore[reportAny,reportExplicitAny]
+        context_signal_ids.append(list(kwargs["payload"].signal_ids))  # pyright: ignore[reportAny]
         raise ValueError("IEC 61850 verification plan is not ready for selected signal_id values: [1]")
 
-    monkeypatch.setattr(signal_test_run_runner.RedisManager, "get_instance", lambda: FakeRedis())
-    monkeypatch.setattr(signal_test_run_runner.WsEventPublisher, "publish", publish_capture)
+    monkeypatch.setattr(RedisManager, "get_instance", lambda: FakeRedis())
+    monkeypatch.setattr(WsEventPublisher, "publish", publish_capture)
     monkeypatch.setattr(signal_test_run_runner, "enqueue_do_command", enqueue_do_noop)
     monkeypatch.setattr(signal_test_run_runner, "enqueue_request_state", enqueue_state_noop)
     monkeypatch.setattr(signal_test_run_runner, "build_verification_runtime_start_context", build_context_failed)
@@ -1124,11 +1183,11 @@ def test_signal_test_run_skips_offline_peripheral_rows_and_runs_online_selection
         "verification_signal_list_revision_id": 2,
     }
 
-    result = run_async(signal_test_run_runner._handle_test_run(MappedRowsRepo(), 7, payload, job_state))  # type: ignore[arg-type]
+    result = _result(run_async(_handle_test_run(MappedRowsRepo(), payload, job_state)))  # type: ignore[arg-type]
 
     prepare_results = [
-        event.get("result") for event in published_events
-        if isinstance(event.get("result"), dict) and event["result"].get("phase") == "preparing_iec61850"
+        _event_result(event) for event in published_events
+        if isinstance(event.get("result"), dict) and event["result"].get("phase") == "preparing_iec61850"  # pyright: ignore[reportAny]
     ]
     assert result["processed"] == 2
     assert result["succeeded"] == 1
@@ -1138,9 +1197,9 @@ def test_signal_test_run_skips_offline_peripheral_rows_and_runs_online_selection
     assert "peripheral device offline" in result["verification_prepare_warning"]
     assert context_signal_ids == [[1]]
     assert [item[0] for item in commands] == ["state", "do", "state", "state"]
-    assert commands[0][1]["mode"].name == "REQ_ALL_BIT"
+    assert commands[0][1]["mode"].name == "REQ_ALL_BIT"  # pyright: ignore[reportAny]
     assert prepare_results
-    assert [step["id"] for step in prepare_results[-1]["verification_prepare_steps"]] == [
+    assert [step["id"] for step in prepare_results[-1]["verification_prepare_steps"]] == [  # pyright: ignore[reportAny]
         "peripheral_online",
         "subscribe_reports",
         "general_interrogation",
@@ -1165,40 +1224,43 @@ def test_mms_subscription_plan_blockers_reject_fallback_groups() -> None:
         )
     )
 
-    blockers = signal_test_run_runner._mms_subscription_plan_blockers(context)  # noqa: SLF001
+    blockers = mms_subscription_plan_blockers(
+        cast(VerificationRuntimeStartContext, cast(object, context))
+    )  # noqa: SLF001
 
     assert blockers == ["group-1: missing fallback planning, report control, dataset"]
 
 
-def test_signal_test_run_skips_non_executable_current_bindings(monkeypatch) -> None:
+def test_signal_test_run_skips_non_executable_current_bindings(monkeypatch: pytest.MonkeyPatch) -> None:
     rows_by_signal_id = {
         1: build_allocation_row(1, unit_id=None),
         2: build_allocation_row(2, channel_type="di"),
         3: build_allocation_row(3, unit_online=False),
         4: build_allocation_row(4, channel_type="ao"),
     }
-    commands: list[dict] = []
+    commands: list[dict[str, Any]] = []  # pyright: ignore[reportExplicitAny]
 
     class FakeRowsRepo:
         def __init__(self) -> None:
-            self.db = FakeRepoDb()
-            self.evidence: list[dict] = []
+            self.db: FakeRepoDb = FakeRepoDb()
+            self.evidence: list[dict[str, Any]] = []  # pyright: ignore[reportExplicitAny]
 
         async def list_allocation_rows_by_signal_ids(self, workspace_id: int, signal_ids: list[int]):
+            del workspace_id
             signal_id = int(signal_ids[0])
             return [rows_by_signal_id[signal_id]]
 
-        async def record_signal_test_run_step_evidence(self, **kwargs):
-            self.evidence.append(dict(kwargs))
+        async def record_signal_test_run_step_evidence(self, **kwargs):  # pyright: ignore[reportMissingParameterType,reportUnknownParameterType]
+            self.evidence.append(dict(kwargs))  # pyright: ignore[reportUnknownArgumentType]
 
-    async def publish_noop(event) -> None:
+    async def publish_noop(_event: object) -> None:
         return None
 
-    async def enqueue_do_noop(**kwargs) -> None:
+    async def enqueue_do_noop(**kwargs: object) -> None:
         commands.append(dict(kwargs))
 
-    monkeypatch.setattr(signal_test_run_runner.RedisManager, "get_instance", lambda: FakeRedis())
-    monkeypatch.setattr(signal_test_run_runner.WsEventPublisher, "publish", publish_noop)
+    monkeypatch.setattr(RedisManager, "get_instance", lambda: FakeRedis())
+    monkeypatch.setattr(WsEventPublisher, "publish", publish_noop)
     monkeypatch.setattr(signal_test_run_runner, "enqueue_do_command", enqueue_do_noop)
 
     job_state = {
@@ -1216,7 +1278,7 @@ def test_signal_test_run_skips_non_executable_current_bindings(monkeypatch) -> N
     }
 
     repo = FakeRowsRepo()
-    result = run_async(signal_test_run_runner._handle_test_run(repo, 7, payload, job_state))  # type: ignore[arg-type]
+    result = _result(run_async(_handle_test_run(repo, payload, job_state)))  # type: ignore[arg-type]
 
     assert result["succeeded"] == 0
     assert result["skipped"] == 4

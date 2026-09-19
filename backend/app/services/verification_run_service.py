@@ -5,7 +5,8 @@ from contextlib import ExitStack
 from pathlib import Path
 import tempfile
 from datetime import UTC, datetime
-from typing import Any, Callable
+from typing import cast
+from collections.abc import Callable
 from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -224,8 +225,7 @@ async def _apply_external_ied_discovery_planning(
     ]
     if require_matched and missing_or_unmatched:
         raise ValueError(
-            "IEC 61850 verification plan is not ready for selected signal_id values: "
-            f"{missing_or_unmatched}"
+            f"IEC 61850 verification plan is not ready for selected signal_id values: {missing_or_unmatched}"
         )
 
     return [
@@ -235,8 +235,11 @@ async def _apply_external_ied_discovery_planning(
 
 
 def _source_has_iec61850_mapping(source: VerificationTargetSource) -> bool:
-    metadata = source.signal_metadata if isinstance(source.signal_metadata, dict) else {}
-    verification = metadata.get("verification") if isinstance(metadata.get("verification"), dict) else {}
+    metadata = source.signal_metadata
+    verification_value = metadata.get("verification")
+    verification: dict[str, object] = (
+        cast(dict[str, object], verification_value) if isinstance(verification_value, dict) else {}
+    )
     if verification.get("enabled") is not True:
         return False
     return _first_metadata_string(verification, "iec61850_address", "iec61850", "mms_reference") is not None
@@ -244,16 +247,24 @@ def _source_has_iec61850_mapping(source: VerificationTargetSource) -> bool:
 
 def _with_discovery_planning_metadata(
     source: VerificationTargetSource,
-    planning_result: dict[str, Any] | None,
+    planning_result: dict[str, object] | None,
 ) -> VerificationTargetSource:
     if not isinstance(planning_result, dict):
         return source
     if str(planning_result.get("status") or "").strip().lower() != "matched":
         return source
 
-    metadata = dict(source.signal_metadata or {})
-    protocol_metadata = dict(metadata.get("protocol_metadata") or {})
-    verification_metadata = metadata.get("verification") if isinstance(metadata.get("verification"), dict) else {}
+    metadata = cast(dict[str, object], cast(object, source.signal_metadata or {}))
+    protocol_metadata_value = metadata.get("protocol_metadata")
+    protocol_metadata = (
+        cast(dict[str, object], protocol_metadata_value)
+        if isinstance(protocol_metadata_value, dict)
+        else {}
+    )
+    verification_value = metadata.get("verification")
+    verification_metadata: dict[str, object] = (
+        cast(dict[str, object], verification_value) if isinstance(verification_value, dict) else {}
+    )
     endpoint = _first_metadata_string(planning_result, "endpoint")
     fcda_reference = _first_metadata_string(planning_result, "fcda_reference", "address")
     dataset_reference = _first_metadata_string(planning_result, "dataset_reference")
@@ -297,7 +308,7 @@ def _with_discovery_planning_metadata(
     )
 
 
-def _first_metadata_string(payload: dict[str, Any], *keys: str) -> str | None:
+def _first_metadata_string(payload: dict[str, object], *keys: str) -> str | None:
     for key in keys:
         value = payload.get(key)
         if isinstance(value, str) and value.strip():
@@ -376,7 +387,7 @@ async def execute_single_signal_verification_run(
                     if loaded_runtime_scd_endpoint_catalog is not None:
                         temp_dir = stack.enter_context(tempfile.TemporaryDirectory(prefix="unitlab-mms-scd-"))
                         scl_path = Path(temp_dir) / f"{active_runtime_selection.selected_ied or 'runtime'}.scd"
-                        scl_path.write_bytes(source_bytes)
+                        _ = scl_path.write_bytes(source_bytes)
                         loaded_runtime_scd_path = str(scl_path)
 
         endpoint_resolution_policy = resolve_verification_endpoint_resolution_policy(
@@ -422,9 +433,10 @@ async def execute_single_signal_verification_run(
 
         effective_mms_control_service_factory = mms_control_service_factory or Iec61850ClientControlService
         if loaded_runtime_scd_path is not None and effective_mms_control_service_factory is Iec61850ClientControlService:
-            def _mms_control_service_factory_with_loaded_scd(**kwargs):
-                kwargs.setdefault("target_scl_path", loaded_runtime_scd_path)
-                return Iec61850ClientControlService(**kwargs)
+            def _mms_control_service_factory_with_loaded_scd(**kwargs: object) -> Iec61850ClientControlService:
+                _ = kwargs.setdefault("target_scl_path", loaded_runtime_scd_path)
+                factory = cast(Callable[..., Iec61850ClientControlService], Iec61850ClientControlService)
+                return factory(**kwargs)
 
             effective_mms_control_service_factory = _mms_control_service_factory_with_loaded_scd
 
@@ -473,7 +485,7 @@ async def execute_single_signal_verification_run(
         verdict_explanation=verdict_explanation,
     )
 
-    await run_repo.upsert_signal_verification_run(
+    _ = await run_repo.upsert_signal_verification_run(
         workspace_id=workspace_id,
         test_run_id=run_id,
         payload=response.model_dump(mode="json"),

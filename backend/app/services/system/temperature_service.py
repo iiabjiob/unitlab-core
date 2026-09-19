@@ -23,7 +23,7 @@ class TemperatureService:
         except PermissionError:
             logger.error("💥 Permission denied when accessing `/sys/class/thermal/thermal_zone0/temp`. Try running as root.")
         except ValueError:
-            logger.error(f"⚠️ Invalid data in temperature file: {result.stdout.strip()}")
+            logger.error("⚠️ Invalid data in temperature file")
         except subprocess.CalledProcessError as e:
             logger.error(f"💥 Failed to execute command: {e}")
         except Exception as e:

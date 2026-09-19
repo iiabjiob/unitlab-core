@@ -1,8 +1,9 @@
+# pyright: reportUnusedCallResult=false
 from __future__ import annotations
 
 import asyncio
-from contextlib import suppress
 import logging
+from contextlib import suppress
 
 from .config import AgentConfig
 from .models import CommandEnvelope, CoreProvisionSnapshot
@@ -14,13 +15,13 @@ logger = logging.getLogger("unitlab.provision_agent")
 
 class CoreProvisionAgent:
     def __init__(self, config: AgentConfig) -> None:
-        self.config = config
-        self.redis = RedisProtocol(config)
-        self.ops = ProvisionOps(config)
-        self._stop = asyncio.Event()
+        self.config: AgentConfig = config
+        self.redis: RedisProtocol = RedisProtocol(config)
+        self.ops: ProvisionOps = ProvisionOps(config)
+        self._stop: asyncio.Event = asyncio.Event()
         self._status_task: asyncio.Task[None] | None = None
         self._command_task: asyncio.Task[None] | None = None
-        self._snapshot = CoreProvisionSnapshot(
+        self._snapshot: CoreProvisionSnapshot = CoreProvisionSnapshot(
             mode="unknown",
             project_root=config.project_root,
             checks=[],
@@ -51,8 +52,8 @@ class CoreProvisionAgent:
                 await self._refresh_status(publish=True, include_smoke=False)
             except asyncio.CancelledError:
                 raise
-            except Exception as exc:  # noqa: BLE001
-                logger.exception("Status loop failed: %s", exc)
+            except Exception as exc:
+                logger.exception("Status loop failed")
                 await self._publish_error("status_loop_error", str(exc))
             await asyncio.sleep(self.config.status_publish_interval_sec)
 
@@ -64,8 +65,8 @@ class CoreProvisionAgent:
                 await asyncio.sleep(0.25)
             except asyncio.CancelledError:
                 raise
-            except Exception as exc:  # noqa: BLE001
-                logger.exception("Command loop failed: %s", exc)
+            except Exception as exc:
+                logger.exception("Command loop failed")
                 await self._publish_error("command_loop_error", str(exc))
                 await asyncio.sleep(1)
 
@@ -104,7 +105,7 @@ class CoreProvisionAgent:
                     "command_rejected",
                     {"request_id": cmd.request_id, "entry_id": cmd.entry_id, "action": cmd.action, "reason": f"Unknown action: {cmd.action}"},
                 )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.exception("Command failed | request=%s action=%s", cmd.request_id, cmd.action)
             self._snapshot.mode = "error"
             self._snapshot.last_error = str(exc)

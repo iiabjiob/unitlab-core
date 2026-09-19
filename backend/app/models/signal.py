@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeVar, cast
 
 from sqlalchemy import (
     Boolean,
@@ -22,8 +22,14 @@ from app.infrastructure.db.database import Base
 from app.models.types import BIGINT_PK
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    from app.models.signal_sheet import SignalAllocation
     from app.models.workspace import Workspace
+
+
+_SignalEnum = TypeVar("_SignalEnum", bound=Enum)
+
+
+def _enum_values(enum: type[_SignalEnum]) -> list[str]:
+    return [str(cast(object, member.value)) for member in enum]
 
 
 class SignalIODirection(str, Enum):
@@ -34,9 +40,9 @@ class SignalIODirection(str, Enum):
 
 
 class Signal(Base):
-    __tablename__ = "signals"
+    __tablename__: str = "signals"
 
-    __table_args__ = (
+    __table_args__: tuple[object, ...] = (
         UniqueConstraint("workspace_id", "key", name="uq_signals_workspace_key"),
         Index("ix_signals_workspace", "workspace_id"),
         Index("ix_signals_workspace_active", "workspace_id", "is_active"),
@@ -55,13 +61,13 @@ class Signal(Base):
         SAEnum(
             SignalIODirection,
             name="signal_io_direction_enum",
-            values_callable=lambda enum: [member.value for member in enum],
+            values_callable=_enum_values,
             native_enum=False,
         ),
         nullable=False,
     )
     category: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    signal_metadata: Mapped[dict] = mapped_column("metadata", JSON, nullable=False, server_default="{}")
+    signal_metadata: Mapped[dict[str, object]] = mapped_column("metadata", JSON, nullable=False, server_default="{}")
     tested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -73,7 +79,7 @@ class Signal(Base):
     )
 
     workspace: Mapped["Workspace"] = relationship("Workspace", lazy="selectin")
-    allocation: Mapped["SignalAllocation | None"] = relationship(
+    allocation: Mapped[object | None] = relationship(
         "SignalAllocation",
         back_populates="signal",
         uselist=False,

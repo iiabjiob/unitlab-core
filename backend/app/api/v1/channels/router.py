@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,26 +12,29 @@ from app.schemas.channel_schema import ChannelSchema, ChannelListResponse, Chann
 router = APIRouter(prefix="/api/v1/channels", tags=["Channels"])
 
 
-def get_channel_service(db: AsyncSession = Depends(get_db)) -> ChannelService:
+def get_channel_service(db: Annotated[AsyncSession, Depends(get_db)]) -> ChannelService:
     return ChannelService(db)
 
 
 @router.get("", response_model=ChannelListResponse | list[ChannelSchema])
 async def list_channels(
     response: Response,
-    limit: int | None = Query(default=None, ge=1, le=1000),
-    offset: int = Query(default=0, ge=0),
-    service: ChannelService = Depends(get_channel_service),
+    service: Annotated[ChannelService, Depends(get_channel_service)],
+    limit: Annotated[int | None, Query(ge=1, le=1000)] = None,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ):
     if limit is None:
         return await service.list()
     payload = await service.list_paginated(limit, offset)
-    response.headers.setdefault("X-Total-Count", str(payload.total))
+    _ = response.headers.setdefault("X-Total-Count", str(payload.total))
     return payload
 
 
 @router.get("/{channel_id}", response_model=ChannelSchema)
-async def get_channel(channel_id: int, service: ChannelService = Depends(get_channel_service)):
+async def get_channel(
+    channel_id: int,
+    service: Annotated[ChannelService, Depends(get_channel_service)],
+):
     channel = await service.get(channel_id)
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
@@ -40,7 +45,7 @@ async def get_channel(channel_id: int, service: ChannelService = Depends(get_cha
 async def update_channel(
     channel_id: int,
     patch: ChannelUpdate,
-    service: ChannelService = Depends(get_channel_service),
+    service: Annotated[ChannelService, Depends(get_channel_service)],
 ):
     channel = await service.update(channel_id, patch.model_dump(exclude_unset=True))
     if not channel:
@@ -49,7 +54,10 @@ async def update_channel(
 
 
 @router.delete("/{channel_id}")
-async def delete_channel(channel_id: int, service: ChannelService = Depends(get_channel_service)):
+async def delete_channel(
+    channel_id: int,
+    service: Annotated[ChannelService, Depends(get_channel_service)],
+):
     deleted = await service.delete(channel_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Channel not found")

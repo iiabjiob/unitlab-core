@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, cast
 
 from app.schemas.verification_schema import (
     VerificationEvidenceDiagnosticSchema,
@@ -136,7 +136,7 @@ def build_verification_endpoint_resolution_diagnostic(
         code="endpoint_resolution_policy",
         message=message,
         severity=severity,
-        details=details,
+        details=cast(dict[str, object], details),
     )
 
 

@@ -1,9 +1,20 @@
 {
+  "venvPath": "backend",
+  "venv": ".venv",
   "include": [
     "backend",
-    "host-services"
+    "host-services",
+    "simulator"
+  ],
+  "exclude": [
+    "**/build",
+    "**/__pycache__"
   ],
   "executionEnvironments": [
+    {
+      "root": "backend",
+      "extraPaths": ["backend"]
+    },
     {
       "root": "host-services/rpi-net-agent",
       "extraPaths": ["host-services/rpi-net-agent/src"]

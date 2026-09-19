@@ -15,7 +15,7 @@ from app.services.verification_mms_reachability import check_mms_tcp_reachabilit
 
 class _FakeWriter:
     def __init__(self) -> None:
-        self.closed = False
+        self.closed: bool = False
 
     def close(self) -> None:
         self.closed = True
@@ -25,7 +25,7 @@ class _FakeWriter:
 
 
 @pytest.mark.anyio
-async def test_check_mms_tcp_reachability_reports_reachable(monkeypatch) -> None:
+async def test_check_mms_tcp_reachability_reports_reachable(monkeypatch: pytest.MonkeyPatch) -> None:
     writer = _FakeWriter()
 
     async def fake_open_connection(host: str, port: int):
@@ -33,7 +33,7 @@ async def test_check_mms_tcp_reachability_reports_reachable(monkeypatch) -> None
         assert port == 12447
         return object(), writer
 
-    monkeypatch.setattr(verification_mms_reachability.asyncio, "open_connection", fake_open_connection)
+    monkeypatch.setattr(verification_mms_reachability.asyncio, "open_connection", fake_open_connection)  # pyright: ignore[reportPrivateLocalImportUsage]
 
     response = await check_mms_tcp_reachability(
         VerificationMmsReachabilityRequestSchema(
@@ -53,11 +53,11 @@ async def test_check_mms_tcp_reachability_reports_reachable(monkeypatch) -> None
 
 
 @pytest.mark.anyio
-async def test_check_mms_tcp_reachability_classifies_timeout(monkeypatch) -> None:
+async def test_check_mms_tcp_reachability_classifies_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     async def fake_open_connection(_host: str, _port: int):
         raise TimeoutError("connect timed out")
 
-    monkeypatch.setattr(verification_mms_reachability.asyncio, "open_connection", fake_open_connection)
+    monkeypatch.setattr(verification_mms_reachability.asyncio, "open_connection", fake_open_connection)  # pyright: ignore[reportPrivateLocalImportUsage]
 
     response = await check_mms_tcp_reachability(
         VerificationMmsReachabilityRequestSchema(
@@ -72,11 +72,11 @@ async def test_check_mms_tcp_reachability_classifies_timeout(monkeypatch) -> Non
 
 
 @pytest.mark.anyio
-async def test_check_mms_tcp_reachability_classifies_connection_refused(monkeypatch) -> None:
+async def test_check_mms_tcp_reachability_classifies_connection_refused(monkeypatch: pytest.MonkeyPatch) -> None:
     async def fake_open_connection(_host: str, _port: int):
         raise ConnectionRefusedError("connection refused")
 
-    monkeypatch.setattr(verification_mms_reachability.asyncio, "open_connection", fake_open_connection)
+    monkeypatch.setattr(verification_mms_reachability.asyncio, "open_connection", fake_open_connection)  # pyright: ignore[reportPrivateLocalImportUsage]
 
     response = await check_mms_tcp_reachability(
         VerificationMmsReachabilityRequestSchema(
@@ -91,11 +91,11 @@ async def test_check_mms_tcp_reachability_classifies_connection_refused(monkeypa
 
 
 @pytest.mark.anyio
-async def test_check_mms_tcp_reachability_classifies_network_unreachable(monkeypatch) -> None:
+async def test_check_mms_tcp_reachability_classifies_network_unreachable(monkeypatch: pytest.MonkeyPatch) -> None:
     async def fake_open_connection(_host: str, _port: int):
         raise OSError(errno.ENETUNREACH, "network unreachable")
 
-    monkeypatch.setattr(verification_mms_reachability.asyncio, "open_connection", fake_open_connection)
+    monkeypatch.setattr(verification_mms_reachability.asyncio, "open_connection", fake_open_connection)  # pyright: ignore[reportPrivateLocalImportUsage]
 
     response = await check_mms_tcp_reachability(
         VerificationMmsReachabilityRequestSchema(
@@ -109,7 +109,7 @@ async def test_check_mms_tcp_reachability_classifies_network_unreachable(monkeyp
 
 
 @pytest.mark.anyio
-async def test_check_mms_tcp_reachability_limits_concurrency(monkeypatch) -> None:
+async def test_check_mms_tcp_reachability_limits_concurrency(monkeypatch: pytest.MonkeyPatch) -> None:
     active = 0
     max_active = 0
 
@@ -121,7 +121,7 @@ async def test_check_mms_tcp_reachability_limits_concurrency(monkeypatch) -> Non
         active -= 1
         return object(), _FakeWriter()
 
-    monkeypatch.setattr(verification_mms_reachability.asyncio, "open_connection", fake_open_connection)
+    monkeypatch.setattr(verification_mms_reachability.asyncio, "open_connection", fake_open_connection)  # pyright: ignore[reportPrivateLocalImportUsage]
 
     response = await check_mms_tcp_reachability(
         VerificationMmsReachabilityRequestSchema(

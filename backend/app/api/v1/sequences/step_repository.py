@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 from sqlalchemy import select, update, func
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,7 +14,7 @@ class SequenceStepRepository:
     """CRUD helpers for sequence steps scoped to the v1 API."""
 
     def __init__(self, db: AsyncSession):
-        self.db = db
+        self.db: AsyncSession = db
 
     async def get(self, step_id: int) -> SequenceStep | None:
         result = await self.db.execute(select(SequenceStep).where(SequenceStep.id == step_id))
@@ -24,9 +26,9 @@ class SequenceStepRepository:
             .where(SequenceStep.sequence_id == sequence_id)
             .order_by(SequenceStep.order_index)
         )
-        return result.scalars().all()
+        return list(result.scalars().all())
 
-    async def create(self, sequence_id: int, data: dict) -> SequenceStep:
+    async def create(self, sequence_id: int, data: dict[str, object]) -> SequenceStep:
         await self._ensure_sequence_mutable(sequence_id)
         try:
             result = await self.db.execute(
@@ -58,7 +60,7 @@ class SequenceStepRepository:
             await self.db.rollback()
             raise RuntimeError(f"DB error creating step: {exc}") from exc
 
-    async def update(self, step_id: int, changes: dict) -> SequenceStep | None:
+    async def update(self, step_id: int, changes: dict[str, object]) -> SequenceStep | None:
         step = await self.get(step_id)
         if not step:
             return None
@@ -66,9 +68,9 @@ class SequenceStepRepository:
 
         for key, value in changes.items():
             if key in {"sequence_step_type", "type", "kind"} and value is not None:
-                step.sequence_step_type = SequenceStepType(value)
+                step.sequence_step_type = SequenceStepType(cast(str, value))
             elif key == "order_index" and value is not None:
-                step.order_index = int(value)
+                step.order_index = int(cast(int | str | float, value))
             elif hasattr(step, key):
                 setattr(step, key, value)
 
@@ -128,7 +130,7 @@ class SequenceStepRepository:
         offset = max_index + total + 1
 
         # Phase 1: bulk offset to avoid unique constraint conflicts.
-        await self.db.execute(
+        _ = await self.db.execute(
             update(SequenceStep)
             .where(SequenceStep.sequence_id == sequence_id)
             .values(order_index=SequenceStep.order_index + offset)
@@ -137,7 +139,7 @@ class SequenceStepRepository:
 
         # Phase 2: apply final order per step id.
         for idx, step_id in enumerate(ordered_ids):
-            await self.db.execute(
+            _ = await self.db.execute(
                 update(SequenceStep)
                 .where(SequenceStep.id == step_id)
                 .values(order_index=idx)
@@ -147,7 +149,7 @@ class SequenceStepRepository:
         await self.db.commit()
         return await self.get_for_sequence(sequence_id)
 
-    async def replace(self, sequence_id: int, new_steps: list[dict]) -> list[SequenceStep]:
+    async def replace(self, sequence_id: int, new_steps: list[dict[str, object]]) -> list[SequenceStep]:
         await self._ensure_sequence_mutable(sequence_id)
         existing = await self.get_for_sequence(sequence_id)
         for step in existing:
@@ -172,7 +174,7 @@ class SequenceStepRepository:
         return await self.get_for_sequence(sequence_id)
 
     async def _touch_sequence(self, sequence_id: int) -> None:
-        await self.db.execute(
+        _ = await self.db.execute(
             update(Sequence)
             .where(Sequence.id == sequence_id)
             .values(updated_at=func.now())

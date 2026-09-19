@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Iterable, Sequence
+from typing import cast
+from collections.abc import Iterable, Sequence
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,7 +15,7 @@ from app.services.signal_sheet_import_service import ImportedSignalProjection
 
 class SignalsRepository:
     def __init__(self, db: AsyncSession):
-        self.db = db
+        self.db: AsyncSession = db
 
     async def ensure_workspace(self, workspace_id: int) -> bool:
         stmt = select(Workspace.id).where(Workspace.id == workspace_id)
@@ -34,7 +35,7 @@ class SignalsRepository:
         normalized_ids = {
             int(signal_id)
             for signal_id in signal_ids
-            if isinstance(signal_id, int) and int(signal_id) > 0
+            if signal_id > 0
         }
         if not normalized_ids:
             return []
@@ -56,16 +57,18 @@ class SignalsRepository:
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def create(self, workspace_id: int, payload: dict) -> Signal:
-        direction = self._parse_direction(payload["io_direction"])
+    async def create(self, workspace_id: int, payload: dict[str, object]) -> Signal:
+        direction = self._parse_direction(cast(str, payload["io_direction"]))
+        metadata = payload.get("metadata")
+        metadata_dict = cast(dict[str, object], metadata) if isinstance(metadata, dict) else {}
         signal = Signal(
             workspace_id=workspace_id,
             key=str(payload["key"]).strip(),
             name=str(payload["name"]).strip(),
             io_direction=direction,
-            category=payload.get("category"),
-            signal_metadata=payload.get("metadata") or {},
-            tested_at=self._extract_tested_at_from_metadata(payload.get("metadata") or {}),
+            category=cast(str | None, payload.get("category")),
+            signal_metadata=metadata_dict,
+            tested_at=self._extract_tested_at_from_metadata(metadata_dict),
             is_active=bool(payload.get("is_active", True)),
         )
         self.db.add(signal)
@@ -73,7 +76,7 @@ class SignalsRepository:
         await self.db.refresh(signal)
         return signal
 
-    async def update(self, signal_id: int, payload: dict) -> Signal | None:
+    async def update(self, signal_id: int, payload: dict[str, object]) -> Signal | None:
         signal = await self.get(signal_id)
         if not signal:
             return None
@@ -81,11 +84,12 @@ class SignalsRepository:
         if "name" in payload and payload["name"] is not None:
             signal.name = str(payload["name"]).strip()
         if "io_direction" in payload and payload["io_direction"] is not None:
-            signal.io_direction = self._parse_direction(payload["io_direction"])
+            signal.io_direction = self._parse_direction(cast(str, payload["io_direction"]))
         if "category" in payload:
-            signal.category = payload["category"]
+            signal.category = cast(str | None, payload["category"])
         if "metadata" in payload:
-            signal.signal_metadata = payload["metadata"] or {}
+            metadata = payload["metadata"]
+            signal.signal_metadata = cast(dict[str, object], metadata) if isinstance(metadata, dict) else {}
             signal.tested_at = self._extract_tested_at_from_metadata(signal.signal_metadata)
         if "is_active" in payload and payload["is_active"] is not None:
             signal.is_active = bool(payload["is_active"])
@@ -99,7 +103,7 @@ class SignalsRepository:
         if not signal:
             return False
 
-        await self.db.execute(
+        _ = await self.db.execute(
             delete(SignalAllocation).where(
                 SignalAllocation.workspace_id == signal.workspace_id,
                 SignalAllocation.signal_id == signal.id,
@@ -115,12 +119,12 @@ class SignalsRepository:
         normalized_ids = {
             int(signal_id)
             for signal_id in signal_ids
-            if isinstance(signal_id, int) and signal_id > 0
+            if signal_id > 0
         }
         if not normalized_ids:
             return 0
 
-        await self.db.execute(
+        _ = await self.db.execute(
             delete(SignalAllocation).where(
                 SignalAllocation.workspace_id == workspace_id,
                 SignalAllocation.signal_id.in_(normalized_ids),
@@ -141,7 +145,7 @@ class SignalsRepository:
             )
         )
         result = await self.db.execute(stmt)
-        deleted_count = int(result.rowcount or 0)
+        deleted_count = int(getattr(result, "rowcount", 0) or 0)
         await self.db.commit()
         return deleted_count
 
@@ -228,7 +232,7 @@ class SignalsRepository:
         return SignalIODirection(str(value).strip().upper())
 
     @staticmethod
-    def _extract_tested_at_from_metadata(metadata: dict | None) -> datetime | None:
+    def _extract_tested_at_from_metadata(metadata: dict[str, object] | None) -> datetime | None:
         if not isinstance(metadata, dict):
             return None
         raw_value = metadata.get("tested_at") or metadata.get("testedAt")

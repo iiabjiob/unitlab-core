@@ -8,7 +8,8 @@ import subprocess
 import time
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Callable, Sequence
+from typing import cast
+from collections.abc import Callable, Sequence
 
 from .ied_simulator_fixture import (
     Iec61850IedSimulatorFixture,
@@ -118,7 +119,7 @@ def write_ied_simulator_process_command(handle: Iec61850IedSimulatorProcessHandl
             "SIMULATOR_PROCESS_STDIN_UNAVAILABLE",
             "IEC 61850 IED simulator process stdin is not available.",
         )
-    handle.process.stdin.write(command.rstrip("\n") + "\n")
+    _ = handle.process.stdin.write(command.rstrip("\n") + "\n")
     handle.process.stdin.flush()
 
 
@@ -143,7 +144,7 @@ class Iec61850IedSimulatorProcessPlan:
         return self.spec_for_plan_device(device).endpoint
 
     def spec_for_plan_device(self, device: Iec61850ReportSubscriptionPlanDevice) -> Iec61850IedSimulatorProcessSpec:
-        matches = tuple(
+        matches: tuple[Iec61850IedSimulatorProcessSpec, ...] = tuple(
             spec
             for spec in self.specs
             if _endpoint_key(spec.ied_name, spec.access_point_name) == _endpoint_key(device.ied_name, device.access_point_name)
@@ -158,7 +159,7 @@ class Iec61850IedSimulatorProcessPlan:
                 "SIMULATOR_PROCESS_ENDPOINT_DUPLICATE",
                 f'IEC 61850 simulator process endpoint for "{device.ied_name}/{device.access_point_name}" is configured more than once.',
             )
-        return matches[0]
+        return next(iter(matches))
 
 
 @dataclass(frozen=True, slots=True)
@@ -192,7 +193,7 @@ def write_ied_simulator_fixture_file(
             "IEC 61850 IED simulator fixture path must include a file name.",
         )
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
+    _ = path.write_text(
         json.dumps(ied_simulator_fixture_to_payload(fixture), indent=2, sort_keys=True),
         encoding="utf-8",
     )
@@ -541,7 +542,7 @@ def wait_ied_simulator_process_ready(
         )
 
     deadline = time.monotonic() + max(timeout_seconds, 0.0)
-    last_error: OSError | None = None
+    last_error = OSError("connection attempt failed")
     while True:
         return_code = process.poll()
         if return_code is not None:
@@ -557,14 +558,14 @@ def wait_ied_simulator_process_ready(
             connection = connector((endpoint.host, endpoint.port), min(remaining, 1.0))
             close = getattr(connection, "close", None)
             if callable(close):
-                close()
+                _ = close()
             return
         except OSError as exc:
             last_error = exc
 
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            details = f": {last_error}" if last_error is not None else ""
+            details = f": {last_error}"
             raise Iec61850ReportRuntimeError(
                 "SIMULATOR_ENDPOINT_READY_TIMEOUT",
                 f"IEC 61850 IED simulator endpoint {endpoint.host}:{endpoint.port} did not become reachable within {timeout_seconds:g}s{details}.",
@@ -581,15 +582,17 @@ def _read_process_stdout_line(process: subprocess.Popen[str], *, timeout_deadlin
         )
 
     raw_fd = None
-    raw_stream = getattr(getattr(stdout, "buffer", None), "raw", None)
+    raw_stream = cast(object, getattr(getattr(stdout, "buffer", None), "raw", None))
     if raw_stream is not None:
         fileno = getattr(raw_stream, "fileno", None)
         if callable(fileno):
-            raw_fd = fileno()
+            candidate_fd = fileno()
+            if isinstance(candidate_fd, int):
+                raw_fd = candidate_fd
 
     if raw_fd is None:
         while True:
-            line = stdout.readline()
+            line = cast(str, stdout.readline())
             if not line:
                 return None
             return line
@@ -662,6 +665,7 @@ def wait_ied_native_wire_server_ready(
     *,
     timeout_seconds: float = 5.0,
 ) -> None:
+    _ = spec
     if process.stdout is None:
         raise Iec61850ReportRuntimeError(
             "SIMULATOR_NATIVE_WIRE_STDOUT_UNAVAILABLE",
@@ -691,7 +695,7 @@ def wait_ied_native_wire_server_ready(
         if not readable:
             continue
 
-        line = process.stdout.readline()
+        line = cast(str, process.stdout.readline())
         if not line:
             continue
         if expected_prefix in line:
@@ -717,7 +721,7 @@ def start_ied_simulator_process(
             "IEC 61850 IED simulator process start requires a non-dry-run process spec.",
         )
 
-    run_ied_simulator_startup_check(
+    _ = run_ied_simulator_startup_check(
         spec,
         timeout_seconds=startup_check_timeout_seconds,
         runner=runner,
@@ -775,13 +779,13 @@ def start_ied_simulator_process(
                 connector=readiness_connector,
                 sleep=sleep,
             )
-            run_ied_simulator_metadata_probe(
+            _ = run_ied_simulator_metadata_probe(
                 spec,
                 timeout_seconds=metadata_probe_timeout_seconds,
                 runner=runner,
             )
     except Exception:
-        stop_ied_simulator_process(handle)
+        _ = stop_ied_simulator_process(handle)
         raise
 
     return handle
@@ -819,7 +823,7 @@ def start_ied_simulator_process_plan(
                 )
             )
     except Exception:
-        stop_ied_simulator_processes(
+        _ = stop_ied_simulator_processes(
             tuple(reversed(handles)),
             terminate_timeout_seconds=terminate_timeout_seconds,
         )

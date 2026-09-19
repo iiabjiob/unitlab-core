@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional
+from typing import ClassVar, Literal
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
@@ -21,10 +21,10 @@ class SequenceStepBase(BaseModel):
         validation_alias=AliasChoices("sequence_step_type", "type", "kind"),
         serialization_alias="sequence_step_type",
     )
-    channel_id: Optional[int] = None
-    payload: Optional[Dict[str, Any]] = None
+    channel_id: int | None = None
+    payload: dict[str, object] | None = None
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config: ClassVar[ConfigDict] = ConfigDict(populate_by_name=True)
 
 
 class SequenceStepCreateSchema(BaseModel):
@@ -32,23 +32,23 @@ class SequenceStepCreateSchema(BaseModel):
         validation_alias=AliasChoices("sequence_step_type", "type", "kind"),
         serialization_alias="sequence_step_type",
     )
-    channel_id: Optional[int] = None
-    payload: Optional[Dict[str, Any]] = None
+    channel_id: int | None = None
+    payload: dict[str, object] | None = None
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config: ClassVar[ConfigDict] = ConfigDict(populate_by_name=True)
 
 
 class SequenceStepUpdateSchema(BaseModel):
-    order_index: Optional[int] = None
-    sequence_step_type: Optional[SequenceStepTypeLiteral] = Field(
+    order_index: int | None = None
+    sequence_step_type: SequenceStepTypeLiteral | None = Field(
         default=None,
         validation_alias=AliasChoices("sequence_step_type", "type", "kind"),
         serialization_alias="sequence_step_type",
     )
-    channel_id: Optional[int] = None
-    payload: Optional[Dict[str, Any]] = None
+    channel_id: int | None = None
+    payload: dict[str, object] | None = None
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config: ClassVar[ConfigDict] = ConfigDict(populate_by_name=True)
 
 
 class SequenceStepSchema(SequenceStepBase):
@@ -58,8 +58,8 @@ class SequenceStepSchema(SequenceStepBase):
     created_at: datetime
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+    model_config: ClassVar[ConfigDict] = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class SequenceReorderSchema(BaseModel):
-    new_order: List[int]
+    new_order: list[int]

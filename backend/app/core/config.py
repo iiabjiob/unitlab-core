@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 import os
+from typing import ClassVar
 from urllib.parse import quote
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -13,13 +14,13 @@ if ENV_FILE and not ENV_FILE.exists():
     raise FileNotFoundError("❌ ENV FILE NOT FOUND: .env.dev")
 
 
-model_config: dict = {"extra": "allow"}
+model_config: SettingsConfigDict = SettingsConfigDict(extra="allow")
 if ENV_FILE:
     model_config["env_file"] = str(ENV_FILE)
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(**model_config)
+    model_config: ClassVar[SettingsConfigDict] = model_config
 
     # ---- BASE ----
     app_version: str = "0.1.0"
@@ -138,4 +139,4 @@ class Settings(BaseSettings):
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    return Settings()
+    return Settings()  # pyright: ignore[reportCallIssue]

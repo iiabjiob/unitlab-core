@@ -1,12 +1,21 @@
+# pyright: reportPrivateUsage=false
+# pyright: reportUnknownParameterType=false
+# pyright: reportMissingParameterType=false
 from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from typing import cast
 
 from unitlab_rpi_net_agent.agent import CoreNetworkAgent
 from unitlab_rpi_net_agent.config import AgentConfig
-from unitlab_rpi_net_agent.models import AddressProbeResult, CommandEnvelope, HostNetworkSettings
-from unitlab_rpi_net_agent.nmcli_adapter import DeviceStatus
+from unitlab_rpi_net_agent.models import (
+    AddressProbeResult,
+    CommandEnvelope,
+    HostNetworkSettings,
+)
+from unitlab_rpi_net_agent.nmcli_adapter import DeviceStatus, NmcliAdapter
+from unitlab_rpi_net_agent.redis_protocol import RedisProtocol
 
 
 def _make_config(tmp_path: Path) -> AgentConfig:
@@ -151,8 +160,8 @@ def test_core_network_agent_records_previous_network_settings_for_restore(tmp_pa
         async def publish_event(self, _event_type, _payload) -> None:
             return None
 
-    agent.nmcli = FakeNmcli()  # type: ignore[assignment]
-    agent.redis = FakeRedis()  # type: ignore[assignment]
+    agent.nmcli = cast(NmcliAdapter, cast(object, FakeNmcli()))
+    agent.redis = cast(RedisProtocol, cast(object, FakeRedis()))
 
     asyncio.run(agent._apply_network_settings(
         cmd=CommandEnvelope(entry_id="1", request_id="req", action="apply_network_settings", payload={}),
@@ -177,8 +186,8 @@ def test_core_network_agent_probes_addresses_through_adapter(tmp_path: Path) -> 
         async def publish_event(self, _event_type, _payload) -> None:
             return None
 
-    agent.nmcli = FakeNmcli()  # type: ignore[assignment]
-    agent.redis = FakeRedis()  # type: ignore[assignment]
+    agent.nmcli = cast(NmcliAdapter, cast(object, FakeNmcli()))
+    agent.redis = cast(RedisProtocol, cast(object, FakeRedis()))
 
     asyncio.run(agent._handle_probe_addresses(
         CommandEnvelope(

@@ -7,7 +7,8 @@ from datetime import UTC, datetime
 import socket
 from threading import Event, RLock, Thread
 import time
-from typing import Any, Callable, Sequence
+from typing import Literal, cast
+from collections.abc import Callable, Sequence
 from uuid import uuid4
 
 from app.core.logger import get_logger
@@ -16,6 +17,8 @@ from app.schemas.verification_schema import (
     VerificationEvidenceDiagnosticSchema,
     VerificationRecoveryStateSchema,
     VerificationRunSchema,
+    SignalVerificationEvidenceSchema,
+    VerificationStepSchema,
     VerificationSessionSnapshotSchema,
     VerificationSubscriptionSnapshotSchema,
     VerificationSubscriptionPlanSchema,
@@ -26,8 +29,12 @@ from app.services.iec61850.report_runtime import (
     Iec61850ReportRuntimeError,
     Iec61850ReportRuntimeAdapter,
     Iec61850ReportRuntimeService,
-    Iec61850RuntimeMode,
+    Iec61850ReportSubscriptionPlan,
+    Iec61850ReportSubscriptionPlanDevice,
+    Iec61850ReportSubscriptionPlanReport,
+    Iec61850ReportSubscriptionEndpointGroup,
     Iec61850RuntimeDiagnostic,
+    Iec61850ReportEvent,
     build_simulator_endpoint_for_plan_device,
     create_iec61850_simulator_adapter,
     group_report_subscription_plan_devices_by_endpoint,
@@ -35,10 +42,10 @@ from app.services.iec61850.report_runtime import (
 )
 from app.services.verification_evidence import build_signal_verification_evidence_set
 from app.services.verification_execution import (
-    _build_step_and_evidence,
-    _parse_timestamp,
-    _resolve_runtime_state,
-    _unique_non_empty_strings,
+    _build_step_and_evidence,  # pyright: ignore[reportPrivateUsage]
+    _parse_timestamp,  # pyright: ignore[reportPrivateUsage]
+    _resolve_runtime_state,  # pyright: ignore[reportPrivateUsage]
+    _unique_non_empty_strings,  # pyright: ignore[reportPrivateUsage]
     build_runtime_subscription_plan,
 )
 
@@ -85,7 +92,7 @@ class VerificationRuntimeSubscriptionState:
     last_report_at: datetime | None = None
     gi_requested: bool = False
     last_report_value_count: int = 0
-    last_report_values: list[dict[str, Any]] = field(default_factory=list)
+    last_report_values: list[dict[str, object]] = field(default_factory=list)
     last_sequence_number: int | None = None
     last_report_id: str | None = None
     current_rptena_owner: str | None = None
@@ -103,8 +110,11 @@ class VerificationRuntimeSubscriptionState:
             report_control_reference=self.report_control_reference,
             report_control_name=self.report_control_name,
             data_set_reference=self.data_set_reference,
-            subscription_state=self.subscription_state,
-            report_health=self.report_health,
+            subscription_state=cast(
+                Literal["pending", "reserving", "enabled", "reporting", "reconnecting", "degraded", "closed", "failed"],
+                self.subscription_state,
+            ),
+            report_health=cast(Literal["unknown", "healthy", "degraded"], self.report_health),
             last_report_at=self.last_report_at,
             gi_requested=self.gi_requested,
             last_report_value_count=self.last_report_value_count,
@@ -129,14 +139,14 @@ class VerificationRuntimeOrchestrationResult:
 
 @dataclass(frozen=True, slots=True)
 class VerificationRuntimeSignalCaptureResult:
-    evidence: Any
-    step: Any
+    evidence: SignalVerificationEvidenceSchema
+    step: VerificationStepSchema
     diagnostics: tuple[VerificationEvidenceDiagnosticSchema, ...]
 
 
 @dataclass(frozen=True, slots=True)
 class _CapturedRuntimeResult:
-    diagnostics: tuple[Any, ...] = ()
+    diagnostics: tuple[VerificationEvidenceDiagnosticSchema, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,8 +157,8 @@ class _CapturedRuntimeReport:
     access_point_name: str
     report_control_name: str
     data_set_ref: str | None
-    event: Any
-    diagnostics: tuple[Any, ...]
+    event: Iec61850ReportEvent | None
+    diagnostics: tuple[object, ...]
     error_code: str | None
     error_message: str | None
 
@@ -169,7 +179,7 @@ class _VerificationRuntimeOrchestrationHandle:
     started_at: datetime
     diagnostics: list[VerificationEvidenceDiagnosticSchema]
     reconnecting_session_ids: set[str] = field(default_factory=set)
-    endpoint_for_device: Callable[[Any], Iec61850DeviceEndpoint] = build_simulator_endpoint_for_plan_device
+    endpoint_for_device: Callable[[Iec61850ReportSubscriptionPlanDevice], Iec61850DeviceEndpoint] = build_simulator_endpoint_for_plan_device
     lock: RLock = field(default_factory=RLock)
 
 
@@ -180,8 +190,10 @@ class VerificationRuntimeOrchestrator:
         now: Callable[[], datetime] | None = None,
         mms_reachability_probe: Callable[[Iec61850DeviceEndpoint], tuple[bool, str | None]] | None = None,
     ) -> None:
-        self._now = now or (lambda: datetime.now(UTC))
-        self._mms_reachability_probe = mms_reachability_probe or _probe_mms_endpoint_reachability
+        self._now: Callable[[], datetime] = now or (lambda: datetime.now(UTC))
+        self._mms_reachability_probe: Callable[[Iec61850DeviceEndpoint], tuple[bool, str | None]] = (
+            mms_reachability_probe or _probe_mms_endpoint_reachability
+        )
         self._handles: dict[str, _VerificationRuntimeOrchestrationHandle] = {}
 
     def start(
@@ -193,7 +205,7 @@ class VerificationRuntimeOrchestrator:
         subscription_plan: VerificationSubscriptionPlanSchema,
         execution_context: VerificationExecutionContextSchema,
         client_id: str = "unitlab-backend-simulator",
-        endpoint_for_device: Callable[[Any], Iec61850DeviceEndpoint] = build_simulator_endpoint_for_plan_device,
+        endpoint_for_device: Callable[[Iec61850ReportSubscriptionPlanDevice], Iec61850DeviceEndpoint] = build_simulator_endpoint_for_plan_device,
         adapter: Iec61850ReportRuntimeAdapter | None = None,
         initial_diagnostics: Sequence[VerificationEvidenceDiagnosticSchema] = (),
     ) -> VerificationRuntimeOrchestrationResult:
@@ -300,7 +312,7 @@ class VerificationRuntimeOrchestrator:
         subscription_plan: VerificationSubscriptionPlanSchema,
         execution_context: VerificationExecutionContextSchema,
         client_id: str = "unitlab-backend-simulator",
-        endpoint_for_device: Callable[[Any], Iec61850DeviceEndpoint] = build_simulator_endpoint_for_plan_device,
+        endpoint_for_device: Callable[[Iec61850ReportSubscriptionPlanDevice], Iec61850DeviceEndpoint] = build_simulator_endpoint_for_plan_device,
         adapter: Iec61850ReportRuntimeAdapter | None = None,
         initial_diagnostics: Sequence[VerificationEvidenceDiagnosticSchema] = (),
     ) -> VerificationRuntimeOrchestrationResult:
@@ -397,7 +409,7 @@ class VerificationRuntimeOrchestrator:
         self,
         handle: _VerificationRuntimeOrchestrationHandle,
         group_index: int,
-        device_group: Any,
+        device_group: Iec61850ReportSubscriptionEndpointGroup,
         unreachable_error: Iec61850ReportRuntimeError | None,
     ) -> None:
         try:
@@ -409,7 +421,7 @@ class VerificationRuntimeOrchestrator:
         self,
         handle: _VerificationRuntimeOrchestrationHandle,
         group_index: int,
-        device_group: Any,
+        device_group: Iec61850ReportSubscriptionEndpointGroup,
         unreachable_error: Iec61850ReportRuntimeError | None,
     ) -> None:
         endpoint = device_group.endpoint
@@ -482,7 +494,7 @@ class VerificationRuntimeOrchestrator:
         self,
         handle: _VerificationRuntimeOrchestrationHandle,
         group_index: int,
-        device_group: Any,
+        device_group: Iec61850ReportSubscriptionEndpointGroup,
         exc: Exception,
     ) -> None:
         if group_index >= len(handle.session_order):
@@ -526,7 +538,7 @@ class VerificationRuntimeOrchestrator:
         *,
         session_id: str,
         endpoint: Iec61850DeviceEndpoint,
-        report,
+        report: Iec61850ReportSubscriptionPlanReport,
     ) -> VerificationRuntimeSubscriptionState:
         return VerificationRuntimeSubscriptionState(
             subscription_id=_resolve_subscription_id_for_runtime(session_id=session_id, report=report),
@@ -564,7 +576,7 @@ class VerificationRuntimeOrchestrator:
 
     def _preflight_mms_endpoints(
         self,
-        device_groups: Sequence[Any],
+        device_groups: Sequence[Iec61850ReportSubscriptionEndpointGroup],
     ) -> dict[str, Iec61850ReportRuntimeError]:
         endpoints = [
             group.endpoint
@@ -638,7 +650,10 @@ class VerificationRuntimeOrchestrator:
             verdict_state=verdict_state,
             triggered_at=started_at,
             completed_at=None,
-            runtime_state=runtime_state,
+            runtime_state=cast(
+                Literal["reporting", "reconnecting", "degraded", "closed", "failed", "discovering", "subscribing"],
+                runtime_state,
+            ),
             runtime_summary=_build_runtime_summary_for_orchestration(
                 session_snapshots=session_snapshots,
                 subscription_snapshots=subscription_snapshots,
@@ -669,7 +684,7 @@ class VerificationRuntimeOrchestrator:
                 handle.subscription_states[subscription_id].subscription_state = "closed"
                 handle.subscription_states[subscription_id].report_health = "unknown"
         result = self.snapshot(orchestration_id)
-        self._handles.pop(orchestration_id, None)
+        _ = self._handles.pop(orchestration_id, None)
         return result
 
     def capture_triggered_signal(
@@ -741,7 +756,7 @@ class VerificationRuntimeOrchestrator:
                     int(timeout_ms or target.timeout_ms),
                 )
                 deadline = time.monotonic() + (max(1, int(timeout_ms or target.timeout_ms)) / 1000)
-                last_event_diagnostics: tuple[Any, ...] = ()
+                last_event_diagnostics: tuple[object, ...] = ()
                 while True:
                     if cancel_event is not None and cancel_event.is_set():
                         break
@@ -844,7 +859,7 @@ class VerificationRuntimeOrchestrator:
                             target.expected_feedback_path or target.signal_path,
                             event.id,
                             event.sequence_number,
-                            [diagnostic.code for diagnostic in last_event_diagnostics],
+                            [str(getattr(diagnostic, "code", "unknown")) for diagnostic in last_event_diagnostics],
                         )
                         diagnostics.extend(
                             _observation_diagnostics_to_evidence_diagnostics(
@@ -991,7 +1006,7 @@ class VerificationRuntimeOrchestrator:
         runtime_service: Iec61850ReportRuntimeService,
         session_state: VerificationRuntimeSessionState,
         endpoint: Iec61850DeviceEndpoint,
-        report,
+        report: Iec61850ReportSubscriptionPlanReport,
         client_id: str,
         diagnostics: list[VerificationEvidenceDiagnosticSchema],
         session_id: str,
@@ -1062,9 +1077,9 @@ class VerificationRuntimeOrchestrator:
 
         session_state.discovery_status = "available"
         try:
-            runtime_service.reserve_report_control(session_id=session_id, candidate=report.candidate, client_id=client_id)
+            _ = runtime_service.reserve_report_control(session_id=session_id, candidate=report.candidate, client_id=client_id)
             subscription_state.subscription_state = "reserving"
-            runtime_service.enable_report_control(session_id=session_id, candidate=report.candidate, client_id=client_id)
+            _ = runtime_service.enable_report_control(session_id=session_id, candidate=report.candidate, client_id=client_id)
             subscription_state.subscription_state = "enabled"
             event = runtime_service.send_general_interrogation(session_id=session_id, candidate=report.candidate, client_id=client_id)
         except Iec61850ReportRuntimeError as exc:
@@ -1129,11 +1144,11 @@ class VerificationRuntimeOrchestrator:
 
     def _resolve_runtime_plan_device_group(
         self,
-        runtime_plan,
+        runtime_plan: Iec61850ReportSubscriptionPlan,
         endpoint_id: str,
         *,
-        endpoint_for_device: Callable[[Any], Iec61850DeviceEndpoint] = build_simulator_endpoint_for_plan_device,
-    ):
+        endpoint_for_device: Callable[[Iec61850ReportSubscriptionPlanDevice], Iec61850DeviceEndpoint] = build_simulator_endpoint_for_plan_device,
+    ) -> Iec61850ReportSubscriptionEndpointGroup:
         for device_group in group_report_subscription_plan_devices_by_endpoint(
             plan=runtime_plan,
             endpoint_for_device=endpoint_for_device,
@@ -1231,17 +1246,17 @@ def _runtime_diagnostics_to_evidence_diagnostics(
             severity=diagnostic.severity,
             details={
                 **(getattr(diagnostic, "details", None) or {}),
-                "endpoint_id": diagnostic.reference.ied_name if diagnostic.reference is not None else None,
-                "report_control_name": diagnostic.reference.report_control_name if diagnostic.reference is not None else None,
+                "endpoint_id": diagnostic.reference.ied_name,
+                "report_control_name": diagnostic.reference.report_control_name,
             },
         )
         for diagnostic in diagnostics
     ]
 
 
-def _report_event_values_payload(event) -> list[dict[str, Any]]:
-    values = getattr(event, "values", ()) or ()
-    result: list[dict[str, Any]] = []
+def _report_event_values_payload(event: Iec61850ReportEvent) -> list[dict[str, object]]:
+    values = cast(Sequence[object], cast(object, getattr(event, "values", ())))
+    result: list[dict[str, object]] = []
     for value in values:
         result.append(
             {
@@ -1270,31 +1285,11 @@ def _probe_mms_endpoint_reachability(endpoint: Iec61850DeviceEndpoint) -> tuple[
         return False, str(exc)
 
 
-def _endpoint_for_session(
-    handle: _VerificationRuntimeOrchestrationHandle,
-    session_state: VerificationRuntimeSessionState,
-) -> Iec61850DeviceEndpoint:
-    runtime_plan = build_runtime_subscription_plan(handle.subscription_plan)
-    for device_group in group_report_subscription_plan_devices_by_endpoint(
-        plan=runtime_plan,
-        endpoint_for_device=handle.endpoint_for_device,
-    ):
-        if device_group.endpoint.id == session_state.endpoint_id:
-            return device_group.endpoint
-    return Iec61850DeviceEndpoint(
-        id=session_state.endpoint_id,
-        mode=Iec61850RuntimeMode.SIMULATOR,
-        ied_name=session_state.endpoint_id,
-        access_point_name="default",
-        host=None,
-    )
-
-
 def _runtime_error_to_evidence_diagnostic(
     *,
     error: Iec61850ReportRuntimeError,
     endpoint: Iec61850DeviceEndpoint,
-    report,
+    report: Iec61850ReportSubscriptionPlanReport,
     session_id: str,
     severity: str = "error",
 ) -> VerificationEvidenceDiagnosticSchema:
@@ -1324,7 +1319,7 @@ def _session_failure_to_evidence_diagnostic(
     *,
     session_state: VerificationRuntimeSessionState,
     endpoint: Iec61850DeviceEndpoint,
-    report,
+    report: Iec61850ReportSubscriptionPlanReport,
 ) -> VerificationEvidenceDiagnosticSchema:
     return VerificationEvidenceDiagnosticSchema(
         code=session_state.diagnostic_code or "SESSION_FAILED",
@@ -1349,14 +1344,14 @@ def _session_failure_to_evidence_diagnostic(
 
 
 def _observation_diagnostics_to_evidence_diagnostics(
-    diagnostics: Sequence[Any],
+    diagnostics: Sequence[object],
     *,
     signal_id: int | None = None,
     include_unrelated: bool = True,
 ) -> list[VerificationEvidenceDiagnosticSchema]:
     result: list[VerificationEvidenceDiagnosticSchema] = []
     for diagnostic in diagnostics:
-        diagnostic_signal_id = getattr(diagnostic, "signal_id", None)
+        diagnostic_signal_id = cast(object, getattr(diagnostic, "signal_id", None))
         if (
             signal_id is not None
             and not include_unrelated
@@ -1383,7 +1378,11 @@ def _observation_diagnostics_to_evidence_diagnostics(
     return result
 
 
-def _resolve_subscription_id_for_runtime(*, session_id: str, report) -> str:
+def _resolve_subscription_id_for_runtime(
+    *,
+    session_id: str,
+    report: Iec61850ReportSubscriptionPlanReport,
+) -> str:
     candidate_id = str(getattr(report.candidate, "id", "")).strip()
     if candidate_id:
         return f"{session_id}:{candidate_id}"
@@ -1396,7 +1395,7 @@ def _resolve_subscription_id_for_runtime(*, session_id: str, report) -> str:
     return f"{session_id}:subscription"
 
 
-def _candidate_report_reference(candidate: Any) -> str:
+def _candidate_report_reference(candidate: object) -> str:
     for value in (
         getattr(candidate, "rpt_id", None),
         getattr(candidate, "report_control_name", None),
@@ -1409,12 +1408,12 @@ def _candidate_report_reference(candidate: Any) -> str:
     return "discovery-only-report"
 
 
-def _candidate_signal_scope(candidate: Any) -> str | None:
+def _candidate_signal_scope(candidate: object) -> str | None:
     logical_device = str(getattr(candidate, "logical_device_inst", "") or "").strip()
     logical_node = str(getattr(candidate, "logical_node_name", "") or "").strip()
     if logical_device and logical_node:
         return f"{logical_device}/{logical_node}"
-    signals = getattr(candidate, "signals", ())
+    signals = cast(Sequence[object], cast(object, getattr(candidate, "signals", ())))
     for signal in signals or ():
         reference = str(getattr(signal, "reference", "") or "").strip()
         if not reference:
@@ -1440,7 +1439,7 @@ def _build_runtime_summary_for_orchestration(
     subscription_snapshots: Sequence[VerificationSubscriptionSnapshotSchema],
     client_id: str,
     diagnostics: Sequence[VerificationEvidenceDiagnosticSchema],
-) -> dict[str, Any]:
+) -> dict[str, object]:
     summary = {
         "active_sessions": sum(1 for snapshot in session_snapshots if snapshot.runtime_state != "closed"),
         "reporting_sessions": sum(1 for snapshot in session_snapshots if snapshot.runtime_state == "reporting"),
@@ -1458,7 +1457,7 @@ def _build_runtime_summary_for_orchestration(
         "runtime_diagnostics": len(diagnostics),
         "session_states": [_runtime_summary_key(snapshot) for snapshot in session_snapshots],
     }
-    return summary
+    return cast(dict[str, object], summary)
 
 
 def _build_recovery_state_for_orchestration(
@@ -1546,7 +1545,10 @@ def _build_recovery_state_for_orchestration(
     return VerificationRecoveryStateSchema(
         session_id=representative_session.session_id if representative_session is not None else f"{test_run_id}:recovery",
         endpoint_id=representative_session.endpoint_id if representative_session is not None else execution_context.selected_group_id or test_run_id,
-        runtime_state=_recovery_runtime_state(session_snapshots, subscription_snapshots),
+        runtime_state=cast(
+            Literal["reporting", "reconnecting", "degraded", "closed", "failed", "discovering", "subscribing"],
+            _recovery_runtime_state(session_snapshots, subscription_snapshots),
+        ),
         desired_state=desired_state,
         active_generation=max((snapshot.connection_generation for snapshot in session_snapshots), default=1),
         recovery_reason=recovery_reason,

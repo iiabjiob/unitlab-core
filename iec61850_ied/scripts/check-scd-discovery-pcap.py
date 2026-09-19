@@ -9,6 +9,17 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol, cast
+
+
+class _Arguments(Protocol):
+    pcap: Path
+    port: int
+    ied: str
+    domain: str
+    dataset: list[str]
+    rcb: list[str]
+    min_requests: int
 
 
 @dataclass
@@ -21,7 +32,7 @@ class MmsRow:
 
 
 def run_tshark(args: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(args, check=False, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    return subprocess.run(args, check=False, text=True, capture_output=True)
 
 
 def split_multi(value: str) -> list[str]:
@@ -85,14 +96,14 @@ def capture_contains(rows: list[MmsRow], pcap: Path, port: int, token: str) -> b
 
 def main() -> int:
     parser = argparse.ArgumentParser(description='Validate SCD-backed IEC 61850 discovery pcap gates.')
-    parser.add_argument('pcap', type=Path)
-    parser.add_argument('--port', type=int, default=12447)
-    parser.add_argument('--ied', default='KINTE13LVC01')
-    parser.add_argument('--domain', default='KINTE13LVC01CTRL')
-    parser.add_argument('--dataset', action='append', default=['LLN0$RCB1', 'LLN0$RCB2'])
-    parser.add_argument('--rcb', action='append', default=['LLN0$BR$brcbA', 'LLN0$BR$brcbB'])
-    parser.add_argument('--min-requests', type=int, default=20)
-    args = parser.parse_args()
+    _ = parser.add_argument('pcap', type=Path)
+    _ = parser.add_argument('--port', type=int, default=12447)
+    _ = parser.add_argument('--ied', default='KINTE13LVC01')
+    _ = parser.add_argument('--domain', default='KINTE13LVC01CTRL')
+    _ = parser.add_argument('--dataset', action='append', default=['LLN0$RCB1', 'LLN0$RCB2'])
+    _ = parser.add_argument('--rcb', action='append', default=['LLN0$BR$brcbA', 'LLN0$BR$brcbB'])
+    _ = parser.add_argument('--min-requests', type=int, default=20)
+    args = cast(_Arguments, cast(object, parser.parse_args()))
 
     if shutil.which('tshark') is None:
         print('FAIL: tshark is required', file=sys.stderr)

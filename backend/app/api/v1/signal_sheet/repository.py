@@ -2,13 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Awaitable, Callable, Sequence
+from typing import cast
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 
 from sqlalchemy import Select, delete, exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
 from app.models.channel import Channel
+from app.models.device import Device
 from app.models.signal import Signal
 from app.models.signal_sheet import (
     SignalAllocation,
@@ -37,11 +39,11 @@ from app.api.v1.signal_sheet.allocation_policy import (
     resolve_preferred_units_for_auto_allocate as _resolve_preferred_units_for_auto_allocate,
 )
 
-def _parse_tested_at(payload: Any) -> datetime | None:
-    if isinstance(payload, dict):
-        return _parse_tested_at_value(payload.get("tested_at"))
-    return _parse_tested_at_value(payload)
 
+def _parse_tested_at(payload: object) -> datetime | None:  # pyright: ignore[reportUnusedFunction]
+    if isinstance(payload, dict):
+        return _parse_tested_at_value(cast(dict[object, object], payload).get("tested_at"))
+    return _parse_tested_at_value(payload)
 
 @dataclass(frozen=True)
 class SignalSheetAutoAllocateResult:
@@ -74,7 +76,11 @@ def _build_allocation_health(
     unit_online: bool | None,
 ) -> dict[str, bool]:
     missing_channel = allocation is not None and channel is None
-    missing_device = allocation is not None and channel is not None and channel.device is None
+    missing_device = (
+        allocation is not None
+        and channel is not None
+        and cast(Device | None, channel.device) is None
+    )
     invalid_type = (
         allocation is not None
         and channel is not None
@@ -109,7 +115,7 @@ def _resolve_allocation_status(
 
 class SignalSheetRepository:
     def __init__(self, db: AsyncSession):
-        self.db = db
+        self.db: AsyncSession = db
 
     async def ensure_workspace(self, workspace_id: int) -> bool:
         stmt = select(Workspace.id).where(Workspace.id == workspace_id)
@@ -129,8 +135,8 @@ class SignalSheetRepository:
         source_hash: str | None,
         rows_count: int,
         schema_version: int,
-        data: dict[str, Any],
-        import_meta: dict[str, Any] | None,
+        data: dict[str, object],
+        import_meta: dict[str, object] | None,
     ) -> SignalSheet:
         sheet = await self.get_sheet(workspace_id)
         if sheet is None:
@@ -226,7 +232,7 @@ class SignalSheetRepository:
         allocations = list((await self.db.execute(stmt)).scalars().all())
         removed = False
         for allocation in allocations:
-            signal = allocation.signal
+            signal = cast(Signal | None, allocation.signal)
             if signal is None:
                 await self.db.delete(allocation)
                 removed = True
@@ -239,7 +245,7 @@ class SignalSheetRepository:
 
     async def clear_allocations(self, workspace_id: int) -> None:
         stmt = delete(SignalAllocation).where(SignalAllocation.workspace_id == workspace_id)
-        await self.db.execute(stmt)
+        _ = await self.db.execute(stmt)
         await self.db.flush()
 
     async def record_allocation_event(
@@ -255,7 +261,7 @@ class SignalSheetRepository:
         changed_count: int = 0,
         skipped_count: int = 0,
         rejected_count: int = 0,
-        payload: dict[str, Any] | None = None,
+        payload: dict[str, object] | None = None,
     ) -> SignalAllocationEvent:
         event = SignalAllocationEvent(
             workspace_id=int(workspace_id),
@@ -293,7 +299,7 @@ class SignalSheetRepository:
         channel_type: str | None = None,
         reason: str | None = None,
         result_state: str | None = None,
-        command_payload: dict[str, Any] | None = None,
+        command_payload: dict[str, object] | None = None,
         tested_at: datetime | None = None,
     ) -> SignalTestRunStepEvidence:
         evidence = SignalTestRunStepEvidence(
@@ -501,13 +507,13 @@ class SignalSheetRepository:
         if include_recovery:
             result = await self.db.execute(stmt)
             selected = result.first()
-            allocation = selected[0] if selected is not None else None
-            recovery_required = bool(selected[1]) if selected is not None else False
+            allocation = cast(SignalAllocation | None, selected[0]) if selected is not None else None
+            recovery_required = bool(cast(object, selected[1])) if selected is not None else False
         else:
-            allocation = await self.db.scalar(stmt)
+            allocation = cast(SignalAllocation | None, cast(object, await self.db.scalar(stmt)))
             recovery_required = False
-        channel = allocation.channel if allocation is not None else None
-        device = channel.device if channel is not None else None
+        channel = cast(Channel | None, allocation.channel) if allocation is not None else None
+        device = cast(Device | None, channel.device) if channel is not None else None
         if allocation is None or channel is None or device is None or not device.unit_id:
             return None
         presence = await DevicePresenceService().get_presence(device.unit_id)
@@ -528,22 +534,23 @@ class SignalSheetRepository:
     ) -> list[SignalAllocationRowSchema]:
         channel_ids = {allocation.channel_id for allocation in allocations_by_signal.values()}
         channels_by_id = await self._channels_by_ids(channel_ids)
-        unit_ids = {
-            channel.device.unit_id
-            for channel in channels_by_id.values()
-            if channel.device is not None and channel.device.unit_id
-        }
+        unit_ids: set[str] = set()
+        for channel in channels_by_id.values():
+            device = cast(Device | None, channel.device)
+            if device is not None and device.unit_id:
+                unit_ids.add(device.unit_id)
         presence_map = await DevicePresenceService().get_presence_map(unit_ids)
 
         rows: list[SignalAllocationRowSchema] = []
         for signal in signals:
             allocation = allocations_by_signal.get(signal.id)
             channel = channels_by_id.get(allocation.channel_id) if allocation else None
-            unit_id = channel.device.unit_id if channel and channel.device else None
+            device = cast(Device | None, channel.device) if channel else None
+            unit_id = device.unit_id if device else None
             presence = presence_map.get(unit_id) if unit_id else None
             unit_online = presence.online if presence is not None else None
             unit_last_seen_at = presence.last_seen_at if presence is not None else (
-                channel.device.last_seen_at if channel and channel.device else None
+                device.last_seen_at if device else None
             )
             allocation_health = _build_allocation_health(
                 signal=signal,
@@ -580,7 +587,7 @@ class SignalSheetRepository:
     async def update_allocations(
         self,
         workspace_id: int,
-        entries: Sequence[dict[str, Any]],
+        entries: Sequence[Mapping[str, object]],
         progress_callback: Callable[[int, int], Awaitable[None]] | None = None,
         commit: bool = True,
     ) -> list[int]:
@@ -589,7 +596,10 @@ class SignalSheetRepository:
                 await self.db.commit()
             return []
 
-        signal_ids = {int(item["signal_id"]) for item in entries}
+        signal_ids = {
+            int(cast(str | int | float | bytes | bytearray, item["signal_id"]))
+            for item in entries
+        }
         active_signals = await self._active_signals_by_ids(workspace_id, signal_ids)
         if set(active_signals.keys()) != signal_ids:
             missing = sorted(signal_ids - set(active_signals.keys()))
@@ -598,17 +608,19 @@ class SignalSheetRepository:
         current_allocations = await self._allocations_by_signal_ids(workspace_id, signal_ids)
         desired_channel_by_signal = {signal_id: allocation.channel_id for signal_id, allocation in current_allocations.items()}
 
-        touched_meta: dict[int, dict[str, Any] | None] = {}
+        touched_meta: dict[int, dict[str, object] | None] = {}
         for item in entries:
-            signal_id = int(item["signal_id"])
+            signal_id = int(cast(str | int | float | bytes | bytearray, item["signal_id"]))
             channel_id_raw = item.get("channel_id")
             if channel_id_raw is None:
-                desired_channel_by_signal.pop(signal_id, None)
-                touched_meta[signal_id] = item.get("allocation_meta")
+                _ = desired_channel_by_signal.pop(signal_id, None)
+                raw_meta = item.get("allocation_meta")
+                touched_meta[signal_id] = cast(dict[str, object], raw_meta) if isinstance(raw_meta, dict) else None
                 continue
-            channel_id = int(channel_id_raw)
+            channel_id = int(cast(str | int | float | bytes | bytearray, channel_id_raw))
             desired_channel_by_signal[signal_id] = channel_id
-            touched_meta[signal_id] = item.get("allocation_meta")
+            raw_meta = item.get("allocation_meta")
+            touched_meta[signal_id] = cast(dict[str, object], raw_meta) if isinstance(raw_meta, dict) else None
 
         desired_channel_ids = set(desired_channel_by_signal.values())
         channels_by_id = await self._channels_by_ids(desired_channel_ids)
@@ -639,7 +651,10 @@ class SignalSheetRepository:
                     f"Channel #{channel_id} ({channel.channel_type}) is incompatible with signal #{signal_id} ({_normalize_direction(signal.io_direction)})"
                 )
 
-        touched_signal_ids = {int(item["signal_id"]) for item in entries}
+        touched_signal_ids = {
+            int(cast(str | int | float | bytes | bytearray, item["signal_id"]))
+            for item in entries
+        }
         changed_signal_ids: set[int] = set()
         total_steps = len(touched_signal_ids)
         step_index = 0
@@ -810,11 +825,11 @@ class SignalSheetRepository:
                 continue
             channel_groups[key].append(channel)
 
-        unit_ids = {
-            channel.device.unit_id
-            for channel in all_channels
-            if channel.device is not None and channel.device.unit_id
-        }
+        unit_ids: set[str] = set()
+        for channel in all_channels:
+            device = cast(Device | None, channel.device)
+            if device is not None and device.unit_id:
+                unit_ids.add(device.unit_id)
         presence_map = await DevicePresenceService().get_presence_map(unit_ids)
         online_by_unit_id = {unit_id: presence.online for unit_id, presence in presence_map.items()}
 

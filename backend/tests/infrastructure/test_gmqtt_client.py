@@ -1,17 +1,18 @@
 from __future__ import annotations
 
 import pytest
+from pathlib import Path
 
 from app.infrastructure.mqtt import gmqtt_client
 
 
 @pytest.mark.anyio
-async def test_mqtt_client_applies_environment_credentials_before_connect(monkeypatch) -> None:
-    calls: list[tuple[str, tuple]] = []
+async def test_mqtt_client_applies_environment_credentials_before_connect(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, tuple[object, ...]]] = []
 
     class FakeClient:
         def __init__(self, client_id: str) -> None:
-            self.client_id = client_id
+            self.client_id: str = client_id
 
         def set_auth_credentials(self, username: str, password: str) -> None:
             calls.append(("auth", (username, password)))
@@ -31,7 +32,7 @@ async def test_mqtt_client_applies_environment_credentials_before_connect(monkey
 
 
 @pytest.mark.anyio
-async def test_mqtt_client_rejects_tls_without_ca_file(monkeypatch) -> None:
+async def test_mqtt_client_rejects_tls_without_ca_file(monkeypatch: pytest.MonkeyPatch) -> None:
     class FakeClient:
         def __init__(self, client_id: str) -> None:
             del client_id
@@ -44,20 +45,26 @@ async def test_mqtt_client_rejects_tls_without_ca_file(monkeypatch) -> None:
 
 
 @pytest.mark.anyio
-async def test_mqtt_client_passes_tls_context_to_gmqtt(monkeypatch, tmp_path) -> None:
-    calls: list[tuple[str, tuple, dict]] = []
+async def test_mqtt_client_passes_tls_context_to_gmqtt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
     ca_file = tmp_path / "ca.pem"
-    ca_file.write_text("not-a-real-certificate")
+    _ = ca_file.write_text("not-a-real-certificate")
 
     class FakeClient:
         def __init__(self, client_id: str) -> None:
             del client_id
 
-        async def connect(self, host: str, port: int, **kwargs) -> None:
+        async def connect(self, host: str, port: int, **kwargs: object) -> None:
             calls.append(("connect", (host, port), kwargs))
 
     monkeypatch.setattr(gmqtt_client, "MQTTClient", FakeClient)
-    monkeypatch.setattr(gmqtt_client.ssl, "create_default_context", lambda **kwargs: "tls-context")
+    def _tls_context(**kwargs: object) -> str:
+        del kwargs
+        return "tls-context"
+
+    monkeypatch.setattr(gmqtt_client.ssl, "create_default_context", _tls_context)  # pyright: ignore[reportPrivateLocalImportUsage]
     client = gmqtt_client.UnitLabMqttClient("unitlab-test")
 
     await client.connect("mqtt.local", 8883, tls=True, tls_ca_file=str(ca_file))

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING
 
 from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -11,13 +10,9 @@ from sqlalchemy.sql import func
 from app.infrastructure.db.database import Base
 from app.models.types import BIGINT_PK
 
-if TYPE_CHECKING:  # pragma: no cover - typing only
-    from app.models.workspace import Workspace, WorkspaceSwitchgear
-
-
 class Switchgear(Base):
-    __tablename__ = "switchgears"
-    __table_args__: tuple = ()
+    __tablename__: str = "switchgears"
+    __table_args__: tuple[()] = ()
 
     id: Mapped[int] = mapped_column(BIGINT_PK, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
@@ -33,13 +28,13 @@ class Switchgear(Base):
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    workspace_links: Mapped[list["WorkspaceSwitchgear"]] = relationship(
+    workspace_links: Mapped[list[object]] = relationship(
         "WorkspaceSwitchgear",
         back_populates="switchgear",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    workspaces: Mapped[list["Workspace"]] = relationship(
+    workspaces: Mapped[list[object]] = relationship(
         "Workspace",
         secondary="workspace_switchgears",
         viewonly=True,
@@ -48,7 +43,7 @@ class Switchgear(Base):
 
 
 class SwitchgearChannelBinding(Base):
-    __tablename__ = "switchgear_channel_bindings"
+    __tablename__: str = "switchgear_channel_bindings"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
 
@@ -66,5 +61,5 @@ class SwitchgearChannelBinding(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    switchgear = relationship("Switchgear", back_populates="bindings")
-    channel = relationship("Channel", back_populates="switchgear_bindings")
+    switchgear: Mapped["Switchgear"] = relationship("Switchgear", back_populates="bindings")
+    channel: Mapped[object | None] = relationship("Channel", back_populates="switchgear_bindings")

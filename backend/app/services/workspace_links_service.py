@@ -20,7 +20,7 @@ class WorkspaceLinkNotFoundError(Exception):
 
 class WorkspaceLinksService:
     def __init__(self, db: AsyncSession):
-        self.db = db
+        self.db: AsyncSession = db
 
     async def attach_switchgear(self, workspace_id: int, switchgear_id: int) -> None:
         await self._ensure_workspace(workspace_id)

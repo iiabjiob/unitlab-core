@@ -9,6 +9,13 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol, cast
+
+
+class _Arguments(Protocol):
+    pcap: Path
+    port: int
+    allow_tcp_reset: bool
 
 
 @dataclass
@@ -28,7 +35,7 @@ class AssociationRow:
 
 
 def run_tshark(args: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(args, check=False, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    return subprocess.run(args, check=False, text=True, capture_output=True)
 
 
 def any_field(value: str) -> bool:
@@ -86,10 +93,10 @@ def tcp_reset_count(pcap: Path, port: int) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description='Validate IEC 61850 association pcap gates.')
-    parser.add_argument('pcap', type=Path)
-    parser.add_argument('--port', type=int, default=12448)
-    parser.add_argument('--allow-tcp-reset', action='store_true')
-    args = parser.parse_args()
+    _ = parser.add_argument('pcap', type=Path)
+    _ = parser.add_argument('--port', type=int, default=12448)
+    _ = parser.add_argument('--allow-tcp-reset', action='store_true')
+    args = cast(_Arguments, cast(object, parser.parse_args()))
 
     if shutil.which('tshark') is None:
         print('FAIL: tshark is required', file=sys.stderr)
@@ -152,21 +159,11 @@ def main() -> int:
         failures.append(f'TCP reset observed: {resets}')
 
     print(f'pcap={args.pcap}')
-    print(
-        'cotp_cr={cotp_cr} cotp_cc={cotp_cc} aarq={aarq} aare={aare} '
-        'initiate_requests={initiate_requests} initiate_responses={initiate_responses} '
-        'segmented_dt={segmented_dt} rejects={rejects} tcp_resets={resets}'.format(
-            cotp_cr=cotp_cr,
-            cotp_cc=cotp_cc,
-            aarq=aarq,
-            aare=aare,
-            initiate_requests=initiate_requests,
-            initiate_responses=initiate_responses,
-            segmented_dt=segmented_dt,
-            rejects=rejects,
-            resets=resets,
-        )
-    )
+    print(''.join((
+        f'cotp_cr={cotp_cr} cotp_cc={cotp_cc} aarq={aarq} aare={aare} ',
+        f'initiate_requests={initiate_requests} initiate_responses={initiate_responses} ',
+        f'segmented_dt={segmented_dt} rejects={rejects} tcp_resets={resets}',
+    )))
     if failures:
         for failure in failures:
             print(f'FAIL: {failure}')

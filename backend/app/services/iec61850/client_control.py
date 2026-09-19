@@ -11,7 +11,8 @@ import time
 from pathlib import Path
 import select
 from threading import RLock
-from typing import Callable, Literal, Sequence
+from typing import Literal, TextIO, TypeVar, cast
+from collections.abc import Callable, Sequence
 import tempfile
 import xml.etree.ElementTree as ET
 
@@ -45,6 +46,8 @@ from .report_runtime import (
     Iec61850ReportSubscriptionPlanDevice,
     Iec61850ReportSubscriptionPlanReport,
     Iec61850ReportSubscriptionPlanSignal,
+    Iec61850ReportSubscriptionRunResult,
+    Iec61850SimulatorSubscriptionRunResult,
     Iec61850RuntimeMode,
     Iec61850RuntimeStatus,
     Iec61850RuntimeTriggerOptions,
@@ -55,6 +58,30 @@ from .report_runtime import (
 )
 
 logger = get_logger("iec61850.client_control")
+
+JsonObject = dict[str, object]
+
+
+def _json_object_list(value: object) -> list[JsonObject]:
+    if not isinstance(value, list):
+        return []
+    return [cast(JsonObject, item) for item in cast(list[object], value) if isinstance(item, dict)]
+
+
+def _json_object_list_field(mapping: JsonObject, key: str) -> list[JsonObject]:
+    value = mapping.setdefault(key, [])
+    if not isinstance(value, list):
+        return []
+    return cast(list[JsonObject], value)
+
+
+def _json_string_list_field(mapping: JsonObject, key: str) -> list[str]:
+    value = mapping.setdefault(key, [])
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in cast(list[object], value)]
+
+_RunResultT = TypeVar("_RunResultT")
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,7 +155,7 @@ class Iec61850ClientControlSnapshot:
     endpoint_resolution: Iec61850EndpointResolution
     candidate: Iec61850ReportControlCandidate
     last_read: Iec61850ReportControlReadResult | None
-    last_discovery: dict | None
+    last_discovery: JsonObject | None
     last_state: Iec61850ReportControlState | None
     last_report: Iec61850ReportEvent | None
     last_plan: Iec61850ReportSubscriptionPlan | None
@@ -140,7 +167,7 @@ class Iec61850ClientControlSnapshot:
     live_wire_last_frame_length: int | None
     live_wire_last_frame_hex: str | None
     live_wire_last_diagnostic: Iec61850ClientControlDiagnostic | None
-    ui_state: dict
+    ui_state: JsonObject
 
 
 @dataclass(frozen=True, slots=True)
@@ -169,29 +196,29 @@ class Iec61850ClientControlService:
     ) -> None:
         adapter = create_iec61850_simulator_adapter(now=now or _utc_now)
         settings = get_settings()
-        self._runtime = Iec61850MmsClientRuntime(adapter)
-        self._session_id = session_id
-        self._client_id = client_id
-        self._endpoint = endpoint or _default_endpoint()
-        self._endpoint_resolution = _default_endpoint_resolution(self._endpoint)
-        self._endpoint_catalog = endpoint_catalog
-        self._candidate = candidate or _default_candidate()
+        self._runtime: Iec61850MmsClientRuntime = Iec61850MmsClientRuntime(adapter)
+        self._session_id: str = session_id
+        self._client_id: str = client_id
+        self._endpoint: Iec61850DeviceEndpoint = endpoint or _default_endpoint()
+        self._endpoint_resolution: Iec61850EndpointResolution = _default_endpoint_resolution(self._endpoint)
+        self._endpoint_catalog: Iec61850MmsEndpointCatalog | None = endpoint_catalog
+        self._candidate: Iec61850ReportControlCandidate = candidate or _default_candidate()
         self._target_scl_path: str | None = target_scl_path.strip() if target_scl_path is not None and target_scl_path.strip() else None
         self._last_read: Iec61850ReportControlReadResult | None = None
-        self._last_discovery: dict | None = None
+        self._last_discovery: JsonObject | None = None
         self._last_state: Iec61850ReportControlState | None = None
         self._last_report: Iec61850ReportEvent | None = None
         self._last_plan: Iec61850ReportSubscriptionPlan | None = None
         self._last_diagnostic: Iec61850ClientControlDiagnostic | None = None
-        self._session_open = False
+        self._session_open: bool = False
         if live_wire_binary_path is not None:
-            self._live_wire_binary_path = live_wire_binary_path.strip() or None
+            self._live_wire_binary_path: str | None = live_wire_binary_path.strip() or None
         else:
             self._live_wire_binary_path = getattr(settings, "iec61850_ied_live_wire_binary_path", None) or None
-        self._live_wire_service_host = live_wire_service_host or getattr(settings, "iec61850_ied_live_wire_host", "iec61850-ied")
-        self._live_wire_data_port = live_wire_data_port if live_wire_data_port is not None else int(getattr(settings, "iec61850_ied_live_wire_port", 12447))
+        self._live_wire_service_host: str = live_wire_service_host or getattr(settings, "iec61850_ied_live_wire_host", "iec61850-ied")
+        self._live_wire_data_port: int = live_wire_data_port if live_wire_data_port is not None else int(getattr(settings, "iec61850_ied_live_wire_port", 12447))
         if available_candidates:
-            self._available_candidates = tuple(available_candidates)
+            self._available_candidates: tuple[Iec61850ReportControlCandidate, ...] = tuple(available_candidates)
         elif candidate is not None:
             self._available_candidates = (candidate,)
         else:
@@ -203,16 +230,16 @@ class Iec61850ClientControlService:
         self._live_wire_last_frame: bytes | None = None
         self._live_wire_last_diagnostic: Iec61850ClientControlDiagnostic | None = None
         self._external_mms_process: subprocess.Popen[str] | None = None
-        self._external_mms_stdout_buffer = bytearray()
+        self._external_mms_stdout_buffer: bytearray = bytearray()
         self._external_discovered_rcbs: list[_ExternalDiscoveredReportControl] = []
-        self._external_discovered_rcbs_native = False
-        self._external_discover_summary_seen = False
+        self._external_discovered_rcbs_native: bool = False
+        self._external_discover_summary_seen: bool = False
         self._external_discover_step: str | None = None
-        self._external_live_discovery: dict | None = None
+        self._external_live_discovery: JsonObject | None = None
         self._pending_external_report_entries: list[dict[str, str]] = []
         self._current_external_report_values: dict[str, Iec61850ReportEventValue] = {}
-        self._external_report_event_counter = 0
-        self._lock = RLock()
+        self._external_report_event_counter: int = 0
+        self._lock: RLock = RLock()
 
     @property
     def session_id(self) -> str:
@@ -289,7 +316,7 @@ class Iec61850ClientControlService:
             if endpoint.mode == Iec61850RuntimeMode.MMS and endpoint.host is not None:
                 self._live_wire_service_host = endpoint.host
                 self._live_wire_data_port = endpoint.port
-            self._runtime._append_event(
+            self._runtime.append_event(
                 kind="target-configured",
                 session_id=self._session_id,
                 endpoint_id=endpoint.id,
@@ -320,7 +347,7 @@ class Iec61850ClientControlService:
             self._last_report = None
             self._last_plan = None
             self._last_diagnostic = None
-            self._runtime._append_event(
+            self._runtime.append_event(
                 kind="report-control-select",
                 session_id=self._session_id,
                 endpoint_id=self._endpoint.id,
@@ -351,7 +378,7 @@ class Iec61850ClientControlService:
             if self._endpoint.mode == Iec61850RuntimeMode.MMS:
                 return self._run("external-connect-ied", self._ensure_external_mms_client_started)
             if self._session_open:
-                self._runtime._append_event(
+                self._runtime.append_event(
                     kind="ied-connect",
                     session_id=self._session_id,
                     endpoint_id=self._endpoint.id,
@@ -374,7 +401,7 @@ class Iec61850ClientControlService:
             if self._endpoint.mode == Iec61850RuntimeMode.MMS:
                 return self._run("external-disconnect-ied", self._disconnect_external_mms_ied)
             if not self._session_open:
-                self._runtime._append_event(
+                self._runtime.append_event(
                     kind="ied-disconnect",
                     session_id=self._session_id,
                     endpoint_id=self._endpoint.id,
@@ -404,7 +431,7 @@ class Iec61850ClientControlService:
             self._current_external_report_values.clear()
             self._live_wire_last_frame = None
             self._live_wire_last_diagnostic = None
-            self._runtime._append_event(
+            self._runtime.append_event(
                 kind="ied-close",
                 session_id=self._session_id,
                 endpoint_id=self._endpoint.id,
@@ -527,7 +554,7 @@ class Iec61850ClientControlService:
         self._last_read = read_result
         self._last_state = read_result.state
         self._last_discovery = _build_discovery_structure(self._endpoint, self._candidate, read_result)
-        self._runtime._append_event(
+        self._runtime.append_event(
             kind="ied-discover",
             session_id=self._session_id,
             endpoint_id=self._endpoint.id,
@@ -539,9 +566,9 @@ class Iec61850ClientControlService:
         )
 
     def _enable_reporting(self) -> None:
-        reserved = self._runtime.reserve_report_control(session_id=self._session_id, candidate=self._candidate, client_id=self._client_id)
+        _ = self._runtime.reserve_report_control(session_id=self._session_id, candidate=self._candidate, client_id=self._client_id)
         enabled = self._runtime.enable_report_control(session_id=self._session_id, candidate=self._candidate, client_id=self._client_id)
-        self._last_state = enabled if enabled is not None else reserved
+        self._last_state = enabled
 
     def _start_live_wire_process_transport(self) -> None:
         process_candidate = self._candidate
@@ -558,10 +585,10 @@ class Iec61850ClientControlService:
         if not fixture_path.is_file():
             fixture_dir = tempfile.TemporaryDirectory(prefix="unitlab-iec61850-wire-")
             fixture_path = Path(fixture_dir.name) / "wire-fixture.json"
-            write_ied_simulator_fixture_file(fixture, fixture_path)
+            _ = write_ied_simulator_fixture_file(fixture, fixture_path)
         spec = build_ied_simulator_process_spec(
             fixture=fixture,
-            binary_path=self._live_wire_binary_path,
+            binary_path=cast(str | Path, self._live_wire_binary_path),
             fixture_path=fixture_path,
             ied_name=process_ied_name,
             bind_address=self._live_wire_service_host,
@@ -575,14 +602,14 @@ class Iec61850ClientControlService:
             self._live_wire_fixture_dir = fixture_dir
             self._live_wire_endpoint = process_endpoint or spec.endpoint
             self._transcript_wire_endpoint_id = self._live_wire_endpoint.id
-            self._runtime._append_event(
+            self._runtime.append_event(
                 kind="wire-session-open",
                 session_id=self._session_id,
                 endpoint_id=self._live_wire_endpoint.id,
                 client_id=self._client_id,
                 outcome="connected",
             )
-            self._runtime._append_event(
+            self._runtime.append_event(
                 kind="wire-associate",
                 session_id=self._session_id,
                 endpoint_id=self._live_wire_endpoint.id,
@@ -591,7 +618,7 @@ class Iec61850ClientControlService:
             )
             self._live_wire_last_frame = None
             self._live_wire_last_diagnostic = None
-            self._runtime._append_event(
+            self._runtime.append_event(
                 kind="wire-client-ready",
                 session_id=self._session_id,
                 endpoint_id=self._live_wire_endpoint.id,
@@ -602,7 +629,7 @@ class Iec61850ClientControlService:
             )
         except Exception:
             if process_handle is not None:
-                stop_ied_simulator_process(process_handle)
+                _ = stop_ied_simulator_process(process_handle)
             if fixture_dir is not None:
                 fixture_dir.cleanup()
             self._live_wire_process = None
@@ -627,7 +654,7 @@ class Iec61850ClientControlService:
         frame = self._read_live_wire_process_frame_response("report")
         self._live_wire_last_frame = frame
         self._live_wire_last_diagnostic = None
-        self._runtime._append_event(
+        self._runtime.append_event(
             kind="wire-report-frame",
             session_id=self._session_id,
             endpoint_id=self._live_wire_endpoint.id,
@@ -659,7 +686,7 @@ class Iec61850ClientControlService:
             if exc.code != "EXTERNAL_MMS_CLIENT_COMMAND_FAILED" or not self._external_discover_summary_seen:
                 raise
         self._last_discovery = self._external_live_discovery or _empty_wire_discovery_structure(self._endpoint, self._build_external_discover_command(), source="live")
-        self._runtime._append_event(
+        self._runtime.append_event(
             kind="external-ied-discover",
             session_id=self._session_id,
             endpoint_id=self._endpoint.id,
@@ -691,9 +718,9 @@ class Iec61850ClientControlService:
             accept_on_eof_prefixes=("native-wire-client: subscription-summary phase=rptena",),
         )
         self._ensure_external_mms_command_not_failed(rptena_command)
-        if direct_rcb_command and self._last_state is not None and self._last_state.runtime_status == Iec61850RuntimeStatus.READ:
+        if direct_rcb_command and self._last_state.runtime_status == Iec61850RuntimeStatus.READ:
             self._last_state = self._external_state(Iec61850RuntimeStatus.ENABLED, enabled=True)
-        if self._last_state is None or self._last_state.runtime_status not in {
+        if self._last_state.runtime_status not in {
             Iec61850RuntimeStatus.ENABLED,
             Iec61850RuntimeStatus.REPORTING,
         }:
@@ -711,7 +738,7 @@ class Iec61850ClientControlService:
         self._pending_external_report_entries.clear()
         self._current_external_report_values.clear()
         self._last_state = self._external_state(Iec61850RuntimeStatus.ENABLED, enabled=True)
-        self._runtime._append_event(
+        self._runtime.append_event(
             kind="external-report-control-enable",
             session_id=self._session_id,
             endpoint_id=self._endpoint.id,
@@ -777,7 +804,7 @@ class Iec61850ClientControlService:
             )
         if self._last_report is None:
             self._last_state = self._external_state(Iec61850RuntimeStatus.GI_PENDING, enabled=True, gi_in_progress=True)
-        self._runtime._append_event(
+        self._runtime.append_event(
             kind="external-report-control-gi",
             session_id=self._session_id,
             endpoint_id=self._endpoint.id,
@@ -839,7 +866,7 @@ class Iec61850ClientControlService:
             self._stop_external_mms_client_process()
         self._session_open = False
         self._last_state = self._external_state(Iec61850RuntimeStatus.DISCONNECTED, enabled=False)
-        self._runtime._append_event(
+        self._runtime.append_event(
             kind="external-ied-disconnect",
             session_id=self._session_id,
             endpoint_id=self._endpoint.id,
@@ -956,7 +983,7 @@ class Iec61850ClientControlService:
             raise Iec61850ReportRuntimeError("EXTERNAL_MMS_CLIENT_EXITED", f"IEC 61850 external MMS client exited during startup: {stderr.strip()}")
         self._session_open = True
         self._last_state = self._external_state(Iec61850RuntimeStatus.CONNECTED, enabled=False)
-        self._runtime._append_event(
+        self._runtime.append_event(
             kind="external-session-open",
             session_id=self._session_id,
             endpoint_id=self._endpoint.id,
@@ -995,7 +1022,7 @@ class Iec61850ClientControlService:
                     self._endpoint.port,
                     command,
                 )
-                self._external_mms_process.stdin.write(payload)
+                _ = self._external_mms_process.stdin.write(payload)
                 self._external_mms_process.stdin.flush()
                 return
             except (BrokenPipeError, OSError) as exc:
@@ -1050,7 +1077,7 @@ class Iec61850ClientControlService:
                         raise Iec61850ReportRuntimeError("EXTERNAL_MMS_CLIENT_COMMAND_FAILED", stderr)
                     if saw_failed:
                         try:
-                            process.wait(timeout=0.25)
+                            _ = process.wait(timeout=0.25)
                         except subprocess.TimeoutExpired:
                             pass
                         if process.poll() is not None and process.stderr is not None:
@@ -1209,8 +1236,8 @@ class Iec61850ClientControlService:
         self._external_discovered_rcbs = [rcb for rcb in self._external_discovered_rcbs if rcb.index != index]
         self._external_discovered_rcbs.append(discovered)
         discovery = self._ensure_external_live_discovery()
-        report_controls = discovery.setdefault("reportControls", [])
-        if not any(isinstance(item_, dict) and item_.get("domain") == domain and item_.get("item") == item for item_ in report_controls):
+        report_controls = _json_object_list_field(discovery, "reportControls")
+        if not any(item_.get("domain") == domain and item_.get("item") == item for item_ in report_controls):
             name = item.rsplit("$", 1)[-1]
             base_name = name.rstrip("0123456789") or name
             data_set_ref = _first_live_discovery_dataset_ref(discovery, domain)
@@ -1236,15 +1263,15 @@ class Iec61850ClientControlService:
             if not self._endpoint.ied_name.strip() and candidate.ied_name.strip():
                 self._set_external_live_identity(candidate.ied_name)
 
-    def _ensure_external_live_discovery(self) -> dict:
+    def _ensure_external_live_discovery(self) -> JsonObject:
         if self._external_live_discovery is None:
             self._external_live_discovery = _empty_wire_discovery_structure(self._endpoint, self._build_external_discover_command(), source="live")
         return self._external_live_discovery
 
     def _append_external_discovery_diagnostic(self, line: str) -> None:
         discovery = self._ensure_external_live_discovery()
-        diagnostics = discovery.setdefault("diagnostics", [])
-        if isinstance(diagnostics, list) and line not in diagnostics:
+        diagnostics = _json_string_list_field(discovery, "diagnostics")
+        if line not in diagnostics:
             diagnostics.append(line)
         logger.warning("External IED native discovery diagnostic | endpoint=%s:%s %s", self._endpoint.host, self._endpoint.port, line)
 
@@ -1264,11 +1291,9 @@ class Iec61850ClientControlService:
         if isinstance(endpoint, dict):
             endpoint["id"] = self._endpoint.id
             endpoint["iedName"] = normalized
-        logical_devices = discovery.get("logicalDevices")
-        if isinstance(logical_devices, list):
+        logical_devices = _json_object_list(discovery.get("logicalDevices"))
+        if logical_devices:
             for item in logical_devices:
-                if not isinstance(item, dict):
-                    continue
                 domain = item.get("domain")
                 if isinstance(domain, str):
                     item["iedName"] = normalized
@@ -1280,8 +1305,8 @@ class Iec61850ClientControlService:
         if not domain:
             return
         discovery = self._ensure_external_live_discovery()
-        logical_devices = discovery.setdefault("logicalDevices", [])
-        if not any(isinstance(item, dict) and item.get("reference") == domain for item in logical_devices):
+        logical_devices = _json_object_list_field(discovery, "logicalDevices")
+        if not any(item.get("reference") == domain for item in logical_devices):
             logical_devices.append({
                 "iedName": self._endpoint.ied_name,
                 "inst": _live_logical_device_inst(self._endpoint.ied_name, domain),
@@ -1296,9 +1321,9 @@ class Iec61850ClientControlService:
         if not domain or not name:
             return
         discovery = self._ensure_external_live_discovery()
-        logical_nodes = discovery.setdefault("logicalNodes", [])
+        logical_nodes = _json_object_list_field(discovery, "logicalNodes")
         reference = f"{domain}/{name}"
-        if not any(isinstance(item, dict) and item.get("reference") == reference for item in logical_nodes):
+        if not any(item.get("reference") == reference for item in logical_nodes):
             logical_nodes.append({"logicalDeviceRef": domain, "name": name, "reference": reference})
 
     def _apply_external_discovered_dataset_line(self, line: str) -> None:
@@ -1307,7 +1332,7 @@ class Iec61850ClientControlService:
         if not reference:
             return
         discovery = self._ensure_external_live_discovery()
-        _ensure_live_discovery_dataset(discovery, reference)
+        _ = _ensure_live_discovery_dataset(discovery, reference)
 
     def _apply_external_discovered_dataset_member_line(self, line: str) -> None:
         fields = _parse_indexed_space_kv_line(line, "native-wire-client: discovered-dataset-member[")
@@ -1317,14 +1342,14 @@ class Iec61850ClientControlService:
             return
         discovery = self._ensure_external_live_discovery()
         data_set = _ensure_live_discovery_dataset(discovery, data_set_ref)
-        members = data_set.setdefault("members", [])
+        members = _json_object_list_field(data_set, "members")
         signal = _live_member_signal(member_ref)
-        if not any(isinstance(item, dict) and item.get("reference") == signal["reference"] for item in members):
-            members.append(signal)
+        if not any(item.get("reference") == signal["reference"] for item in members):
+            members.append(cast(JsonObject, signal))
             data_set["memberCount"] = len(members)
-        signals = discovery.setdefault("signals", [])
-        if not any(isinstance(item, dict) and item.get("reference") == signal["reference"] for item in signals):
-            signals.append(signal)
+        signals = _json_object_list_field(discovery, "signals")
+        if not any(item.get("reference") == signal["reference"] for item in signals):
+            signals.append(cast(JsonObject, signal))
 
     def _apply_external_discovered_rcb_attr_line(self, line: str) -> None:
         fields = _parse_indexed_space_kv_line(line, "native-wire-client: discovered-rcb-attr[")
@@ -1335,9 +1360,9 @@ class Iec61850ClientControlService:
         if not domain or not item or not field or value is None:
             return
         discovery = self._ensure_external_live_discovery()
-        report_controls = discovery.setdefault("reportControls", [])
+        report_controls = _json_object_list_field(discovery, "reportControls")
         for report_control in report_controls:
-            if isinstance(report_control, dict) and report_control.get("domain") == domain and report_control.get("item") == item:
+            if report_control.get("domain") == domain and report_control.get("item") == item:
                 _apply_live_rcb_attr(report_control, field, value)
                 break
         candidate = next((candidate for candidate in self._available_candidates if candidate.id == f"{domain}:{item}"), None)
@@ -1429,25 +1454,25 @@ class Iec61850ClientControlService:
         if process.poll() is None:
             try:
                 if process.stdin is not None:
-                    process.stdin.write("exit\n")
+                    _ = process.stdin.write("exit\n")
                     process.stdin.flush()
             except (BrokenPipeError, OSError):
                 pass
             with suppress(BrokenPipeError, OSError):
                 close_stdin = getattr(process.stdin, "close", None)
                 if callable(close_stdin):
-                    close_stdin()
+                    _ = close_stdin()
             try:
                 process.terminate()
-                process.wait(timeout=2)
+                _ = process.wait(timeout=2)
             except subprocess.TimeoutExpired:
                 process.kill()
-                process.wait(timeout=2)
+                _ = process.wait(timeout=2)
         else:
             with suppress(BrokenPipeError, OSError):
                 close_stdin = getattr(process.stdin, "close", None)
                 if callable(close_stdin):
-                    close_stdin()
+                    _ = close_stdin()
 
     def _external_probe_binary_path(self) -> str:
         if self._live_wire_binary_path:
@@ -1464,11 +1489,10 @@ class Iec61850ClientControlService:
                 return str(path)
         raise Iec61850ReportRuntimeError(
             "EXTERNAL_MMS_BINARY_UNAVAILABLE",
-            "UnitLab native MMS client is not installed. Check the backend image and "
-            "IEC61850_IED_LIVE_WIRE_BINARY_PATH configuration.",
+            "UnitLab native MMS client is not installed. Check the backend image and IEC61850_IED_LIVE_WIRE_BINARY_PATH configuration.",
         )
 
-    def _run_external_probe(self, probe: str):
+    def _run_external_probe(self, probe: str) -> subprocess.CompletedProcess[str]:
         if self._endpoint.host is None or not self._endpoint.host.strip():
             raise Iec61850ReportRuntimeError("EXTERNAL_MMS_HOST_REQUIRED", "IEC 61850 external MMS target host is required.")
         if self._target_scl_path is None or not self._target_scl_path.strip():
@@ -1497,7 +1521,7 @@ class Iec61850ClientControlService:
         except subprocess.TimeoutExpired as exc:
             raise Iec61850ReportRuntimeError("EXTERNAL_MMS_PROBE_TIMEOUT", f"IEC 61850 external MMS {probe} probe timed out after 30s.") from exc
         except subprocess.CalledProcessError as exc:
-            details = ((exc.stderr or "") + (exc.stdout or "")).strip()
+            details = ((cast(str | None, exc.stderr) or "") + (cast(str | None, exc.stdout) or "")).strip()
             raise Iec61850ReportRuntimeError("EXTERNAL_MMS_PROBE_FAILED", f"IEC 61850 external MMS {probe} probe failed with exit code {exc.returncode}: {details}") from exc
 
     def _discover_live_wire_ied(self) -> None:
@@ -1507,7 +1531,7 @@ class Iec61850ClientControlService:
         self._last_read = None
         self._last_state = None
         self._last_discovery = _build_wire_discovery_structure(self._endpoint, self._candidate, command)
-        self._runtime._append_event(
+        self._runtime.append_event(
             kind="wire-ied-discover",
             session_id=self._session_id,
             endpoint_id=self._wire_endpoint_id(),
@@ -1521,7 +1545,7 @@ class Iec61850ClientControlService:
     def _enable_live_wire_reporting(self) -> None:
         self._write_live_wire_command("rptena")
         self._drain_live_wire_process_stdout(timeout_seconds=2.0)
-        self._runtime._append_event(
+        self._runtime.append_event(
             kind="wire-report-control-enable",
             session_id=self._session_id,
             endpoint_id=self._wire_endpoint_id(),
@@ -1535,7 +1559,7 @@ class Iec61850ClientControlService:
     def _send_live_wire_general_interrogation(self) -> None:
         self._write_live_wire_command("gi")
         self._drain_live_wire_process_stdout(timeout_seconds=2.0)
-        self._runtime._append_event(
+        self._runtime.append_event(
             kind="wire-report-control-gi",
             session_id=self._session_id,
             endpoint_id=self._wire_endpoint_id(),
@@ -1549,7 +1573,7 @@ class Iec61850ClientControlService:
     def _disconnect_live_wire_ied(self) -> None:
         self._write_live_wire_command("disconnect")
         self._drain_live_wire_process_stdout(timeout_seconds=1.0)
-        self._runtime._append_event(
+        self._runtime.append_event(
             kind="wire-ied-disconnect",
             session_id=self._session_id,
             endpoint_id=self._wire_endpoint_id(),
@@ -1600,11 +1624,11 @@ class Iec61850ClientControlService:
                 except Iec61850ReportRuntimeError:
                     pass
         finally:
-            stop_ied_simulator_process(process_handle)
+            _ = stop_ied_simulator_process(process_handle)
             if fixture_dir is not None:
                 fixture_dir.cleanup()
         self._live_wire_last_diagnostic = None
-        self._runtime._append_event(
+        self._runtime.append_event(
             kind="wire-session-close",
             session_id=self._session_id,
             endpoint_id=endpoint_id,
@@ -1704,7 +1728,12 @@ class Iec61850ClientControlService:
         kind = kind_map.get(event.kind, event.kind)
         return replace(event, kind=kind, endpoint_id=self._transcript_wire_endpoint_id)
 
-    def _run(self, action: str, operation, post=None):
+    def _run(
+        self,
+        action: str,
+        operation: Callable[[], _RunResultT],
+        post: Callable[[_RunResultT], None] | None = None,
+    ) -> Iec61850ClientControlSnapshot:
         try:
             result = operation()
         except Iec61850ReportRuntimeError as exc:
@@ -1716,11 +1745,14 @@ class Iec61850ClientControlService:
                 post(result)
             return self.snapshot()
 
-    def _capture_read(self, result) -> None:
+    def _capture_read(self, result: Iec61850ReportControlReadResult) -> None:
         self._last_read = result
         self._last_state = result.state
 
-    def _capture_subscription_run(self, result) -> None:
+    def _capture_subscription_run(
+        self,
+        result: Iec61850ReportSubscriptionRunResult | Iec61850SimulatorSubscriptionRunResult,
+    ) -> None:
         self._last_plan = result.plan
         self._last_report = result.reports[0].event if result.reports else None
 
@@ -1734,7 +1766,7 @@ def _build_ui_state(
     endpoint_resolution: Iec61850EndpointResolution,
     candidate: Iec61850ReportControlCandidate,
     available_candidates: tuple[Iec61850ReportControlCandidate, ...],
-    last_discovery: dict | None,
+    last_discovery: JsonObject | None,
     last_state: Iec61850ReportControlState | None,
     last_report: Iec61850ReportEvent | None,
     current_report_values: tuple[Iec61850ReportEventValue, ...],
@@ -1745,7 +1777,7 @@ def _build_ui_state(
     live_wire_last_frame_length: int | None,
     live_wire_last_diagnostic: Iec61850ClientControlDiagnostic | None,
     transcript: tuple[Iec61850MmsClientEvent, ...],
-) -> dict:
+) -> JsonObject:
     candidate_ready = not _candidate_is_unselected(candidate)
     selected_rcb_ref = _candidate_rcb_reference(candidate) if candidate_ready else None
     selected_dataset_ref = candidate.data_set_ref if candidate_ready else None
@@ -1784,7 +1816,7 @@ def _build_ui_state(
         and external_probe is not None
         and external_probe.last_command in {"rptena", "gi"}
     )
-    report_values = []
+    report_values: list[JsonObject] = []
     if last_report is not None:
         candidate_signal_refs = {signal.reference for signal in candidate.signals}
         for value in last_report.values:
@@ -1941,7 +1973,7 @@ def _ui_phase(
     return "idle"
 
 
-def _available_report_controls_payload(candidates: tuple[Iec61850ReportControlCandidate, ...]) -> list[dict[str, str | bool | dict | None]]:
+def _available_report_controls_payload(candidates: tuple[Iec61850ReportControlCandidate, ...]) -> list[JsonObject]:
     return [
         {
             "rcb_ref": _candidate_rcb_reference(candidate),
@@ -1957,7 +1989,7 @@ def _available_report_controls_payload(candidates: tuple[Iec61850ReportControlCa
     ]
 
 
-def _discovery_counts(discovery: dict | None, candidate: Iec61850ReportControlCandidate) -> dict[str, int]:
+def _discovery_counts(discovery: JsonObject | None, candidate: Iec61850ReportControlCandidate) -> dict[str, int]:
     if discovery is None:
         return {
             "logical_devices": 0,
@@ -1967,7 +1999,7 @@ def _discovery_counts(discovery: dict | None, candidate: Iec61850ReportControlCa
             "report_controls": 0,
             "signals": 0,
         }
-    data_sets = discovery.get("dataSets") if isinstance(discovery, dict) else None
+    data_sets = discovery.get("dataSets")
     return {
         "logical_devices": _list_count(discovery.get("logicalDevices")),
         "logical_nodes": _list_count(discovery.get("logicalNodes")),
@@ -1978,19 +2010,19 @@ def _discovery_counts(discovery: dict | None, candidate: Iec61850ReportControlCa
     }
 
 
-def _list_count(value) -> int:
-    return len(value) if isinstance(value, list) else 0
+def _list_count(value: object) -> int:
+    return len(cast(list[object], value)) if isinstance(value, list) else 0
 
 
-def _data_set_member_count(value) -> int:
-    if not isinstance(value, list):
-        return 0
+def _data_set_member_count(value: object) -> int:
+    items = _json_object_list(value)
     total = 0
-    for item in value:
-        if isinstance(item, dict) and isinstance(item.get("memberCount"), int):
-            total += item["memberCount"]
-        elif isinstance(item, dict) and isinstance(item.get("members"), list):
-            total += len(item["members"])
+    for item in items:
+        member_count = item.get("memberCount")
+        if isinstance(member_count, int):
+            total += member_count
+        else:
+            total += len(_json_object_list(item.get("members")))
     return total
 
 
@@ -2115,13 +2147,6 @@ def _external_discovered_rcb_from_candidate_id(candidate: Iec61850ReportControlC
     return _ExternalDiscoveredReportControl(index=-1, domain=domain.strip(), item=item.strip())
 
 
-def _external_rcb_hex_command(candidate: Iec61850ReportControlCandidate, field: str, value_hex: str) -> str:
-    rcb_kind = "BR" if candidate.report_kind == Iec61850ReportKind.BUFFERED else "RP"
-    domain = _external_mms_domain(candidate)
-    item = f"{candidate.logical_node_name}${rcb_kind}${candidate.report_control_name}${field}"
-    return f"write-hex {domain} {item} 4 {value_hex}"
-
-
 def _external_report_reason(value: str | None) -> Iec61850ReportReason:
     labels = set((value or "").split(","))
     if "general-interrogation" in labels:
@@ -2185,11 +2210,6 @@ def _match_external_report_reference(candidate: Iec61850ReportControlCandidate, 
     return None, None
 
 
-def _signal_mms_prefix(ied_name: str, logical_device_inst: str, reference: str) -> str | None:
-    prefixes = _signal_mms_prefixes(ied_name, logical_device_inst, reference)
-    return prefixes[0] if prefixes else None
-
-
 def _signal_mms_prefixes(ied_name: str, logical_device_inst: str, reference: str) -> list[str]:
     if "[" not in reference or not reference.endswith("]"):
         return []
@@ -2224,12 +2244,12 @@ def _report_signal_states(
     candidate: Iec61850ReportControlCandidate,
     report: Iec61850ReportEvent | None,
     current_values: Sequence[Iec61850ReportEventValue] = (),
-) -> list[dict]:
+) -> list[JsonObject]:
     values = tuple(current_values) if current_values else report.values if report is not None else ()
     if not values:
         return []
 
-    states: list[dict] = []
+    states: list[JsonObject] = []
     for signal_index, signal in enumerate(candidate.signals):
         prefixes = _signal_mms_prefixes(candidate.ied_name, candidate.logical_device_inst, signal.reference)
         if not prefixes:
@@ -2308,20 +2328,21 @@ def _select_signal_leaf_value(
     return None
 
 
-def _read_process_stdout_line(process, *, timeout_deadline: float, line_buffer: bytearray) -> str | None:
+def _read_process_stdout_line(process: subprocess.Popen[str], *, timeout_deadline: float, line_buffer: bytearray) -> str | None:
     stdout = process.stdout
     if stdout is None:
         return None
+    text_stdout = cast(TextIO, stdout)
 
     raw_fd = None
-    raw_stream = getattr(getattr(stdout, "buffer", None), "raw", None)
+    raw_stream = getattr(getattr(text_stdout, "buffer", None), "raw", None)
     if raw_stream is not None:
-        fileno = getattr(raw_stream, "fileno", None)
+        fileno = getattr(cast(object, raw_stream), "fileno", None)
         if callable(fileno):
             raw_fd = fileno()
 
     if raw_fd is None:
-        line = stdout.readline()
+        line = text_stdout.readline()
         return line or None
 
     while True:
@@ -2334,14 +2355,14 @@ def _read_process_stdout_line(process, *, timeout_deadline: float, line_buffer: 
         remaining = timeout_deadline - time.monotonic()
         select_timeout = min(remaining, 1.0) if remaining > 0 else 0.0
 
-        readable, _, _ = select.select([raw_fd], [], [], select_timeout)
+        readable, _, _ = select.select([cast(int, raw_fd)], [], [], select_timeout)
         if not readable:
             if remaining <= 0:
                 return None
             continue
 
         try:
-            chunk = os.read(raw_fd, 4096)
+            chunk = os.read(cast(int, raw_fd), 4096)
         except BlockingIOError:
             continue
         if not chunk:
@@ -2359,7 +2380,7 @@ def _build_discovery_structure(
     endpoint: Iec61850DeviceEndpoint,
     candidate: Iec61850ReportControlCandidate,
     read_result: Iec61850ReportControlReadResult,
-) -> dict:
+) -> JsonObject:
     signal_items = [
         {
             "reference": signal.reference,
@@ -2437,7 +2458,7 @@ def _build_target_endpoint_and_candidate(
     access_point_name = request.access_point_name.strip() or "AP1"
     if (request.scl_path is not None and request.scl_path.strip()) and not ied_name:
         raise Iec61850ReportRuntimeError("CLIENT_TARGET_IED_REQUIRED", "IEC 61850 external MMS target IED name is required.")
-    requested_host = request.host.strip() if request.host is not None else ""
+    requested_host = request.host.strip()
     requested_port = request.port if request.port > 0 else None
     override_host = request.transport_override_host.strip() if request.transport_override_host is not None and request.transport_override_host.strip() else ""
     override_port = request.transport_override_port if request.transport_override_port is not None and request.transport_override_port > 0 else None
@@ -2597,7 +2618,7 @@ def _find_candidate_by_rcb_reference(
     return None
 
 
-def _build_wire_discovery_structure(endpoint: Iec61850DeviceEndpoint, candidate: Iec61850ReportControlCandidate, command: str) -> dict:
+def _build_wire_discovery_structure(endpoint: Iec61850DeviceEndpoint, candidate: Iec61850ReportControlCandidate, command: str) -> JsonObject:
     logical_device_inst = _normalized_live_logical_device_inst(candidate.ied_name, candidate.logical_device_inst)
     signal_items = [{"reference": signal.reference, "fc": signal.fc} for signal in candidate.signals]
     return {
@@ -2620,7 +2641,7 @@ def _build_wire_discovery_structure(endpoint: Iec61850DeviceEndpoint, candidate:
     }
 
 
-def _empty_wire_discovery_structure(endpoint: Iec61850DeviceEndpoint, command: str, *, source: str) -> dict:
+def _empty_wire_discovery_structure(endpoint: Iec61850DeviceEndpoint, command: str, *, source: str) -> JsonObject:
     return {
         "schema": "unitlab.iec61850.client.wire-discovery.v1",
         "source": source,
@@ -2641,12 +2662,12 @@ def _empty_wire_discovery_structure(endpoint: Iec61850DeviceEndpoint, command: s
     }
 
 
-def _ensure_live_discovery_dataset(discovery: dict, reference: str) -> dict:
-    data_sets = discovery.setdefault("dataSets", [])
+def _ensure_live_discovery_dataset(discovery: JsonObject, reference: str) -> JsonObject:
+    data_sets = _json_object_list_field(discovery, "dataSets")
     for item in data_sets:
-        if isinstance(item, dict) and item.get("reference") == reference:
+        if item.get("reference") == reference:
             return item
-    data_set = {"reference": reference, "members": [], "memberCount": 0}
+    data_set = cast(JsonObject, {"reference": reference, "members": [], "memberCount": 0})
     data_sets.append(data_set)
     return data_set
 
@@ -2670,26 +2691,19 @@ def _live_member_signal(member_ref: str) -> dict[str, str]:
     return {"reference": reference, "mmsReference": member_ref, "domain": domain if separator else "", "fc": fc}
 
 
-def _first_live_discovery_dataset_ref(discovery: dict, domain: str) -> str | None:
-    data_sets = discovery.get("dataSets")
-    if not isinstance(data_sets, list):
-        return None
+def _first_live_discovery_dataset_ref(discovery: JsonObject, domain: str) -> str | None:
+    data_sets = _json_object_list(discovery.get("dataSets"))
     for item in data_sets:
-        if isinstance(item, dict):
-            reference = item.get("reference")
-            if isinstance(reference, str) and reference.startswith(f"{domain}/"):
-                return reference
+        reference = item.get("reference")
+        if isinstance(reference, str) and reference.startswith(f"{domain}/"):
+            return reference
     return None
 
 
-def _infer_live_logical_device_inst_from_discovery(discovery: dict) -> str:
+def _infer_live_logical_device_inst_from_discovery(discovery: JsonObject) -> str:
     for key in ("signals", "dataSets"):
-        items = discovery.get(key)
-        if not isinstance(items, list):
-            continue
+        items = _json_object_list(discovery.get(key))
         for item in items:
-            if not isinstance(item, dict):
-                continue
             if key == "signals":
                 for reference_key in ("mmsReference", "reference"):
                     reference = item.get(reference_key)
@@ -2699,12 +2713,8 @@ def _infer_live_logical_device_inst_from_discovery(discovery: dict) -> str:
                     if logical_device_inst:
                         return logical_device_inst
             else:
-                members = item.get("members")
-                if not isinstance(members, list):
-                    continue
+                members = _json_object_list(item.get("members"))
                 for member in members:
-                    if not isinstance(member, dict):
-                        continue
                     for reference_key in ("mmsReference", "reference"):
                         reference = member.get(reference_key)
                         if not isinstance(reference, str) or "/" not in reference:
@@ -2715,7 +2725,7 @@ def _infer_live_logical_device_inst_from_discovery(discovery: dict) -> str:
     return ""
 
 
-def _infer_live_ied_name_from_discovery(discovery: dict, logical_device_inst: str, discovered_domain: str) -> str:
+def _infer_live_ied_name_from_discovery(discovery: JsonObject, logical_device_inst: str, discovered_domain: str) -> str:
     if logical_device_inst and discovered_domain.endswith(logical_device_inst):
         candidate = discovered_domain[: -len(logical_device_inst)]
         if candidate:
@@ -2723,15 +2733,11 @@ def _infer_live_ied_name_from_discovery(discovery: dict, logical_device_inst: st
     prefix, suffix = _split_live_domain_identity(discovered_domain)
     if prefix and suffix:
         return prefix
-    logical_devices = discovery.get("logicalDevices")
-    if isinstance(logical_devices, list):
-        device_references = [
-            item.get("reference")
-            for item in logical_devices
-            if isinstance(item, dict) and isinstance(item.get("reference"), str)
-        ]
+    logical_devices = _json_object_list(discovery.get("logicalDevices"))
+    if logical_devices:
+        device_references = [item.get("reference") for item in logical_devices if isinstance(item.get("reference"), str)]
         if device_references:
-            common_prefix = os.path.commonprefix(device_references).rstrip("._-/")
+            common_prefix = os.path.commonprefix(cast(list[str], device_references)).rstrip("._-/")
             if common_prefix:
                 return common_prefix
     return ""
@@ -2751,7 +2757,7 @@ def _split_live_domain_identity(domain: str) -> tuple[str, str]:
     return prefix, suffix
 
 
-def _infer_live_identity(endpoint_ied_name: str, discovered_domain: str, discovery: dict) -> tuple[str, str]:
+def _infer_live_identity(endpoint_ied_name: str, discovered_domain: str, discovery: JsonObject) -> tuple[str, str]:
     normalized_endpoint_ied_name = endpoint_ied_name.strip()
     if normalized_endpoint_ied_name:
         return normalized_endpoint_ied_name, _live_logical_device_inst(normalized_endpoint_ied_name, discovered_domain)
@@ -2772,7 +2778,7 @@ def _candidate_from_live_discovered_rcb(
     discovered: _ExternalDiscoveredReportControl,
     report_control_name: str,
     data_set_ref: str | None,
-    discovery: dict,
+    discovery: JsonObject,
 ) -> Iec61850ReportControlCandidate:
     logical_node_name, report_kind = _live_rcb_logical_node_and_kind(discovered.item)
     inferred_ied_name, logical_device_inst = _infer_live_identity(endpoint.ied_name, discovered.domain, discovery)
@@ -2822,7 +2828,7 @@ def _normalized_live_logical_device_inst(ied_name: str, logical_device_inst: str
     return normalized
 
 
-def _apply_live_rcb_attr(report_control: dict, field: str, value: str) -> None:
+def _apply_live_rcb_attr(report_control: JsonObject, field: str, value: str) -> None:
     if field == "RptID":
         report_control["rptId"] = value
     elif field == "DatSet":
@@ -2846,43 +2852,24 @@ def _candidate_with_live_rcb_attr(
     field: str,
     value: str,
     *,
-    discovery: dict | None = None,
+    discovery: JsonObject | None = None,
 ) -> Iec61850ReportControlCandidate:
-    kwargs = {
-        "id": candidate.id,
-        "ied_name": candidate.ied_name,
-        "access_point_name": candidate.access_point_name,
-        "logical_device_inst": candidate.logical_device_inst,
-        "logical_node_name": candidate.logical_node_name,
-        "report_control_name": candidate.report_control_name,
-        "report_kind": candidate.report_kind,
-        "rpt_id": candidate.rpt_id,
-        "data_set_ref": candidate.data_set_ref,
-        "conf_rev": candidate.conf_rev,
-        "indexed": candidate.indexed,
-        "buffer_time_ms": candidate.buffer_time_ms,
-        "integrity_period_ms": candidate.integrity_period_ms,
-        "trigger_options": candidate.trigger_options,
-        "optional_fields": candidate.optional_fields,
-        "signals": candidate.signals,
-    }
     if field == "RptID":
-        kwargs["rpt_id"] = value
+        return replace(candidate, rpt_id=value)
     elif field == "DatSet":
-        kwargs["data_set_ref"] = value
-        if discovery is not None:
-            kwargs["signals"] = _live_candidate_signals(discovery, value)
+        signals = _live_candidate_signals(discovery, value) if discovery is not None else candidate.signals
+        return replace(candidate, data_set_ref=value, signals=signals)
     elif field == "ConfRev":
-        kwargs["conf_rev"] = value
+        return replace(candidate, conf_rev=value)
     elif field == "BufTm":
-        kwargs["buffer_time_ms"] = _parse_int_or_none(value)
+        return replace(candidate, buffer_time_ms=_parse_int_or_none(value))
     elif field == "IntgPd":
-        kwargs["integrity_period_ms"] = _parse_int_or_none(value)
+        return replace(candidate, integrity_period_ms=_parse_int_or_none(value))
     elif field == "OptFlds":
-        kwargs["optional_fields"] = _optional_fields_from_mms_bit_string(value)
+        return replace(candidate, optional_fields=_optional_fields_from_mms_bit_string(value))
     elif field == "TrgOps":
-        kwargs["trigger_options"] = _trigger_options_from_mms_bit_string(value)
-    return Iec61850ReportControlCandidate(**kwargs)
+        return replace(candidate, trigger_options=_trigger_options_from_mms_bit_string(value))
+    return candidate
 
 
 def _trigger_options_payload(options: Iec61850RuntimeTriggerOptions) -> dict[str, bool | None]:
@@ -2962,25 +2949,23 @@ def _live_logical_device_inst(ied_name: str, domain: str) -> str:
     return domain
 
 
-def _live_candidate_signals(discovery: dict, data_set_ref: str | None) -> tuple[Iec61850DataSetMember, ...]:
+def _live_candidate_signals(discovery: JsonObject, data_set_ref: str | None) -> tuple[Iec61850DataSetMember, ...]:
     if data_set_ref is not None:
-        data_sets = discovery.get("dataSets")
-        if isinstance(data_sets, list):
-            for data_set in data_sets:
-                if not isinstance(data_set, dict) or data_set.get("reference") != data_set_ref:
-                    continue
-                members = data_set.get("members")
-                if isinstance(members, list):
-                    signals = tuple(
-                        Iec61850DataSetMember(
-                            reference=str(member.get("reference")),
-                            fc=str(member.get("fc")) if member.get("fc") else None,
-                        )
-                        for member in members
-                        if isinstance(member, dict) and member.get("reference")
-                    )
-                    if signals:
-                        return signals
+        data_sets = _json_object_list(discovery.get("dataSets"))
+        for data_set in data_sets:
+            if data_set.get("reference") != data_set_ref:
+                continue
+            members = _json_object_list(data_set.get("members"))
+            signals = tuple(
+                Iec61850DataSetMember(
+                    reference=str(member.get("reference")),
+                    fc=str(member.get("fc")) if member.get("fc") else None,
+                )
+                for member in members
+                if member.get("reference")
+            )
+            if signals:
+                return signals
     return (Iec61850DataSetMember(reference=data_set_ref or "<live-discovered-dataset>", fc=None),)
 
 
@@ -3117,14 +3102,6 @@ def _local_name(tag: str) -> str:
     if "}" in tag:
         return tag.rsplit("}", 1)[1]
     return tag
-
-
-def _compact_probe_output(result) -> str:
-    output = ((result.stdout or "") + (result.stderr or "")).strip()
-    if not output:
-        return "probe completed"
-    lines = [line.strip() for line in output.splitlines() if line.strip()]
-    return " | ".join(lines[:8])
 
 
 def _utc_now() -> datetime:

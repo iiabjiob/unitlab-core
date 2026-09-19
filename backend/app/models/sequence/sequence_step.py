@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     DateTime,
@@ -19,15 +18,10 @@ from app.infrastructure.db.database import Base
 from app.models.types import BIGINT_PK
 from .types import SequenceStepType
 
-if TYPE_CHECKING:  # pragma: no cover - import for annotations only
-    from app.models.channel import Channel
-    from .sequence import Sequence
-
-
 class SequenceStep(Base):
-    __tablename__ = "sequence_steps"
+    __tablename__: str = "sequence_steps"
 
-    __table_args__ = (
+    __table_args__: tuple[object, ...] = (
         UniqueConstraint("sequence_id", "order_index", name="uq_sequence_steps_order"),
         Index("ix_sequence_steps_seq_order", "sequence_id", "order_index"),
     )
@@ -44,7 +38,7 @@ class SequenceStep(Base):
     channel_id: Mapped[int | None] = mapped_column(
         BIGINT_PK, ForeignKey("channels.id", ondelete="SET NULL"), nullable=True
     )
-    payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    payload: Mapped[dict[str, object] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -52,7 +46,7 @@ class SequenceStep(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
 
-    sequence: Mapped["Sequence"] = relationship(
+    sequence: Mapped[object] = relationship(
         "Sequence", back_populates="steps", lazy="selectin"
     )
-    channel: Mapped["Channel"] = relationship("Channel", back_populates="steps", lazy="selectin")
+    channel: Mapped[object | None] = relationship("Channel", back_populates="steps", lazy="selectin")

@@ -1,3 +1,5 @@
+from typing import Annotated
+
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,11 +22,11 @@ router = APIRouter(prefix="/api/v1/devices", tags=["Devices"])
 # --------------------------
 # Dependency: Device service
 # --------------------------
-def get_device_service(db: AsyncSession = Depends(get_db)) -> DeviceService:
+def get_device_service(db: Annotated[AsyncSession, Depends(get_db)]) -> DeviceService:
     return DeviceService(db)
 
 
-def get_channel_service(db: AsyncSession = Depends(get_db)) -> ChannelService:
+def get_channel_service(db: Annotated[AsyncSession, Depends(get_db)]) -> ChannelService:
     return ChannelService(db)
 
 
@@ -32,12 +34,12 @@ def get_channel_service(db: AsyncSession = Depends(get_db)) -> ChannelService:
 # Devices
 # --------------------------
 @router.get("", response_model=list[DeviceSummary])
-async def get_devices(service: DeviceService = Depends(get_device_service)):
+async def get_devices(service: Annotated[DeviceService, Depends(get_device_service)]):
     return await service.list()
 
 
 @router.get("/{id}", response_model=DeviceSchema)
-async def get_device(id: int, service: DeviceService = Depends(get_device_service)):
+async def get_device(id: int, service: Annotated[DeviceService, Depends(get_device_service)]):
     dev = await service.get(id)
     if not dev:
         raise HTTPException(404, "Device not found")
@@ -48,7 +50,7 @@ async def get_device(id: int, service: DeviceService = Depends(get_device_servic
 async def update_device(
     id: int,
     patch: DeviceUpdate,
-    service: DeviceService = Depends(get_device_service),
+    service: Annotated[DeviceService, Depends(get_device_service)],
 ):
     dev = await service.update(id, patch.model_dump(exclude_unset=True))
     if not dev:
@@ -57,7 +59,7 @@ async def update_device(
 
 
 @router.delete("/{id}")
-async def delete_device(id: int, service: DeviceService = Depends(get_device_service)):
+async def delete_device(id: int, service: Annotated[DeviceService, Depends(get_device_service)]):
     deleted = await service.delete(id)
     if not deleted:
         raise HTTPException(404, "Device not found")
@@ -70,10 +72,10 @@ async def delete_device(id: int, service: DeviceService = Depends(get_device_ser
 @router.get("/{id}/channels", response_model=ChannelListResponse)
 async def get_device_channels(
     id: int,
-    limit: int = Query(default=100, ge=1, le=1000),
-    offset: int = Query(default=0, ge=0),
-    device_service: DeviceService = Depends(get_device_service),
-    channel_service: ChannelService = Depends(get_channel_service),
+    device_service: Annotated[DeviceService, Depends(get_device_service)],
+    channel_service: Annotated[ChannelService, Depends(get_channel_service)],
+    limit: Annotated[int, Query(ge=1, le=1000)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ):
     # Verify the device exists
     exists = await device_service.get(id)
@@ -88,8 +90,8 @@ async def get_device_channels(
 # --------------------------
 @router.delete("/bulk", response_model=DeviceBulkDeleteResult)
 async def bulk_delete_devices(
-    payload: DeviceBulkDeletePayload = Body(...),
-    service: DeviceService = Depends(get_device_service),
+    payload: Annotated[DeviceBulkDeletePayload, Body(...)],
+    service: Annotated[DeviceService, Depends(get_device_service)],
 ):
     # Always expect explicit body payload, no magic parsing
     if not payload.ids:

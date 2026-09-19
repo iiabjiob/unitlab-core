@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import List, Optional
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.channels.repository import ChannelRepository
@@ -10,15 +8,16 @@ from app.schemas.channel_schema import (
     ChannelListItem,
     ChannelListResponse,
 )
+import builtins
 
 
 class ChannelService:
     """High-level channel operations used by routers and other services."""
 
     def __init__(self, db: AsyncSession):
-        self.repo = ChannelRepository(db)
+        self.repo: ChannelRepository = ChannelRepository(db)
 
-    async def list(self) -> List[ChannelSchema]:
+    async def list(self) -> builtins.list[ChannelSchema]:
         channels = await self.repo.list()
         return [ChannelSchema.model_validate(ch) for ch in channels]
 
@@ -27,7 +26,7 @@ class ChannelService:
         items = [ChannelListItem.model_validate(ch) for ch in channels]
         return ChannelListResponse(items=items, total=total, limit=limit, offset=offset)
 
-    async def list_by_device(self, device_id: int) -> List[ChannelSchema]:
+    async def list_by_device(self, device_id: int) -> builtins.list[ChannelSchema]:
         channels = await self.repo.list_by_device(device_id)
         return [ChannelSchema.model_validate(ch) for ch in channels]
 
@@ -36,11 +35,11 @@ class ChannelService:
         items = [ChannelListItem.model_validate(ch) for ch in channels]
         return ChannelListResponse(items=items, total=total, limit=limit, offset=offset)
 
-    async def get(self, channel_id: int) -> Optional[ChannelSchema]:
+    async def get(self, channel_id: int) -> ChannelSchema | None:
         channel = await self.repo.get(channel_id)
         return ChannelSchema.model_validate(channel) if channel else None
 
-    async def update(self, channel_id: int, changes: dict) -> Optional[ChannelSchema]:
+    async def update(self, channel_id: int, changes: dict[str, object]) -> ChannelSchema | None:
         allowed = {"name", "channel_index", "channel_type"}
         payload = {key: value for key, value in changes.items() if key in allowed}
         if not payload:

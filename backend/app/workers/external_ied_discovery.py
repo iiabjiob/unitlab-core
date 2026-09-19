@@ -4,11 +4,12 @@ import asyncio
 import json
 import time
 from contextlib import suppress
-from typing import Any
+from typing import cast
 
 from app.core.config import get_settings
 from app.core.logger import get_logger
 from app.infrastructure.redis.manager import RedisManager
+from app.infrastructure.redis.types import RedisStreamClient, RedisStreamEntries
 from app.services.external_ied_availability import publish_external_ied_status_snapshot
 from app.services.external_ied_discovery_scheduler import (
     ExternalIedDiscoveryRequest,
@@ -41,7 +42,7 @@ WORKER_NAME = "external_ied_discovery"
 MAX_EARLIEST_WAIT_CHUNK_SECONDS = 1.0
 
 
-async def _ensure_group(redis) -> None:
+async def _ensure_group(redis: RedisStreamClient) -> None:
     await ensure_stream_consumer_group(
         redis,
         stream_name=STREAM_NAME,
@@ -52,7 +53,7 @@ async def _ensure_group(redis) -> None:
     )
 
 
-async def _fetch(redis, stream_id: str, block_ms: int = 5000):
+async def _fetch(redis: RedisStreamClient, stream_id: str, block_ms: int = 5000) -> RedisStreamEntries:
     return await fetch_stream_group_entries(
         redis,
         stream_name=STREAM_NAME,
@@ -64,7 +65,7 @@ async def _fetch(redis, stream_id: str, block_ms: int = 5000):
     )
 
 
-async def _drain_pending(redis, *, engine: ExternalIedDiscoveryEngine) -> None:
+async def _drain_pending(redis: RedisStreamClient, *, engine: ExternalIedDiscoveryEngine) -> None:
     await drain_pending_stream_entries(
         fetch_pending=lambda stream_id, block_ms: _fetch(redis, stream_id, block_ms=block_ms),
         process_entries=lambda entries: _process_entries(redis, entries, engine=engine),
@@ -80,7 +81,7 @@ async def execute_discovery_request(
     engine: ExternalIedDiscoveryEngine,
 ) -> DiscoveryResult:
     started = time.monotonic()
-    await mark_external_ied_discovery_running(
+    _ = await mark_external_ied_discovery_running(
         workspace_id=request.workspace_id,
         endpoint=request.endpoint,
         request_id=request.request_id,
@@ -88,33 +89,33 @@ async def execute_discovery_request(
     try:
         result = await _run_discovery(engine, request)
     except Exception as exc:  # noqa: BLE001
-        await record_external_ied_discovery_failure(
+        _ = await record_external_ied_discovery_failure(
             workspace_id=request.workspace_id,
             endpoint=request.endpoint,
             error=str(exc),
             duration_ms=max(0, int((time.monotonic() - started) * 1000)),
         )
         with suppress(Exception):
-            await publish_external_ied_status_snapshot(request.workspace_id)
+            _ = await publish_external_ied_status_snapshot(request.workspace_id)
         raise
-    await record_external_ied_discovery_result(
+    _ = await record_external_ied_discovery_result(
         workspace_id=request.workspace_id,
         endpoint=request.endpoint,
         metadata=result.metadata,
         model=result.model,
     )
-    await emit_external_ied_discovery_completed(
+    _ = await emit_external_ied_discovery_completed(
         workspace_id=request.workspace_id,
         endpoint=request.endpoint,
         request=request,
         metadata=result.metadata,
     )
     with suppress(Exception):
-        await publish_external_ied_status_snapshot(request.workspace_id)
+        _ = await publish_external_ied_status_snapshot(request.workspace_id)
     return result
 
 
-async def _process_entries(redis, entries, *, engine: ExternalIedDiscoveryEngine, stop_event: asyncio.Event | None = None) -> None:
+async def _process_entries(redis: RedisStreamClient, entries: RedisStreamEntries, *, engine: ExternalIedDiscoveryEngine, stop_event: asyncio.Event | None = None) -> None:
     for entry_id, fields in entries:
         request: ExternalIedDiscoveryRequest | None = None
         should_ack = False
@@ -136,7 +137,7 @@ async def _process_entries(redis, entries, *, engine: ExternalIedDiscoveryEngine
                 entry_id,
             )
             await _wait_until_due(request, stop_event=stop_event)
-            await execute_discovery_request(request, engine=engine)
+            _ = await execute_discovery_request(request, engine=engine)
             logger.info(
                 "External IED discovery completed | workspace=%s endpoint=%s request_id=%s",
                 request.workspace_id,
@@ -158,19 +159,19 @@ async def _process_entries(redis, entries, *, engine: ExternalIedDiscoveryEngine
             should_ack = True
         finally:
             if should_ack:
-                await redis.xack(STREAM_NAME, GROUP_NAME, entry_id)
+                _ = await redis.xack(STREAM_NAME, GROUP_NAME, entry_id)
 
 
-def _parse_request(fields: Any) -> ExternalIedDiscoveryRequest | None:
-    data = fields.get("data") if isinstance(fields, dict) else None
+def _parse_request(fields: dict[str, object]) -> ExternalIedDiscoveryRequest | None:
+    data = fields.get("data")
     if isinstance(data, bytes):
         data = data.decode("utf-8")
     if not isinstance(data, str) or not data.strip():
         return None
-    payload = json.loads(data)
+    payload = cast(object, json.loads(data))
     if not isinstance(payload, dict):
         return None
-    return ExternalIedDiscoveryRequest.from_payload(payload)
+    return ExternalIedDiscoveryRequest.from_payload(cast(dict[str, object], payload))
 
 
 async def _run_discovery(engine: ExternalIedDiscoveryEngine, request: ExternalIedDiscoveryRequest) -> DiscoveryResult:
@@ -196,7 +197,7 @@ async def _wait_until_due(
 
 async def main() -> None:
     await RedisManager.start()
-    redis = RedisManager.get_instance()
+    redis = cast(RedisStreamClient, cast(object, RedisManager.get_instance()))
     engine = MmsExternalIedDiscoveryEngine()
 
     heartbeat_task = start_worker_heartbeat(WORKER_NAME)
@@ -225,7 +226,7 @@ async def main() -> None:
             logger=logger,
         )
     finally:
-        heartbeat_task.cancel()
+        _ = heartbeat_task.cancel()
         with suppress(asyncio.CancelledError):
             await heartbeat_task
         await clear_worker_status(WORKER_NAME)

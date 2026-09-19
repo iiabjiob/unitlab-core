@@ -40,7 +40,7 @@ async def write_processed_job_marker_best_effort(
 ) -> None:
     # Best-effort marker write for long-running workflows where a single
     # transaction cannot cover the whole execution (e.g. test runs with sleeps/IO).
-    await session.execute(
+    _ = await session.execute(
         text(
             """
             INSERT INTO processed_jobs (worker_name, job_id, stream_name, entry_id, processed_at)

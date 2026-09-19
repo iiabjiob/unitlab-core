@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-from typing import Optional
-
 from app.core.sequence_dto import SequenceCommand, SequenceCommandType
 from app.infrastructure.redis.stream_bus import enqueue_sequence_command
 
@@ -13,11 +10,11 @@ class SequenceCommandService:
     @staticmethod
     async def enqueue_start(
         sequence_id: int,
-        requested_by: Optional[str] = None,
+        requested_by: str | None = None,
         *,
-        workspace_id: Optional[int] = None,
-        run_id: Optional[int] = None,
-        extra: dict[str, Any] | None = None,
+        workspace_id: int | None = None,
+        run_id: int | None = None,
+        extra: dict[str, object] | None = None,
     ) -> SequenceCommand:
         command = SequenceCommand(
             type=SequenceCommandType.START,
@@ -26,16 +23,16 @@ class SequenceCommandService:
             requested_by=requested_by,
             extra={**(extra or {}), **({"workspace_id": workspace_id} if workspace_id is not None else {})},
         )
-        await enqueue_sequence_command(command)
+        _ = await enqueue_sequence_command(command)
         return command
 
     @staticmethod
     async def enqueue_stop(
         sequence_id: int,
-        requested_by: Optional[str] = None,
+        requested_by: str | None = None,
         *,
-        run_id: Optional[int] = None,
-        extra: dict[str, Any] | None = None,
+        run_id: int | None = None,
+        extra: dict[str, object] | None = None,
     ) -> SequenceCommand:
         command = SequenceCommand(
             type=SequenceCommandType.STOP,
@@ -44,5 +41,5 @@ class SequenceCommandService:
             requested_by=requested_by,
             extra=extra or {},
         )
-        await enqueue_sequence_command(command)
+        _ = await enqueue_sequence_command(command)
         return command

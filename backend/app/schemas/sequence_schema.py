@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import ClassVar
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
@@ -11,16 +11,16 @@ from app.schemas.sequence_step_schema import (
 
 class SequenceBase(BaseModel):
     name: str
-    description: Optional[str] = None
+    description: str | None = None
 
 
 class SequenceCreateSchema(SequenceBase):
-    steps: List[SequenceStepCreateSchema] = Field(default_factory=list)
+    steps: list[SequenceStepCreateSchema] = Field(default_factory=list)
 
 
 class SequenceUpdateSchema(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
+    name: str | None = None
+    description: str | None = None
 
 
 class SequenceSchema(SequenceBase):
@@ -30,10 +30,10 @@ class SequenceSchema(SequenceBase):
     system_key: str | None = None
     system_provided: bool
     read_only: bool
-    workspace_ids: List[int] = Field(default_factory=list)
-    steps: List[SequenceStepSchema] = Field(default_factory=list)
+    workspace_ids: list[int] = Field(default_factory=list)
+    steps: list[SequenceStepSchema] = Field(default_factory=list)
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config: ClassVar[ConfigDict] = ConfigDict(from_attributes=True)
 
 
 class SequenceExportStepSchema(BaseModel):
@@ -42,12 +42,12 @@ class SequenceExportStepSchema(BaseModel):
         validation_alias=AliasChoices("sequence_step_type", "type", "kind"),
         serialization_alias="sequence_step_type",
     )
-    unit_id: Optional[str] = None
-    channel_index: Optional[int] = None
-    payload: Optional[Dict[str, Any]] = None
+    unit_id: str | None = None
+    channel_index: int | None = None
+    payload: dict[str, object] | None = None
 
 
 class SequenceExportSchema(BaseModel):
     name: str
-    description: Optional[str] = None
-    steps: List[SequenceExportStepSchema] = Field(default_factory=list)
+    description: str | None = None
+    steps: list[SequenceExportStepSchema] = Field(default_factory=list)

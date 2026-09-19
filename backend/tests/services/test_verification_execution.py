@@ -2,32 +2,57 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
-from app.schemas.verification_schema import VerificationExecutionContextSchema
-from app.services.iec61850.report_runtime import Iec61850DeviceEndpoint, Iec61850RuntimeMode
-from app.services.verification_execution import _build_step_and_evidence, _first_non_empty_report_text, _latency_ms, _resolve_evidence_state, build_runtime_subscription_plan, execute_simulated_verification_run
+from app.schemas.verification_schema import (
+    SignalVerificationEvidenceSchema,
+    VerificationExecutionContextSchema,
+)
+from app.services.iec61850.report_runtime import (
+    Iec61850DeviceEndpoint,
+    Iec61850ReportSubscriptionPlanDevice,
+    Iec61850RuntimeMode,
+)
+from app.services.verification_execution import (
+    _RuntimeDiagnostics,  # pyright: ignore[reportPrivateUsage]
+    _build_step_and_evidence,  # pyright: ignore[reportPrivateUsage]
+    _first_non_empty_report_text,  # pyright: ignore[reportPrivateUsage]
+    _latency_ms,  # pyright: ignore[reportPrivateUsage]
+    _resolve_evidence_state,  # pyright: ignore[reportPrivateUsage]
+    build_runtime_subscription_plan,
+    execute_simulated_verification_run,
+)
+from app.services.verification_evidence import VerificationEvidenceRepository
 from app.services.verification_planner import VerificationTargetSource, build_verification_subscription_plan
 
 
 class _FakeVerificationEvidenceRepository:
     def __init__(self) -> None:
-        self.rows: list[dict] = []
-        self.evidence_sets: list[dict] = []
-        self.db = self
-        self.commit_count = 0
+        self.rows: list[dict[str, object]] = []
+        self.evidence_sets: list[dict[str, object]] = []
+        self.db: _FakeVerificationEvidenceRepository = self
+        self.commit_count: int = 0
 
     async def commit(self) -> None:
         self.commit_count += 1
 
-    async def record_signal_verification_evidence(self, **kwargs):
+    async def record_signal_verification_evidence(self, **kwargs: object) -> SimpleNamespace:
         self.rows.append(dict(kwargs))
         return SimpleNamespace(**kwargs)
 
-    async def upsert_signal_verification_evidence_set(self, **kwargs):
+    async def upsert_signal_verification_evidence_set(self, **kwargs: object) -> SimpleNamespace:
         self.evidence_sets.append(dict(kwargs))
         return SimpleNamespace(**kwargs)
+
+
+def _runtime_result() -> _RuntimeDiagnostics:
+    return cast(_RuntimeDiagnostics, cast(object, SimpleNamespace(diagnostics=())))
+
+
+def _repository(repo: _FakeVerificationEvidenceRepository) -> VerificationEvidenceRepository:
+    return cast(VerificationEvidenceRepository, cast(object, repo))
 
 
 def _build_plan():
@@ -88,7 +113,7 @@ def test_report_before_trigger_is_not_coerced_to_fresh_zero_latency() -> None:
         signal_value=True,
         report_reason="data-change",
         latency_ms=latency_ms,
-        runtime_result=SimpleNamespace(diagnostics=()),
+        runtime_result=_runtime_result(),
         window_ms=500,
         timeout_ms=2_000,
     )
@@ -109,7 +134,7 @@ def test_report_with_matched_path_but_missing_value_is_invalid() -> None:
         observed_at=triggered_at + timedelta(milliseconds=10),
         signal_value=None,
         latency_ms=10,
-        runtime_result=SimpleNamespace(diagnostics=()),
+        runtime_result=_runtime_result(),
         window_ms=500,
         timeout_ms=2_000,
     )
@@ -131,7 +156,7 @@ def test_non_causal_report_reason_cannot_confirm_trigger() -> None:
         signal_value=True,
         report_reason="integrity",
         latency_ms=10,
-        runtime_result=SimpleNamespace(diagnostics=()),
+        runtime_result=_runtime_result(),
         window_ms=500,
         timeout_ms=2_000,
     )
@@ -166,7 +191,7 @@ def test_source_observation_timestamp_controls_freshness_over_receive_time() -> 
         group=_build_plan().groups[0],
         observation_bundle=(report, "LD0/XCBR1.Pos.stVal[ST]", True, source_timestamp),
         triggered_at=triggered_at,
-        runtime_result=SimpleNamespace(diagnostics=()),
+        runtime_result=_runtime_result(),
         test_run_id="run-1",
     )
 
@@ -196,7 +221,7 @@ def test_observed_evidence_does_not_infer_good_quality() -> None:
         group=plan.groups[0],
         observation_bundle=(report, "LD0/XCBR1.Pos.stVal[ST]", True, "2026-06-23T12:00:00.100Z"),
         triggered_at=datetime(2026, 6, 23, 12, 0, tzinfo=UTC),
-        runtime_result=SimpleNamespace(diagnostics=()),
+        runtime_result=_runtime_result(),
         test_run_id="run-quality-unknown",
     )
 
@@ -225,7 +250,7 @@ def test_explicit_bad_quality_blocks_observed_evidence() -> None:
         group=plan.groups[0],
         observation_bundle=(report, "LD0/XCBR1.Pos.stVal[ST]", True, "2026-06-23T12:00:00.100Z", 2),
         triggered_at=datetime(2026, 6, 23, 12, 0, tzinfo=UTC),
-        runtime_result=SimpleNamespace(diagnostics=()),
+        runtime_result=_runtime_result(),
         test_run_id="run-quality-bad",
     )
 
@@ -591,7 +616,9 @@ def _build_fallback_plan():
     )
 
 
-def _virtual_endpoint_for_plan_device(device) -> Iec61850DeviceEndpoint:
+def _virtual_endpoint_for_plan_device(
+    device: Iec61850ReportSubscriptionPlanDevice,
+) -> Iec61850DeviceEndpoint:
     return Iec61850DeviceEndpoint(
         id=f"sim:{device.ied_name}/{device.access_point_name}@10.10.10.250:12447",
         mode=Iec61850RuntimeMode.SIMULATOR,
@@ -620,7 +647,7 @@ async def test_execute_simulated_verification_run_records_observed_evidence_and_
             runtime_version="simulator",
             policy_version="v1",
         ),
-        repository=repo,  # type: ignore[arg-type]
+        repository=_repository(repo),
         triggered_at=triggered_at,
         latency_ms=250,
         now=lambda: triggered_at + timedelta(milliseconds=250),
@@ -647,7 +674,8 @@ async def test_execute_simulated_verification_run_records_observed_evidence_and_
     assert result.verification_run.verification_steps[0].source_generation == 1
     assert repo.rows[0]["evidence_status"] == "observed"
     assert repo.rows[0]["source_generation"] == 1
-    assert repo.evidence_sets[0]["evidence"][0].signal_id == 101
+    evidence = cast(list[SignalVerificationEvidenceSchema], repo.evidence_sets[0]["evidence"])
+    assert evidence[0].signal_id == 101
 
 
 @pytest.mark.anyio
@@ -668,7 +696,7 @@ async def test_execute_simulated_verification_run_uses_custom_endpoint_mapper() 
             runtime_version="simulator",
             policy_version="v1",
         ),
-        repository=repo,  # type: ignore[arg-type]
+        repository=_repository(repo),
         triggered_at=triggered_at,
         latency_ms=250,
         now=lambda: triggered_at + timedelta(milliseconds=250),
@@ -701,7 +729,7 @@ async def test_execute_simulated_verification_run_marks_fallback_planning_as_sim
             runtime_version="simulator",
             policy_version="v1",
         ),
-        repository=repo,  # type: ignore[arg-type]
+        repository=_repository(repo),
         triggered_at=triggered_at,
         latency_ms=250,
         now=lambda: triggered_at + timedelta(milliseconds=250),
@@ -736,7 +764,7 @@ async def test_execute_simulated_verification_run_marks_late_observation_as_fail
             runtime_version="simulator",
             policy_version="v1",
         ),
-        repository=repo,  # type: ignore[arg-type]
+        repository=_repository(repo),
         triggered_at=triggered_at,
         latency_ms=1500,
         now=lambda: triggered_at + timedelta(milliseconds=1500),
@@ -774,7 +802,7 @@ async def test_execute_simulated_verification_run_splits_multi_ied_sessions_and_
             selected_group_id="group-42",
             operator_id="operator-7",
         ),
-        repository=repo,  # type: ignore[arg-type]
+        repository=_repository(repo),
         triggered_at=triggered_at,
         latency_ms=250,
         now=lambda: triggered_at + timedelta(milliseconds=250),
@@ -828,7 +856,7 @@ async def test_execute_simulated_verification_run_reuses_one_session_for_same_ie
             runtime_version="simulator",
             policy_version="v1",
         ),
-        repository=repo,  # type: ignore[arg-type]
+        repository=_repository(repo),
         triggered_at=triggered_at,
         latency_ms=250,
         now=lambda: triggered_at + timedelta(milliseconds=250),
@@ -865,7 +893,7 @@ async def test_execute_simulated_verification_run_marks_missing_observation_as_t
             runtime_version="simulator",
             policy_version="v1",
         ),
-        repository=repo,  # type: ignore[arg-type]
+        repository=_repository(repo),
         triggered_at=triggered_at,
         latency_ms=250,
         now=lambda: triggered_at + timedelta(milliseconds=250),
@@ -906,7 +934,7 @@ async def test_execute_simulated_verification_run_marks_stale_generation_as_degr
             runtime_version="simulator",
             policy_version="v1",
         ),
-        repository=repo,  # type: ignore[arg-type]
+        repository=_repository(repo),
         triggered_at=triggered_at,
         latency_ms=250,
         now=lambda: triggered_at + timedelta(milliseconds=250),

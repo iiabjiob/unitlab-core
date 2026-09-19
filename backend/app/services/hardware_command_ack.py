@@ -4,6 +4,7 @@ import asyncio
 import time
 from datetime import datetime, timezone
 from collections.abc import Awaitable, Callable
+from typing import cast
 
 from sqlalchemy import case, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,7 +39,8 @@ async def wait_for_hardware_command_acks(
                 HardwareCommandIntent.command_id.in_(pending)
             )
         )
-        for command_id, execution_status in result.all():
+        rows = cast(list[tuple[object, object]], cast(object, result.all()))
+        for command_id, execution_status in rows:
             state = str(execution_status or "unknown")
             states[str(command_id)] = state
             if state in {"acknowledged", "negative_ack"}:
@@ -52,11 +54,11 @@ async def wait_for_hardware_command_acks(
                 await asyncio.sleep(0.05)
             else:
                 try:
-                    await asyncio.wait_for(cancel_event.wait(), timeout=0.05)
+                    _ = await asyncio.wait_for(cancel_event.wait(), timeout=0.05)
                 except asyncio.TimeoutError:
                     pass
     if pending:
-        await db.execute(
+        _ = await db.execute(
             update(HardwareCommandIntent)
             .where(
                 HardwareCommandIntent.command_id.in_(pending),

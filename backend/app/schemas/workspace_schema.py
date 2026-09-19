@@ -1,5 +1,6 @@
+from typing import ClassVar
+
 from datetime import datetime
-from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
@@ -15,8 +16,8 @@ class WorkspaceCreateSchema(WorkspaceBase):
 
 
 class WorkspaceUpdateSchema(BaseModel):
-    name: Optional[str] = None
-    slug: Optional[str] = None
+    name: str | None = None
+    slug: str | None = None
 
 
 class WorkspaceSchema(WorkspaceBase):
@@ -25,4 +26,4 @@ class WorkspaceSchema(WorkspaceBase):
     created_at: datetime
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config: ClassVar[ConfigDict] = ConfigDict(from_attributes=True)

@@ -1,6 +1,7 @@
 import logging
 import os
-from logging import LoggerAdapter
+from logging import LogRecord, LoggerAdapter
+from typing import ClassVar, override
 from app.core.config import get_settings  # Load project configuration
 
 # Fetch settings from .env
@@ -24,7 +25,7 @@ base_logger.setLevel(log_level)
 
 # Custom formatter that aligns level labels and source tags
 class AlignedFormatter(logging.Formatter):
-    LEVEL_FORMATS = {
+    LEVEL_FORMATS: ClassVar[dict[int, str]] = {
         logging.DEBUG:    "DEBUG",
         logging.INFO:     "INFO ",
         logging.WARNING:  "WARN ",
@@ -32,12 +33,14 @@ class AlignedFormatter(logging.Formatter):
         logging.CRITICAL: "CRIT "
     }
 
-    def format(self, record):
+    @override
+    def format(self, record: LogRecord) -> str:
         record.levelname = self.LEVEL_FORMATS.get(record.levelno, record.levelname)
         return super().format(record)
 
 class SourceAwareFormatter(AlignedFormatter):
-    def format(self, record):
+    @override
+    def format(self, record: LogRecord) -> str:
         source = getattr(record, "source", "")
         if source:
             src = str(source).upper()
@@ -61,7 +64,7 @@ base_logger.addHandler(console_handler)
 base_logger.propagate = False
 
 # Helper to get a logger with a source context
-def get_logger(source: str = "") -> LoggerAdapter:
+def get_logger(source: str = "") -> LoggerAdapter[logging.Logger]:
     return LoggerAdapter(base_logger, {"source": source})
 
 # Default global logger

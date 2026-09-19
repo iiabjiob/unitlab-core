@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import re
-from typing import Optional
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,26 +18,31 @@ class WorkspaceRepository:
     """CRUD helpers for workspace entities plus slug normalization."""
 
     def __init__(self, db: AsyncSession):
-        self.db = db
+        self.db: AsyncSession = db
 
     async def list(self) -> list[Workspace]:
         stmt = select(Workspace).order_by(Workspace.created_at.asc())
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 
-    async def get(self, workspace_id: int) -> Optional[Workspace]:
+    async def get(self, workspace_id: int) -> Workspace | None:
         stmt = select(Workspace).where(Workspace.id == workspace_id)
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def get_by_slug(self, slug: str) -> Optional[Workspace]:
+    async def get_by_slug(self, slug: str) -> Workspace | None:
         stmt = select(Workspace).where(Workspace.slug == slug)
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def create(self, data: dict) -> Workspace:
+    async def create(self, data: dict[str, object]) -> Workspace:
         payload = data.copy()
-        payload["slug"] = await self._resolve_slug(payload.get("slug"), payload.get("name"))
+        candidate = payload.get("slug")
+        fallback_name = payload.get("name")
+        payload["slug"] = await self._resolve_slug(
+            candidate if isinstance(candidate, str) else None,
+            fallback_name if isinstance(fallback_name, str) else None,
+        )
         workspace = Workspace(**payload)
         self.db.add(workspace)
         await self.db.flush()
@@ -47,15 +50,17 @@ class WorkspaceRepository:
         await self.db.refresh(workspace)
         return workspace
 
-    async def update(self, workspace_id: int, changes: dict) -> Optional[Workspace]:
+    async def update(self, workspace_id: int, changes: dict[str, object]) -> Workspace | None:
         workspace = await self.get(workspace_id)
         if not workspace:
             return None
 
         if "slug" in changes:
+            candidate = changes.get("slug")
+            fallback_name = changes.get("name", workspace.name)
             changes["slug"] = await self._resolve_slug(
-                changes.get("slug"),
-                changes.get("name", workspace.name),
+                candidate if isinstance(candidate, str) else None,
+                fallback_name if isinstance(fallback_name, str) else workspace.name,
                 exclude_id=workspace_id,
             )
 
@@ -78,10 +83,10 @@ class WorkspaceRepository:
 
     async def _resolve_slug(
         self,
-        candidate: Optional[str],
-        fallback_name: Optional[str],
+        candidate: str | None,
+        fallback_name: str | None,
         *,
-        exclude_id: Optional[int] = None,
+        exclude_id: int | None = None,
     ) -> str:
         base = candidate or fallback_name or "workspace"
         slug = _slugify(base)
@@ -95,7 +100,7 @@ class WorkspaceRepository:
                 return next_slug
             suffix += 1
 
-    async def _slug_in_use(self, slug: str, exclude_id: Optional[int] = None) -> bool:
+    async def _slug_in_use(self, slug: str, exclude_id: int | None = None) -> bool:
         stmt = select(Workspace.id).where(Workspace.slug == slug)
         if exclude_id is not None:
             stmt = stmt.where(Workspace.id != exclude_id)

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
 
 
 @dataclass(slots=True)
@@ -13,9 +12,9 @@ class InboundMqttMsg:
     payload: bytes
     qos: int = 0
     retain: bool = False
-    ts_ms: Optional[int] = None
+    ts_ms: int | None = None
     encoding: str = "binary"
-    meta: Dict[str, Any] | None = None
+    meta: dict[str, object] | None = None
 
     def __post_init__(self):
         if self.ts_ms is None:
@@ -30,12 +29,12 @@ class OutboundCmdMsg:
     payload: bytes
     qos: int = 0
     retain: bool = False
-    correlation_id: Optional[str] = None
-    command_id: Optional[str] = None
-    packet_id: Optional[int] = None
+    correlation_id: str | None = None
+    command_id: str | None = None
+    packet_id: int | None = None
     enqueued_at_ms: int = field(default_factory=lambda: int(time.time() * 1000))
 
-    def to_metadata(self) -> Dict[str, Any]:
+    def to_metadata(self) -> dict[str, object]:
         return {
             "correlation_id": self.correlation_id,
             "command_id": self.command_id,

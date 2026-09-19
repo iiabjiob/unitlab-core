@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Optional
+import logging
+from logging import LoggerAdapter
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import load_only
@@ -14,8 +15,8 @@ class ChannelRepository:
     """Thin data-access wrapper for channels."""
 
     def __init__(self, db: AsyncSession):
-        self.db = db
-        self.logger = get_logger("channels")
+        self.db: AsyncSession = db
+        self.logger: LoggerAdapter[logging.Logger] = get_logger("channels")
 
     def _base_query(self):
         return select(Channel).order_by(Channel.id.asc())
@@ -82,11 +83,11 @@ class ChannelRepository:
         total = int(total_result.scalar_one() or 0)
         return items, total
 
-    async def get(self, channel_id: int) -> Optional[Channel]:
+    async def get(self, channel_id: int) -> Channel | None:
         result = await self.db.execute(self._base_query().where(Channel.id == channel_id))
         return result.scalar_one_or_none()
 
-    async def update(self, channel_id: int, changes: dict) -> Optional[Channel]:
+    async def update(self, channel_id: int, changes: dict[str, object]) -> Channel | None:
         channel = await self.get(channel_id)
         if not channel:
             return None

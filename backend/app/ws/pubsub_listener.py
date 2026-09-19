@@ -4,6 +4,8 @@ import asyncio
 import json
 import time
 from contextlib import suppress
+from typing import Protocol, cast
+from collections.abc import AsyncIterator
 
 from redis.exceptions import ConnectionError as RedisConnectionError
 
@@ -18,27 +20,35 @@ _STATUS_FAST_THROTTLE_SEC = 1.0
 _STATUS_PENDING_MAX = 512
 
 
-def _state_coalesce_key(data: dict) -> tuple[str, str | int, str | int | None] | None:
-    if not isinstance(data, dict):
-        return None
+class _WsPubSub(Protocol):
+    def listen(self) -> AsyncIterator[dict[str, object]]: ...
+
+    async def unsubscribe(self) -> object: ...
+
+    async def close(self) -> object: ...
+
+
+def _state_coalesce_key(data: dict[str, object]) -> tuple[str, str | int, str | int | None] | None:
     if data.get("channel") != "devices/state":
         return None
     unit_id = data.get("unit_id")
     mode = data.get("mode")
-    payload = data.get("payload") if isinstance(data.get("payload"), dict) else None
+    payload = data.get("payload")
+    payload = cast(dict[str, object], payload) if isinstance(payload, dict) else None
     if not isinstance(unit_id, str) or not unit_id.strip():
         return None
-    if mode is None:
+    if not isinstance(mode, str | int):
         return None
     # Important: STATE_SINGLE_BIT / STATE_SINGLE_FLOAT carry channel-specific updates.
     # Coalescing only by (unit_id, mode) drops one side of pair commands.
-    channel_key = payload.get("ch") if isinstance(payload, dict) and "ch" in payload else None
+    channel_value = payload.get("ch") if payload is not None else None
+    channel_key = channel_value if isinstance(channel_value, str | int) else None
     return unit_id, mode, channel_key
 
 
 async def _flush_pending_state_events(
     manager: WebSocketManager,
-    pending_state_events: dict[tuple[str, str | int], dict],
+    pending_state_events: dict[tuple[str, str | int, str | int | None], dict[str, object]],
 ) -> None:
     if not pending_state_events:
         return
@@ -48,9 +58,7 @@ async def _flush_pending_state_events(
         await manager.broadcast(event)
 
 
-def _status_coalesce_key(data: dict) -> str | None:
-    if not isinstance(data, dict):
-        return None
+def _status_coalesce_key(data: dict[str, object]) -> str | None:
     if data.get("channel") != "devices/status":
         return None
     unit_id = data.get("unit_id")
@@ -59,7 +67,7 @@ def _status_coalesce_key(data: dict) -> str | None:
     return unit_id
 
 
-def _status_heartbeat_kind(data: dict) -> str | None:
+def _status_heartbeat_kind(data: dict[str, object]) -> str | None:
     kind = data.get("heartbeat_kind")
     if isinstance(kind, str) and kind:
         return kind
@@ -68,7 +76,7 @@ def _status_heartbeat_kind(data: dict) -> str | None:
 
 async def _flush_pending_status_events(
     manager: WebSocketManager,
-    pending_status_events: dict[str, dict],
+    pending_status_events: dict[str, dict[str, object]],
     last_status_emit_at: dict[str, float],
     *,
     now: float,
@@ -84,7 +92,7 @@ async def _flush_pending_status_events(
             continue
         await manager.broadcast(event)
         last_status_emit_at[unit_id] = now
-        pending_status_events.pop(unit_id, None)
+        _ = pending_status_events.pop(unit_id, None)
         sent += 1
 
     return sent
@@ -93,20 +101,20 @@ async def _flush_pending_status_events(
 async def forward_ws_events_from_pubsub():
     """Listen to the Redis Pub/Sub channel and forward events to WebSocketManager."""
     manager = WebSocketManager.get_instance()
-    pending_state_events: dict[tuple[str, str | int, str | int | None], dict] = {}
-    pending_status_events: dict[str, dict] = {}
+    pending_state_events: dict[tuple[str, str | int, str | int | None], dict[str, object]] = {}
+    pending_status_events: dict[str, dict[str, object]] = {}
     last_status_emit_at: dict[str, float] = {}
     coalesced_state_replacements = 0
     coalesced_status_replacements = 0
     throttled_status_events = 0
     retry_delay_sec = 1.0
-    pubsub = None
+    pubsub: _WsPubSub | None = None
     state_flush_task: asyncio.Task[None] | None = None
 
     async def flush_state_events(reason: str) -> None:
         nonlocal coalesced_state_replacements, state_flush_task
         if state_flush_task is not None and state_flush_task is not asyncio.current_task():
-            state_flush_task.cancel()
+            _ = state_flush_task.cancel()
             with suppress(asyncio.CancelledError):
                 await state_flush_task
             state_flush_task = None
@@ -148,7 +156,7 @@ async def forward_ws_events_from_pubsub():
     try:
         while True:
             try:
-                pubsub = await subscribe_ws_events()
+                pubsub = cast(_WsPubSub, cast(object, await subscribe_ws_events()))
                 async for message in pubsub.listen():
                     if message["type"] != "message":
                         continue
@@ -158,22 +166,28 @@ async def forward_ws_events_from_pubsub():
                         continue
 
                     try:
-                        payload = json.loads(raw)
+                        payload_raw = cast(object, json.loads(str(raw)))
                     except json.JSONDecodeError as exc:
                         logger.error("💥 Invalid WS payload: %s", exc)
                         continue
 
+                    if not isinstance(payload_raw, dict):
+                        continue
+                    payload = cast(dict[str, object], payload_raw)
                     data = payload.get("payload", payload)
+                    if not isinstance(data, dict):
+                        continue
+                    data = cast(dict[str, object], data)
                     now = time.monotonic()
 
                     status_key = _status_coalesce_key(data)
                     if status_key is not None:
                         hb_kind = _status_heartbeat_kind(data)
                         if hb_kind == "diag":
-                            pending_status_events.pop(status_key, None)
+                            _ = pending_status_events.pop(status_key, None)
                             if pending_state_events:
                                 await flush_state_events(
-                                    f"diag boundary channel={data.get('channel') if isinstance(data, dict) else None}"
+                                    f"diag boundary channel={data.get('channel')}"
                                 )
 
                             await manager.broadcast(data)
@@ -201,7 +215,7 @@ async def forward_ws_events_from_pubsub():
                         if can_emit_now:
                             if pending_state_events:
                                 await flush_state_events(
-                                    f"status boundary channel={data.get('channel') if isinstance(data, dict) else None}"
+                                    f"status boundary channel={data.get('channel')}"
                                 )
 
                             await manager.broadcast(data)
@@ -274,7 +288,7 @@ async def forward_ws_events_from_pubsub():
 
                     if pending_state_events:
                         await flush_state_events(
-                            f"boundary channel={data.get('channel') if isinstance(data, dict) else None}"
+                            f"boundary channel={data.get('channel')}"
                         )
 
                     flushed_status = await _flush_pending_status_events(
@@ -291,7 +305,7 @@ async def forward_ws_events_from_pubsub():
                             len(pending_status_events),
                             coalesced_status_replacements,
                             throttled_status_events,
-                            data.get("channel") if isinstance(data, dict) else None,
+                            data.get("channel"),
                         )
 
                     await manager.broadcast(data)
@@ -304,20 +318,20 @@ async def forward_ws_events_from_pubsub():
                 if pubsub is not None:
                     with suppress(asyncio.CancelledError):
                         if state_flush_task is not None:
-                            state_flush_task.cancel()
+                            _ = state_flush_task.cancel()  # pyright: ignore[reportUnreachable]
                             await asyncio.gather(state_flush_task, return_exceptions=True)
                             state_flush_task = None
                         await _flush_pending_state_events(manager, pending_state_events)
                         final_now = time.monotonic()
-                        await _flush_pending_status_events(
+                        _ = await _flush_pending_status_events(
                             manager,
                             pending_status_events,
                             last_status_emit_at,
                             now=final_now,
                             force=True,
                         )
-                        await pubsub.unsubscribe()
-                        await pubsub.close()
+                        _ = await pubsub.unsubscribe()
+                        _ = await pubsub.close()
                 pubsub = None
     except asyncio.CancelledError:
         raise

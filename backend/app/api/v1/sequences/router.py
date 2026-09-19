@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import List
+from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.infrastructure.db.database import get_db
 from app.models.channel import Channel
 from app.models.device import Device
+from app.models.sequence import SequenceStep
 from app.api.v1.sequences import SequenceRepository, SequenceStepRepository
 from app.api.v1.sequences.errors import ReadOnlySequenceError
 from app.schemas.sequence_run_schema import SequenceStateSchema
@@ -46,7 +47,7 @@ async def _ensure_sequence_in_workspace(
 async def _validate_nested_sequence_steps(
     repo: SequenceRepository,
     workspace_id: int,
-    steps: list[dict],
+    steps: list[dict[str, object]],
     *,
     current_sequence_id: int | None = None,
 ) -> None:
@@ -55,14 +56,17 @@ async def _validate_nested_sequence_steps(
         if step_type not in {"CALL_SEQUENCE", "REPEAT_SEQUENCE"}:
             continue
 
-        payload = step.get("payload") or {}
+        payload = step.get("payload")
+        if not isinstance(payload, dict):
+            continue
+        payload = cast(dict[str, object], payload)
         raw_target = payload.get("target_sequence_id")
         if raw_target is None or str(raw_target).strip() == "":
             # Allow drafts in the editor. Runtime validation still rejects unresolved targets on run.
             continue
 
         try:
-            target_sequence_id = int(raw_target)
+            target_sequence_id = int(str(raw_target))
         except (TypeError, ValueError):
             raise HTTPException(status_code=422, detail=f"{step_type} target_sequence_id must be an integer")
 
@@ -80,13 +84,13 @@ async def _validate_nested_sequence_steps(
 # CRUD
 # ---------------------------------------------------------------------------
 @router.get("", response_model=list[SequenceSchema])
-async def list_sequences(workspace_id: int, db: AsyncSession = Depends(get_db)):
+async def list_sequences(workspace_id: int, db: Annotated[AsyncSession, Depends(get_db)]):
     repo = SequenceRepository(db)
     return await repo.list(workspace_id)
 
 
 @router.get("/{seq_id}", response_model=SequenceSchema)
-async def get_sequence(workspace_id: int, seq_id: int, db: AsyncSession = Depends(get_db)):
+async def get_sequence(workspace_id: int, seq_id: int, db: Annotated[AsyncSession, Depends(get_db)]):
     repo = SequenceRepository(db)
     seq = await repo.get(workspace_id, seq_id)
     if not seq:
@@ -98,7 +102,7 @@ async def get_sequence(workspace_id: int, seq_id: int, db: AsyncSession = Depend
 async def create_sequence(
     workspace_id: int,
     payload: SequenceCreateSchema,
-    db: AsyncSession = Depends(get_db),
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
     repo = SequenceRepository(db)
     data = payload.model_dump(exclude={"steps"})
@@ -112,7 +116,7 @@ async def update_sequence(
     workspace_id: int,
     seq_id: int,
     payload: SequenceUpdateSchema,
-    db: AsyncSession = Depends(get_db),
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
     repo = SequenceRepository(db)
     try:
@@ -125,7 +129,7 @@ async def update_sequence(
 
 
 @router.delete("/{seq_id}")
-async def delete_sequence(workspace_id: int, seq_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_sequence(workspace_id: int, seq_id: int, db: Annotated[AsyncSession, Depends(get_db)]):
     repo = SequenceRepository(db)
     try:
         deleted = await repo.delete(workspace_id, seq_id)
@@ -140,7 +144,7 @@ async def delete_sequence(workspace_id: int, seq_id: int, db: AsyncSession = Dep
 # Steps
 # ---------------------------------------------------------------------------
 @router.get("/{seq_id}/steps", response_model=list[SequenceStepSchema])
-async def list_steps(workspace_id: int, seq_id: int, db: AsyncSession = Depends(get_db)):
+async def list_steps(workspace_id: int, seq_id: int, db: Annotated[AsyncSession, Depends(get_db)]):
     seq_repo = SequenceRepository(db)
     await _ensure_sequence_in_workspace(seq_repo, workspace_id, seq_id)
     repo = SequenceStepRepository(db)
@@ -152,7 +156,7 @@ async def create_step(
     workspace_id: int,
     seq_id: int,
     payload: SequenceStepCreateSchema,
-    db: AsyncSession = Depends(get_db),
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
     seq_repo = SequenceRepository(db)
     await _ensure_sequence_in_workspace(seq_repo, workspace_id, seq_id)
@@ -171,7 +175,7 @@ async def update_step(
     seq_id: int,
     step_id: int,
     payload: SequenceStepUpdateSchema,
-    db: AsyncSession = Depends(get_db),
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
     seq_repo = SequenceRepository(db)
     await _ensure_sequence_in_workspace(seq_repo, workspace_id, seq_id)
@@ -179,7 +183,7 @@ async def update_step(
     existing = await repo.get(step_id)
     update_payload = payload.model_dump(exclude_unset=True)
     if existing:
-        if "sequence_step_type" not in update_payload and existing.sequence_step_type is not None:
+        if "sequence_step_type" not in update_payload:
             update_payload["sequence_step_type"] = existing.sequence_step_type.value
         if "payload" not in update_payload and existing.payload is not None:
             update_payload["payload"] = existing.payload
@@ -196,7 +200,7 @@ async def update_step(
 
 
 @router.delete("/{seq_id}/steps/{step_id}")
-async def delete_step(workspace_id: int, seq_id: int, step_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_step(workspace_id: int, seq_id: int, step_id: int, db: Annotated[AsyncSession, Depends(get_db)]):
     seq_repo = SequenceRepository(db)
     await _ensure_sequence_in_workspace(seq_repo, workspace_id, seq_id)
     repo = SequenceStepRepository(db)
@@ -207,7 +211,7 @@ async def delete_step(workspace_id: int, seq_id: int, step_id: int, db: AsyncSes
     if not deleted:
         raise HTTPException(status_code=404, detail="Step not found")
 
-    await repo.normalize(seq_id)
+    _ = await repo.normalize(seq_id)
     return {"detail": "Step deleted"}
 
 
@@ -216,7 +220,7 @@ async def reorder_steps(
     workspace_id: int,
     seq_id: int,
     payload: SequenceReorderSchema,
-    db: AsyncSession = Depends(get_db),
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
     seq_repo = SequenceRepository(db)
     await _ensure_sequence_in_workspace(seq_repo, workspace_id, seq_id)
@@ -233,7 +237,7 @@ async def replace_steps(
     workspace_id: int,
     seq_id: int,
     steps: list[SequenceStepCreateSchema],
-    db: AsyncSession = Depends(get_db),
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
     seq_repo = SequenceRepository(db)
     await _ensure_sequence_in_workspace(seq_repo, workspace_id, seq_id)
@@ -254,11 +258,11 @@ async def replace_steps(
 async def start_sequence(
     workspace_id: int,
     seq_id: int,
-    db: AsyncSession = Depends(get_db),
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
     repo = SequenceRepository(db)
     await _ensure_sequence_in_workspace(repo, workspace_id, seq_id)
-    await SequenceCommandService.enqueue_start(seq_id, workspace_id=workspace_id)
+    _ = await SequenceCommandService.enqueue_start(seq_id, workspace_id=workspace_id)
     try:
         return await SequenceStateService.get_state(seq_id)
     except SequenceNotFoundError:
@@ -269,11 +273,11 @@ async def start_sequence(
 async def stop_sequence(
     workspace_id: int,
     seq_id: int,
-    db: AsyncSession = Depends(get_db),
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
     repo = SequenceRepository(db)
     await _ensure_sequence_in_workspace(repo, workspace_id, seq_id)
-    await SequenceCommandService.enqueue_stop(seq_id)
+    _ = await SequenceCommandService.enqueue_stop(seq_id)
     try:
         return await SequenceStateService.get_state(seq_id)
     except SequenceNotFoundError:
@@ -284,7 +288,7 @@ async def stop_sequence(
 async def get_sequence_state(
     workspace_id: int,
     seq_id: int,
-    db: AsyncSession = Depends(get_db),
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
     repo = SequenceRepository(db)
     await _ensure_sequence_in_workspace(repo, workspace_id, seq_id)
@@ -301,26 +305,29 @@ async def get_sequence_state(
 async def export_sequence_file(
     workspace_id: int,
     seq_id: int,
-    db: AsyncSession = Depends(get_db),
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
     repo = SequenceRepository(db)
     seq = await repo.get(workspace_id, seq_id)
     if not seq:
         raise HTTPException(status_code=404, detail="Sequence not found")
 
+    export_steps: list[dict[str, object]] = []
+    for raw_step in cast(list[object], cast(object, seq.steps)):
+        step = cast(SequenceStep, raw_step)
+        channel = cast(Channel | None, cast(object, step.channel))
+        device = cast(Device | None, channel.device) if channel else None
+        export_steps.append({
+            "order_index": step.order_index,
+            "sequence_step_type": step.sequence_step_type.value,
+            "unit_id": device.unit_id if device else None,
+            "channel_index": channel.channel_index if channel else None,
+            "payload": step.payload,
+        })
     payload = {
         "name": seq.name,
         "description": seq.description,
-        "steps": [
-            {
-                "order_index": step.order_index,
-                "sequence_step_type": step.sequence_step_type.value,
-                "unit_id": step.channel.device.unit_id if step.channel and step.channel.device else None,
-                "channel_index": step.channel.channel_index if step.channel else None,
-                "payload": step.payload,
-            }
-            for step in seq.steps
-        ],
+        "steps": export_steps,
     }
 
     safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", seq.name)
@@ -335,19 +342,21 @@ async def export_sequence_file(
 @router.post("/import-file", response_model=list[SequenceSchema])
 async def import_sequences_file(
     workspace_id: int,
-    file: UploadFile = File(...),
-    db: AsyncSession = Depends(get_db),
+    file: Annotated[UploadFile, File(...)],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
     raw = await file.read()
     try:
-        parsed = json.loads(raw)
+        parsed = cast(object, json.loads(raw))
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=f"Invalid JSON file: {exc}")
 
+    seq_payloads: list[object]
     if isinstance(parsed, dict) and "sequences" in parsed:
-        seq_payloads = parsed["sequences"]
+        raw_sequences = cast(dict[str, object], parsed).get("sequences")
+        seq_payloads = cast(list[object], raw_sequences) if isinstance(raw_sequences, list) else []
     elif isinstance(parsed, list):
-        seq_payloads = parsed
+        seq_payloads = cast(list[object], parsed)
     else:
         seq_payloads = [parsed]
 
@@ -357,9 +366,9 @@ async def import_sequences_file(
         raise HTTPException(status_code=400, detail=exc.errors())
 
     repo = SequenceRepository(db)
-    imported: List = []
+    imported: list[SequenceSchema] = []
     for schema in schemas:
-        steps_data = []
+        steps_data: list[dict[str, object]] = []
         for step in schema.steps:
             channel_id = await _resolve_channel_id(db, step.unit_id, step.channel_index)
             steps_data.append(
@@ -378,7 +387,7 @@ async def import_sequences_file(
             {"name": schema.name, "description": schema.description},
             steps_data,
         )
-        imported.append(created)
+        imported.append(SequenceSchema.model_validate(created))
 
     return imported
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,21 +22,21 @@ from app.services.workspace_links_service import (
 router = APIRouter(prefix="/api/v1/workspaces", tags=["Workspaces"])
 
 
-def get_repository(db: AsyncSession = Depends(get_db)) -> WorkspaceRepository:
+def get_repository(db: Annotated[AsyncSession, Depends(get_db)]) -> WorkspaceRepository:
     return WorkspaceRepository(db)
 
 
-def get_links_service(db: AsyncSession = Depends(get_db)) -> WorkspaceLinksService:
+def get_links_service(db: Annotated[AsyncSession, Depends(get_db)]) -> WorkspaceLinksService:
     return WorkspaceLinksService(db)
 
 
 @router.get("", response_model=list[WorkspaceSchema])
-async def list_workspaces(repo: WorkspaceRepository = Depends(get_repository)):
+async def list_workspaces(repo: Annotated[WorkspaceRepository, Depends(get_repository)]):
     return await repo.list()
 
 
 @router.get("/{workspace_id}", response_model=WorkspaceSchema)
-async def get_workspace(workspace_id: int, repo: WorkspaceRepository = Depends(get_repository)):
+async def get_workspace(workspace_id: int, repo: Annotated[WorkspaceRepository, Depends(get_repository)]):
     workspace = await repo.get(workspace_id)
     if not workspace:
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -42,7 +44,7 @@ async def get_workspace(workspace_id: int, repo: WorkspaceRepository = Depends(g
 
 
 @router.get("/slug/{slug}", response_model=WorkspaceSchema)
-async def get_workspace_by_slug(slug: str, repo: WorkspaceRepository = Depends(get_repository)):
+async def get_workspace_by_slug(slug: str, repo: Annotated[WorkspaceRepository, Depends(get_repository)]):
     workspace = await repo.get_by_slug(slug)
     if not workspace:
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -52,7 +54,7 @@ async def get_workspace_by_slug(slug: str, repo: WorkspaceRepository = Depends(g
 @router.post("", response_model=WorkspaceSchema)
 async def create_workspace(
     payload: WorkspaceCreateSchema,
-    repo: WorkspaceRepository = Depends(get_repository),
+    repo: Annotated[WorkspaceRepository, Depends(get_repository)],
 ):
     return await repo.create(payload.model_dump())
 
@@ -61,7 +63,7 @@ async def create_workspace(
 async def update_workspace(
     workspace_id: int,
     payload: WorkspaceUpdateSchema,
-    repo: WorkspaceRepository = Depends(get_repository),
+    repo: Annotated[WorkspaceRepository, Depends(get_repository)],
 ):
     workspace = await repo.update(workspace_id, payload.model_dump(exclude_unset=True))
     if not workspace:
@@ -72,7 +74,7 @@ async def update_workspace(
 @router.delete("/{workspace_id}")
 async def delete_workspace(
     workspace_id: int,
-    repo: WorkspaceRepository = Depends(get_repository),
+    repo: Annotated[WorkspaceRepository, Depends(get_repository)],
 ):
     deleted = await repo.delete(workspace_id)
     if not deleted:
@@ -84,7 +86,7 @@ async def delete_workspace(
 async def attach_switchgear(
     workspace_id: int,
     switchgear_id: int,
-    service: WorkspaceLinksService = Depends(get_links_service),
+    service: Annotated[WorkspaceLinksService, Depends(get_links_service)],
 ):
     try:
         await service.attach_switchgear(workspace_id, switchgear_id)
@@ -97,7 +99,7 @@ async def attach_switchgear(
 async def detach_switchgear(
     workspace_id: int,
     switchgear_id: int,
-    service: WorkspaceLinksService = Depends(get_links_service),
+    service: Annotated[WorkspaceLinksService, Depends(get_links_service)],
 ):
     try:
         await service.detach_switchgear(workspace_id, switchgear_id)
@@ -112,7 +114,7 @@ async def detach_switchgear(
 async def attach_sequence(
     workspace_id: int,
     sequence_id: int,
-    service: WorkspaceLinksService = Depends(get_links_service),
+    service: Annotated[WorkspaceLinksService, Depends(get_links_service)],
 ):
     try:
         await service.attach_sequence(workspace_id, sequence_id)
@@ -125,7 +127,7 @@ async def attach_sequence(
 async def detach_sequence(
     workspace_id: int,
     sequence_id: int,
-    service: WorkspaceLinksService = Depends(get_links_service),
+    service: Annotated[WorkspaceLinksService, Depends(get_links_service)],
 ):
     try:
         await service.detach_sequence(workspace_id, sequence_id)

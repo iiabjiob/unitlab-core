@@ -8,17 +8,17 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.infrastructure.db.database import Base
-from app.models.sequence import SequenceStep
 from app.models.types import BIGINT_PK
 
 if TYPE_CHECKING:  # pragma: no cover - only needed for typing
+    from app.models.sequence import SequenceStep
     from app.models.switchgear import SwitchgearChannelBinding
 
 
 class Channel(Base):
-    __tablename__ = "channels"
+    __tablename__: str = "channels"
 
-    __table_args__ = (
+    __table_args__: tuple[object, ...] = (
         UniqueConstraint("device_id", "channel_index", name="uq_channels_device_index"),
         Index("ix_channels_device_id", "device_id"),
     )
@@ -38,7 +38,7 @@ class Channel(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
 
-    device = relationship("Device", back_populates="channels", lazy="selectin")
+    device: Mapped[object] = relationship("Device", back_populates="channels", lazy="selectin")
     
     steps: Mapped[list["SequenceStep"]] = relationship(
         "SequenceStep", back_populates="channel", lazy="selectin"

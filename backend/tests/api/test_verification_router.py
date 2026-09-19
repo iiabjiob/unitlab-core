@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import cast
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.verification import router as verification_router
 from app.schemas.verification_schema import (
@@ -103,7 +105,8 @@ async def test_start_orchestration_from_signals_uses_backend_runtime_context(mon
         now=lambda: datetime(2026, 6, 23, 12, 0, tzinfo=UTC),
     )
 
-    async def _build_context(**kwargs):  # noqa: ANN001
+    async def _build_context(**kwargs: object) -> VerificationRuntimeStartContext:
+        del kwargs
         return VerificationRuntimeStartContext(
             selected_signal_ids=[101],
             subscription_plan=plan,
@@ -113,7 +116,18 @@ async def test_start_orchestration_from_signals_uses_backend_runtime_context(mon
         )
 
     monkeypatch.setattr(verification_router, "_orchestrator", orchestrator)
-    monkeypatch.setattr(verification_router, "build_verification_runtime_start_context", _build_context)
+
+    def _noop_deferred_startup(_orchestration_id: str) -> None:
+        return None
+
+    monkeypatch.setattr(
+        orchestrator,
+        "_run_deferred_startup",
+        _noop_deferred_startup,
+    )
+    monkeypatch.setattr(
+        verification_router, "build_verification_runtime_start_context", _build_context
+    )
 
     response = await verification_router.start_verification_runtime_orchestration_from_signals(
         workspace_id=7,
@@ -123,7 +137,7 @@ async def test_start_orchestration_from_signals_uses_backend_runtime_context(mon
             client_id="unitlab-online-61850",
             execution_context=execution_context,
         ),
-        db=object(),
+        db=cast(AsyncSession, cast(object, None)),
     )
 
     assert response.orchestration_id.startswith("7:online-route:")

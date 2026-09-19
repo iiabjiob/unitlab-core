@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import asyncio
-import json
-import random
-import time
-import signal
 import contextlib
+import json
+import logging
+import random
+import signal
+import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Awaitable, Callable, Optional
+from typing import ClassVar, cast, final
 
-from gmqtt import Client as GMQTTClient  # pyright: ignore[reportMissingImports]
+from gmqtt import Client as GMQTTClient  # pyright: ignore[reportMissingTypeStubs]
 
 from simulator.packet_structures import (
     PacketBuilder,
@@ -22,12 +24,12 @@ from simulator.packet_structures import (
     RespStatus,
     Sys,
     build_packet,
-    encode_resp,
     encode_register,
+    encode_resp,
     parse_packet,
 )
-from simulator.utils.logger import get_logger
 from simulator.utils import binary_tools
+from simulator.utils.logger import get_logger
 
 OnMessageHook = Callable[[str, bytes], Awaitable[None]]
 
@@ -50,8 +52,8 @@ class BrokerSettings:
     host: str
     port: int
     keepalive: int
-    username: Optional[str] = None
-    password: Optional[str] = None
+    username: str | None = None
+    password: str | None = None
 
 
 @dataclass(slots=True)
@@ -67,19 +69,20 @@ class BehaviorSettings:
     command_error_rate: float = 0.05
 
 
+@final
 class SimulatorMQTTClient:
     """Thin wrapper around gmqtt that exposes asyncio-friendly hooks."""
 
     def __init__(self, client_id: str) -> None:
-        self._client = GMQTTClient(client_id)
-        self._logger = get_logger(f"mqtt.{client_id}")
+        self._client: GMQTTClient = GMQTTClient(client_id)
+        self._logger: logging.Logger = get_logger(f"mqtt.{client_id}")
 
-        self._on_message: Optional[OnMessageHook] = None
-        self._on_connect: Optional[Callable[[], None]] = None
-        self._on_disconnect: Optional[Callable[[Optional[BaseException]], None]] = None
+        self._on_message: OnMessageHook | None = None
+        self._on_connect: Callable[[], None] | None = None
+        self._on_disconnect: Callable[[BaseException | None], None] | None = None
 
-        self._connected = asyncio.Event()
-        self._lock = asyncio.Lock()
+        self._connected: asyncio.Event = asyncio.Event()
+        self._lock: asyncio.Lock = asyncio.Lock()
 
         # Bind gmqtt callbacks
         self._client.on_connect = self._handle_connect
@@ -90,9 +93,9 @@ class SimulatorMQTTClient:
     def set_handlers(
         self,
         *,
-        on_message: Optional[OnMessageHook] = None,
-        on_connect: Optional[Callable[[], None]] = None,
-        on_disconnect: Optional[Callable[[Optional[BaseException]], None]] = None,
+        on_message: OnMessageHook | None = None,
+        on_connect: Callable[[], None] | None = None,
+        on_disconnect: Callable[[BaseException | None], None] | None = None,
     ) -> None:
         self._on_message = on_message
         self._on_connect = on_connect
@@ -103,21 +106,21 @@ class SimulatorMQTTClient:
             if self._connected.is_set():
                 return
             if broker.username:
-                self._client.set_auth_credentials(broker.username, broker.password or "")
-            await self._client.connect(
+                self._client.set_auth_credentials(broker.username, broker.password or "")  # pyright: ignore[reportUnknownMemberType]
+            await self._client.connect(  # pyright: ignore[reportUnknownMemberType]
                 broker.host,
                 broker.port,
                 keepalive=broker.keepalive,
             )
-            await self._connected.wait()
+            _ = await self._connected.wait()
 
     async def disconnect(self) -> None:
         async with self._lock:
             if not self._connected.is_set():
                 return
             with contextlib.suppress(BrokenPipeError, ConnectionResetError, OSError):
-                await self._client.disconnect()
-            self._connected.clear()
+                await self._client.disconnect()  # pyright: ignore[reportUnknownMemberType]
+            _ = self._connected.clear()
 
     async def reconnect(self, broker: BrokerSettings) -> None:
         await self.disconnect()
@@ -125,7 +128,7 @@ class SimulatorMQTTClient:
         await self.connect(broker)
 
     async def wait_connected(self) -> None:
-        await self._connected.wait()
+        _ = await self._connected.wait()
 
     @property
     def is_connected(self) -> bool:
@@ -134,38 +137,38 @@ class SimulatorMQTTClient:
     def subscribe(self, topic: str, *, qos: int = 0) -> None:
         if not topic:
             raise ValueError("Topic must be a non-empty string")
-        self._client.subscribe(topic, qos)
+        _subscription: object = cast(object, self._client.subscribe(topic, qos))  # pyright: ignore[reportUnknownMemberType]
 
     def publish(self, topic: str, payload: bytes, *, qos: int = 0, retain: bool = False) -> None:
         if not topic:
             raise ValueError("Topic must be provided")
         try:
-            self._client.publish(topic, payload, qos=qos, retain=retain)
+            self._client.publish(topic, payload, qos=qos, retain=retain)  # pyright: ignore[reportUnknownMemberType]
         except (BrokenPipeError, ConnectionResetError, OSError) as exc:
             self._logger.warning("Publish failed on %s: %s", topic, exc)
-            self._connected.clear()
+            _ = self._connected.clear()
             if self._on_disconnect:
                 self._on_disconnect(exc)
 
     # --- gmqtt callbacks -------------------------------------------------
-    def _handle_connect(self, client, flags, rc, properties):  # pragma: no cover - gmqtt callback
+    def _handle_connect(self, _client: object, _flags: object, rc: object, _properties: object) -> None:  # pragma: no cover - gmqtt callback
         self._logger.debug("Connected to MQTT broker (%s)", rc)
         self._connected.set()
         if self._on_connect:
             self._on_connect()
 
-    def _handle_disconnect(self, client, packet, exc=None):  # pragma: no cover - gmqtt callback
+    def _handle_disconnect(self, _client: object, _packet: object, exc: BaseException | None = None) -> None:  # pragma: no cover - gmqtt callback
         self._logger.debug("Disconnected from MQTT broker")
-        self._connected.clear()
+        _ = self._connected.clear()
         if self._on_disconnect:
             self._on_disconnect(exc)
 
-    def _handle_subscribe(self, client, mid, qos, properties):  # pragma: no cover - gmqtt callback
+    def _handle_subscribe(self, _client: object, mid: int, qos: int, _properties: object) -> None:  # pragma: no cover - gmqtt callback
         self._logger.debug("Subscribed mid=%s qos=%s", mid, qos)
 
-    def _handle_message(self, client, topic, payload, qos, properties):  # pragma: no cover - gmqtt callback
+    def _handle_message(self, _client: object, topic: str, payload: bytes, _qos: int, _properties: object) -> None:  # pragma: no cover - gmqtt callback
         if self._on_message:
-            asyncio.create_task(self._dispatch_message(topic, payload))
+            _ = asyncio.create_task(self._dispatch_message(topic, payload))
         else:
             self._logger.debug("Dropped message from %s (no handler)", topic)
 
@@ -215,7 +218,7 @@ def topic_info(unit_id: str) -> str:
 class SimulatedDeviceBase:
     """Reusable asyncio device skeleton used by DO/DI/AO simulators."""
 
-    STARTUP_JITTER = 1.5
+    STARTUP_JITTER: ClassVar[float] = 1.5
 
     def __init__(
         self,
@@ -229,37 +232,37 @@ class SimulatedDeviceBase:
     ) -> None:
         if interval <= 0:
             raise ValueError("Interval must be positive")
-        self.unit_id = unit_id
-        self.signals = signals
-        self.interval = interval
-        self.broker = broker
-        self.behavior = behavior
-        self.test_mode = test_mode
+        self.unit_id: str = unit_id
+        self.signals: int = signals
+        self.interval: float = interval
+        self.broker: BrokerSettings = broker
+        self.behavior: BehaviorSettings = behavior
+        self.test_mode: bool = test_mode
 
-        self._mqtt = SimulatorMQTTClient(unit_id)
+        self._mqtt: SimulatorMQTTClient = SimulatorMQTTClient(unit_id)
         self._mqtt.set_handlers(
             on_message=self._on_message,
             on_connect=self._on_connect,
             on_disconnect=self._on_disconnect,
         )
 
-        self._logger = get_logger(f"device.{unit_id}")
-        self._builder = PacketBuilder()
-        self._rng = random.Random(hash(unit_id) & 0xFFFFFFFF)
-        self._stop_event = asyncio.Event()
-        self._connected = asyncio.Event()
+        self._logger: logging.Logger = get_logger(f"device.{unit_id}")
+        self._builder: PacketBuilder = PacketBuilder()
+        self._rng: random.Random = random.Random(hash(unit_id) & 0xFFFFFFFF)
+        self._stop_event: asyncio.Event = asyncio.Event()
+        self._connected: asyncio.Event = asyncio.Event()
         self._tasks: list[asyncio.Task[None]] = []
         self._aux_tasks: set[asyncio.Task[None]] = set()
-        self._lock = asyncio.Lock()
-        self._message_lock = asyncio.Lock()
-        self._reconnect_task: Optional[asyncio.Task[None]] = None
-        self._suspend_auto_reconnect = False
-        self._is_flaky_device = self._rng.random() < self.behavior.flaky_device_ratio
+        self._lock: asyncio.Lock = asyncio.Lock()
+        self._message_lock: asyncio.Lock = asyncio.Lock()
+        self._reconnect_task: asyncio.Task[None] | None = None
+        self._suspend_auto_reconnect: bool = False
+        self._is_flaky_device: bool = self._rng.random() < self.behavior.flaky_device_ratio
         heartbeat_base = max(self.behavior.heartbeat, _HEARTBEAT_MIN_INTERVAL)
-        self._heartbeat_offset = self._rng.uniform(0.0, heartbeat_base)
-        self._heartbeat_started_at = time.monotonic()
-        self._heartbeat_fast_seq = 0
-        self._heartbeat_diag_seq = 0
+        self._heartbeat_offset: float = self._rng.uniform(0.0, heartbeat_base)
+        self._heartbeat_started_at: float = time.monotonic()
+        self._heartbeat_fast_seq: int = 0
+        self._heartbeat_diag_seq: int = 0
         self._heartbeat_diag_last_sent_at: float | None = None
 
     # --- lifecycle ------------------------------------------------------
@@ -270,9 +273,7 @@ class SimulatedDeviceBase:
             main_task = asyncio.create_task(self._state_loop(), name=f"state:{self.unit_id}")
             hb_task = asyncio.create_task(self._heartbeat_loop(), name=f"heartbeat:{self.unit_id}")
             self._tasks.extend([main_task, hb_task])
-            await self._stop_event.wait()
-        except asyncio.CancelledError:  # pragma: no cover - cooperative cancellation
-            raise
+            _ = await self._stop_event.wait()
         finally:
             await self._shutdown()
 
@@ -282,15 +283,15 @@ class SimulatedDeviceBase:
     async def _shutdown(self) -> None:
         self._suspend_auto_reconnect = True
         if self._reconnect_task:
-            self._reconnect_task.cancel()
-            await asyncio.gather(self._reconnect_task, return_exceptions=True)
+            _ = self._reconnect_task.cancel()
+            _ = await asyncio.gather(self._reconnect_task, return_exceptions=True)
             self._reconnect_task = None
         for task in self._tasks:
-            task.cancel()
-        await asyncio.gather(*self._tasks, return_exceptions=True)
+            _ = task.cancel()
+        _ = await asyncio.gather(*self._tasks, return_exceptions=True)
         for task in list(self._aux_tasks):
-            task.cancel()
-        await asyncio.gather(*self._aux_tasks, return_exceptions=True)
+            _ = task.cancel()
+        _ = await asyncio.gather(*self._aux_tasks, return_exceptions=True)
         await self._mqtt.disconnect()
         self._tasks.clear()
         self._aux_tasks.clear()
@@ -311,11 +312,11 @@ class SimulatedDeviceBase:
     def _on_connect(self) -> None:  # pragma: no cover - event hook
         self._connected.set()
         if self._reconnect_task:
-            self._reconnect_task.cancel()
+            _ = self._reconnect_task.cancel()
             self._reconnect_task = None
 
-    def _on_disconnect(self, exc: Optional[BaseException]) -> None:  # pragma: no cover - event hook
-        self._connected.clear()
+    def _on_disconnect(self, _exc: BaseException | None) -> None:  # pragma: no cover - event hook
+        _ = self._connected.clear()
         if self._stop_event.is_set() or self._suspend_auto_reconnect:
             return
         if self._reconnect_task and not self._reconnect_task.done():
@@ -511,12 +512,13 @@ class SimulatedDeviceBase:
                 await self._post_connect()
             except Exception:
                 self._logger.warning("Simulated reconnect failed; scheduling recovery loop", exc_info=True)
-                if not self._stop_event.is_set():
-                    if not self._reconnect_task or self._reconnect_task.done():
-                        self._reconnect_task = asyncio.create_task(
-                            self._restore_connection_loop(),
-                            name=f"reconnect:{self.unit_id}",
-                        )
+                if not self._stop_event.is_set() and (
+                    not self._reconnect_task or self._reconnect_task.done()
+                ):
+                    self._reconnect_task = asyncio.create_task(
+                        self._restore_connection_loop(),
+                        name=f"reconnect:{self.unit_id}",
+                    )
             finally:
                 self._suspend_auto_reconnect = False
 
@@ -531,7 +533,7 @@ class SimulatedDeviceBase:
                 return
             except asyncio.CancelledError:  # pragma: no cover - cooperative cancellation
                 raise
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 self._logger.warning(
                     "MQTT reconnect failed (%s); retry in %.1fs",
                     type(exc).__name__,
@@ -541,7 +543,8 @@ class SimulatedDeviceBase:
                 backoff = min(_RECONNECT_BACKOFF_MAX, backoff * 2)
 
     # --- public helpers -------------------------------------------------
-    async def publish_state(self, *, packet_id: Optional[int] = None) -> None:
+    async def publish_state(self, *, packet_id: int | None = None) -> None:
+        _ = packet_id
         raise NotImplementedError
 
     def randomize_state(self) -> None:
@@ -552,6 +555,8 @@ class SimulatedDeviceBase:
         return True
 
     async def handle_packet(self, topic: str, header: PacketHeader, payload: bytes) -> None:
+        _ = topic
+        _ = payload
         mode = header.mode
 
         # 1) REGISTER REQUESTED VIA SCAN
@@ -575,7 +580,7 @@ class SimulatedDeviceBase:
         mode: int,
         payload: bytes,
         *,
-        packet_id: Optional[int] = None,
+        packet_id: int | None = None,
         retain: bool = False,
     ) -> None:
         if self.behavior.packet_loss and self._rng.random() < self.behavior.packet_loss:
@@ -603,7 +608,7 @@ class SimulatedDeviceBase:
         status: RespStatus,
         error: RespError = RespError.NONE,
         *,
-        packet_id: Optional[int] = None,
+        packet_id: int | None = None,
     ) -> None:
         payload = encode_resp(RespFrame(status=status, err_code=error))
         await self._publish_packet(
@@ -621,14 +626,14 @@ class SimulatedDeviceBase:
             num_channels=self.signals,
         )
 
-    def _fault_decision(self) -> Optional[str]:
+    def _fault_decision(self) -> str | None:
         if not self._is_flaky_device:
             return None
         if self._rng.random() >= self.behavior.flaky_exchange_prob:
             return None
         return "error" if self._rng.random() < _FLAKY_ERROR_SHARE else "drop"
 
-    async def _maybe_fail_exchange(self, packet_id: int, *, context: str) -> Optional[str]:
+    async def _maybe_fail_exchange(self, packet_id: int, *, context: str) -> str | None:
         decision = self._fault_decision()
         if decision == "error":
             await self._send_resp(

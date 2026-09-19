@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
@@ -17,19 +16,19 @@ class SequenceRepository:
     """CRUD helpers for `Sequence` plus eager-loading helpers used by the v1 API."""
 
     def __init__(self, db: AsyncSession):
-        self.db = db
+        self.db: AsyncSession = db
 
     async def list(self, workspace_id: int) -> list[Sequence]:
         result = await self.db.execute(self._with_steps(workspace_id))
         return list(result.scalars().all())
 
-    async def get(self, workspace_id: int, seq_id: int) -> Optional[Sequence]:
+    async def get(self, workspace_id: int, seq_id: int) -> Sequence | None:
         result = await self.db.execute(
             self._with_steps(workspace_id).where(Sequence.id == seq_id)
         )
         return result.scalar_one_or_none()
 
-    async def create(self, workspace_id: int, data: dict, steps: list[dict]) -> Sequence:
+    async def create(self, workspace_id: int, data: dict[str, object], steps: list[dict[str, object]]) -> Sequence:
         try:
             seq = Sequence(**data)
             self.db.add(seq)
@@ -39,7 +38,7 @@ class SequenceRepository:
             for idx, raw in enumerate(steps):
                 step_type_value = raw.get("sequence_step_type") or raw.get("type") or raw.get("kind")
                 step_type = SequenceStepType(step_type_value) if step_type_value else SequenceStepType.WAIT
-                payload = {
+                payload: dict[str, object] = {
                     "sequence_id": seq.id,
                     "order_index": idx,
                     "sequence_step_type": step_type,
@@ -57,15 +56,15 @@ class SequenceRepository:
             await self.db.rollback()
             raise RuntimeError(f"DB error creating sequence: {exc}") from exc
 
-    async def update(self, workspace_id: int, seq_id: int, changes: dict) -> Optional[Sequence]:
+    async def update(self, workspace_id: int, seq_id: int, changes: dict[str, object]) -> Sequence | None:
         seq = await self.get(workspace_id, seq_id)
         if not seq:
             return None
         if seq.read_only:
             raise ReadOnlySequenceError("Sequence is read-only")
-        changes.pop("system_key", None)
-        changes.pop("system_provided", None)
-        changes.pop("read_only", None)
+        _ = changes.pop("system_key", None)
+        _ = changes.pop("system_provided", None)
+        _ = changes.pop("read_only", None)
         for key, value in changes.items():
             setattr(seq, key, value)
         await self.db.commit()

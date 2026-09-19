@@ -18,7 +18,7 @@ class SequenceStepBlockedError(DomainError):
 
     def __init__(self, message: str, *, unit_id: str) -> None:
         super().__init__(message)
-        self.unit_id = unit_id
+        self.unit_id: str = unit_id
 
 
 class SequenceDeviceUnavailableError(DomainError):
@@ -26,4 +26,4 @@ class SequenceDeviceUnavailableError(DomainError):
 
     def __init__(self, message: str, *, unit_id: str) -> None:
         super().__init__(message)
-        self.unit_id = unit_id
+        self.unit_id: str = unit_id

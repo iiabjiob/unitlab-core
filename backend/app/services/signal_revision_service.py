@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import UTC, datetime
-from typing import Sequence
+from collections.abc import Sequence
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,7 +18,7 @@ def _canonical_json(value: object) -> str:
 
 class SignalRevisionService:
     def __init__(self, db: AsyncSession):
-        self.db = db
+        self.db: AsyncSession = db
 
     async def create_active_revision(
         self,
@@ -30,7 +30,7 @@ class SignalRevisionService:
     ) -> SignalListRevision:
         ordered_rows = list(rows)
         snapshots = [row.model_dump(mode="json") for row in ordered_rows]
-        await self.db.execute(
+        _ = await self.db.execute(
             update(SignalListRevision)
             .where(
                 SignalListRevision.workspace_id == workspace_id,
@@ -116,7 +116,7 @@ class SignalRevisionService:
         )
 
     async def delete_test_run_plan(self, *, job_id: str, workspace_id: int) -> None:
-        await self.db.execute(
+        _ = await self.db.execute(
             delete(SignalTestRunPlan).where(
                 SignalTestRunPlan.job_id == str(job_id),
                 SignalTestRunPlan.workspace_id == workspace_id,

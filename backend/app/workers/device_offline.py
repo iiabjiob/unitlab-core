@@ -33,12 +33,12 @@ async def main() -> None:
     logger.info("🚀 Offline checker worker started")
 
     try:
-        await stop_event.wait()
+        _ = await stop_event.wait()
     finally:
-        checker_task.cancel()
+        _ = checker_task.cancel()
         with suppress(asyncio.CancelledError):
             await checker_task
-        heartbeat_task.cancel()
+        _ = heartbeat_task.cancel()
         with suppress(asyncio.CancelledError):
             await heartbeat_task
         await clear_worker_status("device_offline")

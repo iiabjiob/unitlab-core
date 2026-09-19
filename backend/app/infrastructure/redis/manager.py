@@ -1,4 +1,6 @@
 import redis.asyncio as redis
+from collections.abc import Awaitable, Callable
+from typing import cast
 from app.core.config import get_settings
 from app.core.logger import get_logger
 
@@ -11,13 +13,15 @@ class RedisManager:
     @classmethod
     async def start(cls):
         if cls._instance is None:
-            cls._instance = redis.from_url(
+            redis_factory = cast(Callable[..., redis.Redis], getattr(redis, "from_url"))
+            cls._instance = redis_factory(
                 settings.redis_url,
                 encoding="utf-8",
                 decode_responses=True,
             )
             try:
-                if await cls._instance.ping():
+                ping = cast(Callable[[], Awaitable[bool]], getattr(cls._instance, "ping"))
+                if await ping():
                     logger.info("✅ Connected to Redis!")
                 else:
                     logger.error("💥 Redis ping failed!")

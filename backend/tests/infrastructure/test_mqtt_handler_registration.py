@@ -1,5 +1,7 @@
-from app.infrastructure.mqtt.handlers import bootstrap  # noqa: F401
+from app.infrastructure.mqtt.handlers import bootstrap as _bootstrap  # noqa: F401
 from app.infrastructure.mqtt.router import MqttRouter
+
+_ = _bootstrap
 
 
 def test_device_runtime_topics_have_registered_handlers() -> None:

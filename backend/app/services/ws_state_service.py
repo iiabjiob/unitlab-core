@@ -1,4 +1,7 @@
 import json
+from typing import Protocol, cast
+
+from fastapi import WebSocket
 
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -18,9 +21,16 @@ from app.core.logger import get_logger
 
 logger = get_logger("ws")
 
+
+class _WsStateRedis(Protocol):
+    async def get(self, name: str) -> object: ...
+
+
+JsonObject = dict[str, object]
+
 class WsStateService:
     @staticmethod
-    async def send_cached_state_to_ui(unit_id: str, target=None):
+    async def send_cached_state_to_ui(unit_id: str, target: WebSocket | None = None) -> None:
         ws_manager = WebSocketManager.get_instance()
 
         # Pull all cached state events (bitmask + AO) from Redis
@@ -33,10 +43,10 @@ class WsStateService:
                 await ws_manager.broadcast(event)
 
     @staticmethod
-    async def sync_client(ws):
+    async def sync_client(ws: WebSocket) -> None:
         """On client connect: REGISTER + STATUS + STATE + TIME"""
         ws_manager = WebSocketManager.get_instance()
-        redis = RedisManager.get_instance()
+        redis = cast(_WsStateRedis, cast(object, RedisManager.get_instance()))
 
         async with AsyncSessionLocal() as db:
             result = await db.execute(
@@ -51,33 +61,36 @@ class WsStateService:
                 last_seen_raw = await redis.get(f"device:{device.unit_id}:last_seen")
 
                 status = to_str(status_raw, "offline")
-                last_seen = int(to_str(last_seen_raw, "0")) if last_seen_raw else None
+                last_seen = int(to_str(last_seen_raw, "0") or "0") if last_seen_raw else None
 
                 # REGISTER event
                 schema = DeviceSchema.model_validate(device)
                 schema.status = status if status in ("online", "offline") else "offline"
                 schema.last_seen = last_seen if last_seen else device.last_seen
                 schema.registered_at = device.registered_at_ms
-                schema.channels = [ChannelSchema.model_validate(ch) for ch in device.channels]
-                reg_event = DeviceRegisterEvent(**schema.model_dump())
+                channels = cast(list[object], cast(object, device.channels))
+                schema.channels = [ChannelSchema.model_validate(ch) for ch in channels]
+                reg_event = DeviceRegisterEvent.model_validate(schema)
                 await ws_manager.send_event(ws, reg_event)
 
-                heartbeat_fast = None
-                heartbeat_diag = None
+                heartbeat_fast: JsonObject | None = None
+                heartbeat_diag: JsonObject | None = None
                 hb_fast_raw = await redis.get(f"device:{device.unit_id}:hb_fast")
                 hb_diag_raw = await redis.get(f"device:{device.unit_id}:hb_diag")
                 try:
                     if hb_fast_raw:
-                        parsed = json.loads(to_str(hb_fast_raw, "{}"))
-                        if isinstance(parsed, dict):
-                            heartbeat_fast = parsed
+                        encoded = to_str(hb_fast_raw, "{}")
+                        parsed_fast: object = cast(object, json.loads(encoded)) if encoded is not None else {}
+                        if isinstance(parsed_fast, dict):
+                            heartbeat_fast = cast(JsonObject, parsed_fast)
                 except Exception:
                     heartbeat_fast = None
                 try:
                     if hb_diag_raw:
-                        parsed = json.loads(to_str(hb_diag_raw, "{}"))
-                        if isinstance(parsed, dict):
-                            heartbeat_diag = parsed
+                        encoded = to_str(hb_diag_raw, "{}")
+                        parsed_diag: object = cast(object, json.loads(encoded)) if encoded is not None else {}
+                        if isinstance(parsed_diag, dict):
+                            heartbeat_diag = cast(JsonObject, parsed_diag)
                 except Exception:
                     heartbeat_diag = None
 

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Literal, cast
+from collections.abc import Sequence
 
 from app.schemas.verification_schema import (
     SignalVerificationEvidenceSchema,
@@ -61,7 +62,7 @@ def build_verification_verdict_explanation(
     diagnostics = _collect_diagnostics(verification_run, signals)
     return VerificationVerdictExplanationSchema(
         test_run_id=verification_run.test_run_id,
-        verdict_state=verdict_state,
+        verdict_state=cast(Literal["pending", "pass", "fail", "inconclusive", "aborted"], verdict_state),
         verification_confidence=verification_run.verification_confidence,
         confidence_reason=verification_run.confidence_reason,
         headline=headline,

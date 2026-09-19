@@ -5,7 +5,8 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from enum import Enum
 from threading import RLock
-from typing import Callable, Protocol, Sequence
+from typing import Protocol
+from collections.abc import Callable, Sequence
 
 
 class Iec61850RuntimeMode(str, Enum):
@@ -137,7 +138,7 @@ class Iec61850RuntimeDiagnostic:
     code: str
     message: str
     reference: Iec61850ReportControlRef
-    details: dict | None = None
+    details: dict[str, object] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -332,12 +333,14 @@ class Iec61850ReportRuntimeEvent:
 class Iec61850ReportRuntimeError(Exception):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
-        self.code = code
-        self.message = message
+        self.code: str = code
+        self.message: str = message
 
 
 class Iec61850ReportSession(Protocol):
-    def read_report_control(self, reference: Iec61850ReportControlRef) -> Iec61850ReportControlState: ...
+    def read_report_control(
+        self, reference: Iec61850ReportControlRef
+    ) -> Iec61850ReportControlState | Iec61850ReportControlReadResult: ...
     def reserve_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState: ...
     def release_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState: ...
     def enable_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState: ...
@@ -367,9 +370,9 @@ class Iec61850ReportRuntimeAdapter(Protocol):
 
 class Iec61850ReportRuntimeService:
     def __init__(self, adapter: Iec61850ReportRuntimeAdapter) -> None:
-        self._adapter = adapter
+        self._adapter: Iec61850ReportRuntimeAdapter = adapter
         self._sessions: dict[str, Iec61850ReportSession] = {}
-        self._sessions_lock = RLock()
+        self._sessions_lock: RLock = RLock()
 
     def open_session(
         self,
@@ -399,7 +402,7 @@ class Iec61850ReportRuntimeService:
             session.disconnect()
         finally:
             with self._sessions_lock:
-                self._sessions.pop(session_id, None)
+                _ = self._sessions.pop(session_id, None)
 
     def read_report_control(
         self,
@@ -531,10 +534,10 @@ def map_report_event_to_signal_observations(
     values_by_reference: dict[str, Iec61850ReportEventValue] = {}
     for value in event.values:
         for alias in _observation_reference_aliases(value.reference, candidate):
-            values_by_reference.setdefault(alias, value)
+            _ = values_by_reference.setdefault(alias, value)
         if value.data_reference:
             for alias in _observation_reference_aliases(value.data_reference, candidate):
-                values_by_reference.setdefault(alias, value)
+                _ = values_by_reference.setdefault(alias, value)
     selected_references: set[str] = set()
     observations: list[Iec61850SignalObservation] = []
     diagnostics: list[Iec61850ReportObservationDiagnostic] = []
@@ -969,10 +972,10 @@ def create_iec61850_simulator_adapter(
 
 class _Iec61850SimulatorAdapter:
     def __init__(self, *, now: Callable[[], datetime], strict_disconnect_while_enabled: bool) -> None:
-        self._now = now
-        self._strict_disconnect_while_enabled = strict_disconnect_while_enabled
+        self._now: Callable[[], datetime] = now
+        self._strict_disconnect_while_enabled: bool = strict_disconnect_while_enabled
         self._events: list[Iec61850ReportRuntimeEvent] = []
-        self._event_sequence = 0
+        self._event_sequence: int = 0
 
     def connect(
         self,
@@ -1045,13 +1048,13 @@ class _Iec61850SimulatorSession:
         append_event: Callable[..., None],
         strict_disconnect_while_enabled: bool,
     ) -> None:
-        self._session_id = session_id
-        self._endpoint = endpoint
-        self._now = now
-        self._append_event = append_event
-        self._strict_disconnect_while_enabled = strict_disconnect_while_enabled
-        self._connected = True
-        self._reports = {
+        self._session_id: str = session_id
+        self._endpoint: Iec61850DeviceEndpoint = endpoint
+        self._now: Callable[[], datetime] = now
+        self._append_event: Callable[..., None] = append_event
+        self._strict_disconnect_while_enabled: bool = strict_disconnect_while_enabled
+        self._connected: bool = True
+        self._reports: dict[str, _SimulatorReportRuntime] = {
             report_control_key(to_report_control_ref(candidate)): _SimulatorReportRuntime(
                 candidate=candidate,
                 expected_conf_rev=candidate.conf_rev,
@@ -1167,6 +1170,7 @@ class _Iec61850SimulatorSession:
         after_event_id: str | None = None,
         timeout_ms: int = 5000,
     ) -> Iec61850ReportEvent:
+        _ = (after_event_id, timeout_ms)
         runtime = self._require_runtime(reference)
         self._ensure_connected(runtime)
         state = runtime.state

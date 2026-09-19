@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Literal, cast
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -28,7 +28,7 @@ class VerificationTargetSchema(BaseModel):
     timeout_ms: int = Field(default=5000, ge=1)
     window_ms: int = Field(default=1000, ge=0)
     protocol: str | None = None
-    protocol_metadata: dict[str, Any] = Field(default_factory=dict)
+    protocol_metadata: dict[str, object] = Field(default_factory=dict)
     coverage_state: Literal["exact", "partial", "uncovered"] = "uncovered"
     coverage_reason: str | None = None
     allocation_id: int | None = None
@@ -116,7 +116,7 @@ class VerificationEvidenceDiagnosticSchema(BaseModel):
     code: str
     message: str
     severity: str = "info"
-    details: dict[str, Any] | None = None
+    details: dict[str, object] | None = None
 
 
 class SignalVerificationEvidenceSchema(BaseModel):
@@ -140,8 +140,8 @@ class SignalVerificationEvidenceSchema(BaseModel):
     source_report_sequence_number: int | None = None
     source_report_sub_sequence_number: int | None = None
     report_reason: str | None = None
-    signal_value: Any | None = None
-    timestamp_summary: dict[str, Any] | None = None
+    signal_value: object | None = None
+    timestamp_summary: dict[str, object] | None = None
     stale_reason: str | None = None
     evidence_kind: str | None = None
     diagnostics: list[VerificationEvidenceDiagnosticSchema] = Field(default_factory=list)
@@ -302,8 +302,8 @@ class VerificationExternalIedManualReportResponseSchema(BaseModel):
     created_at: str | None = None
     renewed_at: str | None = None
     expires_at: str | None = None
-    signal_states: list[dict[str, Any]] = Field(default_factory=list)
-    report_values: list[dict[str, Any]] = Field(default_factory=list)
+    signal_states: list[dict[str, object]] = Field(default_factory=list)
+    report_values: list[dict[str, object]] = Field(default_factory=list)
 
 
 class VerificationSessionSnapshotSchema(BaseModel):
@@ -329,7 +329,7 @@ class VerificationSubscriptionSnapshotSchema(BaseModel):
     last_report_at: datetime | None = None
     gi_requested: bool = False
     last_report_value_count: int = 0
-    last_report_values: list[dict[str, Any]] = Field(default_factory=list)
+    last_report_values: list[dict[str, object]] = Field(default_factory=list)
     current_rptena_owner: str | None = None
     stale_signal_count: int | None = None
     last_error: str | None = None
@@ -395,11 +395,11 @@ class VerificationStepSchema(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _normalize_identity(cls, value: Any) -> Any:
+    def _normalize_identity(cls, value: object) -> object:
         if not isinstance(value, dict):
             return value
 
-        data = dict(value)
+        data = cast(dict[str, object], value)
         if not data.get("session_id") and data.get("source_session_id"):
             data["session_id"] = data["source_session_id"]
 
@@ -434,7 +434,7 @@ class VerificationRunSchema(BaseModel):
     triggered_at: datetime | None = None
     completed_at: datetime | None = None
     runtime_state: str | None = None
-    runtime_summary: dict[str, Any] | None = None
+    runtime_summary: dict[str, object] | None = None
     reason: str | None = None
     diagnostics: list[VerificationEvidenceDiagnosticSchema] = Field(default_factory=list)
     verification_steps: list[VerificationStepSchema] = Field(default_factory=list)

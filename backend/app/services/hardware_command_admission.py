@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import cast
 from uuid import uuid4
+import redis.asyncio as redis
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,9 +21,9 @@ class HardwareChannelLease:
 class HardwareCommandAdmission:
     """Cross-process exclusive lease for a physical output channel."""
 
-    def __init__(self, redis, *, ttl_seconds: int = 30):
-        self.redis = redis
-        self.ttl_seconds = max(1, int(ttl_seconds))
+    def __init__(self, redis_client: redis.Redis, *, ttl_seconds: int = 30):
+        self.redis: redis.Redis = redis_client
+        self.ttl_seconds: int = max(1, int(ttl_seconds))
 
     @staticmethod
     def _key(channel_id: int) -> str:
@@ -31,7 +33,7 @@ class HardwareCommandAdmission:
         if int(channel_id) <= 0 or not owner_kind.strip() or not owner_id.strip():
             raise ValueError("channel_id, owner_kind and owner_id are required")
         lease_id = uuid4().hex
-        epoch = int(await self.redis.incr(f"hardware:channel-epoch:{int(channel_id)}"))
+        epoch = int(cast(int | str | float, cast(object, await self.redis.incr(f"hardware:channel-epoch:{int(channel_id)}"))))
         expires_at = datetime.now(UTC) + timedelta(seconds=self.ttl_seconds)
         payload = json.dumps({
             "lease_id": lease_id,
@@ -39,7 +41,7 @@ class HardwareCommandAdmission:
             "owner_id": owner_id.strip(),
             "fencing_epoch": epoch,
         }, separators=(",", ":"))
-        acquired = await self.redis.set(self._key(channel_id), payload, ex=self.ttl_seconds, nx=True)
+        acquired = cast(object, await self.redis.set(self._key(channel_id), payload, ex=self.ttl_seconds, nx=True))
         if not acquired:
             return None
         return HardwareChannelLease(
@@ -82,7 +84,7 @@ class HardwareCommandAdmission:
         end
         return epochs
         """
-        raw_epochs = await self.redis.eval(
+        raw_epochs = cast(object, await self.redis.eval(  # pyright: ignore[reportGeneralTypeIssues]
             script,
             len(lease_keys) + len(epoch_keys),
             *(lease_keys + epoch_keys),
@@ -91,37 +93,43 @@ class HardwareCommandAdmission:
             lease_id,
             self.ttl_seconds,
             len(normalized),
-        )
-        if not raw_epochs or len(raw_epochs) != len(normalized):
+        ))
+        if not isinstance(raw_epochs, list):
+            return None
+        typed_epochs = cast(list[object], raw_epochs)
+        if len(typed_epochs) != len(normalized):
             return None
         return [
             HardwareChannelLease(
                 channel_id=channel_id,
                 owner_kind=owner_kind.strip(),
                 owner_id=owner_id.strip(),
-                fencing_epoch=int(epoch),
+                fencing_epoch=int(cast(int | str | float, epoch)),
                 lease_id=lease_id,
                 expires_at=expires_at,
             )
-            for channel_id, epoch in zip(normalized, raw_epochs)
+            for channel_id, epoch in zip(normalized, typed_epochs)
         ]
 
     async def is_current(self, lease: HardwareChannelLease) -> bool:
         """Return whether this owner still holds the channel lease fence."""
-        raw = await self.redis.get(self._key(lease.channel_id))
+        raw = cast(object, await self.redis.get(self._key(lease.channel_id)))
         if isinstance(raw, bytes):
             raw = raw.decode("utf-8", errors="replace")
-        if not raw:
+        if not isinstance(raw, (str, bytes, bytearray)) or not raw:
             return False
         try:
-            current = json.loads(raw)
+            current_value = cast(object, json.loads(raw))
         except (TypeError, ValueError):
             return False
+        if not isinstance(current_value, dict):
+            return False
+        current = cast(dict[str, object], current_value)
         return (
             str(current.get("lease_id") or "") == lease.lease_id
             and str(current.get("owner_kind") or "") == lease.owner_kind
             and str(current.get("owner_id") or "") == lease.owner_id
-            and int(current.get("fencing_epoch") or 0) == lease.fencing_epoch
+            and int(cast(int | str | float, current.get("fencing_epoch") or 0)) == lease.fencing_epoch
         )
 
     async def release(self, lease: HardwareChannelLease) -> bool:
@@ -134,5 +142,7 @@ class HardwareCommandAdmission:
         end
         return 0
         """
-        result = await self.redis.eval(script, 1, self._key(lease.channel_id), lease.lease_id)
+        result = cast(object, await self.redis.eval(  # pyright: ignore[reportGeneralTypeIssues]
+            script, 1, self._key(lease.channel_id), lease.lease_id
+        ))
         return bool(result)

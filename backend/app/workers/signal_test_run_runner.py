@@ -4,14 +4,17 @@ import asyncio
 import random
 import threading
 import time
+import redis.asyncio as redis_async
 from collections import defaultdict
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any
+from collections.abc import Awaitable, Callable
+from typing import Protocol, cast
 from uuid import uuid4
 
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.signal_sheet import SignalSheetRepository
 from app.core.config import get_settings
@@ -20,11 +23,13 @@ from app.core.logger import get_logger
 from app.infrastructure.db.database import AsyncSessionLocal
 from app.infrastructure.protocol.modes import Cmd, State
 from app.infrastructure.redis.manager import RedisManager
+from app.infrastructure.redis.types import RedisStreamClient, RedisStreamEntries
 from app.models.signal_revision import SignalTestRunPlan
 from app.infrastructure.redis.stream_bus import parse_signal_allocation_job_entry
 from app.schemas.ws.events import SignalTestRuntimePatchEvent, build_signal_job_event
 from app.schemas.signal_sheet_schema import SignalAllocationRowSchema
 from app.schemas.verification_schema import (
+    SignalVerificationEvidenceSchema,
     VerificationAutoRunStartSchema,
     VerificationEvidenceDiagnosticSchema,
     VerificationExecutionContextSchema,
@@ -55,6 +60,7 @@ from app.services.signal_job_service import (
     release_signal_test_run_workspace_lock,
     set_signal_job_progress_cursor,
     update_signal_job,
+    SignalJobStatus,
 )
 from app.services.processed_job_service import (
     has_processed_job_marker,
@@ -62,8 +68,15 @@ from app.services.processed_job_service import (
 )
 from app.services.verification_evidence import VerificationEvidenceRepository, build_signal_verification_evidence_set
 from app.services.verification_execution import build_runtime_subscription_plan
-from app.services.verification_run_service import build_verification_runtime_start_context
-from app.services.verification_runtime_orchestrator import VerificationRuntimeOrchestrator
+from app.services.verification_run_service import (
+    VerificationRuntimeStartContext,
+    build_verification_runtime_start_context,
+)
+from app.services.verification_runtime_orchestrator import (
+    VerificationRuntimeOrchestrationResult,
+    VerificationRuntimeSignalCaptureResult,
+    VerificationRuntimeOrchestrator,
+)
 from app.services.worker_health import clear_worker_status, start_worker_heartbeat
 from app.workers.stream_worker_runtime import (
     build_worker_consumer_name,
@@ -81,6 +94,12 @@ GROUP_NAME = "signal-test-runner"
 CONSUMER_NAME = build_worker_consumer_name()
 WORKER_NAME = "signal_test_run_runner"
 _lease_stats: dict[str, int] = defaultdict(int)
+
+
+class SignalTestRunRedisClient(RedisStreamClient, Protocol):
+    async def get(self, name: str) -> str | None: ...
+
+    async def hget(self, name: str, key: str) -> str | None: ...
 
 
 def _bump_lease_stat(name: str) -> int:
@@ -119,7 +138,7 @@ async def _reconcile_unfinished_intents_after_runner_exit(
 
 
 async def _wait_for_bit_readback(
-    redis,
+    redis: SignalTestRunRedisClient,
     *,
     unit_id: str,
     channel_index: int,
@@ -133,14 +152,14 @@ async def _wait_for_bit_readback(
         fresh = True
         if packet_id is not None:
             try:
-                fresh = int(await redis.get(f"device:{unit_id}:last_state_packet_id")) == int(packet_id)
+                fresh = _redis_int(await redis.get(f"device:{unit_id}:last_state_packet_id")) == int(packet_id)
             except (TypeError, ValueError):
                 fresh = False
         raw_bitmask = await redis.get(f"device:{unit_id}:bitmask")
         try:
             if raw_bitmask is None:
                 raise ValueError("missing bitmask")
-            bitmask = int(raw_bitmask)
+            bitmask = _redis_int(raw_bitmask)
         except (TypeError, ValueError):
             bitmask = None
         if bitmask is None:
@@ -157,7 +176,7 @@ async def _wait_for_bit_readback(
 
 
 async def _wait_for_float_readback(
-    redis,
+    redis: SignalTestRunRedisClient,
     *,
     unit_id: str,
     channel_index: int,
@@ -170,12 +189,12 @@ async def _wait_for_float_readback(
         fresh = True
         if packet_id is not None:
             try:
-                fresh = int(await redis.get(f"device:{unit_id}:last_state_packet_id")) == int(packet_id)
+                fresh = _redis_int(await redis.get(f"device:{unit_id}:last_state_packet_id")) == int(packet_id)
             except (TypeError, ValueError):
                 fresh = False
         raw_value = await redis.hget(f"device:{unit_id}:ao", str(int(channel_index)))
         try:
-            actual_value = float(raw_value)
+            actual_value = _redis_float(raw_value)
         except (TypeError, ValueError):
             actual_value = None
         if fresh and actual_value is not None and abs(actual_value - float(expected_value)) <= 0.01:
@@ -186,7 +205,7 @@ async def _wait_for_float_readback(
 
 
 async def _wait_for_fresh_bitmask_snapshot(
-    redis,
+    redis: SignalTestRunRedisClient,
     *,
     unit_id: str,
     packet_id: int | None,
@@ -197,12 +216,12 @@ async def _wait_for_fresh_bitmask_snapshot(
         fresh = True
         if packet_id is not None:
             try:
-                fresh = int(await redis.get(f"device:{unit_id}:last_state_packet_id")) == int(packet_id)
+                fresh = _redis_int(await redis.get(f"device:{unit_id}:last_state_packet_id")) == int(packet_id)
             except (TypeError, ValueError):
                 fresh = False
         raw_bitmask = await redis.get(f"device:{unit_id}:bitmask")
         try:
-            bitmask = int(raw_bitmask)
+            bitmask = _redis_int(raw_bitmask)
         except (TypeError, ValueError):
             bitmask = None
         if fresh and bitmask is not None:
@@ -213,17 +232,17 @@ async def _wait_for_fresh_bitmask_snapshot(
 
 
 async def _deliver_durable_command(
-    db,
+    db: AsyncSession,
     *,
     command_id: str,
     action: str,
-    command_sender,
+    command_sender: Callable[[str], Awaitable[object]],
 ) -> None:
     """Publish a persisted command, retrying only idempotent restore delivery once."""
     delivery_attempts = 2 if action == "restore" else 1
     for attempt_no in range(delivery_attempts):
         try:
-            await command_sender(command_id)
+            _ = await command_sender(command_id)
             return
         except Exception:
             await db.rollback()
@@ -244,7 +263,7 @@ async def _deliver_durable_command(
 async def _record_lease_stat(name: str) -> int:
     count = _bump_lease_stat(name)
     try:
-        await increment_signal_test_run_execution_lease_stat(name)
+        _ = await increment_signal_test_run_execution_lease_stat(name)
     except Exception:  # noqa: BLE001
         logger.exception("💥 Failed to persist signal test run lease stat %s", name)
     return count
@@ -253,7 +272,7 @@ async def _record_lease_stat(name: str) -> int:
 async def _schedule_external_ied_discovery_for_verification_run(
     *,
     workspace_id: int,
-    runtime_context,
+    runtime_context: VerificationRuntimeStartContext,
 ) -> None:
     if getattr(runtime_context.runtime_selection, "runtime_mode", None) != "mms":
         return
@@ -272,7 +291,7 @@ async def _schedule_external_ied_discovery_for_verification_run(
             continue
         seen_endpoints.add(endpoint_key)
         try:
-            await schedule_external_ied_discovery_for_verification(
+            _ = await schedule_external_ied_discovery_for_verification(
                 workspace_id=workspace_id,
                 endpoint=endpoint_key,
             )
@@ -320,7 +339,7 @@ async def _load_immutable_plan_rows(
 
 def _row_has_iec61850_verification_mapping(row: SignalAllocationRowSchema) -> bool:
     metadata = row.signal_metadata or {}
-    verification = metadata.get("verification") if isinstance(metadata.get("verification"), dict) else {}
+    verification = _metadata_dict(metadata.get("verification"))
     if verification.get("enabled") is not True:
         return False
     return _first_row_metadata_string(verification, "iec61850_address", "iec61850", "mms_reference") is not None
@@ -360,12 +379,41 @@ async def _collect_peripheral_preflight(
     return PeripheralPreflightResult(executable_signal_ids=executable_signal_ids, notes=notes)
 
 
-def _first_row_metadata_string(payload: dict[str, Any], *keys: str) -> str | None:
+def _first_row_metadata_string(payload: dict[str, object], *keys: str) -> str | None:
     for key in keys:
         value = payload.get(key)
         if isinstance(value, str) and value.strip():
             return value.strip()
     return None
+
+
+def _metadata_dict(value: object) -> dict[str, object]:
+    return cast(dict[str, object], value) if isinstance(value, dict) else {}
+
+
+def _required_int(value: object, name: str) -> int:
+    if not isinstance(value, (int, float, str, bytes)):
+        raise ValueError(f"{name} is required for an executable test step")
+    return int(value)
+
+
+def _optional_int(value: object, default: int = 0) -> int:
+    try:
+        return int(cast(str | int | float, value))
+    except (TypeError, ValueError):
+        return default
+
+
+def _redis_int(value: object) -> int:
+    if not isinstance(value, (int, float, str, bytes)):
+        raise ValueError("integer Redis value is required")
+    return int(value)
+
+
+def _redis_float(value: object) -> float:
+    if not isinstance(value, (int, float, str, bytes)):
+        raise ValueError("numeric Redis value is required")
+    return float(value)
 
 
 def _build_signal_test_report_entry(
@@ -375,13 +423,13 @@ def _build_signal_test_report_entry(
     row: SignalAllocationRowSchema | None,
     test_status: str,
     result_state: str,
-    command_payload: dict[str, Any] | None,
+    command_payload: dict[str, object] | None,
     tested_at: datetime | None = None,
     skip_reason: str | None = None,
-) -> dict[str, Any]:
-    metadata = row.signal_metadata if row is not None and isinstance(row.signal_metadata, dict) else {}
-    verification = metadata.get("verification") if isinstance(metadata.get("verification"), dict) else {}
-    entry: dict[str, Any] = {
+) -> dict[str, object]:
+    metadata = row.signal_metadata if row is not None else {}
+    verification = _metadata_dict(metadata.get("verification"))
+    entry: dict[str, object] = {
         "signal_id": signal_id,
         "order_index": order_index,
         "test_status": test_status,
@@ -420,7 +468,7 @@ def _build_signal_test_report_entry(
     return entry
 
 
-async def _ensure_group(redis) -> None:
+async def _ensure_group(redis: RedisStreamClient) -> None:
     await ensure_stream_consumer_group(
         redis,
         stream_name=STREAM_NAME,
@@ -431,7 +479,7 @@ async def _ensure_group(redis) -> None:
     )
 
 
-async def _fetch(redis, stream_id: str, block_ms: int = 5000):
+async def _fetch(redis: RedisStreamClient, stream_id: str, block_ms: int = 5000) -> RedisStreamEntries:
     return await fetch_stream_group_entries(
         redis,
         stream_name=STREAM_NAME,
@@ -443,7 +491,7 @@ async def _fetch(redis, stream_id: str, block_ms: int = 5000):
     )
 
 
-async def _drain_pending(redis) -> None:
+async def _drain_pending(redis: SignalTestRunRedisClient) -> None:
     await drain_pending_stream_entries(
         fetch_pending=lambda stream_id, block_ms: _fetch(redis, stream_id, block_ms=block_ms),
         process_entries=lambda entries: _process_entries(redis, entries),
@@ -455,11 +503,11 @@ async def _drain_pending(redis) -> None:
 
 async def _publish_running_progress(
     *,
-    job_state: dict[str, Any],
+    job_state: dict[str, object],
     progress_done: int,
     progress_total: int,
     message: str,
-    result: dict[str, Any] | None = None,
+    result: dict[str, object] | None = None,
 ) -> None:
     next_state = dict(job_state)
     next_state["status"] = "running"
@@ -499,8 +547,8 @@ def _verification_prepare_step(
     label: str,
     status: str,
     detail: str | None = None,
-    extra: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+    extra: dict[str, object] | None = None,
+) -> dict[str, object]:
     return {
         "id": step_id,
         "label": label,
@@ -510,7 +558,9 @@ def _verification_prepare_step(
     }
 
 
-def _verification_prepare_runtime_summary(runtime_snapshot) -> dict[str, Any]:
+def _verification_prepare_runtime_summary(
+    runtime_snapshot: VerificationRuntimeOrchestrationResult,
+) -> dict[str, object]:
     sessions = list(getattr(runtime_snapshot, "session_snapshots", ()) or ())
     subscriptions = list(getattr(runtime_snapshot, "subscription_snapshots", ()) or ())
     return {
@@ -528,7 +578,7 @@ def _verification_prepare_runtime_summary(runtime_snapshot) -> dict[str, Any]:
     }
 
 
-def _normalize_verification_value(value: Any) -> Any:
+def _normalize_verification_value(value: object) -> object:
     if isinstance(value, bool):
         return value
     if isinstance(value, int) and value in {0, 1}:
@@ -542,21 +592,21 @@ def _normalize_verification_value(value: Any) -> Any:
     return value
 
 
-def _verification_diagnostic_codes(evidence: Any) -> set[str]:
+def _verification_diagnostic_codes(evidence: SignalVerificationEvidenceSchema) -> set[str]:
     return {
-        str(getattr(diagnostic, "code", "") or "").strip()
-        for diagnostic in (getattr(evidence, "diagnostics", ()) or ())
-        if str(getattr(diagnostic, "code", "") or "").strip()
+        diagnostic.code.strip()
+        for diagnostic in evidence.diagnostics
+        if diagnostic.code.strip()
     }
 
 
 def _derive_test_status_from_verification(
-    evidence: Any,
+    evidence: SignalVerificationEvidenceSchema,
     *,
-    expected_value: Any | None,
+    expected_value: object | None,
 ) -> str:
-    evidence_status = str(getattr(evidence, "evidence_status", "") or "").strip().lower()
-    actual_value = getattr(evidence, "signal_value", None)
+    evidence_status = str(evidence.evidence_status or "").strip().lower()
+    actual_value = evidence.signal_value
     if evidence_status in {"observed", "late"}:
         if expected_value is not None and actual_value is not None:
             expected_normalized = _normalize_verification_value(expected_value)
@@ -583,24 +633,24 @@ def _step_evidence_status(test_status: str) -> str:
     return "succeeded" if test_status in {"tested", "verified"} else "failed"
 
 
-def _derive_terminal_job_status(result: dict[str, Any], *, progress_total: int) -> str:
+def _derive_terminal_job_status(result: dict[str, object], *, progress_total: int) -> SignalJobStatus:
     """Keep terminal job status aligned with step verdicts, not enqueue count."""
     if bool(result.get("cancelled")):
         return "cancelled"
     if progress_total <= 0:
         return "succeeded"
-    if int(result.get("processed") or 0) < progress_total:
+    if _optional_int(result.get("processed")) < progress_total:
         return "failed"
-    if int(result.get("skipped") or 0) > 0:
+    if _optional_int(result.get("skipped")) > 0:
         return "failed"
-    if int(result.get("verification_failed") or 0) > 0:
+    if _optional_int(result.get("verification_failed")) > 0:
         return "failed"
-    if int(result.get("succeeded") or 0) < progress_total:
+    if _optional_int(result.get("succeeded")) < progress_total:
         return "failed"
     statuses = result.get("test_status_by_signal")
     if isinstance(statuses, dict) and any(
         str(status).strip().lower() not in {"tested", "verified"}
-        for status in statuses.values()
+        for status in cast(dict[object, object], statuses).values()
     ):
         return "failed"
     return "succeeded"
@@ -615,14 +665,14 @@ async def _sleep_before_restore(seconds: float) -> bool:
     return False
 
 
-def _verification_runtime_ready(runtime_snapshot) -> bool:
+def _verification_runtime_ready(runtime_snapshot: VerificationRuntimeOrchestrationResult) -> bool:
     subscriptions = list(getattr(runtime_snapshot, "subscription_snapshots", ()) or ())
     if not subscriptions:
         return False
     return all(item.subscription_state == "reporting" and bool(item.gi_requested) for item in subscriptions)
 
 
-def _verification_runtime_failed(runtime_snapshot) -> bool:
+def _verification_runtime_failed(runtime_snapshot: VerificationRuntimeOrchestrationResult) -> bool:
     sessions = list(getattr(runtime_snapshot, "session_snapshots", ()) or ())
     subscriptions = list(getattr(runtime_snapshot, "subscription_snapshots", ()) or ())
     return any(item.runtime_state in {"failed", "degraded"} for item in sessions) or any(
@@ -630,14 +680,14 @@ def _verification_runtime_failed(runtime_snapshot) -> bool:
     )
 
 
-def _unique_positive_signal_ids(value: Any) -> list[int]:
+def _unique_positive_signal_ids(value: object) -> list[int]:
     if not isinstance(value, list):
         return []
     result: list[int] = []
     seen: set[int] = set()
-    for item in value:
+    for item in cast(list[object], value):
         try:
-            signal_id = int(item)
+            signal_id = _optional_int(item, -1)
         except (TypeError, ValueError):
             continue
         if signal_id <= 0 or signal_id in seen:
@@ -657,7 +707,7 @@ def _processed_marker_recovery_result(reconciled_intents: int) -> dict[str, obje
     }
 
 
-def _mms_subscription_plan_blockers(runtime_context) -> list[str]:
+def _mms_subscription_plan_blockers(runtime_context: VerificationRuntimeStartContext) -> list[str]:
     plan = getattr(runtime_context, "subscription_plan", None)
     groups = list(getattr(plan, "groups", ()) or ())
     blockers: list[str] = []
@@ -670,7 +720,7 @@ def _mms_subscription_plan_blockers(runtime_context) -> list[str]:
         report_control_name = str(getattr(group, "report_control_name", "") or "").strip()
         report_control_reference = str(getattr(group, "report_control_reference", "") or "").strip()
         data_set_reference = str(getattr(group, "data_set_reference", "") or "").strip()
-        missing = []
+        missing: list[str] = []
         if source_classification == "fallback":
             missing.append("fallback planning")
         if not report_control_name and not report_control_reference:
@@ -682,39 +732,37 @@ def _mms_subscription_plan_blockers(runtime_context) -> list[str]:
     return blockers
 
 
-def _extract_job_attempt_meta(job_state: dict[str, Any] | None) -> tuple[str | None, int]:
+def _extract_job_attempt_meta(job_state: dict[str, object] | None) -> tuple[str | None, int]:
     if not isinstance(job_state, dict):
         return None, 0
     result = job_state.get("result")
     if not isinstance(result, dict):
         return None, 0
-    attempt_id_raw = result.get("attempt_id")
-    attempt_no_raw = result.get("attempt_no")
+    typed_result = cast(dict[str, object], result)
+    attempt_id_raw = typed_result.get("attempt_id")
+    attempt_no_raw = typed_result.get("attempt_no")
     attempt_id = str(attempt_id_raw).strip() if attempt_id_raw is not None else ""
-    try:
-        attempt_no = max(0, int(attempt_no_raw or 0))
-    except (TypeError, ValueError):
-        attempt_no = 0
+    attempt_no = max(0, _optional_int(attempt_no_raw))
     return (attempt_id or None), attempt_no
 
 
 async def _handle_test_run(
     repo: SignalSheetRepository,
     workspace_id: int,
-    payload: dict[str, Any],
-    job_state: dict[str, Any],
+    payload: dict[str, object],
+    job_state: dict[str, object],
     execution_lease_owner: str | None = None,
     execution_attempt_id: str | None = None,
     execution_attempt_no: int = 0,
     active_hardware_leases: dict[str, HardwareChannelLease] | None = None,
-) -> dict[str, Any]:
-    requested_ids_raw = payload.get("signal_ids") if isinstance(payload, dict) else None
-    signal_interval_ms_raw = payload.get("signal_interval_ms") if isinstance(payload, dict) else None
-    toggle_mode_raw = payload.get("toggle_mode") if isinstance(payload, dict) else None
-    resume_from_cursor_raw = payload.get("resume_from_cursor") if isinstance(payload, dict) else None
-    resume_job_id_raw = payload.get("resume_job_id") if isinstance(payload, dict) else None
-    verification_enabled = bool(payload.get("verification_enabled")) if isinstance(payload, dict) else False
-    verification_policy = str(payload.get("verification_policy") or "").strip().lower() if isinstance(payload, dict) else ""
+) -> dict[str, object]:
+    requested_ids_raw = payload.get("signal_ids")
+    signal_interval_ms_raw = payload.get("signal_interval_ms")
+    toggle_mode_raw = payload.get("toggle_mode")
+    resume_from_cursor_raw = payload.get("resume_from_cursor")
+    resume_job_id_raw = payload.get("resume_job_id")
+    verification_enabled = bool(payload.get("verification_enabled"))
+    verification_policy = str(payload.get("verification_policy") or "").strip().lower()
     if verification_policy not in {"off", "optional", "required"}:
         verification_policy = "optional" if verification_enabled else "off"
     verification_enabled = verification_enabled or verification_policy == "required"
@@ -722,11 +770,11 @@ async def _handle_test_run(
     verification_runtime_version = str(payload.get("verification_runtime_version") or "simulator").strip().lower()
     verification_orchestration_id = str(payload.get("verification_orchestration_id") or "").strip() or None
     try:
-        verification_signal_list_revision_id = int(payload.get("verification_signal_list_revision_id") or 0)
+        verification_signal_list_revision_id = _optional_int(payload.get("verification_signal_list_revision_id"))
     except (TypeError, ValueError):
         verification_signal_list_revision_id = 0
     try:
-        verification_timeout_ms = int(payload.get("verification_timeout_ms") or 5000)
+        verification_timeout_ms = _optional_int(payload.get("verification_timeout_ms"), 5000)
     except (TypeError, ValueError):
         verification_timeout_ms = 5000
     verification_timeout_ms = max(100, min(60000, verification_timeout_ms))
@@ -742,7 +790,7 @@ async def _handle_test_run(
         raise RuntimeError(f"Test-run selection is not contained in immutable plan: {missing_from_plan}")
     requested_ids = [int(row.signal_id) for row in plan_rows if int(row.signal_id) in requested_set]
 
-    signal_interval_ms = int(signal_interval_ms_raw) if signal_interval_ms_raw is not None else 1000
+    signal_interval_ms = _optional_int(signal_interval_ms_raw, 1000)
     signal_interval_ms = max(100, min(10000, signal_interval_ms))
     toggle_mode = str(toggle_mode_raw or "single").strip().lower()
     if toggle_mode not in {"single", "double", "ao_random"}:
@@ -754,8 +802,10 @@ async def _handle_test_run(
 
     signal_interval_seconds = signal_interval_ms / 1000
     resume_from_cursor = bool(resume_from_cursor_raw)
-    redis = RedisManager.get_instance()
-    hardware_admission = HardwareCommandAdmission(redis)
+    redis = cast(SignalTestRunRedisClient, cast(object, RedisManager.get_instance()))
+    hardware_admission = HardwareCommandAdmission(
+        cast(redis_async.Redis, cast(object, redis))
+    )
 
     async def enqueue_durable_command(
         *,
@@ -763,15 +813,15 @@ async def _handle_test_run(
         channel_id: int,
         device_id: int | None,
         unit_id: str,
-        payload: dict[str, Any],
-        command_sender,
+        payload: dict[str, object],
+        command_sender: Callable[[str], Awaitable[object]],
     ) -> str:
         if channel_lease is not None:
             is_current = getattr(hardware_admission, "is_current", None)
             if is_current is not None and not await is_current(channel_lease):
                 raise RuntimeError("Hardware channel lease lost before command intent")
         command_id = uuid4().hex
-        await record_hardware_command_intent(
+        _ = await record_hardware_command_intent(
             repo.db,
             command_id=command_id,
             workspace_id=workspace_id,
@@ -819,17 +869,17 @@ async def _handle_test_run(
         if isinstance(cursor_payload, dict):
             cursor_reason = "cursor_loaded"
             try:
-                cursor_index = int(cursor_payload.get("index") or 0)
+                cursor_index = int(str(cursor_payload.get("index") or 0))
             except (TypeError, ValueError):
                 cursor_index = 0
                 cursor_reason = "invalid_index"
             resume_offset = max(0, min(cursor_index, original_total))
             try:
-                resume_base_succeeded = max(0, int(cursor_payload.get("succeeded") or 0))
+                resume_base_succeeded = max(0, int(str(cursor_payload.get("succeeded") or 0)))
             except (TypeError, ValueError):
                 resume_base_succeeded = 0
             try:
-                resume_base_skipped = max(0, int(cursor_payload.get("skipped") or 0))
+                resume_base_skipped = max(0, int(str(cursor_payload.get("skipped") or 0)))
             except (TypeError, ValueError):
                 resume_base_skipped = 0
             if resume_offset > 0:
@@ -862,7 +912,7 @@ async def _handle_test_run(
     succeeded_signal_ids: list[int] = []
     tested_at_by_signal: dict[int, str] = {}
     test_status_by_signal: dict[int, str] = {}
-    test_report_by_signal: dict[int, dict[str, Any]] = {}
+    test_report_by_signal: dict[int, dict[str, object]] = {}
     skipped = 0
     skip_reasons = {
         "missing_row": 0,
@@ -882,11 +932,11 @@ async def _handle_test_run(
     verification_signal_ids: list[int] = []
     verification_signal_id_set: set[int] = set()
     verification_requested_signal_count = 0
-    verification_evidence_rows = []
-    verification_diagnostics = []
+    verification_evidence_rows: list[SignalVerificationEvidenceSchema] = []
+    verification_diagnostics: list[VerificationEvidenceDiagnosticSchema] = []
     verification_prepare_error: str | None = None
     verification_prepare_warning: str | None = None
-    verification_prepare_steps: list[dict[str, Any]] = []
+    verification_prepare_steps: list[dict[str, object]] = []
     verification_orchestrator: VerificationRuntimeOrchestrator | None = None
     verification_local_orchestration_id: str | None = None
 
@@ -900,7 +950,7 @@ async def _handle_test_run(
         label: str,
         status: str,
         detail: str | None = None,
-        extra: dict[str, Any] | None = None,
+        extra: dict[str, object] | None = None,
     ) -> None:
         next_step = _verification_prepare_step(
             step_id=step_id,
@@ -918,9 +968,9 @@ async def _handle_test_run(
     async def publish_verification_prepare_progress(
         *,
         message: str,
-        runtime_snapshot=None,
+        runtime_snapshot: VerificationRuntimeOrchestrationResult | None = None,
     ) -> None:
-        result_payload: dict[str, Any] = {
+        result_payload: dict[str, object] = {
             "phase": "preparing_iec61850",
             "verification_enabled": True,
             "verification_policy": verification_policy,
@@ -942,25 +992,27 @@ async def _handle_test_run(
             result=result_payload,
         )
 
-    async def wait_for_verification_runtime_ready(runtime_start):
+    async def wait_for_verification_runtime_ready(
+        runtime_start: VerificationRuntimeOrchestrationResult,
+    ) -> VerificationRuntimeOrchestrationResult | None:
         if verification_orchestrator is None:
             return None
         orchestration_id = str(getattr(runtime_start, "orchestration_id", "") or "")
         if not orchestration_id:
             return None
         deadline = time.monotonic() + 90.0
-        last_signature: tuple[Any, ...] | None = None
+        last_signature: tuple[object, ...] | None = None
         while True:
             runtime_snapshot = verification_orchestrator.snapshot(orchestration_id)
             summary = _verification_prepare_runtime_summary(runtime_snapshot)
             subscriptions = list(getattr(runtime_snapshot, "subscription_snapshots", ()) or ())
-            enabled = int(summary["enabled_subscriptions"])
-            reporting = int(summary["reporting_subscriptions"])
-            total_subscriptions = int(summary["subscription_count"])
-            gi_count = int(summary["gi_requested_count"])
-            value_count = int(summary["last_report_value_count"])
-            failed = int(summary["failed_subscriptions"])
-            degraded = int(summary["degraded_subscriptions"])
+            enabled = _optional_int(summary["enabled_subscriptions"])
+            reporting = _optional_int(summary["reporting_subscriptions"])
+            total_subscriptions = _optional_int(summary["subscription_count"])
+            gi_count = _optional_int(summary["gi_requested_count"])
+            value_count = _optional_int(summary["last_report_value_count"])
+            failed = _optional_int(summary["failed_subscriptions"])
+            degraded = _optional_int(summary["degraded_subscriptions"])
             failed_or_degraded = failed + degraded
             set_verification_prepare_step(
                 step_id="subscribe_reports",
@@ -1126,7 +1178,7 @@ async def _handle_test_run(
                 )
                 verification_local_orchestration_id = runtime_start.orchestration_id
                 if runtime_start_method is not None:
-                    await wait_for_verification_runtime_ready(runtime_start)
+                    _ = await wait_for_verification_runtime_ready(runtime_start)
                 else:
                     set_verification_prepare_step(step_id="start_test", label="Start test", status="done")
                     await publish_verification_prepare_progress(
@@ -1143,7 +1195,7 @@ async def _handle_test_run(
                 )
                 if verification_orchestrator is not None and verification_local_orchestration_id is not None:
                     with suppress(Exception):
-                        verification_orchestrator.stop(verification_local_orchestration_id)
+                        _ = verification_orchestrator.stop(verification_local_orchestration_id)
                 verification_orchestrator = None
                 verification_local_orchestration_id = None
                 verification_diagnostics.append(
@@ -1162,7 +1214,7 @@ async def _handle_test_run(
                 if verification_policy == "required":
                     verification_required_blocked = True
 
-    async def attach_and_publish_tested_at_patch(result_payload: dict[str, Any]) -> None:
+    async def attach_and_publish_tested_at_patch(result_payload: dict[str, object]) -> None:
         if not tested_at_patch_since_emit and not test_status_patch_since_emit:
             return
         patch = dict(tested_at_patch_since_emit)
@@ -1191,7 +1243,7 @@ async def _handle_test_run(
         if not pending_tested_at_by_signal:
             return
         try:
-            await repo.mark_signals_tested_at(
+            _ = await repo.mark_signals_tested_at(
                 workspace_id,
                 dict(pending_tested_at_by_signal),
                 commit=False,
@@ -1210,13 +1262,13 @@ async def _handle_test_run(
         row: SignalAllocationRowSchema | None = None,
         reason: str | None = None,
         result_state: str | None = None,
-        command_payload: dict[str, Any] | None = None,
+        command_payload: dict[str, object] | None = None,
         tested_at: datetime | None = None,
     ) -> None:
         nonlocal evidence_count
         if not job_id:
             return
-        await repo.record_signal_test_run_step_evidence(
+        _ = await repo.record_signal_test_run_step_evidence(
             workspace_id=workspace_id,
             job_id=job_id,
             signal_list_revision_id=verification_signal_list_revision_id or None,
@@ -1241,7 +1293,9 @@ async def _handle_test_run(
         await repo.db.commit()
         evidence_count += 1
 
-    async def record_verification_evidence(capture_result) -> None:
+    async def record_verification_evidence(
+        capture_result: VerificationRuntimeSignalCaptureResult | None,
+    ) -> None:
         nonlocal verification_failed, verification_observed
         if capture_result is None:
             return
@@ -1253,7 +1307,7 @@ async def _handle_test_run(
         else:
             verification_failed += 1
         repository = VerificationEvidenceRepository(repo.db)
-        await repository.record_signal_verification_evidence(
+        _ = await repository.record_signal_verification_evidence(
             workspace_id=workspace_id,
             test_run_id=job_id,
             signal_list_revision_id=verification_signal_list_revision_id or None,
@@ -1285,8 +1339,8 @@ async def _handle_test_run(
         )
         await repo.db.commit()
 
-    def verification_result_payload(*, include_report: bool = False) -> dict[str, Any]:
-        payload = {
+    def verification_result_payload(*, include_report: bool = False) -> dict[str, object]:
+        payload: dict[str, object] = {
             "verification_enabled": verification_requested_signal_count > 0,
             "verification_policy": verification_policy,
             "verification_available": verification_orchestrator is not None and verification_local_orchestration_id is not None,
@@ -1315,7 +1369,7 @@ async def _handle_test_run(
             evidence=verification_evidence_rows,
             diagnostics=verification_diagnostics,
         )
-        await repository.upsert_signal_verification_evidence_set(
+        _ = await repository.upsert_signal_verification_evidence_set(
             workspace_id=workspace_id,
             test_run_id=job_id,
             evidence=evidence_set.evidence,
@@ -1328,7 +1382,7 @@ async def _handle_test_run(
         if verification_orchestrator is None or verification_local_orchestration_id is None:
             return
         with suppress(Exception):
-            verification_orchestrator.stop(verification_local_orchestration_id)
+            _ = verification_orchestrator.stop(verification_local_orchestration_id)
         verification_local_orchestration_id = None
 
     async def maybe_refresh_ttl(force: bool = False) -> None:
@@ -1431,6 +1485,8 @@ async def _handle_test_run(
             return None, "missing_row"
         if not row.unit_id or not isinstance(row.channel_index, int):
             return row, "invalid_binding"
+        if row.channel_id is None or row.device_id is None:
+            return row, "invalid_binding"
         channel_type = str(row.channel_type or "").strip().lower()
         is_do = channel_type.startswith("do")
         is_ao = channel_type.startswith("ao")
@@ -1445,10 +1501,10 @@ async def _handle_test_run(
             if current is not None and current.recovery_required:
                 return row, "recovery_required"
         elif hasattr(repo, "get_execution_binding"):
-            if row.channel_id is not None and await has_hardware_recovery_required(
+            if await has_hardware_recovery_required(
                 repo.db,
                 workspace_id=workspace_id,
-                channel_id=int(row.channel_id),
+                channel_id=_required_int(row.channel_id, "row.channel_id"),
             ):
                 return row, "recovery_required"
             current = await repo.get_execution_binding(workspace_id, signal_id)
@@ -1457,11 +1513,12 @@ async def _handle_test_run(
             current = next((item for item in current_rows if int(item.signal_id) == int(signal_id)), None)
         if current is None or current.unit_online is not True:
             return row, "offline_unit"
+        if current.channel_id is None or current.device_id is None or current.channel_index is None:
+            return row, "binding_changed"
         if (
-            int(current.channel_id) != int(row.channel_id)
-            or row.device_id is None
-            or int(current.device_id) != int(row.device_id)
-            or int(current.channel_index) != int(row.channel_index)
+            _required_int(current.channel_id, "current.channel_id") != _required_int(row.channel_id, "row.channel_id")
+            or _required_int(current.device_id, "current.device_id") != _required_int(row.device_id, "row.device_id")
+            or _required_int(current.channel_index, "current.channel_index") != _required_int(row.channel_index, "row.channel_index")
             or str(current.unit_id) != str(row.unit_id)
         ):
             return row, "binding_changed"
@@ -1523,6 +1580,9 @@ async def _handle_test_run(
         if skip_reason is None and verification_required_blocked:
             skip_reason = "iec61850_required_unavailable"
         channel_lease: HardwareChannelLease | None = None
+        verification_capture: VerificationRuntimeSignalCaptureResult | None = None
+        if row is not None and (row.channel_id is None or row.device_id is None or row.channel_index is None):
+            skip_reason = "invalid_binding"
         if skip_reason is None and row is not None and row.channel_id is not None:
             channel_lease = await hardware_admission.acquire(
                 channel_id=row.channel_id,
@@ -1535,15 +1595,15 @@ async def _handle_test_run(
                 active_hardware_leases[channel_lease.lease_id] = channel_lease
         success = False
         hardware_readback_ok = True
-        command_payload: dict[str, Any] | None = None
+        command_payload: dict[str, object] | None = None
         test_status = "pending"
-        verification_expected_value: Any | None = None
+        verification_expected_value: object | None = None
         command_ids: list[str] = []
         if skip_reason is not None:
             skipped += 1
             skip_reasons[skip_reason] += 1
             test_status = skip_reason
-            skip_command_payload = {
+            skip_command_payload: dict[str, object] = {
                 "toggle_mode": toggle_mode,
                 "signal_interval_ms": signal_interval_ms,
             }
@@ -1567,37 +1627,38 @@ async def _handle_test_run(
             )
         elif row is not None:
             unit_id = str(row.unit_id)
-            channel_index = int(row.channel_index)
+            channel_index = _required_int(row.channel_index, "row.channel_index")
             channel_type = str(row.channel_type or "").strip().lower()
             if channel_type.startswith("ao"):
                 random_value = round(random.uniform(0.0, 24.0), 2)
                 ao_correlation_id = f"test-run:{signal_id}:ao:{random_value}"
                 state_correlation_id = f"test-run:{signal_id}:state-float"
+                ao_commands: list[dict[str, object]] = [
+                    {
+                        "kind": "ao_set",
+                        "unit_id": unit_id,
+                        "channel_index": channel_index,
+                        "value": random_value,
+                        "correlation_id": ao_correlation_id,
+                    },
+                    {
+                        "kind": "request_state",
+                        "unit_id": unit_id,
+                        "channel_index": channel_index,
+                        "mode": "REQ_SINGLE_FLOAT",
+                        "correlation_id": state_correlation_id,
+                    },
+                ]
                 command_payload = {
                     "toggle_mode": "ao_random",
                     "signal_interval_ms": signal_interval_ms,
                     "expected_feedback_value": random_value,
-                    "commands": [
-                        {
-                            "kind": "ao_set",
-                            "unit_id": unit_id,
-                            "channel_index": channel_index,
-                            "value": random_value,
-                            "correlation_id": ao_correlation_id,
-                        },
-                        {
-                            "kind": "request_state",
-                            "unit_id": unit_id,
-                            "channel_index": channel_index,
-                            "mode": "REQ_SINGLE_FLOAT",
-                            "correlation_id": state_correlation_id,
-                        },
-                    ],
+                    "commands": ao_commands,
                 }
                 ao_command_id = await enqueue_durable_command(
                     action="ao_set",
-                    channel_id=int(row.channel_id),
-                    device_id=int(row.device_id) if row.device_id is not None else None,
+                    channel_id=_required_int(row.channel_id, "row.channel_id"),
+                    device_id=_required_int(row.device_id, "row.device_id"),
                     unit_id=unit_id,
                     payload={
                         "channel_index": channel_index,
@@ -1612,7 +1673,7 @@ async def _handle_test_run(
                         command_id=command_id,
                     ),
                 )
-                command_payload["commands"][0]["command_id"] = ao_command_id
+                ao_commands[0]["command_id"] = ao_command_id
                 command_ids.append(ao_command_id)
                 verification_expected_value = random_value
                 ao_readback_ok = False
@@ -1641,11 +1702,13 @@ async def _handle_test_run(
                     hardware_readback_ok = False
             else:
                 bitmask = await get_unit_bitmask(unit_id)
+                if bitmask is None:
+                    raise RuntimeError(f"Initial bitmask is unavailable for unit {unit_id}")
                 current_value = 1 if (bitmask & (1 << channel_index)) else 0
                 toggled_value = 0 if current_value else 1
                 readback_timeout_ms = min(2000, max(250, verification_timeout_ms))
                 set_correlation_id = f"test-run:{signal_id}:set:{toggled_value}"
-                commands_payload: list[dict[str, Any]] = [
+                commands_payload: list[dict[str, object]] = [
                     {
                         "kind": "do_set",
                         "unit_id": unit_id,
@@ -1656,8 +1719,8 @@ async def _handle_test_run(
                 ]
                 set_command_id = await enqueue_durable_command(
                     action="do_set",
-                    channel_id=int(row.channel_id),
-                    device_id=int(row.device_id) if row.device_id is not None else None,
+                    channel_id=_required_int(row.channel_id, "row.channel_id"),
+                    device_id=_required_int(row.device_id, "row.device_id"),
                     unit_id=unit_id,
                     payload={
                         "channel_index": channel_index,
@@ -1724,8 +1787,8 @@ async def _handle_test_run(
                     )
                     restore_command_id = await enqueue_durable_command(
                         action="restore",
-                        channel_id=int(row.channel_id),
-                        device_id=int(row.device_id) if row.device_id is not None else None,
+                        channel_id=_required_int(row.channel_id, "row.channel_id"),
+                        device_id=_required_int(row.device_id, "row.device_id"),
                         unit_id=unit_id,
                         payload={
                             "channel_index": channel_index,
@@ -1796,7 +1859,7 @@ async def _handle_test_run(
                     "commands": commands_payload,
                 }
                 verification_expected_value = command_payload["expected_feedback_value"]
-                await enqueue_request_state(
+                _ = await enqueue_request_state(
                     unit_id=unit_id,
                     mode=State.REQ_SINGLE_BIT,
                     ch=channel_index,
@@ -1807,8 +1870,7 @@ async def _handle_test_run(
                 command_ids=command_ids,
                 timeout_ms=min(10000, max(1000, verification_timeout_ms)),
             )
-            if command_payload is not None:
-                command_payload["ack_states"] = ack_states
+            command_payload["ack_states"] = ack_states
             success = bool(command_ids) and all(
                 state == "acknowledged" for state in ack_states.values()
             ) and hardware_readback_ok
@@ -1819,15 +1881,12 @@ async def _handle_test_run(
                     await mark_hardware_command_intent_completed(repo.db, command_id=command_id)
                 await repo.db.commit()
 
-            verification_capture = None
             if (
                 success
                 and verification_orchestrator is not None
                 and verification_local_orchestration_id is not None
                 and signal_id in verification_signal_id_set
             ):
-                if command_payload is None:
-                    command_payload = {}
                 verification_triggered_at = datetime.now(timezone.utc)
                 try:
                     capture_cancel_event = threading.Event()
@@ -1847,8 +1906,10 @@ async def _handle_test_run(
                     except asyncio.CancelledError:
                         capture_cancel_event.set()
                         with suppress(asyncio.CancelledError, Exception):
-                            await asyncio.wait_for(asyncio.shield(capture_task), timeout=1.0)
+                            _ = await asyncio.wait_for(asyncio.shield(capture_task), timeout=1.0)
                         raise
+                    if verification_capture is None:
+                        raise RuntimeError("Verification capture returned no result")
                     await record_verification_evidence(verification_capture)
                     command_payload["iec61850_verification"] = {
                         "source": "worker_runtime_orchestration",
@@ -1886,9 +1947,9 @@ async def _handle_test_run(
                     }
 
         if channel_lease is not None:
-            await hardware_admission.release(channel_lease)
+            _ = await hardware_admission.release(channel_lease)
             if active_hardware_leases is not None:
-                active_hardware_leases.pop(channel_lease.lease_id, None)
+                _ = active_hardware_leases.pop(channel_lease.lease_id, None)
             channel_lease = None
 
         if success:
@@ -1926,7 +1987,8 @@ async def _handle_test_run(
         elif row is not None and command_payload:
             failure_state = (
                 "hardware_command_ack_timeout"
-                if command_payload.get("ack_states") and "timeout" in command_payload["ack_states"].values()
+                if command_payload.get("ack_states")
+                and "timeout" in cast(dict[str, str], command_payload["ack_states"]).values()
                 else "hardware_command_negative_ack"
                 if command_payload.get("ack_states")
                 else "iec61850_report_not_observed"
@@ -1956,7 +2018,7 @@ async def _handle_test_run(
         await maybe_refresh_ttl()
         if should_emit or (now - last_emit_at) >= 0.35:
             last_emit_at = now
-            result_payload: dict[str, Any] = {
+            progress_payload: dict[str, object] = {
                 "processed": progress_done_global,
                 "succeeded": resume_base_succeeded + len(succeeded_signal_ids),
                 "skipped": resume_base_skipped + skipped,
@@ -1973,7 +2035,7 @@ async def _handle_test_run(
                 "evidence_count": evidence_count,
                 **verification_result_payload(),
             }
-            result_payload["progress_cursor"] = {
+            progress_payload["progress_cursor"] = {
                 "phase": "running",
                 "index": progress_done_global,
                 "total": progress_total_global,
@@ -1983,14 +2045,14 @@ async def _handle_test_run(
                 "attempt_id": execution_attempt_id,
                 "attempt_no": execution_attempt_no,
             }
-            await attach_and_publish_tested_at_patch(result_payload)
+            await attach_and_publish_tested_at_patch(progress_payload)
             await persist_progress_cursor(phase="running", index=progress_done_global, signal_id=signal_id)
             await _publish_running_progress(
                 job_state=job_state,
                 progress_done=progress_done_global,
                 progress_total=progress_total_global,
                 message=f"Signals {progress_done_global}/{progress_total_global} · ok {resume_base_succeeded + len(succeeded_signal_ids)} · skip {resume_base_skipped + skipped}",
-                result=result_payload,
+                result=progress_payload,
             )
 
         if success and index < total:
@@ -2034,7 +2096,7 @@ async def _handle_test_run(
     await flush_tested_at_batch()
     await flush_verification_evidence_set()
     close_verification_orchestration()
-    result_payload: dict[str, Any] = {
+    result_payload: dict[str, object] = {
         "processed": min(progress_total_global, resume_offset + total),
         "succeeded": resume_base_succeeded + len(succeeded_signal_ids),
         "skipped": resume_base_skipped + skipped,
@@ -2071,7 +2133,7 @@ async def _handle_test_run(
     return result_payload
 
 
-async def _process_entries(redis, entries) -> None:
+async def _process_entries(redis: RedisStreamClient, entries: RedisStreamEntries) -> None:
     for entry_id, fields in entries:
         job_id: str | None = None
         workspace_id = 0
@@ -2083,9 +2145,9 @@ async def _process_entries(redis, entries) -> None:
         try:
             _, envelope = parse_signal_allocation_job_entry((entry_id, fields))
             job_id = str(envelope.get("job_id") or "").strip()
-            workspace_id = int(envelope.get("workspace_id"))
+            workspace_id = _required_int(envelope.get("workspace_id"), "workspace_id")
             operation = str(envelope.get("operation") or "").strip()
-            payload = envelope.get("payload") if isinstance(envelope.get("payload"), dict) else {}
+            payload = _metadata_dict(envelope.get("payload"))
 
             if not job_id or workspace_id <= 0:
                 should_ack = True
@@ -2097,7 +2159,7 @@ async def _process_entries(redis, entries) -> None:
             progress_total = len(_unique_positive_signal_ids(payload.get("signal_ids")))
             toggle_mode = str(payload.get("toggle_mode") or "single").strip().lower()
             try:
-                signal_interval_ms = int(payload.get("signal_interval_ms") or 1000)
+                signal_interval_ms = _optional_int(payload.get("signal_interval_ms"), 1000)
             except (TypeError, ValueError):
                 signal_interval_ms = 1000
             resume_requested = bool(payload.get("resume_from_cursor"))
@@ -2119,20 +2181,15 @@ async def _process_entries(redis, entries) -> None:
                 previous_attempt_id, previous_attempt_no = _extract_job_attempt_meta(job_state)
                 cursor_phase = ""
                 if isinstance(existing_cursor, dict):
-                    cursor_phase = str(existing_cursor.get("phase") or "").strip().lower()
+                    typed_cursor = cast(dict[str, object], existing_cursor)
+                    cursor_phase = str(typed_cursor.get("phase") or "").strip().lower()
                     if not previous_attempt_id:
-                        previous_attempt_id = str(existing_cursor.get("attempt_id") or "").strip() or None
+                        previous_attempt_id = str(typed_cursor.get("attempt_id") or "").strip() or None
                     if previous_attempt_no <= 0:
-                        try:
-                            previous_attempt_no = max(0, int(existing_cursor.get("attempt_no") or 0))
-                        except (TypeError, ValueError):
-                            previous_attempt_no = 0
+                        previous_attempt_no = max(0, _optional_int(typed_cursor.get("attempt_no")))
                 cursor_index_value = 0
                 if isinstance(existing_cursor, dict):
-                    try:
-                        cursor_index_value = max(0, int(existing_cursor.get("index") or 0))
-                    except (TypeError, ValueError):
-                        cursor_index_value = 0
+                    cursor_index_value = max(0, _optional_int(cast(dict[str, object], existing_cursor).get("index")))
                 has_prior_execution_evidence = bool(previous_attempt_id) or (
                     isinstance(existing_cursor, dict)
                     and (
@@ -2148,7 +2205,7 @@ async def _process_entries(redis, entries) -> None:
                             attempt_id=previous_attempt_id,
                         )
                         await recovery_session.commit()
-                    recovery_result: dict[str, Any] = {
+                        recovery_result: dict[str, object] = {
                         "recovery_policy": "fail_on_replay_after_started_attempt",
                         "recovery_reason": "replayed_pending_entry_after_started_attempt",
                         "resume_supported": True,
@@ -2198,7 +2255,7 @@ async def _process_entries(redis, entries) -> None:
             execution_attempt_id = uuid4().hex
             _, prev_attempt_no = _extract_job_attempt_meta(job_state)
             execution_attempt_no = max(1, prev_attempt_no + 1)
-            running_result: dict[str, Any] = {
+            running_result: dict[str, object] = {
                 "attempt_id": execution_attempt_id,
                 "attempt_no": execution_attempt_no,
                 "execution_lease_owner": execution_lease_owner,
@@ -2287,7 +2344,7 @@ async def _process_entries(redis, entries) -> None:
                 finally:
                     for hardware_lease in list(active_hardware_leases.values()):
                         try:
-                            await HardwareCommandAdmission(RedisManager.get_instance()).release(hardware_lease)
+                            _ = await HardwareCommandAdmission(RedisManager.get_instance()).release(hardware_lease)
                         except Exception:  # noqa: BLE001
                             logger.exception(
                                 "Failed to release hardware channel lease after test-run exception: %s",
@@ -2316,13 +2373,13 @@ async def _process_entries(redis, entries) -> None:
                 job_id,
                 status=terminal_status,
                 message=terminal_message,
-                progress_done=(result.get("processed", 0) if terminal_status == "cancelled" and isinstance(result, dict) else progress_total),
+                progress_done=(_optional_int(result.get("processed")) if terminal_status == "cancelled" else progress_total),
                 progress_total=progress_total,
                 result=result,
             )
             if completed_state:
                 await WsEventPublisher.publish(build_signal_job_event(completed_state))
-                result_payload = result if isinstance(result, dict) else {}
+                result_payload = result
                 duration_ms = int(((time.monotonic() - job_started_monotonic) * 1000)) if job_started_monotonic else 0
                 logger.info(
                     "✅ Signal test run job complete | workspace=%s job=%s status=%s duration=%sms processed=%s ok=%s skip=%s cancelled=%s resume_applied=%s resume_offset=%s reason=%s",
@@ -2335,7 +2392,7 @@ async def _process_entries(redis, entries) -> None:
                     result_payload.get("skipped", 0),
                     bool(result_payload.get("cancelled", False)),
                     bool(result_payload.get("resume_applied", False)),
-                    int(result_payload.get("resume_offset") or 0),
+                    _optional_int(result_payload.get("resume_offset")),
                     str(result_payload.get("cursor_reason") or "-"),
                 )
                 should_ack = True
@@ -2343,7 +2400,7 @@ async def _process_entries(redis, entries) -> None:
             # Cancellation is a BaseException on supported Python versions and does
             # not reach the generic failure handler. Reconcile durable intents, then
             # propagate cancellation so the stream entry remains pending for retry.
-            await _reconcile_unfinished_intents_after_runner_exit(
+            _ = await _reconcile_unfinished_intents_after_runner_exit(
                 job_id=job_id,
                 attempt_id=execution_attempt_id,
             )
@@ -2412,14 +2469,14 @@ async def _process_entries(redis, entries) -> None:
             if job_id and workspace_id > 0:
                 await release_signal_test_run_workspace_lock(workspace_id, job_id)
             if should_ack:
-                await redis.xack(STREAM_NAME, GROUP_NAME, entry_id)
+                _ = await redis.xack(STREAM_NAME, GROUP_NAME, entry_id)
             else:
                 logger.warning("⚠️ Leaving stream entry pending due to missing persisted terminal state: %s", entry_id)
 
 
 async def main() -> None:
     await RedisManager.start()
-    redis = RedisManager.get_instance()
+    redis = cast(SignalTestRunRedisClient, cast(object, RedisManager.get_instance()))
 
     heartbeat_task = start_worker_heartbeat("signal_test_run_runner")
     stop_event = asyncio.Event()
@@ -2448,7 +2505,7 @@ async def main() -> None:
             logger=logger,
         )
     finally:
-        heartbeat_task.cancel()
+        _ = heartbeat_task.cancel()
         with suppress(asyncio.CancelledError):
             await heartbeat_task
         await clear_worker_status("signal_test_run_runner")

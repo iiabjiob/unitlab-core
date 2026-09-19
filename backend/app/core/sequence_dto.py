@@ -4,7 +4,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import cast
 
 
 class SequenceCommandType(str, Enum):
@@ -16,14 +16,14 @@ class SequenceCommandType(str, Enum):
 class SequenceCommand:
     type: SequenceCommandType
     sequence_id: int
-    run_id: Optional[int] = None
-    requested_by: Optional[str] = None
+    run_id: int | None = None
+    requested_by: str | None = None
     request_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     enqueued_at_ms: int = field(default_factory=lambda: int(time.time() * 1000))
-    extra: Dict[str, Any] = field(default_factory=dict)
+    extra: dict[str, object] = field(default_factory=dict)
     attempts: int = 0
 
-    def to_payload(self) -> Dict[str, Any]:
+    def to_payload(self) -> dict[str, object]:
         return {
             "type": self.type.value,
             "sequence_id": self.sequence_id,
@@ -36,22 +36,22 @@ class SequenceCommand:
         }
 
     @staticmethod
-    def from_payload(payload: Dict[str, Any]) -> "SequenceCommand":
+    def from_payload(payload: dict[str, object]) -> "SequenceCommand":
         sequence_id = payload.get("sequence_id")
         if sequence_id is None:
             raise ValueError("sequence_id is required in sequence command payload")
         return SequenceCommand(
-            type=SequenceCommandType(payload["type"]),
-            sequence_id=int(sequence_id),
-            run_id=payload.get("run_id"),
-            requested_by=payload.get("requested_by"),
-            request_id=payload.get("request_id") or uuid.uuid4().hex,
-            enqueued_at_ms=int(payload.get("enqueued_at_ms", int(time.time() * 1000))),
-            extra=payload.get("extra") or {},
-            attempts=int(payload.get("attempts", 0) or 0),
+            type=SequenceCommandType(cast(str, payload["type"])),
+            sequence_id=int(cast(int | str | float, sequence_id)),
+            run_id=cast(int | None, payload.get("run_id")),
+            requested_by=cast(str | None, payload.get("requested_by")),
+            request_id=cast(str | None, payload.get("request_id")) or uuid.uuid4().hex,
+            enqueued_at_ms=int(cast(int | str | float, payload.get("enqueued_at_ms", int(time.time() * 1000)))),
+            extra=cast(dict[str, object], payload.get("extra") or {}),
+            attempts=int(cast(int | str | float, payload.get("attempts", 0) or 0)),
         )
 
-    def bumped_attempt(self, new_attempts: int, *, extra: Optional[Dict[str, Any]] = None) -> "SequenceCommand":
+    def bumped_attempt(self, new_attempts: int, *, extra: dict[str, object] | None = None) -> "SequenceCommand":
         payload_extra = dict(self.extra)
         if extra:
             payload_extra.update(extra)
@@ -82,10 +82,10 @@ class SequenceEvent:
     type: SequenceEventType
     sequence_id: int
     run_id: int
-    data: Dict[str, Any] = field(default_factory=dict)
+    data: dict[str, object] = field(default_factory=dict)
     emitted_at_ms: int = field(default_factory=lambda: int(time.time() * 1000))
 
-    def to_payload(self) -> Dict[str, Any]:
+    def to_payload(self) -> dict[str, object]:
         return {
             "type": self.type.value,
             "sequence_id": self.sequence_id,
@@ -95,11 +95,11 @@ class SequenceEvent:
         }
 
     @staticmethod
-    def from_payload(payload: Dict[str, Any]) -> "SequenceEvent":
+    def from_payload(payload: dict[str, object]) -> "SequenceEvent":
         return SequenceEvent(
-            type=SequenceEventType(payload["type"]),
-            sequence_id=int(payload["sequence_id"]),
-            run_id=int(payload["run_id"]),
-            data=payload.get("data") or {},
-            emitted_at_ms=int(payload.get("emitted_at_ms", int(time.time() * 1000))),
+            type=SequenceEventType(cast(str, payload["type"])),
+            sequence_id=int(cast(int | str | float, payload["sequence_id"])),
+            run_id=int(cast(int | str | float, payload["run_id"])),
+            data=cast(dict[str, object], payload.get("data") or {}),
+            emitted_at_ms=int(cast(int | str | float, payload.get("emitted_at_ms", int(time.time() * 1000)))),
         )

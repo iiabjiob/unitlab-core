@@ -1,3 +1,5 @@
+from typing import cast
+
 from app.infrastructure.protocol.packet_io import PacketParser
 from app.infrastructure.protocol.decode import sys as sys_decode
 from app.infrastructure.protocol.utils import fw_u16_to_str
@@ -58,21 +60,24 @@ async def handle_device_register(topic: str, payload: bytes, unit_id: str):
             logger.error(f"💥 DB error registering device '{unit_id}': {e}")
             return
 
-    if device is None:
-        return
-
     # enrich with Redis dynamic info
     redis_client = RedisManager.get_instance()
     await redis_client.set(f"device:{unit_id}:type", str(device.device_type or type_).strip().lower())
-    last_seen = await redis_client.get(f"device:{unit_id}:last_seen")
+    last_seen = cast(object, await redis_client.get(f"device:{unit_id}:last_seen"))
     status = "online" if last_seen else "offline"
 
-    payload = device.model_dump()
-    payload["status"] = status
-    payload["last_seen"] = int(last_seen) if last_seen else device.last_seen
-    payload["registered_at"] = device.registered_at
-    payload["created"] = created
-
-    event = DeviceRegisterEvent(**payload)
+    event = DeviceRegisterEvent(
+        unit_id=device.unit_id,
+        device_type=device.device_type,
+        num_channels=device.num_channels,
+        firmware_version=device.firmware_version,
+        name=device.name,
+        id=device.id,
+        status=status,
+        last_seen=int(cast(int | str | float, last_seen)) if last_seen else device.last_seen,
+        registered_at=device.registered_at,
+        channels=device.channels,
+        created=created,
+    )
 
     await WsEventPublisher.publish(event)
