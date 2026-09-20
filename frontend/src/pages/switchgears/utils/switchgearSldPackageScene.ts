@@ -156,7 +156,6 @@ export function buildSwitchgearSldPackageSceneModel(
       switchgears: switchgears.map(item => ({
         id: item.id,
         name: item.name,
-        type: item.switchgear_type,
       })),
       layoutById,
       labelOffsetById,

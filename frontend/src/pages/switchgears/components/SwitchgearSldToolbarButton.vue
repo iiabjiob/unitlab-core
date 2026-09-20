@@ -21,8 +21,9 @@ function mergeEventHandlers(first: unknown, second: unknown) {
 
 function getButtonAttrs(getTriggerProps: () => Record<string, unknown>) {
   const triggerProps = getTriggerProps()
+  const { title: _nativeTitle, ...buttonAttrs } = attrs
   return {
-    ...attrs,
+    ...buttonAttrs,
     ...triggerProps,
     onClick: mergeEventHandlers(attrs.onClick, triggerProps.onClick),
     onPointerdown: mergeEventHandlers(attrs.onPointerdown, triggerProps.onPointerdown),

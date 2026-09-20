@@ -691,10 +691,32 @@ Implemented 2026-09-19 - SLD switchgear selection:
 - SLD layout documents are persisted per workspace with revision checks; localStorage is used only to migrate existing layouts and keep a local recovery copy.
 - Rapid viewport and object manipulations are coalesced into the latest document before persistence, avoiding one network update per wheel tick or pointer move.
 - SLD entity z-index values are persisted with the workspace document; switchgear nodes start above static symbols, and layer controls use the diagram engine history.
+- Canvas selection resolves overlapping nodes, lines, static symbols, and text by their persisted z-index before starting an entity-specific interaction.
+- Layer ordering controls use stacked-layer arrows so Bring to front and Send to back are recognizable without relying on toolbar text.
 - Switchgear orientation is persisted per node and can be rotated in 90 degree steps from the SLD toolbar.
 - Magic grid snapping aligns switchgear, static symbols, and moved lines by their geometric centers, keeping line axes centered on square symbols.
 - Arrow lines use the same stroke color as regular lines; broken bindings keep their diagnostic color.
 - Clicking an arrow line returns focus to the SLD canvas so Delete and Backspace remove it like other diagram entities.
+- SLD now has separate Edit mode and Operate mode; Operate mode allows switchgear selection and control commands while blocking diagram geometry edits.
+- Selected object properties open from a compact contextual panel near the object, and the panel is hidden while the object is being moved.
+- Add-object controls are ordered line, text, ground, and transformer; magnetic snap and zoom live on the canvas, while the object browser is pinned to the toolbar's right edge.
+- Canvas snap uses a visible magnet emoji, and the contextual object panel includes explicit dark-theme styles for its controls and listbox.
+- Text editing is available in the first toolbar group, and the mode toggle uses open-lock and closed-lock emoji states.
+- The toolbar keeps the mode and first action group in the first column; only the action set wraps into additional rows. Select uses an arrow cursor icon.
+- Edit mode toolbar reserves only one button row; narrow layouts use horizontal scrolling instead of reserving a second row height.
+- The mode lock is the first toolbar button, while the Edit mode or Operate mode label is shown as a right-aligned badge.
+- Clear selection, duplicate, and delete are removed from the toolbar; fit-all is grouped with zoom in the lower-left canvas controls and uses a four-corners icon.
+- With magnetic snap enabled, line endpoint dragging attracts lines to horizontal or vertical angles within a five degree tolerance.
+- Line endpoint moves and 90 degree rotations use diagram history commands, so Undo and Redo restore their geometry correctly.
+- Expanded object properties use tooltip styling with a translucent surface and shadow so the panel reads as an overlay above the SLD.
+- Mixed selections of rotatable objects expose their shared rotation property in the contextual object panel; one rotation action applies to all selected nodes, lines, and static symbols.
+- SLD toolbar buttons pass their labels to the shared hover tooltip without also rendering the browser's duplicate native title tooltip.
+- Changing a switchgear type updates the node symbol in place, preserving the current SLD viewport and selection instead of remounting the canvas.
+- Switchgear operation controls remain available in Edit mode and are positioned in the canvas upper-right area while object properties open below the selected object.
+- Switchgear controls are fixed in the canvas upper-right area to the left of the magnetic snap button; Snap has distinct enabled and disabled states in both themes.
+- Operate mode uses the default cursor across the canvas and a pointer cursor only when hovering switchgear nodes.
+- The selected Edit/Operate mode is stored in per-user local settings per workspace; missing or invalid values default to Edit.
+- Canvas focus no longer adds a browser or custom outline after pointer clicks.
 - Imported SLD connections use `edges` as the canonical field; `lines` remains a legacy fallback so existing documents stay readable.
 - Line endpoint handles take pointer ownership before the canvas drag controller, so line selection follows the rendered path and endpoint editing remains available.
 - Undo and redo execute one engine history step and preserve element movement history, including custom line dragging.

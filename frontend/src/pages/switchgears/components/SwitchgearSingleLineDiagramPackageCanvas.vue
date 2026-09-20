@@ -7,11 +7,14 @@ import type { DiagramEdge } from "@affino/diagram-core"
 
 import SwitchgearControlToolbar from "./SwitchgearControlToolbar.vue"
 import SwitchgearSldPackageToolbar from "./SwitchgearSldPackageToolbar.vue"
+import SwitchgearSldSelectionPanel from "./SwitchgearSldSelectionPanel.vue"
+import SldToolbarButton from "./SwitchgearSldToolbarButton.vue"
 import SwitchgearSldObjectBrowser from "./SwitchgearSldObjectBrowser.vue"
 import ConfirmModal from "@/components/ui/ConfirmModal.vue"
 import { useToastStore } from "@/stores/toastStore"
 import { useSelectionStore } from "@/stores/selectionStore"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
+import { localSettingsKeys, readLocalSetting, writeLocalSetting } from "@/services/localSettingsStorage"
 
 import type { SwitchgearType } from "@/types/switchgear"
 import type { DiagramStaticKind, DiagramStaticSize, StoredDiagramState } from "../utils/switchgearSldDiagramTypes"
@@ -25,6 +28,7 @@ const NUDGE_LARGE_STEP = GRID_STEP * 4
 const DIAGRAM_CLIPBOARD_KIND = "unitlab.switchgear-sld-selection"
 const DEFAULT_TEXT_LABEL = "TEXT"
 const EDGE_PORT_SNAP_RADIUS = 18
+const ORTHOGONAL_SNAP_TOLERANCE_DEG = 5
 const PERSIST_DEBOUNCE_MS = 500
 const MINIMAP_WIDTH = 180
 const MINIMAP_HEIGHT = 124
@@ -45,6 +49,7 @@ const STATIC_DIMENSIONS: Record<DiagramStaticKind, Record<DiagramStaticSize, { w
 }
 
 type PackageTool = "select" | "pan" | "line"
+type SldWorkMode = "edit" | "operate"
 type EdgeStyle = "line" | "arrow"
 type EdgeWeight = "normal" | "bold"
 type DraftEndpoint = {
@@ -195,7 +200,39 @@ const pointer = useDiagramPointerController(diagram, {
 })
 const textEditor = useDiagramTextEditor(diagram, { viewport: viewport.viewport })
 
+watch(
+  () => props.model.scene.nodes.map(node => `${node.id}:${String(node.metadata?.switchgearType ?? "")}`).join("|"),
+  () => {
+    const nextTypes = new Map(props.model.scene.nodes.map(node => [node.id, node.metadata?.switchgearType]))
+    const current = diagram.engine.serialize()
+    let changed = false
+    const nodes = current.nodes.map(node => {
+      const nextType = nextTypes.get(node.id)
+      if (nextType === undefined || node.metadata?.switchgearType === nextType) {
+        return node
+      }
+      changed = true
+      return {
+        ...node,
+        metadata: {
+          ...node.metadata,
+          switchgearType: nextType,
+        },
+      }
+    })
+    if (changed) {
+      diagram.engine.transact(() => ({ ...current, nodes }))
+    }
+  },
+)
+
 const activeTool = ref<PackageTool>("select")
+const editMode = ref(readLocalSetting<SldWorkMode>(
+  localSettingsKeys.switchgearDiagramMode(props.workspaceId),
+  "edit",
+  { validate: (value) => value === "edit" || value === "operate" ? value : null },
+) === "edit")
+const selectionPanelExpanded = ref(false)
 const svgPointerProps = pointer.getSvgPointerProps()
 const renderedViewport = computed(() => {
   const current = viewport.viewport.value
@@ -230,6 +267,7 @@ const zoomLabel = computed(() => `${Math.round((viewport.viewport.value.zoom > 0
 const snapEnabled = computed(() => lastStoredState.value?.snapEnabled !== false)
 const toolbarActions = {
   setTool,
+  toggleEditMode: toggleEditMode,
   setLineKind: (kind: EdgeStyle) => activeTool.value === "line" ? lineKind.value = kind : setSelectedEdgesKind(kind),
   setLineWeight: (weight: EdgeWeight) => activeTool.value === "line" ? lineWeight.value = weight : setSelectedEdgesWeight(weight),
   rotateEdges: rotateSelectedEdges90,
@@ -269,10 +307,48 @@ const toolbarActions = {
   delete: deleteSelection,
   toggleObjectBrowser: () => { objectBrowserOpen.value = !objectBrowserOpen.value },
 }
+const selectionPanelActions = {
+  setSwitchgearType: toolbarActions.setSwitchgearType,
+  rotateSwitchgear: toolbarActions.rotateSwitchgear,
+  setLineKind: setSelectedEdgesKind,
+  setLineWeight: setSelectedEdgesWeight,
+  rotateEdges: rotateSelectedEdges90,
+  setStaticSize: setSelectedStaticSize,
+  rotateStatic: rotateSelectedStatic,
+  rotateSelection: rotateSelectedObjects90,
+  editText: toolbarActions.editText,
+  toggleExpanded: () => { selectionPanelExpanded.value = !selectionPanelExpanded.value },
+}
 const selectedShapeIds = computed(() => selection.selection.value.ids.filter(id => diagram.scene.value.entities.shapesById.has(id)))
 const selectedEdgeIds = computed(() => selection.selection.value.ids.filter(id => diagram.scene.value.entities.edgesById.has(id)))
 const selectedNodeIds = computed(() => selection.selection.value.ids.filter(id => diagram.scene.value.entities.nodesById.has(id)))
 const selectedTextIds = computed(() => selection.selection.value.ids.filter(id => diagram.scene.value.entities.textsById.has(id)))
+const selectionPanelKind = computed<"node" | "edge" | "static" | "text" | "common" | null>(() => {
+  const selectedIds = selection.selection.value.ids
+  const selectedRotatableCount = selectedNodeIds.value.length + selectedEdgeIds.value.length + selectedShapeIds.value.length
+  const hasMixedRotatableSelection = selectedIds.length > 1
+    && selectedRotatableCount === selectedIds.length
+    && [selectedNodeIds.value.length, selectedEdgeIds.value.length, selectedShapeIds.value.length].filter(Boolean).length > 1
+  if (hasMixedRotatableSelection || (selectedNodeIds.value.length > 1 && selectedRotatableCount === selectedIds.length)) return "common"
+  if (selectedNodeIds.value.length === 1 && selection.selection.value.ids.length === 1) return "node"
+  if (selectedEdgeIds.value.length > 0 && selectedNodeIds.value.length === 0 && selectedShapeIds.value.length === 0 && selectedTextIds.value.length === 0) return "edge"
+  if (selectedShapeIds.value.length > 0 && selectedNodeIds.value.length === 0 && selectedEdgeIds.value.length === 0 && selectedTextIds.value.length === 0) return "static"
+  if (selectedTextIds.value.length === 1 && selection.selection.value.ids.length === 1) return "text"
+  return null
+})
+const selectionPanelStyle = computed(() => {
+  const id = selection.selection.value.primaryId
+  const geometry = id ? diagram.engine.getGeometrySnapshot(id) : null
+  const current = viewport.viewport.value
+  if (!geometry || current.zoom <= 0) {
+    return undefined
+  }
+  const centerX = geometry.bounds.x + geometry.bounds.width / 2
+  return {
+    left: `${(centerX - current.x) * current.zoom}px`,
+    top: `${(geometry.bounds.y + geometry.bounds.height - current.y) * current.zoom + 10}px`,
+  }
+})
 const selectedStaticCount = computed(() => selectedShapeIds.value.length)
 const selectedEdgeCount = computed(() => selectedEdgeIds.value.length)
 const selectedNodeCount = computed(() => selectedNodeIds.value.length)
@@ -327,6 +403,11 @@ watch(singleSelectedSwitchgearId, (id) => {
     selectionStore.selectSwitchgear(id)
   }
 })
+
+watch(
+  () => selection.selection.value.ids.join(","),
+  () => { selectionPanelExpanded.value = false },
+)
 const selectedStaticSize = computed<DiagramStaticSize | "mixed" | null>(() => {
   if (selectedShapeIds.value.length === 0) {
     return null
@@ -768,6 +849,25 @@ function setTool(tool: PackageTool) {
   focusStage()
 }
 
+function toggleEditMode() {
+  editMode.value = !editMode.value
+  writeLocalSetting(
+    localSettingsKeys.switchgearDiagramMode(props.workspaceId),
+    editMode.value ? "edit" : "operate",
+  )
+  activeTool.value = "select"
+  draftLine.value = null
+  draggedEdge.value = null
+  movedEdges.value = null
+  labelDrag.value = null
+  selectionDragSnap.value = null
+  objectBrowserOpen.value = false
+  pointer.setTool("select")
+  selection.clearSelection()
+  closeContextMenu()
+  focusStage()
+}
+
 function fitScene() {
   closeContextMenu()
   const currentViewport = viewport.viewport.value
@@ -857,6 +957,13 @@ function zoomBy(delta: number) {
   focusStage()
 }
 
+function resetZoom() {
+  closeContextMenu()
+  const current = viewport.viewport.value
+  viewport.setViewport(withZoomedWorldExtent(current, zoomViewportCentered(current, 1), 1))
+  focusStage()
+}
+
 function withZoomedWorldExtent(current: typeof viewport.viewport.value, next: typeof viewport.viewport.value, nextZoom: number) {
   const screenWidth = current.width * (current.zoom > 0 ? current.zoom : 1)
   const screenHeight = current.height * (current.zoom > 0 ? current.zoom : 1)
@@ -881,6 +988,9 @@ function redo() {
 }
 
 function deleteSelection() {
+  if (!editMode.value) {
+    return
+  }
   closeContextMenu()
   const switchgearIds = [...new Set(
     selectedNodeIds.value
@@ -956,6 +1066,26 @@ function closeContextMenu() {
   contextMenu.value = null
 }
 
+function hitTestCanvasEntity(point: { x: number; y: number }, radius: number) {
+  const candidates = (["node", "edge", "shape", "text"] as const)
+    .map((kind) => diagram.engine.hitTest(point, { radius, kinds: [kind] }))
+    .filter((hit): hit is NonNullable<typeof hit> => Boolean(hit))
+
+  return candidates.sort((left, right) => {
+    const getMetadata = (hit: NonNullable<typeof candidates[number]>) => {
+      if (hit.kind === "node") return diagram.scene.value.entities.nodesById.get(hit.id)?.metadata
+      if (hit.kind === "edge") return diagram.scene.value.entities.edgesById.get(hit.id)?.metadata
+      if (hit.kind === "shape") return diagram.scene.value.entities.shapesById.get(hit.id)?.metadata
+      return diagram.scene.value.entities.textsById.get(hit.id)?.metadata
+    }
+    const leftMetadata = getMetadata(left)
+    const rightMetadata = getMetadata(right)
+    const leftZIndex = typeof leftMetadata?.zIndex === "number" ? leftMetadata.zIndex : 0
+    const rightZIndex = typeof rightMetadata?.zIndex === "number" ? rightMetadata.zIndex : 0
+    return rightZIndex - leftZIndex || left.distance - right.distance
+  })[0] ?? null
+}
+
 function openContextMenu(event: MouseEvent, kind: ContextMenuState["kind"], nodeId?: string) {
   const stage = stageRef.value
   if (!stage) {
@@ -972,7 +1102,7 @@ function openContextMenu(event: MouseEvent, kind: ContextMenuState["kind"], node
 
 function handleStagePointerDownCapture(event: PointerEvent) {
   const target = event.target as HTMLElement | null
-  if (target?.closest(".switchgear-sld-object-browser, .switchgear-sld-package-canvas__selected-controls, .switchgear-sld-package-canvas__context-menu, .switchgear-sld-package-canvas__minimap, .switchgear-sld-package-canvas__edge-handle")) {
+  if (target?.closest(".switchgear-sld-object-browser, .switchgear-sld-package-canvas__selected-controls, .switchgear-sld-selection-panel, .switchgear-sld-package-canvas__canvas-controls, .switchgear-sld-package-canvas__context-menu, .switchgear-sld-package-canvas__minimap, .switchgear-sld-package-canvas__edge-handle")) {
     return
   }
   if (target?.closest(".switchgear-sld-package-canvas__context-menu")) {
@@ -982,6 +1112,28 @@ function handleStagePointerDownCapture(event: PointerEvent) {
     closeContextMenu()
   }
   focusStage()
+  if (!editMode.value) {
+    const hit = diagram.engine.hitTest(mapPointerToWorld(event), {
+      radius: 2,
+      kinds: ["node"],
+    })
+    if (hit?.kind === "node") {
+      if (event.shiftKey || event.metaKey || event.ctrlKey) {
+        diagram.dispatch({
+          type: "setSelection",
+          selection: { ids: [hit.id], primaryId: hit.id },
+          mode: "toggle",
+        })
+      } else {
+        selection.setSelection([hit.id], hit.id)
+      }
+    } else {
+      selection.clearSelection()
+    }
+    event.preventDefault()
+    event.stopPropagation()
+    return
+  }
   if (activeTool.value === "pan") {
     const hit = diagram.engine.hitTest(mapPointerToWorld(event), { radius: 2 })
     if (hit && hit.kind !== "port") {
@@ -994,10 +1146,7 @@ function handleStagePointerDownCapture(event: PointerEvent) {
     return
   }
   const zoom = viewport.viewport.value.zoom > 0 ? viewport.viewport.value.zoom : 1
-  const hit = diagram.engine.hitTest(mapPointerToWorld(event), {
-    radius: EDGE_HIT_TOLERANCE_PX / zoom,
-    kinds: ["edge"],
-  })
+  const hit = hitTestCanvasEntity(mapPointerToWorld(event), EDGE_HIT_TOLERANCE_PX / zoom)
   if (!hit || hit.kind !== "edge") {
     return
   }
@@ -1686,19 +1835,23 @@ function setSelectedEdgesWeight(weight: EdgeWeight) {
   focusStage()
 }
 
-function rotateSelectedEdges90() {
-  if (selectedEdgeIds.value.length === 0) {
-    return
+function rotateEdges90(edgeIds: ReadonlyArray<string>, historyKey: string) {
+  if (edgeIds.length === 0) {
+    return false
   }
-  const hasBindings = selectedEdgeIds.value.some((id) => {
+  const hasBindings = edgeIds.some((id) => {
     const edge = diagram.scene.value.entities.edgesById.get(id)
     return Boolean(edge?.metadata?.startBinding || edge?.metadata?.endBinding)
   })
   if (hasBindings) {
     toastStore.info("Unbind selected lines before rotating them")
-    return
+    return false
   }
-  updateSelectedEdges((edge) => {
+  for (const edgeId of edgeIds) {
+    const edge = diagram.scene.value.entities.edgesById.get(edgeId)
+    if (!edge) {
+      continue
+    }
     const source = resolveEdgeEndpointPosition(edge.source)
     const target = resolveEdgeEndpointPosition(edge.target)
     const centerX = (source.x + target.x) / 2
@@ -1713,16 +1866,57 @@ function rotateSelectedEdges90() {
       x: Math.round(centerX - deltaY),
       y: Math.round(centerY + deltaX),
     }
-    return {
-      ...edge,
-      source: { kind: "point", point: nextSource },
-      target: { kind: "point", point: nextTarget },
-      metadata: {
-        ...edge.metadata,
-      },
-    }
-  })
+    diagram.dispatch({
+      type: "moveEdgeEndpoint",
+      id: edgeId,
+      endpoint: "source",
+      point: nextSource,
+      historyKey,
+    })
+    diagram.dispatch({
+      type: "moveEdgeEndpoint",
+      id: edgeId,
+      endpoint: "target",
+      point: nextTarget,
+      historyKey,
+    })
+  }
+  return true
+}
+
+function rotateSelectedEdges90() {
+  if (!rotateEdges90(selectedEdgeIds.value, "rotate-edges")) {
+    return
+  }
   focusStage()
+}
+
+function rotateSelectedObjects90() {
+  const selectedIds = selection.selection.value.ids
+  const nodeAndShapeEntries = [
+    ...selectedNodeIds.value.map((id) => {
+      const node = diagram.scene.value.entities.nodesById.get(id)
+      return node ? { id, rotation: ((Number(node.rotation ?? 0) + 90) % 360 + 360) % 360 } : null
+    }),
+    ...selectedShapeIds.value.map((id) => {
+      const shape = diagram.scene.value.entities.shapesById.get(id)
+      return shape ? { id, rotation: ((Number(shape.rotation ?? 0) + 90) % 360 + 360) % 360 } : null
+    }),
+  ].filter((entry): entry is { id: string; rotation: number } => Boolean(entry))
+  const hasEdges = selectedEdgeIds.value.length > 0
+  if (hasEdges && !rotateEdges90(selectedEdgeIds.value, "rotate-selection")) {
+    return
+  }
+  if (nodeAndShapeEntries.length > 0) {
+    diagram.dispatch({
+      type: "rotateEntities",
+      entries: nodeAndShapeEntries,
+      historyKey: "rotate-selection",
+    })
+  }
+  if (selectedIds.length > 0) {
+    focusStage()
+  }
 }
 
 function alignSelectedNodesLeft() {
@@ -1882,6 +2076,9 @@ function onStageKeydown(event: KeyboardEvent) {
   if (shouldIgnoreStageKeydown()) {
     return
   }
+  if (!editMode.value) {
+    return
+  }
   if (!event.metaKey && !event.ctrlKey && !event.altKey) {
     if (event.key.toLowerCase() === "v") {
       event.preventDefault()
@@ -2022,7 +2219,7 @@ function onSvgClick(event: MouseEvent) {
 }
 
 function onSvgDoubleClick(event: MouseEvent) {
-  if (activeTool.value !== "select") {
+  if (!editMode.value || activeTool.value !== "select") {
     return
   }
   const zoom = viewport.viewport.value.zoom > 0 ? viewport.viewport.value.zoom : 1
@@ -2249,6 +2446,25 @@ function addLine() {
 }
 
 function updateEdgeEndpoint(edgeId: string, endpoint: "source" | "target", draft: DraftEndpoint) {
+  const edge = diagram.scene.value.entities.edgesById.get(edgeId)
+  const point = draft.portId
+    ? diagram.scene.value.entities.portsById.get(draft.portId)
+    : null
+  const nextPoint = point ? { x: point.x, y: point.y } : draft.point
+  diagram.dispatch({
+    type: "moveEdgeEndpoint",
+    id: edgeId,
+    endpoint,
+    point: nextPoint,
+    historyKey: "move-edge-endpoint",
+  })
+
+  const previousBinding = edge?.metadata?.[endpoint === "source" ? "startBinding" : "endBinding"]
+  const nextBinding = draft.portId ? resolvePortBinding(draft.portId) : null
+  if (JSON.stringify(previousBinding ?? null) === JSON.stringify(nextBinding)) {
+    return
+  }
+
   diagram.engine.transact(() => {
     const serialized = diagram.engine.serialize()
     return {
@@ -2302,10 +2518,37 @@ function snapDraftEndpoint(point: { x: number; y: number }): DraftEndpoint {
 }
 
 function resolveConstrainedLinePoint(anchor: { x: number; y: number }, point: { x: number; y: number }, constrain: boolean) {
-  if (!constrain) {
+  const constrainedPoint = constrain
+    ? snapToEightDirections(anchor.x, anchor.y, point.x, point.y)
+    : point
+  return snapToOrthogonalLine(anchor, constrainedPoint)
+}
+
+function snapToOrthogonalLine(anchor: { x: number; y: number }, point: { x: number; y: number }) {
+  if (!snapEnabled.value) {
     return point
   }
-  return snapToEightDirections(anchor.x, anchor.y, point.x, point.y)
+  const dx = point.x - anchor.x
+  const dy = point.y - anchor.y
+  if (Math.hypot(dx, dy) < 0.0001) {
+    return point
+  }
+
+  const angle = Math.atan2(dy, dx)
+  const quarterTurn = Math.PI / 2
+  const nearestOrthogonal = Math.round(angle / quarterTurn) * quarterTurn
+  const angularDistance = Math.abs(Math.atan2(
+    Math.sin(angle - nearestOrthogonal),
+    Math.cos(angle - nearestOrthogonal),
+  ))
+  if (angularDistance > ORTHOGONAL_SNAP_TOLERANCE_DEG * Math.PI / 180) {
+    return point
+  }
+
+  const isHorizontal = Math.abs(Math.cos(nearestOrthogonal)) > 0.5
+  return isHorizontal
+    ? { x: point.x, y: anchor.y }
+    : { x: anchor.x, y: point.y }
 }
 
 function snapToEightDirections(anchorX: number, anchorY: number, targetX: number, targetY: number) {
@@ -2652,8 +2895,9 @@ function resolveTransformerCircleOffset(id: string): number {
 
 <template>
   <section class="switchgear-sld-package-canvas">
-    <SwitchgearSldPackageToolbar
-      :active-tool="activeTool"
+      <SwitchgearSldPackageToolbar
+        :active-tool="activeTool"
+        :edit-mode="editMode"
       :line-kind="lineKind"
       :line-weight="lineWeight"
       :selected-edge-count="selectedEdgeCount"
@@ -2678,7 +2922,7 @@ function resolveTransformerCircleOffset(id: string): number {
     <div
       ref="stageRef"
       class="switchgear-sld-package-canvas__stage"
-      :class="canvasCursorClass"
+        :class="[canvasCursorClass, { 'is-operator-mode': !editMode }]"
       tabindex="0"
       @keydown="onStageKeydown"
       @pointerdown.capture="handleStagePointerDownCapture"
@@ -2696,9 +2940,42 @@ function resolveTransformerCircleOffset(id: string): number {
         @delete="deleteSelection"
         @close="objectBrowserOpen = false"
       />
+      <div class="switchgear-sld-package-canvas__canvas-controls switchgear-sld-package-canvas__canvas-controls--top-right" @pointerdown.stop>
+        <SldToolbarButton
+          size="xs"
+          variant="toolbar"
+          :class="{ 'switchgear-sld-package-canvas__snap-toggle--active': snapEnabled }"
+          :aria-pressed="snapEnabled"
+          :title="snapEnabled ? 'Disable magnetic snap' : 'Enable magnetic snap'"
+          :aria-label="snapEnabled ? 'Disable magnetic snap' : 'Enable magnetic snap'"
+          @click="toolbarActions.toggleSnap"
+        >
+          <span aria-hidden="true">🧲</span>
+        </SldToolbarButton>
+      </div>
+      <div class="switchgear-sld-package-canvas__canvas-controls switchgear-sld-package-canvas__canvas-controls--bottom-left" @pointerdown.stop>
+        <SldToolbarButton size="xs" variant="toolbar" title="Fit all objects in view" aria-label="Fit all objects" @click="toolbarActions.fit">
+          <span aria-hidden="true">⛶</span>
+        </SldToolbarButton>
+        <SldToolbarButton size="xs" variant="toolbar" class="switchgear-sld-package-canvas__icon-action" title="Zoom out" aria-label="Zoom out" @click="toolbarActions.zoom(-0.1)">−</SldToolbarButton>
+        <span class="switchgear-sld-package-canvas__zoom-label" title="Double-click to reset zoom" @dblclick.stop.prevent="resetZoom">{{ zoomLabel }}</span>
+        <SldToolbarButton size="xs" variant="toolbar" class="switchgear-sld-package-canvas__icon-action" title="Zoom in" aria-label="Zoom in" @click="toolbarActions.zoom(0.1)">+</SldToolbarButton>
+      </div>
+      <SwitchgearSldSelectionPanel
+        v-if="editMode && selectionPanelKind && !pointer.state.value.active && !movedEdges && !draggedEdge && !labelDrag"
+        class="switchgear-sld-package-canvas__selection-panel-anchor"
+        :style="selectionPanelStyle"
+        :kind="selectionPanelKind"
+        :switchgear-type="selectedSwitchgearType"
+        :edge-kind="selectedEdgeKind"
+        :edge-weight="selectedEdgeWeight"
+        :static-size="selectedStaticSize"
+        :expanded="selectionPanelExpanded"
+        :actions="selectionPanelActions"
+      />
       <div
         v-if="singleSelectedSwitchgear"
-        class="switchgear-sld-package-canvas__selected-controls"
+        class="switchgear-sld-package-canvas__selected-controls switchgear-sld-package-canvas__selected-controls--canvas-fixed"
         @pointerdown.stop
       >
         <SwitchgearControlToolbar
@@ -2712,7 +2989,7 @@ function resolveTransformerCircleOffset(id: string): number {
         ref="svgRef"
         class="switchgear-sld-package-canvas__svg"
         :viewBox="`${viewportBox.x} ${viewportBox.y} ${viewportBox.width} ${viewportBox.height}`"
-        v-bind="activeTool === 'line' ? {} : svgPointerProps"
+        v-bind="editMode && activeTool !== 'line' ? svgPointerProps : {}"
         @click="onSvgClick"
         @dblclick="onSvgDoubleClick"
         @pointermove="onSvgPointerMove"
@@ -3310,13 +3587,69 @@ function resolveTransformerCircleOffset(id: string): number {
   cursor: grabbing;
 }
 
+.switchgear-sld-package-canvas__stage:focus,
 .switchgear-sld-package-canvas__stage:focus-visible {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-blue-500) 35%, transparent);
+  outline: none;
+  box-shadow: none;
 }
 
 .switchgear-sld-package-canvas__svg {
   touch-action: none;
   user-select: none;
+}
+
+.switchgear-sld-package-canvas__stage.is-operator-mode {
+  cursor: default;
+}
+
+.switchgear-sld-package-canvas__stage.is-operator-mode .switchgear-sld-package-canvas__svg,
+.switchgear-sld-package-canvas__stage.is-operator-mode .switchgear-sld-package-canvas__svg * {
+  cursor: default;
+}
+
+.switchgear-sld-package-canvas__stage.is-operator-mode .switchgear-sld-package-canvas__svg .switchgear-sld-package-canvas__node {
+  cursor: pointer;
+}
+
+.switchgear-sld-package-canvas__selection-panel-anchor {
+  position: absolute;
+  z-index: 12;
+  transform: translateX(-50%);
+}
+
+.switchgear-sld-package-canvas__canvas-controls {
+  position: absolute;
+  z-index: 13;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem;
+  border: 1px solid color-mix(in srgb, var(--color-neutral-300) 75%, transparent);
+  border-radius: var(--radius-xl);
+  background: color-mix(in srgb, var(--color-white) 92%, transparent);
+  box-shadow: 0 10px 24px rgb(var(--color-slate-900-rgb) / 0.14);
+  backdrop-filter: blur(10px);
+}
+
+.switchgear-sld-package-canvas__canvas-controls--top-right {
+  top: 0.75rem;
+  right: 0.75rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.switchgear-sld-package-canvas__canvas-controls--top-right :deep(.switchgear-sld-package-canvas__snap-toggle--active) {
+  border-color: var(--color-blue-300);
+  background: var(--color-blue-50);
+  color: var(--color-blue-800);
+}
+
+.switchgear-sld-package-canvas__canvas-controls--bottom-left {
+  bottom: 0.75rem;
+  left: 0.75rem;
 }
 
 .switchgear-sld-package-canvas__selected-controls {
@@ -3332,6 +3665,19 @@ function resolveTransformerCircleOffset(id: string): number {
   background: color-mix(in srgb, var(--color-white) 90%, transparent);
   box-shadow: 0 14px 30px rgb(var(--color-slate-900-rgb) / 0.14);
   backdrop-filter: blur(10px);
+}
+
+.switchgear-sld-package-canvas__selected-controls--anchored {
+  top: auto;
+  right: auto;
+  transform: translate(-50%, calc(-100% - 0.5rem));
+}
+
+.switchgear-sld-package-canvas__selected-controls--canvas-fixed {
+  top: 0.75rem;
+  right: 3.35rem;
+  left: auto;
+  transform: none;
 }
 
 .switchgear-sld-package-canvas__selected-controls :deep(.switchgear-control-toolbar__row),
@@ -3350,7 +3696,7 @@ function resolveTransformerCircleOffset(id: string): number {
 }
 
 @media (max-width: 960px) {
-  .switchgear-sld-package-canvas__selected-controls {
+  .switchgear-sld-package-canvas__selected-controls:not(.switchgear-sld-package-canvas__selected-controls--anchored):not(.switchgear-sld-package-canvas__selected-controls--canvas-fixed) {
     top: 3.625rem;
     right: 0.75rem;
     left: 0.75rem;
@@ -3487,6 +3833,24 @@ function resolveTransformerCircleOffset(id: string): number {
 :global(.dark .switchgear-sld-package-canvas__selected-controls) {
   border-color: color-mix(in srgb, var(--color-neutral-700) 88%, transparent);
   background: color-mix(in srgb, var(--color-neutral-950) 82%, transparent);
+}
+
+:global(.dark .switchgear-sld-package-canvas__canvas-controls) {
+  border-color: var(--color-neutral-700);
+  background: color-mix(in srgb, var(--color-neutral-900) 94%, transparent);
+}
+
+:global(.dark .switchgear-sld-package-canvas__canvas-controls--top-right) {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+:global(.dark .switchgear-sld-package-canvas__canvas-controls--top-right) :deep(.switchgear-sld-package-canvas__snap-toggle--active) {
+  border-color: var(--color-blue-500);
+  background: color-mix(in srgb, var(--color-blue-900) 75%, transparent);
+  color: var(--color-blue-100);
 }
 
 :global(.dark .switchgear-sld-package-canvas__stage) {
