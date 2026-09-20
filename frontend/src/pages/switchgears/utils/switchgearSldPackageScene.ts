@@ -240,10 +240,14 @@ export function serializeSwitchgearSldPackageScene(
       if (text.metadata?.entityType === "switchgear-label") {
         return []
       }
+      const fontSize = Number.isFinite(Number(text.fontSize)) ? Number(text.fontSize) : 12
+      const bold = text.metadata?.textBold === true
       return [{
         id: text.id,
         text: typeof text.text === "string" && text.text.trim() ? text.text.trim().slice(0, 80) : DEFAULT_TEXT_LABEL,
         size: "md",
+        ...(fontSize !== 12 ? { fontSize } : {}),
+        ...(bold ? { bold: true } : {}),
         x: Math.round(text.x),
         y: Math.round(text.y),
       } satisfies DiagramTextElement]
@@ -275,10 +279,11 @@ function createLooseText(element: DiagramTextElement, zIndex: number): DiagramTe
       TEXT_WIDTH_BY_SIZE[element.size],
       Math.min(288, Math.max(64, element.text.length * 8 + 24)),
     ),
-    height: TEXT_HEIGHT_BY_SIZE[element.size],
-    fontSize: 12,
+    height: Math.max(TEXT_HEIGHT_BY_SIZE[element.size], (element.fontSize ?? 12) * 1.2),
+    fontSize: element.fontSize ?? 12,
     metadata: {
       entityType: element.id.startsWith(GENERATED_IMPORT_LABEL_ID_PREFIX) ? "generated-label" : "text",
+      textBold: element.bold === true,
       zIndex,
     },
   }
@@ -322,6 +327,8 @@ function createDiagramEdge(
       entityType: "edge",
       edgeKind: edge.kind,
       edgeWeight: edge.weight ?? "normal",
+      edgeWidth: Number.isFinite(edge.width) ? edge.width : edge.weight === "bold" ? 3 : 2,
+      edgeStyle: edge.style ?? "solid",
       startBinding,
       endBinding,
       startBindingValid: !startBinding || Boolean(resolvePortBinding(startBinding, ports)),
@@ -354,6 +361,8 @@ function serializeEdge(
     y2: Math.round(end.point.y),
     kind: edge.metadata?.edgeKind === "arrow" ? "arrow" : "line",
     weight: edge.metadata?.edgeWeight === "bold" ? "bold" : "normal",
+    width: Number.isFinite(Number(edge.metadata?.edgeWidth)) ? Number(edge.metadata.edgeWidth) : undefined,
+    style: edge.metadata?.edgeStyle === "dashed" || edge.metadata?.edgeStyle === "dotted" ? edge.metadata.edgeStyle : "solid",
     startBinding: start.binding ?? asPortBinding(edge.metadata?.startBinding),
     endBinding: end.binding ?? asPortBinding(edge.metadata?.endBinding),
   }

@@ -7,6 +7,11 @@ import UiButton from "@/components/ui/UiButton.vue"
 defineOptions({ inheritAttrs: false })
 
 const attrs = useAttrs()
+const props = withDefaults(defineProps<{
+  tooltipPlacement?: "top" | "bottom" | "left" | "right"
+}>(), {
+  tooltipPlacement: "top",
+})
 const tooltipText = computed(() => typeof attrs.title === "string" ? attrs.title : "")
 const tooltipDisabled = computed(() => !tooltipText.value || attrs.disabled === true || attrs.disabled === "")
 
@@ -35,7 +40,7 @@ function getButtonAttrs(getTriggerProps: () => Record<string, unknown>) {
   <UiHoverTooltip
     :text="tooltipText"
     :disabled="tooltipDisabled"
-    placement="top"
+    :placement="props.tooltipPlacement"
     align="center"
     :suppress-open-on-click="true"
   >

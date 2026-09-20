@@ -19,6 +19,8 @@ export type DiagramEdge = {
   y2: number
   kind: "line" | "arrow"
   weight?: "normal" | "bold"
+  width?: number
+  style?: "solid" | "dashed" | "dotted"
   startBinding?: DiagramPortBinding | null
   endBinding?: DiagramPortBinding | null
 }
@@ -42,6 +44,8 @@ export type DiagramTextElement = {
   id: string
   text: string
   size: DiagramTextSize
+  fontSize?: number
+  bold?: boolean
   x: number
   y: number
 }

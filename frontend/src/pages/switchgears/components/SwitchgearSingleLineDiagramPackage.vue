@@ -10,6 +10,7 @@ import { generateSldFromScd } from "@/modules/scd-sld-core"
 import type { ScdDiagnostic } from "@/modules/scd-sld-core"
 import { localSettingsKeys, readLocalSetting, writeLocalSetting } from "@/services/localSettingsStorage"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
+import { useChannelStore } from "@/stores/channelStore"
 import { useToastStore } from "@/stores/toastStore"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 
@@ -21,7 +22,7 @@ import {
   buildSwitchgearSldPackageSceneModel,
   normalizeStoredDiagramState,
 } from "../utils/switchgearSldPackageScene"
-import type { DiagramNodeLayout, StoredDiagramState } from "../utils/switchgearSldDiagramTypes"
+import type { DiagramEdge, DiagramNodeLayout, StoredDiagramState } from "../utils/switchgearSldDiagramTypes"
 import {
   adaptSldDocumentToSwitchgearDiagram,
   buildSwitchgearCandidateDecisions,
@@ -32,6 +33,12 @@ import type {
   SwitchgearSldImportAdapterDiagnostic,
   SwitchgearSldImportAdapterResult,
 } from "../utils/switchgearSldImportAdapter"
+import {
+  createSwitchgearSldTransfer,
+  parseSwitchgearSldTransfer,
+  resolveImportedBindings,
+  type SwitchgearSldTransferPayload,
+} from "../utils/switchgearSldTransfer"
 
 const props = defineProps<{
   active?: boolean
@@ -55,11 +62,13 @@ type ScdImportPreview = {
 
 const workspaceStore = useWorkspaceStore()
 const switchgearStore = useSwitchgearStore()
+const channelStore = useChannelStore()
 const toastStore = useToastStore()
 const storedState = ref<StoredDiagramState | null>(null)
 const persistenceError = ref<string | null>(null)
 const backendRevision = ref(0)
 const scdFileInputRef = ref<HTMLInputElement | null>(null)
+const transferFileInputRef = ref<HTMLInputElement | null>(null)
 const scdImportBusy = ref(false)
 const scdImportApplyBusy = ref(false)
 const scdImportError = ref<string | null>(null)
@@ -68,6 +77,11 @@ const scdImportCreateCandidates = ref(false)
 const fitRequestKey = ref(0)
 const selectionRequestKey = ref(0)
 const requestedSelectionIds = ref<string[]>([])
+const transferImportBusy = ref(false)
+const transferImportApplyBusy = ref(false)
+const transferImportError = ref<string | null>(null)
+const transferImportPreview = ref<SwitchgearSldTransferPayload | null>(null)
+const canvasRef = ref<{ getTransferState: () => { state: StoredDiagramState; selectedIds: string[] } } | null>(null)
 
 const workspaceId = computed(() => workspaceStore.activeWorkspaceId)
 const storageKey = computed(() => (
@@ -82,6 +96,9 @@ const scdImportModalOpen = computed(() => (
   || scdImportApplyBusy.value
   || scdImportPreview.value !== null
   || scdImportError.value !== null
+))
+const transferImportModalOpen = computed(() => (
+  transferImportBusy.value || transferImportApplyBusy.value || transferImportPreview.value !== null || transferImportError.value !== null
 ))
 const scdImportSummary = computed(() => {
   const preview = scdImportPreview.value
@@ -143,7 +160,189 @@ watch(
 
 defineExpose({
   openScdFileDialog,
+  openSldImportDialog,
 })
+
+function openSldImportDialog() {
+  if (!workspaceId.value || transferImportBusy.value || transferImportApplyBusy.value) return
+  transferFileInputRef.value?.click()
+}
+
+function downloadJson(payload: unknown, filename: string) {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement("a")
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
+function exportSld(scope: "full" | "selection") {
+  const transfer = canvasRef.value?.getTransferState()
+  if (!transfer || !workspaceId.value) return
+  if (scope === "selection" && transfer.selectedIds.length === 0) {
+    toastStore.info("Select SLD objects to export")
+    return
+  }
+  const payload = createSwitchgearSldTransfer(
+    transfer.state,
+    {
+      switchgears: switchgearStore.switchgears,
+      channels: channelStore.channels,
+      resolveUnitId: channelStore.resolveUnitId,
+    },
+    scope === "selection" ? transfer.selectedIds : undefined,
+  )
+  downloadJson(payload, `${scope === "selection" ? "sld-selection" : "sld"}_${workspaceId.value}.json`)
+  toastStore.success(scope === "selection" ? "Selected SLD objects exported" : "SLD exported")
+}
+
+async function handleTransferFileSelected(event: Event) {
+  const input = event.target as HTMLInputElement | null
+  const file = input?.files?.[0] ?? null
+  if (input) input.value = ""
+  if (!file) return
+  transferImportBusy.value = true
+  transferImportError.value = null
+  transferImportPreview.value = null
+  try {
+    transferImportPreview.value = parseSwitchgearSldTransfer(JSON.parse(await file.text()))
+  } catch (error) {
+    transferImportError.value = error instanceof Error ? error.message : "Unable to read SLD transfer file"
+  } finally {
+    transferImportBusy.value = false
+  }
+}
+
+function closeTransferImport() {
+  if (transferImportBusy.value || transferImportApplyBusy.value) return
+  transferImportPreview.value = null
+  transferImportError.value = null
+}
+
+async function applyTransferImport() {
+  const payload = transferImportPreview.value
+  const workspace = workspaceId.value
+  const current = canvasRef.value?.getTransferState().state ?? storedState.value
+  if (!payload || !workspace || !current) return
+
+  transferImportApplyBusy.value = true
+  try {
+    await channelStore.ensureLoaded()
+    const usedNames = new Set(switchgearStore.switchgears.map(item => item.name.trim().toLowerCase()))
+    const switchgearIdMap = new Map<string, number>()
+    const importedNodeIds: string[] = []
+    let detachedBindingCount = 0
+    for (const item of payload.switchgears) {
+      const baseName = item.name.trim() || "Imported switchgear"
+      let name = baseName
+      let suffix = 2
+      while (usedNames.has(name.toLowerCase())) {
+        name = `${baseName} (${suffix++})`
+      }
+      usedNames.add(name.toLowerCase())
+      const resolved = resolveImportedBindings(item, channelStore.channels, channelStore.resolveUnitId)
+      detachedBindingCount += resolved.detachedRoles.length
+      const created = await switchgearStore.create({
+        name,
+        switchgear_type: item.switchgearType,
+        bindings: resolved.bindings,
+      })
+      switchgearIdMap.set(item.key, created.id)
+      importedNodeIds.push(`switchgear:${created.id}`)
+    }
+
+    const merged = mergeImportedDiagram(current, payload.diagram, switchgearIdMap)
+    const nextState: StoredDiagramState = {
+      ...current,
+      ...merged,
+      workspaceId: workspace,
+      viewState: current.viewState,
+    }
+    storedState.value = nextState
+    await persistDocument(nextState, "import")
+    requestedSelectionIds.value = importedNodeIds
+    selectionRequestKey.value += 1
+    closeTransferImport()
+    toastStore.success(`Imported ${payload.kind === "selection" ? "selected SLD objects" : "SLD"}${detachedBindingCount > 0 ? `; detached ${detachedBindingCount} unavailable binding${detachedBindingCount === 1 ? "" : "s"}` : ""}`)
+  } catch (error) {
+    transferImportError.value = error instanceof Error ? error.message : "Unable to apply SLD transfer"
+  } finally {
+    transferImportApplyBusy.value = false
+  }
+}
+
+function mergeImportedDiagram(current: StoredDiagramState, imported: StoredDiagramState, switchgearIdMap: ReadonlyMap<string, number>): StoredDiagramState {
+  const currentEdges = current.edges ?? current.lines ?? []
+  const importedEdges = imported.edges ?? imported.lines ?? []
+  const existingEdgeIds = new Set(currentEdges.map(item => item.id))
+  const existingStaticIds = new Set((current.staticElements ?? []).map(item => item.id))
+  const existingTextIds = new Set((current.textElements ?? []).map(item => item.id))
+  const edgeIdMap = new Map<string, string>()
+  const staticIdMap = new Map<string, string>()
+  const textIdMap = new Map<string, string>()
+  const uniqueId = (prefix: string, source: string, used: Set<string>) => {
+    let id = `${prefix}:${source}`
+    let index = 2
+    while (used.has(id)) id = `${prefix}:${source}:${index++}`
+    used.add(id)
+    return id
+  }
+  for (const edge of importedEdges) edgeIdMap.set(edge.id, uniqueId("sld-import-edge", edge.id, existingEdgeIds))
+  for (const item of imported.staticElements ?? []) staticIdMap.set(item.id, uniqueId("sld-import-static", item.id, existingStaticIds))
+  for (const item of imported.textElements ?? []) textIdMap.set(item.id, uniqueId("sld-import-text", item.id, existingTextIds))
+
+  const remapBinding = (binding: DiagramEdge["startBinding"]) => {
+    if (!binding) return null
+    if (binding.ownerType === "node") {
+      const target = switchgearIdMap.get(`switchgear:${binding.ownerId}`)
+      return target == null ? null : { ...binding, ownerId: target }
+    }
+    const target = staticIdMap.get(String(binding.ownerId))
+    return target == null ? null : { ...binding, ownerId: target }
+  }
+  const remappedEdges = importedEdges.map(edge => ({
+    ...edge,
+    id: edgeIdMap.get(edge.id) ?? edge.id,
+    startBinding: remapBinding(edge.startBinding),
+    endBinding: remapBinding(edge.endBinding),
+  }))
+  const remappedStatics = (imported.staticElements ?? []).map(item => ({ ...item, id: staticIdMap.get(item.id) ?? item.id }))
+  const remappedTexts = (imported.textElements ?? []).map(item => ({ ...item, id: textIdMap.get(item.id) ?? item.id }))
+  const remapRecord = (record: Record<string, number> | undefined) => Object.fromEntries(Object.entries(record ?? {}).flatMap(([id, value]) => {
+    if (id.startsWith("switchgear:")) {
+      const target = switchgearIdMap.get(id)
+      return target == null ? [] : [[`switchgear:${target}`, value]]
+    }
+    if (id.startsWith("static:")) {
+      const target = staticIdMap.get(id.slice("static:".length))
+      return target == null ? [] : [[`static:${target}`, value]]
+    }
+    return [[edgeIdMap.get(id) ?? textIdMap.get(id) ?? id, value]]
+  }))
+  const remapRotation = (record: StoredDiagramState["rotationById"]) => remapRecord(record)
+  const remappedLayout = Object.fromEntries(Object.entries(imported.layoutById ?? {}).flatMap(([id, layout]) => {
+    const target = switchgearIdMap.get(`switchgear:${id}`)
+    return target == null ? [] : [[String(target), layout]]
+  }))
+  const remappedLabels = Object.fromEntries(Object.entries(imported.labelOffsetById ?? {}).flatMap(([id, offset]) => {
+    const target = switchgearIdMap.get(`switchgear:${id}`)
+    return target == null ? [] : [[String(target), offset]]
+  }))
+  return {
+    layoutById: { ...(current.layoutById ?? {}), ...remappedLayout },
+    labelOffsetById: { ...(current.labelOffsetById ?? {}), ...remappedLabels },
+    zIndexById: { ...(current.zIndexById ?? {}), ...remapRecord(imported.zIndexById) },
+    rotationById: { ...(current.rotationById ?? {}), ...remapRotation(imported.rotationById) },
+    edges: [...currentEdges, ...remappedEdges],
+    lines: [...currentEdges, ...remappedEdges],
+    staticElements: [...(current.staticElements ?? []), ...remappedStatics],
+    textElements: [...(current.textElements ?? []), ...remappedTexts],
+  }
+}
 
 function openScdFileDialog() {
   if (!workspaceId.value || scdImportBusy.value) {
@@ -380,19 +579,21 @@ function persistDocument(state: StoredDiagramState, changeKind: "edit" | "import
       class="switchgear-sld-package__file-input"
       @change="handleScdFileSelected"
     >
+    <input
+      ref="transferFileInputRef"
+      type="file"
+      accept="application/json,.json"
+      class="switchgear-sld-package__file-input"
+      @change="handleTransferFileSelected"
+    >
     <WorkspacePlaceholder
       v-if="!workspaceId"
       tag="SLD"
       title="Select a workspace"
       description="Choose a workspace to compare and edit the package-based SLD projection."
     />
-    <WorkspacePlaceholder
-      v-else-if="switchgearStore.switchgears.length === 0"
-      tag="Single Line Diagram"
-      title="No switchgears yet"
-      description="Create switchgears from the sidebar or import an SCD overlay."
-    />
     <SwitchgearSingleLineDiagramPackageCanvas
+      ref="canvasRef"
       v-else-if="storageKey"
       :key="sceneModel.sceneKey"
       :model="sceneModel"
@@ -403,6 +604,8 @@ function persistDocument(state: StoredDiagramState, changeKind: "edit" | "import
       :selection-request-key="selectionRequestKey"
       :requested-selection-ids="requestedSelectionIds"
       :persist-document="persistDocument"
+      @export-sld="exportSld"
+      @import-sld="openSldImportDialog"
       @edit-switchgear-bindings="emit('editSwitchgearBindings', $event)"
     />
 
@@ -492,6 +695,29 @@ function persistDocument(state: StoredDiagramState, changeKind: "edit" | "import
         </UiButton>
         <UiButton variant="primary" :disabled="!canApplyScdImport || scdImportBusy || scdImportApplyBusy" @click="applyScdImportPreview">
           {{ scdImportApplyBusy ? 'Applying...' : scdImportApplyLabel }}
+        </UiButton>
+      </template>
+    </UiModal>
+
+    <UiModal
+      :open="transferImportModalOpen"
+      title="Import SLD"
+      max-width="lg"
+      :content-scroll="false"
+      @close="closeTransferImport"
+    >
+      <div class="switchgear-sld-package__import-review">
+        <div v-if="transferImportBusy" class="switchgear-sld-package__import-state">Reading SLD transfer...</div>
+        <div v-else-if="transferImportError" class="switchgear-sld-package__import-alert">{{ transferImportError }}</div>
+        <template v-else-if="transferImportPreview">
+          <p>This will add {{ transferImportPreview.switchgears.length }} switchgear records and {{ transferImportPreview.diagram.edges?.length ?? 0 }} lines to the current SLD.</p>
+          <p class="switchgear-sld-package__import-muted">Unavailable hardware channels will be detached automatically.</p>
+        </template>
+      </div>
+      <template #footer>
+        <UiButton variant="secondary" :disabled="transferImportBusy || transferImportApplyBusy" @click="closeTransferImport">Cancel</UiButton>
+        <UiButton variant="primary" :disabled="!transferImportPreview || transferImportBusy || transferImportApplyBusy" @click="applyTransferImport">
+          {{ transferImportApplyBusy ? 'Importing...' : 'Import' }}
         </UiButton>
       </template>
     </UiModal>

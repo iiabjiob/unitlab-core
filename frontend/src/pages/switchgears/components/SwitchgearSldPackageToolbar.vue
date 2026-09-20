@@ -56,6 +56,8 @@ const props = defineProps<{
     duplicate: () => void
     delete: () => void
     toggleObjectBrowser: () => void
+    exportSld: (scope: "full" | "selection") => void
+    importSld: () => void
   }
 }>()
 
@@ -103,8 +105,6 @@ function onAlignmentChange(value: string | number | null) {
       <div v-if="props.activeTool === 'line' || (props.selectedEdgeCount > 0 && !props.editMode)" class="switchgear-sld-package-canvas__tool-tabs" role="group" aria-label="Line style">
         <SldToolbarButton size="xs" variant="toolbar" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': (props.activeTool === 'line' ? props.lineKind : props.selectedEdgeKind) === 'line' }" :aria-pressed="(props.activeTool === 'line' ? props.lineKind : props.selectedEdgeKind) === 'line'" title="Plain line" aria-label="Plain line" @click="props.actions.setLineKind('line')">━</SldToolbarButton>
         <SldToolbarButton size="xs" variant="toolbar" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': (props.activeTool === 'line' ? props.lineKind : props.selectedEdgeKind) === 'arrow' }" :aria-pressed="(props.activeTool === 'line' ? props.lineKind : props.selectedEdgeKind) === 'arrow'" title="Arrow line" aria-label="Arrow line" @click="props.actions.setLineKind('arrow')">➞</SldToolbarButton>
-        <SldToolbarButton size="xs" variant="toolbar" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': (props.activeTool === 'line' ? props.lineWeight : props.selectedEdgeWeight) === 'normal' }" :aria-pressed="(props.activeTool === 'line' ? props.lineWeight : props.selectedEdgeWeight) === 'normal'" title="Normal line weight" aria-label="Normal line weight" @click="props.actions.setLineWeight('normal')">─</SldToolbarButton>
-        <SldToolbarButton size="xs" variant="toolbar" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': (props.activeTool === 'line' ? props.lineWeight : props.selectedEdgeWeight) === 'bold' }" :aria-pressed="(props.activeTool === 'line' ? props.lineWeight : props.selectedEdgeWeight) === 'bold'" title="Bold line weight" aria-label="Bold line weight" @click="props.actions.setLineWeight('bold')">━</SldToolbarButton>
         <SldToolbarButton v-if="props.selectedEdgeCount > 0" size="xs" variant="toolbar" title="Rotate selected lines 90 degrees" aria-label="Rotate selected lines" @click="props.actions.rotateEdges">↻</SldToolbarButton>
       </div>
       <span v-if="props.activeTool === 'line' || (props.selectedEdgeCount > 0 && !props.editMode)" class="switchgear-sld-package-canvas__toolbar-divider" role="separator" aria-orientation="vertical" />
@@ -153,6 +153,9 @@ function onAlignmentChange(value: string | number | null) {
       <SldToolbarButton size="xs" variant="toolbar" :disabled="!props.canRedo" title="Redo last change (Ctrl/Cmd+Shift+Z)" aria-label="Redo" @click="props.actions.redo">↷</SldToolbarButton>
       <span class="switchgear-sld-package-canvas__toolbar-divider" role="separator" aria-orientation="vertical" />
       <span class="switchgear-sld-package-canvas__toolbar-spacer" aria-hidden="true" />
+      <SldToolbarButton size="xs" variant="toolbar" title="Export SLD" aria-label="Export SLD" @click="props.actions.exportSld('full')">⇩</SldToolbarButton>
+      <SldToolbarButton size="xs" variant="toolbar" :disabled="props.selectionCount === 0" title="Export selected SLD objects" aria-label="Export selected SLD objects" @click="props.actions.exportSld('selection')">⇩*</SldToolbarButton>
+      <SldToolbarButton size="xs" variant="toolbar" title="Import SLD" aria-label="Import SLD" @click="props.actions.importSld">⇧</SldToolbarButton>
       <SldToolbarButton size="xs" variant="toolbar" :class="{ 'switchgear-sld-package-canvas__snap-toggle--active': props.objectBrowserOpen }" title="Show or hide objects" aria-label="Show or hide objects" :aria-pressed="props.objectBrowserOpen" @click="props.actions.toggleObjectBrowser">☷</SldToolbarButton>
     </div>
     <span class="switchgear-sld-package-canvas__mode-label">
@@ -409,28 +412,54 @@ function onAlignmentChange(value: string | number | null) {
 }
 
 :global(.dark) .switchgear-sld-package-canvas__mode-label {
-  border-color: var(--color-neutral-700);
-  background: var(--color-neutral-900);
-  color: var(--color-neutral-300);
+  border-color: var(--color-neutral-800);
+  background: var(--color-neutral-950);
+  color: var(--color-neutral-400);
 }
 
 :global(.dark) .switchgear-sld-package-canvas__mode-toggle.is-active {
-  border-color: var(--color-blue-500);
-  background: color-mix(in srgb, var(--color-blue-900) 75%, transparent);
-  color: var(--color-blue-100);
+  border-color: var(--color-neutral-600);
+  background: var(--color-neutral-800);
+  color: var(--color-neutral-100);
 }
 
 :global(.dark .switchgear-sld-package-canvas__mode-toggle.is-active) {
-  border-color: var(--color-blue-500) !important;
-  background: color-mix(in srgb, var(--color-blue-900) 75%, transparent) !important;
-  color: var(--color-blue-100) !important;
-  box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.24);
+  border-color: var(--color-neutral-700) !important;
+  background: var(--color-neutral-950) !important;
+  color: var(--color-neutral-200) !important;
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.5);
+}
+
+:global(html.dark) .switchgear-sld-package-canvas__tool-tab,
+:global(html.dark) .switchgear-sld-package-canvas__actions :deep(.btn-toolbar),
+:global(html.dark) .switchgear-sld-package-canvas__mode-toggle {
+  border-color: var(--color-neutral-700) !important;
+  background: var(--color-neutral-900) !important;
+  color: var(--color-neutral-200) !important;
+}
+
+:global(html.dark) .switchgear-sld-package-canvas__mode-toggle.is-active {
+  border-color: var(--color-neutral-700) !important;
+  background: var(--color-neutral-950) !important;
+  color: var(--color-neutral-200) !important;
+}
+
+:global(html.dark) .switchgear-sld-package-canvas__mode-label {
+  border-color: var(--color-neutral-800) !important;
+  background: var(--color-neutral-950) !important;
+  color: var(--color-neutral-300) !important;
+}
+
+:global(html.dark) .switchgear-sld-package-canvas__toolbar .switchgear-sld-package-canvas__mode-label {
+  border-color: rgb(63 63 70) !important;
+  background: rgb(24 24 27) !important;
+  color: rgb(212 212 216) !important;
 }
 
 :global(.dark .switchgear-sld-package-canvas__mode-toggle:not(.is-active)) {
-  border-color: var(--color-neutral-700);
-  background: var(--color-neutral-900);
-  color: var(--color-neutral-300);
+  border-color: var(--color-neutral-800);
+  background: var(--color-neutral-950);
+  color: var(--color-neutral-400);
   box-shadow: none;
 }
 
@@ -448,8 +477,7 @@ function onAlignmentChange(value: string | number | null) {
   color: var(--color-blue-100);
 }
 
-:global(.dark .switchgear-sld-package-canvas__actions .btn-toolbar.is-active),
-:global(.dark .switchgear-sld-package-canvas__mode-toggle.is-active) {
+:global(.dark .switchgear-sld-package-canvas__actions .btn-toolbar.is-active) {
   border-color: var(--color-blue-500) !important;
   background: color-mix(in srgb, var(--color-blue-900) 75%, transparent) !important;
   color: var(--color-blue-100) !important;
@@ -460,5 +488,11 @@ function onAlignmentChange(value: string | number | null) {
   border-color: var(--color-blue-400);
   background: var(--color-blue-800);
   color: var(--color-blue-50);
+}
+
+:global(.dark .switchgear-sld-package-canvas__mode-toggle.is-active:hover:not(:disabled)) {
+  border-color: var(--color-neutral-600);
+  background: var(--color-neutral-800) !important;
+  color: var(--color-neutral-50) !important;
 }
 </style>

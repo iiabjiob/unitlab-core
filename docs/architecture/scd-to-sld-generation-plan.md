@@ -714,7 +714,13 @@ Implemented 2026-09-19 - SLD switchgear selection:
 - Changing a switchgear type updates the node symbol in place, preserving the current SLD viewport and selection instead of remounting the canvas.
 - SLD switchgear symbols follow the reference visual language: breakers use state-filled square plates, disconnectors use terminal bars with closed/open/unknown states, and unknown/intermediate states remain explicit.
 - Switchgear nodes use an invisible hit area; their visible frame and fill belong to the breaker symbol itself, while earthing switches share the disconnector terminal symbol.
+- Switchgear with missing control bindings uses a gray dashed outline; configured switchgear whose hardware unit is offline uses a gray solid outline without changing symbol opacity.
+- SLD diagrams and selected SLD fragments can be exported as `unitlab.sld.transfer.v1` JSON files; imports add remapped diagram objects and switchgear records, resolve bindings by hardware `unit_id` plus channel index, and detach unavailable channels.
+- SLD control overlays show compact `Not configured` and `Offline` badges; dark mode uses neutral mode controls and a neutral charcoal diagram surface.
+- SLD contextual properties and dropdown surfaces use Affino overlay/menu behavior for positioning, focus, keyboard navigation, and outside-click handling; application code owns values and actions only.
+- Text objects persist font size (`10`–`144` px) and bold state; line objects persist point thickness and solid, dashed, or dotted stroke style.
 - Disconnector and earthing switch strokes use the same 2.5px visual weight as breaker outlines, with matching rounded line caps and joins.
+- Switchgear outlines become gray when either required DO output binding is missing, making incomplete operator configuration visible directly on the SLD.
 - Newly added ground symbols start rotated toward the right; their persisted rotation remains editable through the existing rotation control.
 - Switchgear operation controls remain available in Edit mode and are positioned in the canvas upper-right area while object properties open below the selected object.
 - Switchgear controls are fixed in the canvas upper-right area to the left of the magnetic snap button; Snap has distinct enabled and disabled states in both themes.

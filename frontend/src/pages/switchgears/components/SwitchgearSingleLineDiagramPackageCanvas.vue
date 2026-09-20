@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { useRouter } from "vue-router"
 import { screenToWorld, zoomViewportAt, zoomViewportCentered } from "@affino/diagram-core"
 import { getSvgEntityProps, useDiagramEngine, useDiagramPointerController, useDiagramSelection, useDiagramTextEditor, useDiagramViewport, useDiagramVisibleEntities } from "@affino/diagram-vue"
-import type { DiagramEdge } from "@affino/diagram-core"
+import type { DiagramEdge, DiagramText } from "@affino/diagram-core"
 
 import SwitchgearControlToolbar from "./SwitchgearControlToolbar.vue"
 import SwitchgearSldBreakerSymbol from "./SwitchgearSldBreakerSymbol.vue"
@@ -55,6 +55,7 @@ type PackageTool = "select" | "pan" | "line"
 type SldWorkMode = "edit" | "operate"
 type EdgeStyle = "line" | "arrow"
 type EdgeWeight = "normal" | "bold"
+type LineStyle = "solid" | "dashed" | "dotted"
 type DraftEndpoint = {
   point: { x: number; y: number }
   portId: string | null
@@ -98,6 +99,8 @@ type DiagramClipboardEdge = {
   y2: number
   kind: EdgeStyle
   weight?: EdgeWeight
+  width?: number
+  style?: LineStyle
 }
 type DiagramClipboardStaticElement = {
   kind: DiagramStaticKind
@@ -110,6 +113,8 @@ type DiagramClipboardTextElement = {
   text: string
   x: number
   y: number
+  fontSize?: number
+  bold?: boolean
 }
 type DiagramClipboardSelection = {
   edges: DiagramClipboardEdge[]
@@ -147,6 +152,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (event: "editSwitchgearBindings", id: number): void
+  (event: "exportSld", scope: "full" | "selection"): void
+  (event: "importSld"): void
 }>()
 
 const router = useRouter()
@@ -167,6 +174,8 @@ const selectionDragSnap = ref<SelectionDragSnapState | null>(null)
 const panObjectPointerId = ref<number | null>(null)
 const lineKind = ref<EdgeStyle>("line")
 const lineWeight = ref<EdgeWeight>("normal")
+const lineWidth = ref(2)
+const lineStyle = ref<LineStyle>("solid")
 const contextMenu = ref<ContextMenuState | null>(null)
 const switchgearDeleteConfirmOpen = ref(false)
 const pendingSwitchgearDeleteIds = ref<number[]>([])
@@ -273,6 +282,8 @@ const toolbarActions = {
   toggleEditMode: toggleEditMode,
   setLineKind: (kind: EdgeStyle) => activeTool.value === "line" ? lineKind.value = kind : setSelectedEdgesKind(kind),
   setLineWeight: (weight: EdgeWeight) => activeTool.value === "line" ? lineWeight.value = weight : setSelectedEdgesWeight(weight),
+  setLineWidth: (width: number) => activeTool.value === "line" ? lineWidth.value = width : setSelectedEdgesWidth(width),
+  setLineStyle: (style: LineStyle) => activeTool.value === "line" ? lineStyle.value = style : setSelectedEdgesStyle(style),
   rotateEdges: rotateSelectedEdges90,
   addStatic,
   addLine,
@@ -309,17 +320,23 @@ const toolbarActions = {
   duplicate: duplicateSelection,
   delete: deleteSelection,
   toggleObjectBrowser: () => { objectBrowserOpen.value = !objectBrowserOpen.value },
+  exportSld: (scope: "full" | "selection") => emit("exportSld", scope),
+  importSld: () => emit("importSld"),
 }
 const selectionPanelActions = {
   setSwitchgearType: toolbarActions.setSwitchgearType,
   rotateSwitchgear: toolbarActions.rotateSwitchgear,
   setLineKind: setSelectedEdgesKind,
   setLineWeight: setSelectedEdgesWeight,
+  setLineWidth: setSelectedEdgesWidth,
+  setLineStyle: setSelectedEdgesStyle,
   rotateEdges: rotateSelectedEdges90,
   setStaticSize: setSelectedStaticSize,
   rotateStatic: rotateSelectedStatic,
   rotateSelection: rotateSelectedObjects90,
   editText: toolbarActions.editText,
+  setTextFontSize: setSelectedTextFontSize,
+  toggleTextBold: toggleSelectedTextBold,
   toggleExpanded: () => { selectionPanelExpanded.value = !selectionPanelExpanded.value },
 }
 const selectedShapeIds = computed(() => selection.selection.value.ids.filter(id => diagram.scene.value.entities.shapesById.has(id)))
@@ -442,6 +459,26 @@ const selectedEdgeWeight = computed<EdgeWeight | "mixed" | null>(() => {
     weights.add(resolveEdgeWeightValue(id))
   }
   return weights.size === 1 ? [...weights][0] : "mixed"
+})
+const selectedEdgeWidth = computed<number | "mixed" | null>(() => {
+  if (selectedEdgeIds.value.length === 0) return null
+  const widths = new Set(selectedEdgeIds.value.map(resolveEdgeWidth))
+  return widths.size === 1 ? [...widths][0] : "mixed"
+})
+const selectedEdgeStyle = computed<LineStyle | "mixed" | null>(() => {
+  if (selectedEdgeIds.value.length === 0) return null
+  const styles = new Set(selectedEdgeIds.value.map(resolveEdgeStyle))
+  return styles.size === 1 ? [...styles][0] : "mixed"
+})
+const selectedTextFontSize = computed<number | "mixed" | null>(() => {
+  if (selectedTextIds.value.length === 0) return null
+  const sizes = new Set(selectedTextIds.value.map(resolveTextFontSize))
+  return sizes.size === 1 ? [...sizes][0] : "mixed"
+})
+const selectedTextBold = computed<boolean | "mixed" | null>(() => {
+  if (selectedTextIds.value.length === 0) return null
+  const values = new Set(selectedTextIds.value.map(resolveTextBold))
+  return values.size === 1 ? [...values][0] : "mixed"
 })
 const canUndo = computed(() => {
   void diagram.scene.value.revision
@@ -797,6 +834,22 @@ function persistedStateFingerprint(state: StoredDiagramState | null): string {
     viewState: state?.viewState ?? null,
   })
 }
+
+function getTransferState() {
+  return {
+    state: serializeSwitchgearSldPackageScene(diagram.engine.serialize(), {
+      workspaceId: props.workspaceId,
+      snapEnabled: snapEnabled.value,
+      labelOffsetById: lastStoredState.value?.labelOffsetById,
+      baseState: lastStoredState.value,
+    }),
+    selectedIds: [...selection.selection.value.ids],
+  }
+}
+
+defineExpose({
+  getTransferState,
+})
 
 function createEntityId(prefix: string) {
   entityIdSequence += 1
@@ -1548,6 +1601,8 @@ async function handleCopySelection() {
         y2: target.y,
         kind: resolveEdgeKind(id),
         weight: resolveEdgeWeightValue(id),
+        width: resolveEdgeWidth(id),
+        style: resolveEdgeStyle(id),
       }]
     }),
     staticElements: selectedShapeIds.value.flatMap((id) => {
@@ -1572,6 +1627,8 @@ async function handleCopySelection() {
         text: item.text,
         x: item.x,
         y: item.y,
+        fontSize: resolveTextFontSize(id),
+        bold: resolveTextBold(id),
       }]
     }),
   }
@@ -1628,6 +1685,8 @@ async function handlePasteSelection() {
       entityType: 'edge',
       edgeKind: edge.kind,
       edgeWeight: edge.weight === 'bold' ? 'bold' : 'normal',
+      edgeWidth: edge.width ?? (edge.weight === 'bold' ? 3 : 2),
+      edgeStyle: edge.style ?? 'solid',
       startBinding: null,
       endBinding: null,
     },
@@ -1661,10 +1720,10 @@ async function handlePasteSelection() {
       x: point.x,
       y: point.y,
       text: item.text,
-      width: Math.max(96, Math.min(288, item.text.length * 8 + 24)),
-      height: 28,
-      fontSize: 12,
-      metadata: { entityType: 'text' },
+      width: Math.max(96, Math.min(288, item.text.length * (item.fontSize ?? 12) * 0.6 + 24)),
+      height: Math.max(28, (item.fontSize ?? 12) * 1.2),
+      fontSize: item.fontSize ?? 12,
+      metadata: { entityType: 'text', textBold: item.bold === true },
     }
   })
   const selectionIds = [...edgeEntries.map(item => item.id), ...shapeEntries.map(item => item.id), ...textEntries.map(item => item.id)]
@@ -1704,7 +1763,7 @@ function addText() {
         width: 96,
         height: 28,
         fontSize: 12,
-        metadata: { entityType: "text" },
+        metadata: { entityType: "text", textBold: false },
       }],
       shapes: [],
       ports: [],
@@ -1839,6 +1898,55 @@ function setSelectedEdgesWeight(weight: EdgeWeight) {
       ...edge.metadata,
       edgeWeight: weight,
     },
+  }))
+  focusStage()
+}
+
+function setSelectedEdgesWidth(width: number) {
+  const nextWidth = Math.max(1, Math.min(16, Math.round(width)))
+  updateSelectedEdges((edge) => ({
+    ...edge,
+    metadata: { ...edge.metadata, edgeWidth: nextWidth },
+  }))
+  focusStage()
+}
+
+function setSelectedEdgesStyle(style: LineStyle) {
+  updateSelectedEdges((edge) => ({
+    ...edge,
+    metadata: { ...edge.metadata, edgeStyle: style },
+  }))
+  focusStage()
+}
+
+function updateSelectedTexts(update: (text: DiagramText) => DiagramText) {
+  if (selectedTextIds.value.length === 0) return
+  const selectedIds = new Set(selectedTextIds.value)
+  diagram.engine.transact(() => {
+    const serialized = diagram.engine.serialize()
+    return {
+      ...serialized,
+      texts: serialized.texts.map(text => selectedIds.has(text.id) ? update(text) : text),
+    }
+  })
+}
+
+function setSelectedTextFontSize(size: number) {
+  const nextSize = [10, 12, 14, 18, 24, 36, 48, 64, 72, 96, 144].includes(size) ? size : 12
+  updateSelectedTexts((text) => ({
+    ...text,
+    fontSize: nextSize,
+    height: Math.max(28, nextSize * 1.2),
+    width: Math.max(96, Math.min(288, text.text.length * nextSize * 0.6 + 24)),
+  }))
+  focusStage()
+}
+
+function toggleSelectedTextBold() {
+  const next = selectedTextBold.value === true ? false : true
+  updateSelectedTexts((text) => ({
+    ...text,
+    metadata: { ...text.metadata, textBold: next },
   }))
   focusStage()
 }
@@ -2437,6 +2545,8 @@ function createLine(start: DraftEndpoint, end: DraftEndpoint) {
         entityType: "edge",
         edgeKind: lineKind.value,
         edgeWeight: lineWeight.value,
+        edgeWidth: lineWidth.value,
+        edgeStyle: lineStyle.value,
       },
     },
     historyKey: "create-edge",
@@ -2627,8 +2737,11 @@ function clampZoom(value: number) {
 
 function mapPointerToWorld(event: PointerEvent) {
   const current = viewport.viewport.value
+  const pointerSnapshot = pointer.state.value
+  const panGestureActive = activeTool.value === "pan"
+    || (pointerSnapshot.active && pointerSnapshot.tool === "pan")
   const svg = svgRef.value
-  if (svg) {
+  if (svg && !panGestureActive) {
     const matrix = svg.getScreenCTM()
     if (matrix) {
       const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse())
@@ -2799,9 +2912,24 @@ function resolveSwitchgearState(id: string) {
 }
 
 function resolveNodeStroke(id: string, selected: boolean) {
+  if (!isSwitchgearConfigured(id) || isNodeOffline(id)) return "var(--sld-node-stroke-status)"
   if (selected) return "var(--color-blue-500)"
-  if (isNodeOffline(id)) return "var(--sld-node-stroke-offline)"
-  return "var(--sld-node-stroke-default)"
+  return "var(--sld-edge-stroke)"
+}
+
+function isSwitchgearConfigured(id: string) {
+  const node = diagram.scene.value.entities.nodesById.get(id)
+  const switchgearId = Number(node?.metadata?.switchgearId)
+  const switchgear = Number.isFinite(switchgearId) ? switchgearStore.getById(switchgearId) : null
+  if (!switchgear) return false
+  return ["do_open", "do_closed"].every((role) => {
+    const binding = switchgear.bindings.find(item => item.role === role)
+    const channelId = binding?.channel_id
+    return channelId !== null
+      && channelId !== undefined
+      && channelId !== ""
+      && Number.isFinite(Number(channelId))
+  })
 }
 
 function isNodeOffline(id: string) {
@@ -2878,7 +3006,30 @@ function isBrokenEdge(id: string) {
 }
 
 function resolveEdgeWidth(id: string) {
-  return resolveEdgeWeightValue(id) === "bold" ? 3 : 2
+  const edge = diagram.scene.value.entities.edgesById.get(id)
+  const width = Number(edge?.metadata?.edgeWidth)
+  return Number.isFinite(width) && width > 0 ? width : resolveEdgeWeightValue(id) === "bold" ? 3 : 2
+}
+
+function resolveEdgeStyle(id: string): LineStyle {
+  const style = diagram.scene.value.entities.edgesById.get(id)?.metadata?.edgeStyle
+  return style === "dashed" || style === "dotted" ? style : "solid"
+}
+
+function resolveEdgeDasharray(id: string) {
+  const width = resolveEdgeWidth(id)
+  if (resolveEdgeStyle(id) === "dashed") return `${width * 4} ${width * 3}`
+  if (resolveEdgeStyle(id) === "dotted") return `0.1 ${width * 2.8}`
+  return undefined
+}
+
+function resolveTextFontSize(id: string) {
+  const size = Number(diagram.scene.value.entities.textsById.get(id)?.fontSize)
+  return Number.isFinite(size) && size > 0 ? size : 12
+}
+
+function resolveTextBold(id: string) {
+  return diagram.scene.value.entities.textsById.get(id)?.metadata?.textBold === true
 }
 
 function clampLabelOffset(value: number) {
@@ -2982,8 +3133,12 @@ function resolveTransformerCircleOffset(id: string): number {
         :style="selectionPanelStyle"
         :kind="selectionPanelKind"
         :switchgear-type="selectedSwitchgearType"
-        :edge-kind="selectedEdgeKind"
-        :edge-weight="selectedEdgeWeight"
+      :edge-kind="selectedEdgeKind"
+      :edge-weight="selectedEdgeWeight"
+      :edge-width="selectedEdgeWidth"
+      :edge-style="selectedEdgeStyle"
+      :text-font-size="selectedTextFontSize"
+      :text-bold="selectedTextBold"
         :static-size="selectedStaticSize"
         :expanded="selectionPanelExpanded"
         :actions="selectionPanelActions"
@@ -3023,7 +3178,7 @@ function resolveTransformerCircleOffset(id: string): number {
             <path
               :d="`M ${gridStepWorld} 0 L 0 0 0 ${gridStepWorld}`"
               fill="none"
-              stroke="rgb(var(--color-slate-400-rgb) / 0.18)"
+              stroke="var(--sld-grid-stroke)"
               :stroke-width="gridStrokeWidthWorld"
             />
           </pattern>
@@ -3050,6 +3205,7 @@ function resolveTransformerCircleOffset(id: string): number {
           stroke-linejoin="round"
           :stroke="resolveEdgeStroke(edge.id)"
           :stroke-width="resolveEdgeWidth(edge.id)"
+          :stroke-dasharray="resolveEdgeDasharray(edge.id)"
           :opacity="edgePreview?.edgeId === edge.id ? 0.2 : edge.selected ? 1 : 0.92"
           :marker-end="resolveEdgeKind(edge.id) === 'arrow' ? 'url(#switchgear-sld-package-arrow)' : undefined"
           :style="resolveEdgeKind(edge.id) === 'arrow' ? { color: resolveEdgeStroke(edge.id) } : undefined"
@@ -3155,7 +3311,8 @@ function resolveTransformerCircleOffset(id: string): number {
           :state="resolveSwitchgearState(node.id)"
           :fill="resolveNodeFill(node.id)"
           background="var(--sld-symbol-background)"
-          stroke="var(--sld-edge-stroke)"
+          :stroke="resolveNodeStroke(node.id, node.selected)"
+          :unconfigured="!isSwitchgearConfigured(node.id)"
           :selected="node.selected"
           :transform="resolveNodeSymbolTransform(node.id, node.geometry.bounds)"
           pointer-events="none"
@@ -3228,6 +3385,7 @@ function resolveTransformerCircleOffset(id: string): number {
           stroke-linejoin="round"
           :stroke="resolveEdgeStroke(edge.id)"
           :stroke-width="resolveEdgeWidth(edge.id)"
+          :stroke-dasharray="resolveEdgeDasharray(edge.id)"
           :opacity="edgePreview?.edgeId === edge.id ? 0.2 : edge.selected ? 1 : 0.92"
           :marker-end="resolveEdgeKind(edge.id) === 'arrow' ? 'url(#switchgear-sld-package-arrow)' : undefined"
           :style="resolveEdgeKind(edge.id) === 'arrow' ? { color: resolveEdgeStroke(edge.id) } : undefined"
@@ -3243,6 +3401,7 @@ function resolveTransformerCircleOffset(id: string): number {
           class="switchgear-sld-package-canvas__text-entity"
           :transform="resolveSelectionPreviewTransform(text.id)"
           :class="resolveTextClass(text.id)"
+          :style="{ fontSize: `${resolveTextFontSize(text.id)}px`, fontWeight: resolveTextBold(text.id) ? 700 : 500 }"
           text-anchor="middle"
           dominant-baseline="middle"
           @contextmenu.stop.prevent="openTextContextMenu($event, text.id)"
@@ -3538,6 +3697,7 @@ function resolveTransformerCircleOffset(id: string): number {
   user-select: none;
   --sld-symbol-stroke: var(--color-neutral-700);
   --sld-symbol-background: var(--color-white);
+  --sld-grid-stroke: color-mix(in srgb, var(--color-neutral-400) 18%, transparent);
   --sld-edge-stroke: var(--color-neutral-700);
   --sld-edge-stroke-arrow: var(--color-blue-700);
   --sld-node-fill-default: var(--color-white);
@@ -3546,7 +3706,7 @@ function resolveTransformerCircleOffset(id: string): number {
   --sld-node-fill-open: var(--color-rose-500);
   --sld-node-fill-intermediate: var(--color-neutral-50);
   --sld-node-stroke-default: var(--color-blue-300);
-  --sld-node-stroke-offline: var(--color-neutral-400);
+  --sld-node-stroke-status: var(--color-neutral-400);
 }
 
 .switchgear-sld-package-canvas__stage.is-select,
@@ -3668,8 +3828,9 @@ function resolveTransformerCircleOffset(id: string): number {
   top: 0.75rem;
   right: 0.75rem;
   z-index: 12;
-  max-width: min(45rem, calc(100% - 1.5rem));
-  overflow-x: auto;
+  max-width: none;
+  width: max-content;
+  overflow: visible;
   padding: 0.375rem;
   border: 1px solid color-mix(in srgb, var(--color-neutral-300) 70%, transparent);
   border-radius: var(--radius-xl);
@@ -3697,13 +3858,46 @@ function resolveTransformerCircleOffset(id: string): number {
 }
 
 .switchgear-sld-package-canvas__selected-controls :deep(.switchgear-control-toolbar__compact-title),
-.switchgear-sld-package-canvas__selected-controls :deep(.switchgear-control-toolbar__warning),
+.switchgear-sld-package-canvas__selected-controls :deep(.switchgear-control-toolbar__warning) {
+  white-space: nowrap;
+}
+
 .switchgear-sld-package-canvas__selected-controls :deep(.switchgear-control-toolbar__state) {
+  flex-wrap: nowrap;
   white-space: nowrap;
 }
 
 .switchgear-sld-package-canvas__selected-controls :deep(.switchgear-control-toolbar__command-button--compact) {
   min-width: 78px;
+}
+
+@media (max-width: 640px) {
+  .switchgear-sld-package-canvas__selected-controls {
+    left: 0.75rem;
+    right: 0.75rem !important;
+    width: auto;
+    max-width: none;
+    overflow: visible;
+  }
+
+  .switchgear-sld-package-canvas__selected-controls :deep(.switchgear-control-toolbar),
+  .switchgear-sld-package-canvas__selected-controls :deep(.switchgear-control-toolbar__row) {
+    width: 100%;
+  }
+
+  .switchgear-sld-package-canvas__selected-controls :deep(.switchgear-control-toolbar__row),
+  .switchgear-sld-package-canvas__selected-controls :deep(.switchgear-control-toolbar__commands),
+  .switchgear-sld-package-canvas__selected-controls :deep(.switchgear-control-toolbar__state) {
+    flex-wrap: wrap;
+  }
+
+  .switchgear-sld-package-canvas__selected-controls :deep(.switchgear-control-toolbar__commands) {
+    width: 100%;
+  }
+
+  .switchgear-sld-package-canvas__selected-controls :deep(.switchgear-control-toolbar__state) {
+    white-space: normal;
+  }
 }
 
 @media (max-width: 960px) {
@@ -3712,6 +3906,23 @@ function resolveTransformerCircleOffset(id: string): number {
     right: 0.75rem;
     left: 0.75rem;
     max-width: none;
+  }
+
+  .switchgear-sld-package-canvas__selected-controls--canvas-fixed {
+    right: 0.75rem;
+    left: 0.75rem;
+    width: auto;
+    max-width: none;
+  }
+
+  .switchgear-sld-package-canvas__selected-controls--canvas-fixed :deep(.switchgear-control-toolbar__row),
+  .switchgear-sld-package-canvas__selected-controls--canvas-fixed :deep(.switchgear-control-toolbar__commands) {
+    flex-wrap: wrap;
+  }
+
+  .switchgear-sld-package-canvas__selected-controls--canvas-fixed :deep(.switchgear-control-toolbar__state) {
+    flex-wrap: wrap;
+    white-space: normal;
   }
 }
 
@@ -3871,18 +4082,19 @@ function resolveTransformerCircleOffset(id: string): number {
 
 :global(.dark .switchgear-sld-package-canvas__stage) {
   border-color: var(--color-neutral-800);
-  background: linear-gradient(180deg, rgb(var(--color-diagram-surface-rgb)), rgb(var(--color-diagram-background-rgb)));
+  background: linear-gradient(180deg, var(--color-neutral-900), var(--color-neutral-950));
   --sld-symbol-stroke: var(--color-neutral-200);
-  --sld-symbol-background: rgb(var(--color-diagram-surface-rgb));
+  --sld-symbol-background: var(--color-neutral-900);
+  --sld-grid-stroke: color-mix(in srgb, var(--color-neutral-500) 18%, transparent);
   --sld-edge-stroke: var(--color-neutral-200);
-  --sld-edge-stroke-arrow: var(--color-blue-300);
+  --sld-edge-stroke-arrow: var(--color-neutral-200);
   --sld-node-fill-default: var(--color-neutral-800);
   --sld-node-fill-offline: var(--color-neutral-900);
   --sld-node-fill-closed: color-mix(in srgb, var(--color-emerald-700) 76%, var(--color-neutral-800));
   --sld-node-fill-open: color-mix(in srgb, var(--color-rose-700) 76%, var(--color-neutral-800));
   --sld-node-fill-intermediate: var(--color-neutral-800);
   --sld-node-stroke-default: var(--color-blue-400);
-  --sld-node-stroke-offline: var(--color-neutral-500);
+  --sld-node-stroke-status: var(--color-neutral-500);
 }
 
 :global(.dark .switchgear-sld-package-canvas__switchgear-label) {

@@ -10,11 +10,12 @@ const props = defineProps<{
   background: string
   stroke: string
   selected?: boolean
+  unconfigured?: boolean
 }>()
 </script>
 
 <template>
-  <g class="switchgear-sld-node-symbol switchgear-sld-node-symbol--earthing" :class="{ 'switchgear-sld-node-symbol--selected': props.selected }" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <g class="switchgear-sld-node-symbol switchgear-sld-node-symbol--earthing" :class="{ 'switchgear-sld-node-symbol--selected': props.selected }" fill="none" stroke-linecap="round" stroke-linejoin="round" :stroke-dasharray="props.unconfigured ? '4 3' : undefined">
     <rect :x="props.x + 1" :y="props.y + 1" :width="props.width - 2" :height="props.height - 2" rx="8" :fill="props.background" stroke="none" />
     <line :x1="props.x + 7" :y1="props.y + 8" :x2="props.x + 7" :y2="props.y + props.height - 8" :stroke="props.stroke" stroke-width="2.5" />
     <line :x1="props.x + props.width - 7" :y1="props.y + 8" :x2="props.x + props.width - 7" :y2="props.y + props.height - 8" :stroke="props.stroke" stroke-width="2.5" />

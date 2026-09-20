@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { onMounted, toRef } from "vue"
+import { computed, onMounted, toRef } from "vue"
 import type { Switchgear } from "@/types/switchgear"
 import UiButton from "@/components/ui/UiButton.vue"
 import UiBadge from "@/components/ui/UiBadge.vue"
 import { useChannelStore } from "@/stores/channelStore"
 import { runStoreBootstrap } from "@/composables/useStoreBootstrap"
 import { useSwitchgearCommandActions } from "@/composables/useSwitchgearCommandActions"
+import { useSwitchgearStore } from "@/stores/switchgearStore"
 
 const props = defineProps<{
   switchgear: Switchgear
@@ -17,6 +18,12 @@ const emit = defineEmits<{
 }>()
 
 const channelStore = useChannelStore()
+const switchgearStore = useSwitchgearStore()
+const isConfigured = computed(() => ["do_open", "do_closed"].every((role) => {
+  const channelId = props.switchgear.bindings.find(binding => binding.role === role)?.channel_id
+  return channelId !== null && channelId !== undefined && Number.isFinite(Number(channelId))
+}))
+const isOffline = computed(() => !switchgearStore.isUnitOnline(props.switchgear))
 const {
   acting,
   canClose,
@@ -116,6 +123,20 @@ onMounted(() => {
         >
           {{ positionStateLabel }}
         </UiBadge>
+        <UiBadge
+          v-if="!isConfigured"
+          variant="neutral"
+          class="switchgear-control-toolbar__status-badge"
+        >
+          Not configured
+        </UiBadge>
+        <UiBadge
+          v-if="isOffline"
+          variant="warning"
+          class="switchgear-control-toolbar__status-badge"
+        >
+          Offline
+        </UiBadge>
       </div>
 
       <UiButton
@@ -144,6 +165,8 @@ onMounted(() => {
 
 .switchgear-control-toolbar--compact {
   display: flex;
+  width: max-content;
+  max-width: 100%;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
@@ -172,7 +195,8 @@ onMounted(() => {
 .switchgear-control-toolbar--compact .switchgear-control-toolbar__commands {
   display: flex;
   width: auto;
-  flex-wrap: wrap;
+  max-width: 100%;
+  flex-wrap: nowrap;
   align-items: center;
 }
 
@@ -229,6 +253,10 @@ onMounted(() => {
   min-width: 100px;
 }
 
+.switchgear-control-toolbar__status-badge {
+  white-space: nowrap;
+}
+
 @media (min-width: 640px) {
   .switchgear-control-toolbar__commands {
     width: auto;
@@ -249,6 +277,16 @@ onMounted(() => {
 
   .switchgear-control-toolbar__state-badge {
     min-width: 120px;
+  }
+}
+
+@media (max-width: 640px) {
+  .switchgear-control-toolbar--compact {
+    width: 100%;
+  }
+
+  .switchgear-control-toolbar--compact .switchgear-control-toolbar__commands {
+    flex-wrap: wrap;
   }
 }
 

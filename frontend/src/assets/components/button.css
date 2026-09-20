@@ -333,6 +333,8 @@
 }
 
 .dark .btn-toolbar {
+  border-color: var(--color-neutral-700);
+  background: var(--color-neutral-900);
   color: var(--color-neutral-200);
 }
 
@@ -343,6 +345,57 @@
 
 .dark .btn-toolbar-active {
   color: var(--color-neutral-100);
+}
+
+/* SLD toolbar controls are rendered through tooltip/button wrappers. Keep the
+   final dark surface rules global so they reach the actual button elements. */
+.dark .switchgear-sld-package-canvas__toolbar .btn-toolbar,
+.dark .switchgear-sld-package-canvas__toolbar .switchgear-sld-package-canvas__tool-tab {
+  border-color: var(--color-neutral-700) !important;
+  background: var(--color-neutral-900) !important;
+  color: var(--color-neutral-200) !important;
+}
+
+.dark .switchgear-sld-package-canvas__toolbar .switchgear-sld-package-canvas__mode-toggle,
+.dark .switchgear-sld-package-canvas__toolbar .switchgear-sld-package-canvas__mode-toggle.is-active {
+  border-color: var(--color-neutral-700) !important;
+  background: var(--color-neutral-950) !important;
+  color: var(--color-neutral-200) !important;
+}
+
+.dark .switchgear-sld-package-canvas__toolbar .switchgear-sld-package-canvas__mode-label {
+  border-color: var(--color-neutral-800) !important;
+  background: var(--color-neutral-950) !important;
+  color: var(--color-neutral-300) !important;
+}
+
+.dark .switchgear-sld-package-canvas__toolbar button {
+  border-color: var(--color-neutral-700) !important;
+  background: var(--color-neutral-900) !important;
+  color: var(--color-neutral-200) !important;
+}
+
+.dark .switchgear-sld-package-canvas__toolbar button.is-active,
+.dark .switchgear-sld-package-canvas__toolbar button[aria-pressed="true"] {
+  border-color: var(--color-blue-700) !important;
+  background: color-mix(in srgb, var(--color-blue-900) 78%, var(--color-neutral-950)) !important;
+  color: var(--color-blue-100) !important;
+}
+
+html.dark .switchgear-sld-package-canvas__toolbar button.is-active,
+html.dark .switchgear-sld-package-canvas__toolbar button[aria-pressed="true"],
+html.dark .switchgear-sld-package-canvas__toolbar .btn-toolbar.is-active,
+html.dark .switchgear-sld-package-canvas__toolbar .switchgear-sld-package-canvas__snap-toggle--active {
+  border-color: var(--color-blue-700) !important;
+  background: color-mix(in srgb, var(--color-blue-900) 78%, var(--color-neutral-950)) !important;
+  color: var(--color-blue-100) !important;
+}
+
+html.dark .switchgear-sld-package-canvas__snap-toggle--active,
+html.dark .switchgear-sld-package-canvas__toolbar .switchgear-sld-package-canvas__snap-toggle--active {
+  border-color: var(--color-blue-700) !important;
+  background: var(--color-neutral-950) !important;
+  color: var(--color-blue-200) !important;
 }
 
 .dark .btn-dashed {
