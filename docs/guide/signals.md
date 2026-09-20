@@ -113,6 +113,7 @@ Important behavior:
 - Bulk allocation and unassignment run as background jobs.
 - Progress is shown in the header and updates in real time.
 - When a job completes, the grid is refreshed automatically.
+- The grid does not show a separate Internal Signal Type column; the signal direction and assigned Unit/Channel are the user-facing values, while the internal runtime type remains derived in the application.
 
 ### Run quick control test for selected rows
 

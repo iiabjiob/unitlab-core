@@ -2,6 +2,7 @@ import type { RouteRecordRaw } from "vue-router"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useSelectionStore } from "@/stores/selectionStore"
+import { localSettingsKeys, readLocalSetting } from "@/services/localSettingsStorage"
 import { runStoreBootstrap } from "@/composables/useStoreBootstrap"
 
 // Default meta shared from index.ts
@@ -35,6 +36,14 @@ export const switchgearsRoutes: RouteRecordRaw[] = [
         name: "switchgears.list",
         component: () => import("@/pages/switchgears/SwitchgearPlaceholder.vue"),
         beforeEnter: () => {
+          const lastView = readLocalSetting<"sld" | "settings">(
+            localSettingsKeys.switchgearsActiveView,
+            "settings",
+            { validate: value => value === "sld" || value === "settings" ? value : null },
+          )
+          if (lastView === "sld") {
+            return { name: "switchgears.sld" }
+          }
           const selectionStore = useSelectionStore()
           selectionStore.restore()
           const lastId = selectionStore.lastSwitchgearId

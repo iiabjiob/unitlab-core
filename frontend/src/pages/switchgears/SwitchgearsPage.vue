@@ -64,6 +64,7 @@ import ResizablePanel from "@/components/ui/ResizablePanel.vue"
 import SlideOver from "@/components/ui/SlideOver.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import { useViewport } from "@/composables/useViewport"
+import { localSettingsKeys, readLocalSetting, writeLocalSetting } from "@/services/localSettingsStorage"
 import { useRealtimeScopeStore } from "@/stores/realtimeScopeStore"
 
 import DeviceListSidebar from "./components/SwitchgearListSidebar.vue"
@@ -74,8 +75,43 @@ const route = useRoute()
 const router = useRouter()
 const realtimeScopeStore = useRealtimeScopeStore()
 const scopeId = "switchgears:page"
+type SwitchgearView = "sld" | "settings"
+
+function resolveSwitchgearView(routeName: unknown): SwitchgearView | null {
+  if (routeName === "switchgears.sld") return "sld"
+  if (routeName === "switchgears.detail" || routeName === "switchgears.list") return "settings"
+  return null
+}
+
+function isSwitchgearsRoute(routeName: unknown) {
+  return resolveSwitchgearView(routeName) !== null
+}
+
+function persistSwitchgearView(view: SwitchgearView) {
+  writeLocalSetting(localSettingsKeys.switchgearsActiveView, view)
+}
+
+function restoreLastSwitchgearView() {
+  const lastView = readLocalSetting<SwitchgearView>(
+    localSettingsKeys.switchgearsActiveView,
+    "settings",
+    { validate: (value) => value === "sld" || value === "settings" ? value : null },
+  )
+  if (lastView === "sld") {
+    void router.replace({ name: "switchgears.sld" })
+    return
+  }
+  persistSwitchgearView("settings")
+}
+
 onMounted(() => {
   realtimeScopeStore.setGlobalRealtimeScope(scopeId, true)
+  if (route.name === "switchgears.list") {
+    restoreLastSwitchgearView()
+  } else {
+    const currentView = resolveSwitchgearView(route.name)
+    if (currentView) persistSwitchgearView(currentView)
+  }
 })
 
 onBeforeUnmount(() => {
@@ -92,6 +128,25 @@ watch(
     sidebarOpen.value = false
   },
 )
+
+watch(() => route.name, (nextName, previousName) => {
+  const currentView = resolveSwitchgearView(nextName)
+  if (currentView === "sld") {
+    persistSwitchgearView("sld")
+    return
+  }
+  if (currentView === "settings" && nextName === "switchgears.detail") {
+    persistSwitchgearView("settings")
+    return
+  }
+  if (nextName === "switchgears.list") {
+    if (isSwitchgearsRoute(previousName)) {
+      persistSwitchgearView("settings")
+    } else {
+      restoreLastSwitchgearView()
+    }
+  }
+})
 
 async function requestScdImport() {
   sidebarOpen.value = false

@@ -198,6 +198,12 @@ function openInNewTab() {
   background: transparent;
   box-shadow: inset 0 0 0 1px transparent;
   color: var(--color-neutral-700);
+  outline: none;
+}
+
+.switchgear-list-item:focus,
+.switchgear-list-item:focus-visible {
+  outline: none;
 }
 
 .switchgear-list-item.sidebar-list-item:not(.is-active):hover {

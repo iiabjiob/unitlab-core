@@ -712,6 +712,10 @@ Implemented 2026-09-19 - SLD switchgear selection:
 - Mixed selections of rotatable objects expose their shared rotation property in the contextual object panel; one rotation action applies to all selected nodes, lines, and static symbols.
 - SLD toolbar buttons pass their labels to the shared hover tooltip without also rendering the browser's duplicate native title tooltip.
 - Changing a switchgear type updates the node symbol in place, preserving the current SLD viewport and selection instead of remounting the canvas.
+- SLD switchgear symbols follow the reference visual language: breakers use state-filled square plates, disconnectors use terminal bars with closed/open/unknown states, and unknown/intermediate states remain explicit.
+- Switchgear nodes use an invisible hit area; their visible frame and fill belong to the breaker symbol itself, while earthing switches share the disconnector terminal symbol.
+- Disconnector and earthing switch strokes use the same 2.5px visual weight as breaker outlines, with matching rounded line caps and joins.
+- Newly added ground symbols start rotated toward the right; their persisted rotation remains editable through the existing rotation control.
 - Switchgear operation controls remain available in Edit mode and are positioned in the canvas upper-right area while object properties open below the selected object.
 - Switchgear controls are fixed in the canvas upper-right area to the left of the magnetic snap button; Snap has distinct enabled and disabled states in both themes.
 - Operate mode uses the default cursor across the canvas and a pointer cursor only when hovering switchgear nodes.

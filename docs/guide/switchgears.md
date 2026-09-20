@@ -12,6 +12,10 @@ Use Switchgear to bind command/feedback channels and send pair commands: **Open*
 2. To create a new item, click **+ New Switchgear** in the sidebar.
 3. Select a switchgear from the list to open the editor.
 
+UnitLab remembers whether the **SLD** or **Settings** view was used last and restores that view when the Switchgears section is opened again.
+
+In **Operate mode**, the SLD automatically uses canvas pan navigation. Clicking a switchgear still selects it for operator controls.
+
 ### Configure bindings
 
 1. In the **Bindings** panel, choose mode:

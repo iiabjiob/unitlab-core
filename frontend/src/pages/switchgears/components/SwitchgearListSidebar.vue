@@ -8,6 +8,7 @@ import ConfirmModal from "@/components/ui/ConfirmModal.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import UiSidebarListbox from "@/components/ui/UiSidebarListbox.vue"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
+import { localSettingsKeys, writeLocalSetting } from "@/services/localSettingsStorage"
 import { useToastStore } from "@/stores/toastStore"
 import { useSidebarBulkSelection } from "@/composables/useSidebarBulkSelection"
 import type { Switchgear } from "@/types/switchgear"
@@ -35,6 +36,7 @@ function openSwitchgear(id: number) {
 }
 
 function openSettingsView() {
+  writeLocalSetting(localSettingsKeys.switchgearsActiveView, "settings")
   const id = selectedId.value
   void router.push(id == null
     ? { name: "switchgears.list" }
@@ -42,6 +44,7 @@ function openSettingsView() {
 }
 
 function openSldView() {
+  writeLocalSetting(localSettingsKeys.switchgearsActiveView, "sld")
   const id = selectedId.value
   if (id != null) {
     selectionStore.selectSwitchgear(id)

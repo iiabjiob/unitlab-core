@@ -6,6 +6,9 @@ import { getSvgEntityProps, useDiagramEngine, useDiagramPointerController, useDi
 import type { DiagramEdge } from "@affino/diagram-core"
 
 import SwitchgearControlToolbar from "./SwitchgearControlToolbar.vue"
+import SwitchgearSldBreakerSymbol from "./SwitchgearSldBreakerSymbol.vue"
+import SwitchgearSldDisconnectorSymbol from "./SwitchgearSldDisconnectorSymbol.vue"
+import SwitchgearSldEarthingSwitchSymbol from "./SwitchgearSldEarthingSwitchSymbol.vue"
 import SwitchgearSldPackageToolbar from "./SwitchgearSldPackageToolbar.vue"
 import SwitchgearSldSelectionPanel from "./SwitchgearSldSelectionPanel.vue"
 import SldToolbarButton from "./SwitchgearSldToolbarButton.vue"
@@ -653,7 +656,8 @@ const minimapModel = computed(() => {
   }
 })
 
-pointer.setTool("select")
+activeTool.value = editMode.value ? "select" : "pan"
+pointer.setTool(activeTool.value)
 
 onMounted(() => {
   void nextTick(() => {
@@ -855,14 +859,14 @@ function toggleEditMode() {
     localSettingsKeys.switchgearDiagramMode(props.workspaceId),
     editMode.value ? "edit" : "operate",
   )
-  activeTool.value = "select"
+  activeTool.value = editMode.value ? "select" : "pan"
   draftLine.value = null
   draggedEdge.value = null
   movedEdges.value = null
   labelDrag.value = null
   selectionDragSnap.value = null
   objectBrowserOpen.value = false
-  pointer.setTool("select")
+  pointer.setTool(activeTool.value)
   selection.clearSelection()
   closeContextMenu()
   focusStage()
@@ -1129,6 +1133,9 @@ function handleStagePointerDownCapture(event: PointerEvent) {
       }
     } else {
       selection.clearSelection()
+    }
+    if (!hit && activeTool.value === "pan") {
+      return
     }
     event.preventDefault()
     event.stopPropagation()
@@ -1715,6 +1722,7 @@ function addText() {
 function addStatic(kind: DiagramStaticKind) {
   const center = getViewportCenter()
   const dims = STATIC_DIMENSIONS[kind].md
+  const initialRotation = kind === "ground" ? 270 : 0
   const snappedCenter = snapWorldPoint(center)
   const seed = createEntityId(`static-${kind}`)
   const id = createEntityId("shape")
@@ -1731,14 +1739,14 @@ function addStatic(kind: DiagramStaticKind) {
         y: snappedCenter.y - dims.height / 2,
         width: dims.width,
         height: dims.height,
-        rotation: 0,
+        rotation: initialRotation,
         shape: kind,
         metadata: {
           entityType: "static",
           staticId: seed,
           staticKind: kind,
           staticSize: "md",
-          rotation: 0,
+          rotation: initialRotation,
         },
       }],
       ports: [],
@@ -2783,6 +2791,13 @@ function resolveNodeFill(id: string) {
   return "var(--sld-node-fill-default)"
 }
 
+function resolveSwitchgearState(id: string) {
+  const node = diagram.scene.value.entities.nodesById.get(id)
+  const switchgearId = Number(node?.metadata?.switchgearId)
+  const switchgear = Number.isFinite(switchgearId) ? switchgearStore.getById(switchgearId) : null
+  return switchgear ? switchgearStore.resolveSwitchgearState(switchgear) : "UNKNOWN"
+}
+
 function resolveNodeStroke(id: string, selected: boolean) {
   if (selected) return "var(--color-blue-500)"
   if (isNodeOffline(id)) return "var(--sld-node-stroke-offline)"
@@ -2989,7 +3004,7 @@ function resolveTransformerCircleOffset(id: string): number {
         ref="svgRef"
         class="switchgear-sld-package-canvas__svg"
         :viewBox="`${viewportBox.x} ${viewportBox.y} ${viewportBox.width} ${viewportBox.height}`"
-        v-bind="editMode && activeTool !== 'line' ? svgPointerProps : {}"
+        v-bind="(editMode && activeTool !== 'line') || (!editMode && activeTool === 'pan') ? svgPointerProps : {}"
         @click="onSvgClick"
         @dblclick="onSvgDoubleClick"
         @pointermove="onSvgPointerMove"
@@ -3118,38 +3133,33 @@ function resolveTransformerCircleOffset(id: string): number {
           class="switchgear-sld-package-canvas__node"
           :transform="resolveSelectionPreviewTransform(node.id)"
           rx="8"
-          :fill="resolveNodeFill(node.id)"
-          :stroke="resolveNodeStroke(node.id, node.selected)"
-          :stroke-width="node.selected ? 2.5 : 1.5"
+          fill="transparent"
+          stroke="transparent"
+          stroke-width="0"
           @dblclick.stop="openNodeDetail(node.id)"
           @contextmenu.stop.prevent="openNodeContextMenu($event, node.id)"
         />
 
-        <g
+        <component
           v-for="node in visible.projection.value.nodes"
           :key="`${node.id}:symbol`"
-          class="switchgear-sld-package-canvas__node-symbol"
-          :class="`switchgear-sld-package-canvas__node-symbol--${resolveSwitchgearType(node.id)}`"
+          :is="resolveSwitchgearType(node.id) === 'switchgear'
+            ? SwitchgearSldBreakerSymbol
+            : resolveSwitchgearType(node.id) === 'earthing'
+              ? SwitchgearSldEarthingSwitchSymbol
+              : SwitchgearSldDisconnectorSymbol"
+          :x="node.geometry.bounds.x"
+          :y="node.geometry.bounds.y"
+          :width="node.geometry.bounds.width"
+          :height="node.geometry.bounds.height"
+          :state="resolveSwitchgearState(node.id)"
+          :fill="resolveNodeFill(node.id)"
+          background="var(--sld-symbol-background)"
+          stroke="var(--sld-edge-stroke)"
+          :selected="node.selected"
           :transform="resolveNodeSymbolTransform(node.id, node.geometry.bounds)"
           pointer-events="none"
-        >
-          <template v-if="resolveSwitchgearType(node.id) === 'disconnector'">
-            <circle :cx="node.geometry.bounds.x + 12" :cy="node.geometry.bounds.y + node.geometry.bounds.height / 2" r="2" />
-            <circle :cx="node.geometry.bounds.x + node.geometry.bounds.width - 12" :cy="node.geometry.bounds.y + node.geometry.bounds.height / 2" r="2" />
-            <line :x1="node.geometry.bounds.x + 14" :y1="node.geometry.bounds.y + node.geometry.bounds.height / 2" :x2="node.geometry.bounds.x + node.geometry.bounds.width - 14" :y2="node.geometry.bounds.y + node.geometry.bounds.height / 2 - 9" />
-          </template>
-          <template v-else-if="resolveSwitchgearType(node.id) === 'earthing'">
-            <line :x1="node.geometry.bounds.x + node.geometry.bounds.width / 2" :y1="node.geometry.bounds.y + 9" :x2="node.geometry.bounds.x + node.geometry.bounds.width / 2" :y2="node.geometry.bounds.y + 25" />
-            <line :x1="node.geometry.bounds.x + 11" :y1="node.geometry.bounds.y + 26" :x2="node.geometry.bounds.x + node.geometry.bounds.width - 11" :y2="node.geometry.bounds.y + 26" />
-            <line :x1="node.geometry.bounds.x + 14" :y1="node.geometry.bounds.y + 30" :x2="node.geometry.bounds.x + node.geometry.bounds.width - 14" :y2="node.geometry.bounds.y + 30" />
-            <line :x1="node.geometry.bounds.x + 17" :y1="node.geometry.bounds.y + 34" :x2="node.geometry.bounds.x + node.geometry.bounds.width - 17" :y2="node.geometry.bounds.y + 34" />
-          </template>
-          <template v-else>
-            <line :x1="node.geometry.bounds.x + 11" :y1="node.geometry.bounds.y + node.geometry.bounds.height / 2" :x2="node.geometry.bounds.x + 17" :y2="node.geometry.bounds.y + node.geometry.bounds.height / 2" />
-            <rect :x="node.geometry.bounds.x + 17" :y="node.geometry.bounds.y + node.geometry.bounds.height / 2 - 5" width="6" height="10" rx="1" />
-            <line :x1="node.geometry.bounds.x + 23" :y1="node.geometry.bounds.y + node.geometry.bounds.height / 2" :x2="node.geometry.bounds.x + node.geometry.bounds.width - 11" :y2="node.geometry.bounds.y + node.geometry.bounds.height / 2" />
-          </template>
-        </g>
+        />
 
         <text
           v-for="node in visible.projection.value.nodes"
@@ -3527,13 +3537,14 @@ function resolveTransformerCircleOffset(id: string): number {
   touch-action: none;
   user-select: none;
   --sld-symbol-stroke: var(--color-neutral-700);
+  --sld-symbol-background: var(--color-white);
   --sld-edge-stroke: var(--color-neutral-700);
   --sld-edge-stroke-arrow: var(--color-blue-700);
   --sld-node-fill-default: var(--color-white);
   --sld-node-fill-offline: var(--color-neutral-100);
-  --sld-node-fill-closed: var(--color-emerald-100);
-  --sld-node-fill-open: var(--color-amber-100);
-  --sld-node-fill-intermediate: var(--color-orange-100);
+  --sld-node-fill-closed: var(--color-emerald-500);
+  --sld-node-fill-open: var(--color-rose-500);
+  --sld-node-fill-intermediate: var(--color-neutral-50);
   --sld-node-stroke-default: var(--color-blue-300);
   --sld-node-stroke-offline: var(--color-neutral-400);
 }
@@ -3724,6 +3735,11 @@ function resolveTransformerCircleOffset(id: string): number {
   stroke-width: 1.8;
 }
 
+.switchgear-sld-package-canvas__node-symbol--selected {
+  stroke: var(--sld-edge-stroke);
+  stroke-width: 2.5;
+}
+
 .switchgear-sld-package-canvas__switchgear-label--offline {
   fill: var(--color-neutral-500);
 }
@@ -3857,13 +3873,14 @@ function resolveTransformerCircleOffset(id: string): number {
   border-color: var(--color-neutral-800);
   background: linear-gradient(180deg, rgb(var(--color-diagram-surface-rgb)), rgb(var(--color-diagram-background-rgb)));
   --sld-symbol-stroke: var(--color-neutral-200);
+  --sld-symbol-background: rgb(var(--color-diagram-surface-rgb));
   --sld-edge-stroke: var(--color-neutral-200);
   --sld-edge-stroke-arrow: var(--color-blue-300);
   --sld-node-fill-default: var(--color-neutral-800);
   --sld-node-fill-offline: var(--color-neutral-900);
-  --sld-node-fill-closed: color-mix(in srgb, var(--color-emerald-900) 72%, var(--color-neutral-800));
-  --sld-node-fill-open: color-mix(in srgb, var(--color-amber-900) 72%, var(--color-neutral-800));
-  --sld-node-fill-intermediate: color-mix(in srgb, var(--color-orange-900) 72%, var(--color-neutral-800));
+  --sld-node-fill-closed: color-mix(in srgb, var(--color-emerald-700) 76%, var(--color-neutral-800));
+  --sld-node-fill-open: color-mix(in srgb, var(--color-rose-700) 76%, var(--color-neutral-800));
+  --sld-node-fill-intermediate: var(--color-neutral-800);
   --sld-node-stroke-default: var(--color-blue-400);
   --sld-node-stroke-offline: var(--color-neutral-500);
 }

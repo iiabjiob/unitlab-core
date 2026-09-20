@@ -489,8 +489,8 @@ const DataGrid = defineDataGridComponent<GridRow>()
 const SIGNAL_GRID_ROW_SELECTION = { enabled: true, columnWidth: 44 } satisfies NonNullable<DataGridProps<GridRow>["rowSelection"]>
 
 const SIGNALS_GRID_LEGACY_STORAGE_KEY_PREFIX = "unitlab.signals-grid"
-const REMOVED_SIGNAL_GRID_COLUMN_KEYS = new Set(["allocation_status", "allocation_health", "iec61850_address"])
-const SIGNAL_GRID_PATCH_COLUMNS = ["internal_signal_type", "channel_select", "test_status", "tested_at"] as const
+const REMOVED_SIGNAL_GRID_COLUMN_KEYS = new Set(["allocation_status", "allocation_health", "iec61850_address", "internal_signal_type"])
+const SIGNAL_GRID_PATCH_COLUMNS = ["channel_select", "test_status", "tested_at"] as const
 const signalAllocationProjectionCache = createSignalAllocationProjectionCache()
 const signalAllocationProjectionVersion = ref(0)
 const signalRuntimeStateCache = createSignalRuntimeStateCache()
@@ -958,7 +958,7 @@ function getAllocationJobChangedRows(job: SignalAllocationJob): SignalAllocation
 
 const SIGNAL_ROWS_PATCH_FIELD_GRID_COLUMNS: Record<string, readonly string[]> = {
   channel_id: ["channel_select", "control"],
-  channel_type: ["internal_signal_type", "control"],
+  channel_type: ["control"],
   channel_index: ["channel_select", "control"],
   channel_label: ["channel_select"],
   device_id: ["channel_select", "control"],
@@ -3555,15 +3555,6 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
 
   return [
     ...sourceColumns,
-    {
-      key: "internal_signal_type",
-      label: "Internal Signal Type",
-      minWidth: 96,
-      initialState: { width: 140 },
-      presentation: { align: "left", headerAlign: "left" },
-      capabilities: { editable: false },
-      cellRenderer: renderDefaultCell,
-    },
     {
       key: "channel_select",
       label: "Unit/Channel",
