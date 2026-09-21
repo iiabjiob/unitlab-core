@@ -217,6 +217,10 @@ async function handleTransferFileSelected(event: Event) {
 
 function closeTransferImport() {
   if (transferImportBusy.value || transferImportApplyBusy.value) return
+  resetTransferImport()
+}
+
+function resetTransferImport() {
   transferImportPreview.value = null
   transferImportError.value = null
 }
@@ -264,7 +268,7 @@ async function applyTransferImport() {
     await persistDocument(nextState, "import")
     requestedSelectionIds.value = importedNodeIds
     selectionRequestKey.value += 1
-    closeTransferImport()
+    resetTransferImport()
     if (detachedBindingCount > 0) {
       toastStore.warning(`Detached ${detachedBindingCount} unavailable binding${detachedBindingCount === 1 ? "" : "s"} during SLD import`)
     }

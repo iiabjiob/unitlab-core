@@ -43,7 +43,7 @@ const props = defineProps<{
 }>()
 
 const switchgearTypeOptions = [
-  { value: "switchgear", label: "Switchgear / breaker" },
+  { value: "switchgear", label: "Circuit breaker" },
   { value: "disconnector", label: "Disconnector" },
   { value: "earthing", label: "Earthing switch" },
 ]
@@ -223,6 +223,26 @@ onBeforeUnmount(() => {
   z-index: 1100;
 }
 
+.switchgear-sld-selection-panel__toggle {
+  position: relative;
+  z-index: 1;
+  width: 2.25rem;
+  min-width: 2.25rem;
+  height: 2.25rem;
+  min-height: 2.25rem;
+  padding: 0;
+  border: 1px solid var(--color-neutral-300);
+  background: var(--color-white);
+  box-shadow: 0 2px 7px rgb(var(--color-slate-900-rgb) / 0.16);
+  color: var(--color-neutral-700);
+}
+
+.switchgear-sld-selection-panel__toggle:hover:not(:disabled) {
+  border-color: var(--color-neutral-400);
+  background: var(--color-neutral-50);
+  color: var(--color-neutral-900);
+}
+
 .switchgear-sld-selection-panel__toggle.is-hidden {
   opacity: 0 !important;
   border-color: transparent !important;
@@ -278,6 +298,19 @@ onBeforeUnmount(() => {
   border-color: var(--color-neutral-600);
   background: var(--color-neutral-800);
   color: var(--color-neutral-50);
+}
+
+:global(.dark .switchgear-sld-selection-panel__toggle) {
+  border-color: var(--color-neutral-600);
+  background: var(--color-neutral-900);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.42);
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .switchgear-sld-selection-panel__toggle:hover:not(:disabled)) {
+  border-color: var(--color-neutral-500);
+  background: var(--color-neutral-800);
+  color: var(--color-white);
 }
 
 :global(.dark .switchgear-sld-selection-panel .ui-affino-listbox__trigger) {

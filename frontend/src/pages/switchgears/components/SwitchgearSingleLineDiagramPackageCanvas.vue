@@ -31,6 +31,7 @@ const NUDGE_LARGE_STEP = GRID_STEP * 4
 const DIAGRAM_CLIPBOARD_KIND = "unitlab.switchgear-sld-selection"
 const DEFAULT_TEXT_LABEL = "TEXT"
 const EDGE_PORT_SNAP_RADIUS = 18
+const EDGE_SEGMENT_SNAP_RADIUS_PX = 18
 const ORTHOGONAL_SNAP_TOLERANCE_DEG = 5
 const PERSIST_DEBOUNCE_MS = 500
 const MINIMAP_WIDTH = 180
@@ -69,6 +70,12 @@ type EdgeDragState = {
   edgeId: string
   endpoint: "source" | "target"
   draft: DraftEndpoint
+  originPoint: { x: number; y: number }
+  entries: Array<{
+    edgeId: string
+    endpoint: "source" | "target"
+    originPoint: { x: number; y: number }
+  }>
 }
 type EdgeMoveState = {
   pointerId: number
@@ -97,24 +104,32 @@ type DiagramClipboardEdge = {
   y1: number
   x2: number
   y2: number
+  points?: Array<{ x: number; y: number }>
   kind: EdgeStyle
   weight?: EdgeWeight
   width?: number
   style?: LineStyle
+  zIndex?: number
 }
 type DiagramClipboardStaticElement = {
   kind: DiagramStaticKind
   size: DiagramStaticSize
   x: number
   y: number
+  width?: number
+  height?: number
   rotation: 0 | 90 | 180 | 270
+  zIndex?: number
 }
 type DiagramClipboardTextElement = {
   text: string
   x: number
   y: number
+  width?: number
+  height?: number
   fontSize?: number
   bold?: boolean
+  zIndex?: number
 }
 type DiagramClipboardSelection = {
   edges: DiagramClipboardEdge[]
@@ -135,7 +150,7 @@ type MinimapDragState = {
 type SelectionDragSnapState = {
   pointerId: number
   ids: string[]
-  originCenter: { x: number; y: number }
+  originAnchor: { x: number; y: number }
   delta: { x: number; y: number }
 }
 
@@ -549,23 +564,29 @@ const selectedEdgeHandles = computed(() => selectedEdgeIds.value.flatMap((id) =>
     { id: `${id}:target`, edgeId: id, endpoint: "target" as const, point: target },
   ]
 }))
-const edgePreview = computed(() => {
+const edgePreviews = computed(() => {
   const drag = draggedEdge.value
   if (!drag) {
-    return null
+    return []
   }
-  const edge = diagram.scene.value.entities.edgesById.get(drag.edgeId)
-  if (!edge) {
-    return null
+  const delta = {
+    x: drag.draft.point.x - drag.originPoint.x,
+    y: drag.draft.point.y - drag.originPoint.y,
   }
-  const source = drag.endpoint === "source" ? drag.draft.point : resolveEdgeEndpointPosition(edge.source)
-  const target = drag.endpoint === "target" ? drag.draft.point : resolveEdgeEndpointPosition(edge.target)
-  return {
-    edgeId: drag.edgeId,
-    source,
-    target,
-  }
+  return drag.entries.flatMap((entry) => {
+    const edge = diagram.scene.value.entities.edgesById.get(entry.edgeId)
+    if (!edge) {
+      return []
+    }
+    const draftPoint = entry.edgeId === drag.edgeId
+      ? drag.draft.point
+      : { x: entry.originPoint.x + delta.x, y: entry.originPoint.y + delta.y }
+    const source = entry.endpoint === "source" ? draftPoint : resolveEdgeEndpointPosition(edge.source)
+    const target = entry.endpoint === "target" ? draftPoint : resolveEdgeEndpointPosition(edge.target)
+    return [{ edgeId: entry.edgeId, source, target }]
+  })
 })
+const previewedEdgeIds = computed(() => new Set(edgePreviews.value.map(preview => preview.edgeId)))
 const snapPreviewPoint = computed(() => {
   if (draftLine.value?.current.portId) {
     return draftLine.value.current.point
@@ -1294,13 +1315,13 @@ function onStagePointerMove(event: PointerEvent) {
   const snapshot = pointer.state.value
   if (snapshot.active && snapshot.tool === "drag-selection" && snapshot.previewDelta) {
     const primaryId = selection.selection.value.ids[0]
-    const bounds = primaryId ? diagram.engine.getGeometrySnapshot(primaryId)?.bounds : null
-    if (bounds) {
+    const anchor = primaryId ? resolveEntitySnapAnchor(primaryId) : null
+    if (anchor) {
       if (!selectionDragSnap.value) {
         selectionDragSnap.value = {
           pointerId: event.pointerId,
           ids: [...selection.selection.value.ids],
-          originCenter: getBoundsCenter(bounds),
+          originAnchor: anchor,
           delta: snapshot.previewDelta,
         }
       } else if (selectionDragSnap.value.pointerId === event.pointerId) {
@@ -1324,26 +1345,25 @@ function snapSelectionDelta(delta: { x: number; y: number }) {
     return delta
   }
   const id = selection.selection.value.ids[0]
-  const bounds = id ? diagram.engine.getGeometrySnapshot(id)?.bounds : null
-  if (!bounds) {
+  const anchor = id ? resolveEntitySnapAnchor(id) : null
+  if (!anchor) {
     return delta
   }
-  const currentCenter = getBoundsCenter(bounds)
-  const snapped = snapWorldPoint({ x: currentCenter.x + delta.x, y: currentCenter.y + delta.y })
+  const snapped = snapWorldPoint({ x: anchor.x + delta.x, y: anchor.y + delta.y })
   return {
-    x: delta.x + snapped.x - (currentCenter.x + delta.x),
-    y: delta.y + snapped.y - (currentCenter.y + delta.y),
+    x: delta.x + snapped.x - (anchor.x + delta.x),
+    y: delta.y + snapped.y - (anchor.y + delta.y),
   }
 }
 
 function commitSnappedSelection(drag: SelectionDragSnapState) {
   const snapped = snapWorldPoint({
-    x: drag.originCenter.x + drag.delta.x,
-    y: drag.originCenter.y + drag.delta.y,
+    x: drag.originAnchor.x + drag.delta.x,
+    y: drag.originAnchor.y + drag.delta.y,
   })
   const snappedDelta = {
-    x: drag.delta.x + snapped.x - (drag.originCenter.x + drag.delta.x),
-    y: drag.delta.y + snapped.y - (drag.originCenter.y + drag.delta.y),
+    x: drag.delta.x + snapped.x - (drag.originAnchor.x + drag.delta.x),
+    y: drag.delta.y + snapped.y - (drag.originAnchor.y + drag.delta.y),
   }
   if (snappedDelta.x === drag.delta.x && snappedDelta.y === drag.delta.y) {
     return
@@ -1365,18 +1385,17 @@ function snapEdgeMoveDelta(ids: string[], delta: { x: number; y: number }) {
     return delta
   }
   const edge = ids.map(id => diagram.scene.value.entities.edgesById.get(id)).find(candidate => candidate?.source.kind === "point")
-  const bounds = edge ? diagram.engine.getGeometrySnapshot(edge.id)?.bounds : null
-  if (!edge || !bounds) {
+  const anchor = edge ? resolveEntitySnapAnchor(edge.id) : null
+  if (!edge || !anchor) {
     return delta
   }
-  const currentCenter = getBoundsCenter(bounds)
   const snapped = snapWorldPoint({
-    x: currentCenter.x + delta.x,
-    y: currentCenter.y + delta.y,
+    x: anchor.x + delta.x,
+    y: anchor.y + delta.y,
   })
   return {
-    x: delta.x + snapped.x - (currentCenter.x + delta.x),
-    y: delta.y + snapped.y - (currentCenter.y + delta.y),
+    x: delta.x + snapped.x - (anchor.x + delta.x),
+    y: delta.y + snapped.y - (anchor.y + delta.y),
   }
 }
 
@@ -1549,7 +1568,7 @@ function closeTextEditorIfNeeded() {
 function buildDiagramClipboardPayload(selection: DiagramClipboardSelection) {
   return JSON.stringify({
     kind: DIAGRAM_CLIPBOARD_KIND,
-    version: 2,
+    version: 3,
     edges: selection.edges,
     staticElements: selection.staticElements,
     textElements: selection.textElements,
@@ -1565,7 +1584,7 @@ function parseDiagramClipboardPayload(rawText: string): DiagramClipboardSelectio
       staticElements?: unknown
       textElements?: unknown
     }
-    if (parsed.kind !== DIAGRAM_CLIPBOARD_KIND || (parsed.version !== 1 && parsed.version !== 2)) {
+    if (parsed.kind !== DIAGRAM_CLIPBOARD_KIND || (parsed.version !== 1 && parsed.version !== 2 && parsed.version !== 3)) {
       return null
     }
 
@@ -1586,8 +1605,18 @@ function parseDiagramClipboardPayload(rawText: string): DiagramClipboardSelectio
         y1,
         x2,
         y2,
+        points: Array.isArray(edge.points)
+          ? edge.points.flatMap((point) => {
+            const x = Number(point?.x)
+            const y = Number(point?.y)
+            return Number.isFinite(x) && Number.isFinite(y) ? [{ x, y }] : []
+          })
+          : undefined,
         kind: edge.kind === 'arrow' ? 'arrow' : 'line',
         weight: edge.weight === 'bold' ? 'bold' : 'normal',
+        width: Number.isFinite(Number(edge.width)) && Number(edge.width) > 0 ? Number(edge.width) : undefined,
+        style: edge.style === 'dashed' || edge.style === 'dotted' ? edge.style : 'solid',
+        zIndex: Number.isFinite(Number(edge.zIndex)) ? Number(edge.zIndex) : undefined,
       }]
     })
 
@@ -1606,7 +1635,10 @@ function parseDiagramClipboardPayload(rawText: string): DiagramClipboardSelectio
         size: item.size === 'sm' || item.size === 'lg' ? item.size : 'md',
         x,
         y,
+        width: Number.isFinite(Number(item.width)) && Number(item.width) > 0 ? Number(item.width) : undefined,
+        height: Number.isFinite(Number(item.height)) && Number(item.height) > 0 ? Number(item.height) : undefined,
         rotation: normalizeRotation(item.rotation),
+        zIndex: Number.isFinite(Number(item.zIndex)) ? Number(item.zIndex) : undefined,
       }]
     })
 
@@ -1621,9 +1653,14 @@ function parseDiagramClipboardPayload(rawText: string): DiagramClipboardSelectio
         return []
       }
       return [{
-        text: typeof item.text === 'string' && item.text.trim() ? item.text.trim().slice(0, 80) : DEFAULT_TEXT_LABEL,
+        text: typeof item.text === 'string' && item.text.length > 0 ? item.text.slice(0, 80) : DEFAULT_TEXT_LABEL,
         x,
         y,
+        width: Number.isFinite(Number(item.width)) && Number(item.width) > 0 ? Number(item.width) : undefined,
+        height: Number.isFinite(Number(item.height)) && Number(item.height) > 0 ? Number(item.height) : undefined,
+        fontSize: Number.isFinite(Number(item.fontSize)) && Number(item.fontSize) > 0 ? Number(item.fontSize) : undefined,
+        bold: item.bold === true,
+        zIndex: Number.isFinite(Number(item.zIndex)) ? Number(item.zIndex) : undefined,
       }]
     })
 
@@ -1649,10 +1686,12 @@ async function handleCopySelection() {
         y1: source.y,
         x2: target.x,
         y2: target.y,
+        points: edge.points?.map(point => ({ x: point.x, y: point.y })),
         kind: resolveEdgeKind(id),
         weight: resolveEdgeWeightValue(id),
         width: resolveEdgeWidth(id),
         style: resolveEdgeStyle(id),
+        zIndex: Number.isFinite(Number(edge.metadata?.zIndex)) ? Number(edge.metadata?.zIndex) : undefined,
       }]
     }),
     staticElements: selectedShapeIds.value.flatMap((id) => {
@@ -1665,7 +1704,10 @@ async function handleCopySelection() {
         size: inferStaticSize(id),
         x: shape.x + shape.width / 2,
         y: shape.y + shape.height / 2,
+        width: shape.width,
+        height: shape.height,
         rotation: normalizeRotation(shape.rotation),
+        zIndex: Number.isFinite(Number(shape.metadata?.zIndex)) ? Number(shape.metadata?.zIndex) : undefined,
       }]
     }),
     textElements: selectedTextIds.value.flatMap((id) => {
@@ -1677,8 +1719,11 @@ async function handleCopySelection() {
         text: item.text,
         x: item.x,
         y: item.y,
+        width: item.width,
+        height: item.height,
         fontSize: resolveTextFontSize(id),
         bold: resolveTextBold(id),
+        zIndex: Number.isFinite(Number(item.metadata?.zIndex)) ? Number(item.metadata?.zIndex) : undefined,
       }]
     }),
   }
@@ -1721,28 +1766,32 @@ async function handlePasteSelection() {
   const edgeEntries = source.edges.map((edge, index) => ({
     id: createEntityId(`edge-paste-${index}`),
     kind: 'edge' as const,
-    source: { kind: 'point' as const, point: snapWorldPoint({ x: edge.x1 + offset, y: edge.y1 + offset }) },
-    target: { kind: 'point' as const, point: snapWorldPoint({ x: edge.x2 + offset, y: edge.y2 + offset }) },
+    source: { kind: 'point' as const, point: { x: edge.x1 + offset, y: edge.y1 + offset } },
+    target: { kind: 'point' as const, point: { x: edge.x2 + offset, y: edge.y2 + offset } },
+    points: edge.points?.map(point => ({ x: point.x + offset, y: point.y + offset })),
     metadata: {
       entityType: 'edge',
       edgeKind: edge.kind,
       edgeWeight: edge.weight === 'bold' ? 'bold' : 'normal',
       edgeWidth: edge.width ?? (edge.weight === 'bold' ? 3 : 2),
       edgeStyle: edge.style ?? 'solid',
+      ...(edge.zIndex !== undefined ? { zIndex: edge.zIndex } : {}),
       startBinding: null,
       endBinding: null,
     },
   }))
   const shapeEntries = source.staticElements.map((item, index) => {
-    const dims = STATIC_DIMENSIONS[item.kind][item.size]
-    const center = snapWorldPoint({ x: item.x + offset, y: item.y + offset })
+    const preset = STATIC_DIMENSIONS[item.kind][item.size]
+    const width = item.width ?? preset.width
+    const height = item.height ?? preset.height
+    const center = { x: item.x + offset, y: item.y + offset }
     return {
       id: createEntityId(`shape-paste-${index}`),
       kind: 'shape' as const,
-      x: Math.round(center.x - dims.width / 2),
-      y: Math.round(center.y - dims.height / 2),
-      width: dims.width,
-      height: dims.height,
+      x: center.x - width / 2,
+      y: center.y - height / 2,
+      width,
+      height,
       rotation: normalizeRotation(item.rotation),
       shape: item.kind,
       metadata: {
@@ -1751,21 +1800,26 @@ async function handlePasteSelection() {
         staticKind: item.kind,
         staticSize: item.size,
         rotation: normalizeRotation(item.rotation),
+        ...(item.zIndex !== undefined ? { zIndex: item.zIndex } : {}),
       },
     }
   })
   const textEntries = source.textElements.map((item, index) => {
-    const point = snapWorldPoint({ x: item.x + offset, y: item.y + offset })
+    const point = { x: item.x + offset, y: item.y + offset }
     return {
       id: createEntityId(`text-paste-${index}`),
       kind: 'text' as const,
       x: point.x,
       y: point.y,
       text: item.text,
-      width: Math.max(96, Math.min(288, item.text.length * (item.fontSize ?? 12) * 0.6 + 24)),
-      height: Math.max(28, (item.fontSize ?? 12) * 1.2),
+      width: item.width ?? Math.max(96, Math.min(288, item.text.length * (item.fontSize ?? 12) * 0.6 + 24)),
+      height: item.height ?? Math.max(28, (item.fontSize ?? 12) * 1.2),
       fontSize: item.fontSize ?? 12,
-      metadata: { entityType: 'text', textBold: item.bold === true },
+      metadata: {
+        entityType: 'text',
+        textBold: item.bold === true,
+        ...(item.zIndex !== undefined ? { zIndex: item.zIndex } : {}),
+      },
     }
   })
   const selectionIds = [...edgeEntries.map(item => item.id), ...shapeEntries.map(item => item.id), ...textEntries.map(item => item.id)]
@@ -2366,7 +2420,7 @@ function onSvgClick(event: MouseEvent) {
   const pointerPoint = mapPointerToWorld(event as unknown as PointerEvent)
   const endpoint = !draftLine.value
     ? snapDraftEndpoint(pointerPoint)
-    : snapDraftEndpoint(resolveConstrainedLinePoint(draftLine.value.start.point, pointerPoint, event.shiftKey))
+    : resolveLineDraftEndpoint(draftLine.value.start.point, pointerPoint, event.shiftKey)
   if (!draftLine.value) {
     draftLine.value = { start: endpoint, current: endpoint }
     return
@@ -2394,7 +2448,7 @@ function onSvgPointerMove(event: PointerEvent) {
   if (activeTool.value === "line" && draftLine.value) {
     draftLine.value = {
       ...draftLine.value,
-      current: snapDraftEndpoint(resolveConstrainedLinePoint(draftLine.value.start.point, mapPointerToWorld(event), event.shiftKey)),
+      current: resolveLineDraftEndpoint(draftLine.value.start.point, mapPointerToWorld(event), event.shiftKey),
     }
   }
 
@@ -2406,12 +2460,12 @@ function onSvgPointerMove(event: PointerEvent) {
   const anchor = edge
     ? resolveEdgeEndpointPosition(drag.endpoint === "source" ? edge.target : edge.source)
     : null
-  const nextPoint = anchor
-    ? resolveConstrainedLinePoint(anchor, mapPointerToWorld(event), event.shiftKey)
-    : mapPointerToWorld(event)
+  const pointerPoint = mapPointerToWorld(event)
   draggedEdge.value = {
     ...drag,
-    draft: snapDraftEndpoint(nextPoint),
+    draft: anchor
+      ? resolveLineDraftEndpoint(anchor, pointerPoint, event.shiftKey, drag.edgeId)
+      : snapDraftEndpoint(pointerPoint, drag.edgeId),
   }
 }
 
@@ -2422,7 +2476,23 @@ function onSvgPointerUp(event: PointerEvent) {
   }
   const selectedIdsBeforeRelease = [...selection.selection.value.ids]
   const primaryIdBeforeRelease = selection.selection.value.primaryId
-  updateEdgeEndpoint(drag.edgeId, drag.endpoint, drag.draft)
+  const delta = {
+    x: drag.draft.point.x - drag.originPoint.x,
+    y: drag.draft.point.y - drag.originPoint.y,
+  }
+  updateEdgeEndpoints(drag.entries.map(entry => ({
+    edgeId: entry.edgeId,
+    endpoint: entry.endpoint,
+    draft: entry.edgeId === drag.edgeId
+      ? drag.draft
+      : {
+          point: {
+            x: entry.originPoint.x + delta.x,
+            y: entry.originPoint.y + delta.y,
+          },
+          portId: null,
+        },
+  })))
   draggedEdge.value = null
   restoreSelectionAfterPointerRelease(selectedIdsBeforeRelease, primaryIdBeforeRelease)
 }
@@ -2459,12 +2529,59 @@ function startEdgeEndpointDrag(event: PointerEvent, edgeId: string, endpoint: "s
   event.preventDefault()
   const target = event.currentTarget as Element | null
   target?.setPointerCapture?.(event.pointerId)
+  const edgeIds = selectedEdgeIds.value.includes(edgeId) ? selectedEdgeIds.value : [edgeId]
+  const activeEdge = diagram.scene.value.entities.edgesById.get(edgeId)
+  if (!activeEdge) {
+    return
+  }
+  const activePoint = resolveEdgeEndpointPosition(endpoint === "source" ? activeEdge.source : activeEdge.target)
+  const activeOppositePoint = resolveEdgeEndpointPosition(endpoint === "source" ? activeEdge.target : activeEdge.source)
+  const resizeDirection = {
+    x: activePoint.x - activeOppositePoint.x,
+    y: activePoint.y - activeOppositePoint.y,
+  }
+  const entries = edgeIds.flatMap((selectedEdgeId) => {
+    const edge = diagram.scene.value.entities.edgesById.get(selectedEdgeId)
+    if (!edge) {
+      return []
+    }
+    const sourcePoint = resolveEdgeEndpointPosition(edge.source)
+    const targetPoint = resolveEdgeEndpointPosition(edge.target)
+    const matchedEndpoint = selectedEdgeId === edgeId
+      ? endpoint
+      : resolveMatchingResizeEndpoint(sourcePoint, targetPoint, resizeDirection)
+    return [{
+      edgeId: selectedEdgeId,
+      endpoint: matchedEndpoint,
+      originPoint: matchedEndpoint === "source" ? sourcePoint : targetPoint,
+    }]
+  })
+  const activeEntry = entries.find(entry => entry.edgeId === edgeId)
+  if (!activeEntry) {
+    return
+  }
   draggedEdge.value = {
     pointerId: event.pointerId,
     edgeId,
     endpoint,
-    draft: snapDraftEndpoint(mapPointerToWorld(event)),
+    draft: {
+      point: activeEntry.originPoint,
+      portId: null,
+    },
+    originPoint: activeEntry.originPoint,
+    entries,
   }
+}
+
+function resolveMatchingResizeEndpoint(
+  source: { x: number; y: number },
+  target: { x: number; y: number },
+  direction: { x: number; y: number },
+): "source" | "target" {
+  const center = { x: (source.x + target.x) / 2, y: (source.y + target.y) / 2 }
+  const sourceProjection = (source.x - center.x) * direction.x + (source.y - center.y) * direction.y
+  const targetProjection = (target.x - center.x) * direction.x + (target.y - center.y) * direction.y
+  return sourceProjection >= targetProjection ? "source" : "target"
 }
 
 function finishEdgeEndpointDrag(event: PointerEvent) {
@@ -2603,41 +2720,32 @@ function addLine() {
   focusStage()
 }
 
-function updateEdgeEndpoint(edgeId: string, endpoint: "source" | "target", draft: DraftEndpoint) {
-  const edge = diagram.scene.value.entities.edgesById.get(edgeId)
-  const point = draft.portId
-    ? diagram.scene.value.entities.portsById.get(draft.portId)
-    : null
-  const nextPoint = point ? { x: point.x, y: point.y } : draft.point
-  diagram.dispatch({
-    type: "moveEdgeEndpoint",
-    id: edgeId,
-    endpoint,
-    point: nextPoint,
-    historyKey: "move-edge-endpoint",
-  })
-
-  const previousBinding = edge?.metadata?.[endpoint === "source" ? "startBinding" : "endBinding"]
-  const nextBinding = draft.portId ? resolvePortBinding(draft.portId) : null
-  if (JSON.stringify(previousBinding ?? null) === JSON.stringify(nextBinding)) {
+function updateEdgeEndpoints(updates: Array<{
+  edgeId: string
+  endpoint: "source" | "target"
+  draft: DraftEndpoint
+}>) {
+  if (updates.length === 0) {
     return
   }
-
+  const updatesById = new Map(updates.map(update => [update.edgeId, update]))
   diagram.engine.transact(() => {
     const serialized = diagram.engine.serialize()
     return {
       ...serialized,
       edges: serialized.edges.map((edge) => {
-        if (edge.id !== edgeId) {
+        const update = updatesById.get(edge.id)
+        if (!update) {
           return edge
         }
+        const bindingKey = update.endpoint === "source" ? "startBinding" : "endBinding"
         return {
           ...edge,
-          [endpoint]: toEdgeEndpoint(draft),
+          [update.endpoint]: toEdgeEndpoint(update.draft),
           metadata: {
             ...edge.metadata,
-            [endpoint === "source" ? "startBinding" : "endBinding"]: draft.portId
-              ? resolvePortBinding(draft.portId)
+            [bindingKey]: update.draft.portId
+              ? resolvePortBinding(update.draft.portId)
               : null,
           },
         }
@@ -2664,10 +2772,13 @@ function resolvePortBinding(portId: string) {
     : null
 }
 
-function snapDraftEndpoint(point: { x: number; y: number }): DraftEndpoint {
-  const port = diagram.engine.nearestPort(point, EDGE_PORT_SNAP_RADIUS)
+function snapDraftEndpoint(point: { x: number; y: number }, excludedEdgeId?: string, allowExternalSnap = true): DraftEndpoint {
+  const port = allowExternalSnap ? diagram.engine.nearestPort(point, EDGE_PORT_SNAP_RADIUS) : null
   if (!port || port.kind !== "port") {
-    return { point, portId: null }
+    return {
+      point: (allowExternalSnap ? findEdgeSnapPoint(point, excludedEdgeId) : null) ?? snapWorldPoint(point),
+      portId: null,
+    }
   }
   const entity = diagram.scene.value.entities.portsById.get(port.id)
   return entity
@@ -2675,11 +2786,96 @@ function snapDraftEndpoint(point: { x: number; y: number }): DraftEndpoint {
     : { point: snapWorldPoint(point), portId: null }
 }
 
+function resolveLineDraftEndpoint(
+  anchor: { x: number; y: number },
+  point: { x: number; y: number },
+  constrain: boolean,
+  excludedEdgeId?: string,
+): DraftEndpoint {
+  const constrainedPoint = resolveConstrainedLinePoint(anchor, point, constrain)
+  const draft = snapDraftEndpoint(constrainedPoint, excludedEdgeId, !constrain)
+  if (!constrain) {
+    return draft
+  }
+  const horizontal = Math.abs(point.x - anchor.x) >= Math.abs(point.y - anchor.y)
+  return {
+    point: horizontal
+      ? { x: draft.point.x, y: anchor.y }
+      : { x: anchor.x, y: draft.point.y },
+    portId: null,
+  }
+}
+
+function findEdgeSnapPoint(point: { x: number; y: number }, excludedEdgeId?: string) {
+  if (!snapEnabled.value) {
+    return null
+  }
+
+  const gridPoint = snapWorldPoint(point)
+  const zoom = viewport.viewport.value.zoom > 0 ? viewport.viewport.value.zoom : 1
+  let closestVertex: { x: number; y: number } | null = null
+  let closestVertexDistance = Math.max(GRID_STEP * Math.SQRT2 + 0.001, EDGE_SEGMENT_SNAP_RADIUS_PX / zoom)
+  let closestSegmentPoint: { x: number; y: number } | null = null
+  let closestSegmentDistance = Math.max(GRID_STEP, EDGE_SEGMENT_SNAP_RADIUS_PX / zoom)
+
+  for (const edge of diagram.scene.value.entities.edgesById.values()) {
+    if (edge.id === excludedEdgeId) {
+      continue
+    }
+    const points = [
+      resolveEdgeEndpointPosition(edge.source),
+      ...(edge.points ?? []),
+      resolveEdgeEndpointPosition(edge.target),
+    ]
+    for (const vertex of points) {
+      const distance = Math.hypot(vertex.x - point.x, vertex.y - point.y)
+      if (distance <= closestVertexDistance) {
+        closestVertex = vertex
+        closestVertexDistance = distance
+      }
+    }
+    for (let index = 1; index < points.length; index += 1) {
+      const start = points[index - 1]!
+      const end = points[index]!
+      const pointerProjection = closestPointOnSegment(point, start, end)
+      const distance = Math.hypot(pointerProjection.x - point.x, pointerProjection.y - point.y)
+      if (distance <= closestSegmentDistance) {
+        closestSegmentPoint = closestPointOnSegment(gridPoint, start, end)
+        closestSegmentDistance = distance
+      }
+    }
+  }
+
+  return closestVertex ?? closestSegmentPoint
+}
+
+function closestPointOnSegment(
+  point: { x: number; y: number },
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+) {
+  const deltaX = end.x - start.x
+  const deltaY = end.y - start.y
+  const lengthSquared = deltaX * deltaX + deltaY * deltaY
+  if (lengthSquared < 0.0001) {
+    return { ...start }
+  }
+  const ratio = Math.max(0, Math.min(1, (
+    (point.x - start.x) * deltaX + (point.y - start.y) * deltaY
+  ) / lengthSquared))
+  return {
+    x: start.x + ratio * deltaX,
+    y: start.y + ratio * deltaY,
+  }
+}
+
 function resolveConstrainedLinePoint(anchor: { x: number; y: number }, point: { x: number; y: number }, constrain: boolean) {
-  const constrainedPoint = constrain
-    ? snapToEightDirections(anchor.x, anchor.y, point.x, point.y)
-    : point
-  return snapToOrthogonalLine(anchor, constrainedPoint)
+  if (constrain) {
+    return Math.abs(point.x - anchor.x) >= Math.abs(point.y - anchor.y)
+      ? { x: point.x, y: anchor.y }
+      : { x: anchor.x, y: point.y }
+  }
+  return snapToOrthogonalLine(anchor, point)
 }
 
 function snapToOrthogonalLine(anchor: { x: number; y: number }, point: { x: number; y: number }) {
@@ -2707,24 +2903,6 @@ function snapToOrthogonalLine(anchor: { x: number; y: number }, point: { x: numb
   return isHorizontal
     ? { x: point.x, y: anchor.y }
     : { x: anchor.x, y: point.y }
-}
-
-function snapToEightDirections(anchorX: number, anchorY: number, targetX: number, targetY: number) {
-  const dx = targetX - anchorX
-  const dy = targetY - anchorY
-  const length = Math.hypot(dx, dy)
-  if (length < 0.0001) {
-    return { x: targetX, y: targetY }
-  }
-
-  const step = Math.PI / 4
-  const angle = Math.atan2(dy, dx)
-  const snappedAngle = Math.round(angle / step) * step
-
-  return {
-    x: Math.round(anchorX + Math.cos(snappedAngle) * length),
-    y: Math.round(anchorY + Math.sin(snappedAngle) * length),
-  }
 }
 
 function applySelectionPreview(point: { x: number; y: number }, entityId?: string) {
@@ -2867,11 +3045,32 @@ function getViewportCenter() {
   }
 }
 
-function getBoundsCenter(bounds: { x: number; y: number; width: number; height: number }) {
-  return {
-    x: bounds.x + bounds.width / 2,
-    y: bounds.y + bounds.height / 2,
+function resolveEntitySnapAnchor(id: string) {
+  const edge = diagram.scene.value.entities.edgesById.get(id)
+  if (edge) {
+    if (edge.source.kind === "point") {
+      return edge.source.point
+    }
+    if (edge.source.kind === "port") {
+      const port = diagram.scene.value.entities.portsById.get(edge.source.portId)
+      return port ? { x: port.x, y: port.y } : null
+    }
+    const owner = diagram.scene.value.entities.nodesById.get(edge.source.nodeId)
+    return owner ? { x: owner.x + owner.width / 2, y: owner.y + owner.height / 2 } : null
   }
+
+  const shape = diagram.scene.value.entities.shapesById.get(id)
+  if (shape) {
+    return { x: shape.x + shape.width / 2, y: shape.y + shape.height / 2 }
+  }
+
+  const text = diagram.scene.value.entities.textsById.get(id)
+  if (text) {
+    return { x: text.x, y: text.y }
+  }
+
+  const node = diagram.scene.value.entities.nodesById.get(id)
+  return node ? { x: node.x + node.width / 2, y: node.y + node.height / 2 } : null
 }
 
 function inferStaticSize(id: string): DiagramStaticSize {
@@ -2904,18 +3103,8 @@ function resolveSelectionPreviewTransform(id: string) {
   return `translate(${delta.x} ${delta.y})`
 }
 
-function resolveNodeSymbolTransform(id: string, bounds: { x: number; y: number; width: number; height: number }) {
-  const transforms: string[] = []
-  const preview = resolveSelectionPreviewTransform(id)
-  if (preview) {
-    transforms.push(preview)
-  }
-  const node = diagram.scene.value.entities.nodesById.get(id)
-  const rotation = Number(node?.rotation ?? 0)
-  if (rotation !== 0) {
-    transforms.push(`rotate(${rotation} ${bounds.x + bounds.width / 2} ${bounds.y + bounds.height / 2})`)
-  }
-  return transforms.length > 0 ? transforms.join(" ") : undefined
+function resolveNodeRotation(id: string) {
+  return normalizeRotation(diagram.scene.value.entities.nodesById.get(id)?.rotation)
 }
 
 function resolveHandlePreviewPoint(handle: { ownerId: string; point: { x: number; y: number } }) {
@@ -2951,9 +3140,8 @@ function resolveSwitchgearState(id: string) {
   return switchgear ? switchgearStore.resolveSwitchgearState(switchgear) : "UNKNOWN"
 }
 
-function resolveNodeStroke(id: string, selected: boolean) {
+function resolveNodeStroke(id: string) {
   if (!isSwitchgearConfigured(id) || isNodeOffline(id)) return "var(--sld-node-stroke-status)"
-  if (selected) return "var(--color-blue-500)"
   return "var(--sld-edge-stroke)"
 }
 
@@ -3253,15 +3441,16 @@ function resolveTransformerCircleOffset(id: string): number {
           :stroke="resolveEdgeStroke(edge.id)"
           :stroke-width="resolveEdgeWidth(edge.id)"
           :stroke-dasharray="resolveEdgeDasharray(edge.id)"
-          :opacity="edgePreview?.edgeId === edge.id ? 0.2 : edge.selected ? 1 : 0.92"
+          :opacity="previewedEdgeIds.has(edge.id) ? 0.2 : edge.selected ? 1 : 0.92"
           :marker-end="resolveEdgeKind(edge.id) === 'arrow' ? 'url(#switchgear-sld-package-arrow)' : undefined"
           :style="resolveEdgeKind(edge.id) === 'arrow' ? { color: resolveEdgeStroke(edge.id) } : undefined"
           @contextmenu.stop.prevent="openEdgeContextMenu($event, edge.id)"
         />
 
         <polyline
-          v-if="edgePreview"
-          :points="`${edgePreview.source.x},${edgePreview.source.y} ${edgePreview.target.x},${edgePreview.target.y}`"
+          v-for="preview in edgePreviews"
+          :key="`${preview.edgeId}:resize-preview`"
+          :points="`${preview.source.x},${preview.source.y} ${preview.target.x},${preview.target.y}`"
           fill="none"
           stroke="var(--color-blue-500)"
           stroke-width="3"
@@ -3379,10 +3568,10 @@ function resolveTransformerCircleOffset(id: string): number {
           :state="resolveSwitchgearState(node.id)"
           :fill="resolveNodeFill(node.id)"
           background="var(--sld-symbol-background)"
-          :stroke="resolveNodeStroke(node.id, node.selected)"
+          :stroke="resolveNodeStroke(node.id)"
           :unconfigured="!isSwitchgearConfigured(node.id)"
-          :selected="node.selected"
-          :transform="resolveNodeSymbolTransform(node.id, node.geometry.bounds)"
+          :rotation="resolveNodeRotation(node.id)"
+          :transform="resolveSelectionPreviewTransform(node.id)"
           pointer-events="none"
         />
 
@@ -3456,7 +3645,7 @@ function resolveTransformerCircleOffset(id: string): number {
           :stroke="resolveEdgeStroke(edge.id)"
           :stroke-width="resolveEdgeWidth(edge.id)"
           :stroke-dasharray="resolveEdgeDasharray(edge.id)"
-          :opacity="edgePreview?.edgeId === edge.id ? 0.2 : edge.selected ? 1 : 0.92"
+          :opacity="previewedEdgeIds.has(edge.id) ? 0.2 : edge.selected ? 1 : 0.92"
           :marker-end="resolveEdgeKind(edge.id) === 'arrow' ? 'url(#switchgear-sld-package-arrow)' : undefined"
           :style="resolveEdgeKind(edge.id) === 'arrow' ? { color: resolveEdgeStroke(edge.id) } : undefined"
           @contextmenu.stop.prevent="openEdgeContextMenu($event, edge.id)"
@@ -3774,8 +3963,8 @@ function resolveTransformerCircleOffset(id: string): number {
   --sld-edge-stroke-arrow: var(--color-blue-700);
   --sld-node-fill-default: var(--color-white);
   --sld-node-fill-offline: var(--color-neutral-100);
-  --sld-node-fill-closed: var(--color-emerald-500);
-  --sld-node-fill-open: var(--color-rose-500);
+  --sld-node-fill-closed: var(--sld-edge-stroke);
+  --sld-node-fill-open: transparent;
   --sld-node-fill-intermediate: var(--color-neutral-50);
   --sld-node-stroke-default: var(--color-blue-300);
   --sld-node-stroke-status: var(--color-neutral-400);
@@ -4167,8 +4356,8 @@ function resolveTransformerCircleOffset(id: string): number {
   --sld-edge-stroke-arrow: var(--color-neutral-200);
   --sld-node-fill-default: var(--color-neutral-800);
   --sld-node-fill-offline: var(--color-neutral-900);
-  --sld-node-fill-closed: color-mix(in srgb, var(--color-emerald-700) 76%, var(--color-neutral-800));
-  --sld-node-fill-open: color-mix(in srgb, var(--color-rose-700) 76%, var(--color-neutral-800));
+  --sld-node-fill-closed: var(--sld-edge-stroke);
+  --sld-node-fill-open: transparent;
   --sld-node-fill-intermediate: var(--color-neutral-800);
   --sld-node-stroke-default: var(--color-blue-400);
   --sld-node-stroke-status: var(--color-neutral-500);

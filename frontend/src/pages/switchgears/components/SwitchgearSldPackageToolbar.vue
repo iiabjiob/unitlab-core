@@ -69,7 +69,7 @@ const alignmentOptions = [
 ]
 
 const switchgearTypeOptions = [
-  { value: "switchgear", label: "Switchgear / breaker" },
+  { value: "switchgear", label: "Circuit breaker" },
   { value: "disconnector", label: "Disconnector" },
   { value: "earthing", label: "Earthing switch" },
 ]
