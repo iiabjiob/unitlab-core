@@ -1,6 +1,6 @@
 import { CHANNEL_TYPES, type Channel, type DoChannel, type DoChannelUiState, type TimeoutHandle } from "@/types/channel"
 
-const COMMAND_PENDING_DEBOUNCE_MS = 50
+const COMMAND_PENDING_DEBOUNCE_MS = 120
 const COMMAND_TIMEOUT_MS = 2000
 const COMMAND_FAILURE_DISPLAY_MS = 2000
 const COMMAND_STATE_REFRESH_FALLBACK_MS = 120

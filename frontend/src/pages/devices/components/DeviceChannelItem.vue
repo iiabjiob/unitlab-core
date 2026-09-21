@@ -72,11 +72,12 @@
           <div
             v-if="effectiveType === 'do'"
             class="device-channel-item__do-control"
-            :class="[doControlClass, { 'device-channel-item__do-control--disabled': isWaiting || disabled }]"
+            :class="[doControlClass, { 'device-channel-item__do-control--disabled': isWaitingVisible || disabled }]"
+            :aria-disabled="isWaiting || disabled"
             @click.stop="onToggleClick"
           >
             <span
-              v-if="isWaiting"
+              v-if="isWaitingVisible"
               class="device-channel-item__spinner"
             />
             <span v-else-if="isError" class="device-channel-item__state-mark">!</span>
@@ -164,6 +165,7 @@ const status = computed(() =>
   doChannel.value?.ui?.stage ?? "idle"
 )
 const isWaiting = computed(() => status.value === "pending" || status.value === "debounce")
+const isWaitingVisible = computed(() => status.value === "pending")
 const isError = computed(() => status.value === "error")
 
 const doChannel = computed<DoChannel | null>(() => (
@@ -247,7 +249,7 @@ const doControlClass = computed(() => {
   if (isError.value) {
     return "device-channel-item__do-control--error"
   }
-  if (isWaiting.value) {
+  if (isWaitingVisible.value) {
     return "device-channel-item__do-control--waiting"
   }
   if (doChannel.value?.state) {
@@ -632,10 +634,6 @@ function submitAoValue() {
 .device-channel-item__do-control--off {
   border-color: var(--color-neutral-600);
   background: var(--color-neutral-300);
-}
-
-.device-channel-item__do-control--off:hover {
-  background: var(--color-neutral-600);
 }
 
 .device-channel-item__spinner {
