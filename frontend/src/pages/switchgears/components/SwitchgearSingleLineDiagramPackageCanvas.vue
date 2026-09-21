@@ -3925,8 +3925,10 @@ function resolveTransformerCircleOffset(id: string): number {
   top: 0.75rem;
   right: 0.75rem;
   z-index: 12;
-  max-width: none;
-  width: max-content;
+  box-sizing: border-box;
+  width: auto;
+  max-width: calc(100% - 1.5rem);
+  min-width: 0;
   overflow: visible;
   padding: 0.375rem;
   border: 1px solid color-mix(in srgb, var(--color-neutral-300) 70%, transparent);
@@ -3951,17 +3953,30 @@ function resolveTransformerCircleOffset(id: string): number {
 
 .switchgear-sld-package-canvas__selected-controls :deep(.switchgear-control-toolbar__row),
 .switchgear-sld-package-canvas__selected-controls :deep(.switchgear-control-toolbar__commands) {
-  flex-wrap: nowrap;
+  min-width: 0;
+  flex-wrap: wrap;
 }
 
 .switchgear-sld-package-canvas__selected-controls :deep(.switchgear-control-toolbar__compact-title),
 .switchgear-sld-package-canvas__selected-controls :deep(.switchgear-control-toolbar__warning) {
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .switchgear-sld-package-canvas__selected-controls :deep(.switchgear-control-toolbar__state) {
-  flex-wrap: nowrap;
-  white-space: nowrap;
+  min-width: 0;
+  flex-wrap: wrap;
+  white-space: normal;
+}
+
+.switchgear-sld-package-canvas__selected-controls :deep(.switchgear-control-toolbar),
+.switchgear-sld-package-canvas__selected-controls :deep(.switchgear-control-toolbar__row) {
+  width: 100%;
+  min-width: 0;
+}
+
+.switchgear-sld-package-canvas__selected-controls :deep(.switchgear-control-toolbar__commands),
+.switchgear-sld-package-canvas__selected-controls :deep(.switchgear-control-toolbar__state) {
+  flex: 1 1 auto;
 }
 
 .switchgear-sld-package-canvas__selected-controls :deep(.switchgear-control-toolbar__command-button--compact) {
@@ -4010,16 +4025,6 @@ function resolveTransformerCircleOffset(id: string): number {
     left: 0.75rem;
     width: auto;
     max-width: none;
-  }
-
-  .switchgear-sld-package-canvas__selected-controls--canvas-fixed :deep(.switchgear-control-toolbar__row),
-  .switchgear-sld-package-canvas__selected-controls--canvas-fixed :deep(.switchgear-control-toolbar__commands) {
-    flex-wrap: wrap;
-  }
-
-  .switchgear-sld-package-canvas__selected-controls--canvas-fixed :deep(.switchgear-control-toolbar__state) {
-    flex-wrap: wrap;
-    white-space: normal;
   }
 }
 
