@@ -291,6 +291,65 @@ services:
     networks:
       - app_network
 
+  db_backup:
+    image: postgres:16
+    container_name: unitlab-db-backup
+    labels:
+      <<: *release-labels
+    restart: unless-stopped
+    mem_limit: 256m
+    cpus: 0.25
+    logging: *default-logging
+    env_file:
+      - /opt/unitlab/shared/db.env
+    environment:
+      BACKUP_DIR: /var/lib/unitlab/backups/postgres
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+      BACKUP_FAILURE_RETRY_SECONDS: ${BACKUP_FAILURE_RETRY_SECONDS:-900}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+      BACKUP_MIN_FREE_GB: ${BACKUP_MIN_FREE_GB:-5}
+      BACKUP_MAX_AGE_HOURS: ${BACKUP_MAX_AGE_HOURS:-48}
+      BACKUP_RESTORE_CHECK_INTERVAL_SECONDS: ${BACKUP_RESTORE_CHECK_INTERVAL_SECONDS:-2592000}
+      PGHOST: db
+      PGPORT: 5432
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - db_backups:/var/lib/unitlab/backups
+      - ./scripts/backup-postgres.sh:/usr/local/bin/backup-postgres.sh:ro
+      - ./scripts/verify-postgres-backup.sh:/usr/local/bin/verify-postgres-backup.sh:ro
+      - ./scripts/restore-postgres.sh:/usr/local/bin/restore-postgres.sh:ro
+    command:
+      - bash
+      - -ceu
+      - |
+        while true; do
+          if /usr/local/bin/backup-postgres.sh; then
+            last_restore_check="/var/lib/unitlab/backups/postgres/.last-restore-check"
+            last_restore_epoch=0
+            if [[ -f "$$last_restore_check" ]]; then
+              last_restore_epoch="$$(cat "$$last_restore_check")"
+            fi
+            current_epoch="$$(date +%s)"
+            if ! [[ "$$last_restore_epoch" =~ ^[0-9]+$$ ]]; then
+              last_restore_epoch=0
+            fi
+            if (( current_epoch - last_restore_epoch >= $${BACKUP_RESTORE_CHECK_INTERVAL_SECONDS:-2592000} )); then
+              if VERIFY_RESTORE_DATABASE=1 /usr/local/bin/verify-postgres-backup.sh; then
+                printf '%s\n' "$$current_epoch" > "$$last_restore_check"
+              else
+                echo "[unitlab-backup] WARNING: restore verification failed"
+              fi
+            fi
+            sleep "$${BACKUP_INTERVAL_SECONDS:-86400}"
+          else
+            sleep "$${BACKUP_FAILURE_RETRY_SECONDS:-900}"
+          fi
+        done
+    networks:
+      - app_network
+
   nginx:
     image: ${UNITLAB_WEB_IMAGE:-unitlab-web:${RELEASE_VERSION:-dev}}
     container_name: unitlab-nginx
@@ -354,6 +413,7 @@ services:
 
 volumes:
   db_data:
+  db_backups:
   redis_data:
 
 networks:

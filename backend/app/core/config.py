@@ -124,6 +124,10 @@ class Settings(BaseSettings):
     database_sld_revision_keep_count: int = 50
     database_test_evidence_retention_days: int = 2555
     database_size_warning_gb: float = 20.0
+    database_table_size_warning_mb: int = 1024
+    database_disk_free_warning_gb: float = 5.0
+    database_vacuum_enabled: bool = True
+    database_vacuum_interval_seconds: int = 604800
 
     # ---- Signal Import ----
     signal_import_max_rows: int = 20000

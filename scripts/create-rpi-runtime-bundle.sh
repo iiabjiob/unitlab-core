@@ -223,6 +223,9 @@ copy "$ROOT_DIR/scripts/install-host-agents.sh" "$OUT_DIR/scripts/"
 copy "$ROOT_DIR/scripts/verify-host-agents.sh" "$OUT_DIR/scripts/"
 copy "$ROOT_DIR/scripts/provision-rpi.sh" "$OUT_DIR/scripts/"
 copy "$ROOT_DIR/scripts/reset-database.sh" "$OUT_DIR/scripts/"
+copy "$ROOT_DIR/scripts/backup-postgres.sh" "$OUT_DIR/scripts/"
+copy "$ROOT_DIR/scripts/verify-postgres-backup.sh" "$OUT_DIR/scripts/"
+copy "$ROOT_DIR/scripts/restore-postgres.sh" "$OUT_DIR/scripts/"
 copy "$ROOT_DIR/scripts/unitlab" "$OUT_DIR/scripts/"
 chmod +x \
   "$OUT_DIR/scripts/deploy-rpi.sh" \
@@ -232,6 +235,9 @@ chmod +x \
   "$OUT_DIR/scripts/verify-host-agents.sh" \
   "$OUT_DIR/scripts/provision-rpi.sh" \
   "$OUT_DIR/scripts/reset-database.sh" \
+  "$OUT_DIR/scripts/backup-postgres.sh" \
+  "$OUT_DIR/scripts/verify-postgres-backup.sh" \
+  "$OUT_DIR/scripts/restore-postgres.sh" \
   "$OUT_DIR/scripts/unitlab"
 
 # Optional service/debug extras
@@ -279,6 +285,13 @@ RELEASE_VERSION=2026.02.24-1345
 UNITLAB_BACKEND_IMAGE=unitlab-backend:${RELEASE_VERSION}
 # Frontend web runtime image (nginx + built dist)
 UNITLAB_WEB_IMAGE=unitlab-web:${RELEASE_VERSION}
+# PostgreSQL backup policy (the backup service runs immediately, then daily)
+# BACKUP_INTERVAL_SECONDS=86400
+# BACKUP_FAILURE_RETRY_SECONDS=900
+# BACKUP_RETENTION_DAYS=30
+# BACKUP_MIN_FREE_GB=5
+# BACKUP_MAX_AGE_HOURS=48
+# BACKUP_RESTORE_CHECK_INTERVAL_SECONDS=2592000
 EOF
 
 cat > "$OUT_DIR/.env.release" <<EOF

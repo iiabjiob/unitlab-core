@@ -11,6 +11,7 @@ MAX_IMAGE_COUNT_WARN="${MAX_IMAGE_COUNT_WARN:-30}"
 MAX_VOLUME_COUNT_WARN="${MAX_VOLUME_COUNT_WARN:-20}"
 HEALTH_STARTUP_GRACE_SEC="${HEALTH_STARTUP_GRACE_SEC:-20}"
 HEALTH_POLL_INTERVAL_SEC="${HEALTH_POLL_INTERVAL_SEC:-2}"
+BACKUP_CHECK_GRACE_SEC="${BACKUP_CHECK_GRACE_SEC:-120}"
 RELEASE_VERSION="${RELEASE_VERSION:-}"
 REQUIRE_TIME_SYNC="${REQUIRE_TIME_SYNC:-0}"
 MQTT_CHECK_PORT="${MQTT_CHECK_PORT:-1883}"
@@ -35,6 +36,7 @@ Options:
   --max-volume-count-warn <int> Warn threshold for docker volumes count (default: 20)
   --health-startup-grace-sec <int>  Grace wait for container health=starting (default: 20)
   --health-poll-interval-sec <int>  Poll interval during health grace wait (default: 2)
+  --backup-check-grace-sec <int> Grace wait for first/fresh PostgreSQL backup (default: 120)
   --release-version <value>     Expected release version label (unitlab.release)
   --require-time-sync <0|1>     Fail if chrony is not synchronised (default: 0)
   --mqtt-port <1-65535>         MQTT listener port to verify (default: 1883)
@@ -46,6 +48,7 @@ Environment overrides:
   MIN_MEM_AVAILABLE_MB, MAX_DISK_USED_PCT, RESTART_LOOP_THRESHOLD,
   MAX_IMAGE_COUNT_WARN, MAX_VOLUME_COUNT_WARN,
   HEALTH_STARTUP_GRACE_SEC, HEALTH_POLL_INTERVAL_SEC,
+  BACKUP_CHECK_GRACE_SEC,
   RELEASE_VERSION, REQUIRE_TIME_SYNC
   MQTT_CHECK_PORT, MQTT_TLS_CA_FILE
 EOF
@@ -101,6 +104,11 @@ while [[ $# -gt 0 ]]; do
     --health-poll-interval-sec)
       [[ $# -ge 2 ]] || { echo "[unitlab] ERROR: --health-poll-interval-sec requires a value" >&2; usage; exit 1; }
       HEALTH_POLL_INTERVAL_SEC="$2"
+      shift 2
+      ;;
+    --backup-check-grace-sec)
+      [[ $# -ge 2 ]] || { echo "[unitlab] ERROR: --backup-check-grace-sec requires a value" >&2; usage; exit 1; }
+      BACKUP_CHECK_GRACE_SEC="$2"
       shift 2
       ;;
     --release-version)
@@ -221,6 +229,10 @@ if ! [[ "$HEALTH_POLL_INTERVAL_SEC" =~ ^[0-9]+$ ]]; then
   echo "[unitlab] ERROR: --health-poll-interval-sec must be integer" >&2
   exit 2
 fi
+if ! [[ "$BACKUP_CHECK_GRACE_SEC" =~ ^[0-9]+$ ]]; then
+  echo "[unitlab] ERROR: --backup-check-grace-sec must be integer" >&2
+  exit 2
+fi
 if [[ "$REQUIRE_TIME_SYNC" != "0" && "$REQUIRE_TIME_SYNC" != "1" ]]; then
   echo "[unitlab] ERROR: --require-time-sync must be 0 or 1" >&2
   exit 2
@@ -324,6 +336,7 @@ readonly expected_running_containers=(
   unitlab-signal-allocation-runner
   unitlab-signal-test-run-runner
   unitlab-db
+  unitlab-db-backup
   unitlab-nginx
   unitlab-redis
   unitlab-mosquitto
@@ -405,6 +418,23 @@ if docker exec unitlab-db pg_isready -U unitlab_pg_user -d unitlab_pg >/dev/null
   ok "postgres ready"
 else
   fail "postgres not ready"
+fi
+
+backup_ok=0
+backup_waited=0
+while (( backup_waited <= BACKUP_CHECK_GRACE_SEC )); do
+  if docker exec unitlab-db-backup /usr/local/bin/verify-postgres-backup.sh >/dev/null 2>&1; then
+    backup_ok=1
+    break
+  fi
+  (( BACKUP_CHECK_GRACE_SEC == 0 )) && break
+  sleep 2
+  backup_waited=$((backup_waited + 2))
+done
+if (( backup_ok == 1 )); then
+  ok "postgres backup is fresh and restorable"
+else
+  fail "postgres backup check failed"
 fi
 
 if command -v nc >/dev/null 2>&1; then

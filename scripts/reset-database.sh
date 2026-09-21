@@ -27,8 +27,27 @@ compose=(
   -f "$PROJECT_DIR/$COMPOSE_FILE"
 )
 
-echo "[unitlab] Removing compose volumes for project: $COMPOSE_PROJECT_NAME"
-"${compose[@]}" down --volumes --remove-orphans
+echo "[unitlab] Removing PostgreSQL and Redis data volumes for project: $COMPOSE_PROJECT_NAME"
+echo "[unitlab] Creating safety backup before destructive reset"
+"${compose[@]}" up -d db
+db_ready=0
+for _ in $(seq 1 30); do
+  if "${compose[@]}" exec -T db pg_isready >/dev/null 2>&1; then
+    db_ready=1
+    break
+  fi
+  sleep 2
+done
+if (( db_ready == 0 )); then
+  echo "[unitlab] ERROR: PostgreSQL did not become ready for safety backup" >&2
+  exit 1
+fi
+"${compose[@]}" run --rm --no-deps db_backup /usr/local/bin/backup-postgres.sh
+"${compose[@]}" down --remove-orphans
+docker volume rm \
+  "${COMPOSE_PROJECT_NAME}_db_data" \
+  "${COMPOSE_PROJECT_NAME}_redis_data" \
+  2>/dev/null || true
 echo "[unitlab] Recreating schema from baseline migration"
 "${compose[@]}" up --force-recreate migrations
 echo "[unitlab] Starting application stack"

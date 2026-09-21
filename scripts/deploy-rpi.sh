@@ -10,6 +10,7 @@ COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-unitlab}"
 VERIFY_RUNTIME="${VERIFY_RUNTIME:-1}"
 CLEANUP_RELEASES="${CLEANUP_RELEASES:-1}"
 RESET_DATABASE="0"
+BACKUP_BEFORE_MIGRATIONS="${BACKUP_BEFORE_MIGRATIONS:-1}"
 
 load_release_env() {
   local release_dir="$1"
@@ -39,10 +40,13 @@ Options:
   --verify <0|1>                 Run runtime verification after deploy (default: 1)
   --cleanup-releases <0|1>       Cleanup old releases after successful verify (default: 1)
   --reset-database               Delete PostgreSQL/Redis compose volumes before migrations (destructive)
+  --backup-before-migrations <0|1>
+                                 Create a PostgreSQL backup before migrations (default: 1)
   -h, --help                     Show this help
 
 Environment overrides:
-  RELEASES_DIR, CURRENT_LINK, COMPOSE_FILE_NAME, COMPOSE_PROJECT_NAME, VERIFY_RUNTIME, CLEANUP_RELEASES
+  RELEASES_DIR, CURRENT_LINK, COMPOSE_FILE_NAME, COMPOSE_PROJECT_NAME, VERIFY_RUNTIME, CLEANUP_RELEASES,
+  BACKUP_BEFORE_MIGRATIONS
 EOF
 }
 
@@ -92,6 +96,11 @@ while [[ $# -gt 0 ]]; do
       RESET_DATABASE="1"
       shift
       ;;
+    --backup-before-migrations)
+      [[ $# -ge 2 ]] || { echo "[unitlab] ERROR: --backup-before-migrations requires a value" >&2; usage; exit 1; }
+      BACKUP_BEFORE_MIGRATIONS="$2"
+      shift 2
+      ;;
     -h|--help)
       usage
       exit 0
@@ -122,6 +131,11 @@ fi
 
 if [[ "$CLEANUP_RELEASES" == "1" && "$VERIFY_RUNTIME" != "1" ]]; then
   echo "[unitlab] ERROR: --cleanup-releases requires --verify 1" >&2
+  exit 1
+fi
+
+if [[ "$BACKUP_BEFORE_MIGRATIONS" != "0" && "$BACKUP_BEFORE_MIGRATIONS" != "1" ]]; then
+  echo "[unitlab] ERROR: --backup-before-migrations must be 0 or 1" >&2
   exit 1
 fi
 
@@ -226,7 +240,11 @@ fi
 
 if [[ "$RESET_DATABASE" == "1" ]]; then
   echo "[unitlab] RESET: removing PostgreSQL and Redis volumes"
-  docker compose --project-name "$COMPOSE_PROJECT_NAME" --project-directory "$target_release" -f "$target_compose_file" down --volumes --remove-orphans
+  docker compose --project-name "$COMPOSE_PROJECT_NAME" --project-directory "$target_release" -f "$target_compose_file" down --remove-orphans
+  docker volume rm \
+    "${COMPOSE_PROJECT_NAME}_db_data" \
+    "${COMPOSE_PROJECT_NAME}_redis_data" \
+    2>/dev/null || true
 fi
 
 echo "[unitlab] Switching current symlink"
@@ -236,6 +254,23 @@ compose_file="$CURRENT_LINK/$COMPOSE_FILE_NAME"
 load_release_env "$CURRENT_LINK"
 
 echo "[unitlab] Applying database migrations before starting application services"
+if [[ "$BACKUP_BEFORE_MIGRATIONS" == "1" ]]; then
+  echo "[unitlab] Creating pre-migration PostgreSQL backup"
+  docker compose --project-name "$COMPOSE_PROJECT_NAME" --project-directory "$CURRENT_LINK" -f "$compose_file" up -d db
+  db_ready=0
+  for _ in $(seq 1 30); do
+    if docker compose --project-name "$COMPOSE_PROJECT_NAME" --project-directory "$CURRENT_LINK" -f "$compose_file" exec -T db pg_isready >/dev/null 2>&1; then
+      db_ready=1
+      break
+    fi
+    sleep 2
+  done
+  if (( db_ready == 0 )); then
+    echo "[unitlab] ERROR: PostgreSQL did not become ready for pre-migration backup" >&2
+    exit 1
+  fi
+  docker compose --project-name "$COMPOSE_PROJECT_NAME" --project-directory "$CURRENT_LINK" -f "$compose_file" run --rm --no-deps db_backup /usr/local/bin/backup-postgres.sh
+fi
 docker compose --project-name "$COMPOSE_PROJECT_NAME" --project-directory "$CURRENT_LINK" -f "$compose_file" up --force-recreate migrations
 
 if [[ -n "$IMAGES_ARCHIVE" ]]; then
@@ -275,6 +310,9 @@ if [[ "$CLEANUP_RELEASES" == "1" ]]; then
   echo "[unitlab] Cleaning up old releases"
   "$CURRENT_LINK/scripts/cleanup-rpi-releases.sh" --releases-dir "$RELEASES_DIR" --current-link "$CURRENT_LINK"
 fi
+
+echo "[unitlab] Removing dangling Docker image layers"
+docker image prune --force >/dev/null
 
 echo "[unitlab] Deploy complete"
 echo "[unitlab] Active release:"

@@ -21,6 +21,8 @@ Usage:
   unitlab update [--dry-run] <release-bundle.tar.gz>
   unitlab status
   unitlab doctor
+  unitlab backup
+  unitlab backup-check [--restore]
   unitlab logs [service]
   unitlab version
 
@@ -265,6 +267,20 @@ logs() {
   fi
 }
 
+backup() {
+  [[ -L "$CURRENT_LINK" ]] || { err "UnitLab is not installed"; return 1; }
+  docker compose $(compose_args) exec -T db_backup /usr/local/bin/backup-postgres.sh
+}
+
+backup_check() {
+  [[ -L "$CURRENT_LINK" ]] || { err "UnitLab is not installed"; return 1; }
+  if [[ "$ARG" == "--restore" ]]; then
+    docker compose $(compose_args) exec -T -e VERIFY_RESTORE_DATABASE=1 db_backup /usr/local/bin/verify-postgres-backup.sh
+  else
+    docker compose $(compose_args) exec -T db_backup /usr/local/bin/verify-postgres-backup.sh
+  fi
+}
+
 parse() {
   [[ $# -gt 0 ]] || { usage; exit 1; }
   COMMAND="$1"; shift
@@ -274,8 +290,8 @@ parse() {
       ARG="${1:-}"
       [[ -n "$ARG" ]] || { err "$COMMAND requires a release bundle"; exit 1; }
       ;;
-    logs) ARG="${1:-}" ;;
-    status|doctor|version) ;;
+    logs|backup-check) ARG="${1:-}" ;;
+    status|doctor|backup|backup-check|version) ;;
     -h|--help) usage; exit 0 ;;
     *) err "unknown command: $COMMAND"; usage; exit 1 ;;
   esac
@@ -286,6 +302,8 @@ case "$COMMAND" in
   install|update) install_release "$COMMAND" "$ARG" ;;
   status) status ;;
   doctor) need_root; doctor ;;
+  backup) need_root; backup ;;
+  backup-check) need_root; backup_check ;;
   logs) logs ;;
   version)
     if [[ -f "$CURRENT_LINK/RELEASE_INFO" ]]; then

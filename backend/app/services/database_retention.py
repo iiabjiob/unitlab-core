@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import shutil
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, cast
@@ -11,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.logger import get_logger
-from app.infrastructure.db.database import AsyncSessionLocal
+from app.infrastructure.db.database import AsyncSessionLocal, engine
 from app.models.core_diagnostics import CoreDiagnosticsAcknowledgement
 from app.models.hardware_command import HardwareCommandIntent
 from app.models.processed_job import ProcessedJob
@@ -186,6 +188,8 @@ async def run_database_retention_worker() -> None:
         return
 
     interval = max(60, settings.database_retention_interval_seconds)
+    vacuum_interval = max(3600, settings.database_vacuum_interval_seconds)
+    last_vacuum_at = 0.0
     logger.info(
         "Database retention worker started (interval=%ss, dry_run=%s)",
         interval,
@@ -197,6 +201,9 @@ async def run_database_retention_worker() -> None:
             async with AsyncSessionLocal() as db:
                 result = await run_database_retention_once(db)
                 await _log_database_size(db)
+            if settings.database_vacuum_enabled and time.monotonic() - last_vacuum_at >= vacuum_interval:
+                await _run_vacuum_analyze()
+                last_vacuum_at = time.monotonic()
             if result.total:
                 logger.info(
                     "Database retention completed: processed_jobs=%s diagnostics_acknowledgements=%s hardware_command_intents=%s runtime_events=%s allocation_events=%s scl_imports=%s signal_revisions=%s sld_revisions=%s test_evidence=%s sequence_runs=%s dry_run=%s",
@@ -234,6 +241,45 @@ async def _log_database_size(db: AsyncSession) -> None:
         )
     else:
         logger.debug("PostgreSQL database size is %.2f GiB", size_gb)
+
+    disk = shutil.disk_usage("/")
+    free_gb = disk.free / (1024 ** 3)
+    if free_gb < settings.database_disk_free_warning_gb:
+        logger.warning(
+            "Filesystem free space is %.2f GiB, below configured warning threshold %.2f GiB",
+            free_gb,
+            settings.database_disk_free_warning_gb,
+        )
+
+    tables = await db.execute(text("""
+        SELECT
+            s.relname,
+            pg_total_relation_size(s.relid) AS size_bytes,
+            COALESCE(p.n_live_tup, 0) AS live_rows,
+            COALESCE(p.n_dead_tup, 0) AS dead_rows
+        FROM pg_catalog.pg_statio_user_tables AS s
+        JOIN pg_catalog.pg_stat_user_tables AS p ON p.relid = s.relid
+        ORDER BY pg_total_relation_size(s.relid) DESC
+        LIMIT 10
+    """))
+    table_warning_bytes = max(1, settings.database_table_size_warning_mb) * 1024 * 1024
+    for name, table_size, live_rows, dead_rows in tables.all():
+        if isinstance(table_size, int) and table_size >= table_warning_bytes:
+            logger.warning(
+                "Large PostgreSQL table: %s size=%.2f MiB live_rows=%s dead_rows=%s",
+                name,
+                table_size / (1024 ** 2),
+                live_rows,
+                dead_rows,
+            )
+
+
+async def _run_vacuum_analyze() -> None:
+    logger.info("Starting scheduled PostgreSQL VACUUM (ANALYZE)")
+    async with engine.connect() as connection:
+        autocommit_connection = await connection.execution_options(isolation_level="AUTOCOMMIT")
+        await autocommit_connection.execute(text("VACUUM (ANALYZE)"))
+    logger.info("Scheduled PostgreSQL VACUUM (ANALYZE) completed")
 
 
 async def _purge_table(
