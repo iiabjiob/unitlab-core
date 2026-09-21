@@ -116,6 +116,14 @@ class Settings(BaseSettings):
     database_processed_job_retention_days: int = 30
     database_diagnostics_ack_retention_days: int = 90
     database_hardware_command_retention_days: int = 365
+    database_runtime_event_retention_days: int = 90
+    database_allocation_event_retention_days: int = 730
+    database_scl_import_retention_days: int = 180
+    database_signal_revision_retention_days: int = 730
+    database_sld_revision_retention_days: int = 180
+    database_sld_revision_keep_count: int = 50
+    database_test_evidence_retention_days: int = 2555
+    database_size_warning_gb: float = 20.0
 
     # ---- Signal Import ----
     signal_import_max_rows: int = 20000

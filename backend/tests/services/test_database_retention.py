@@ -3,8 +3,10 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services import database_retention
 
@@ -15,10 +17,11 @@ class FakeSession:
         self.commit_calls = 0
         self.rollback_calls = 0
         self.execute_calls = 0
+        self.scalar_values = iter((4, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14))
 
     async def scalar(self, _statement, _params=None):  # type: ignore[no-untyped-def]
         self.scalar_calls += 1
-        return (4, 2, 3)[self.scalar_calls - 1]
+        return next(self.scalar_values)
 
     async def execute(self, _statement):  # type: ignore[no-untyped-def]
         self.execute_calls += 1
@@ -38,6 +41,14 @@ def test_retention_dry_run_counts_only_configured_operational_tables(monkeypatch
         database_processed_job_retention_days=30,
         database_diagnostics_ack_retention_days=90,
         database_hardware_command_retention_days=365,
+        database_runtime_event_retention_days=90,
+        database_allocation_event_retention_days=730,
+        database_scl_import_retention_days=180,
+        database_signal_revision_retention_days=730,
+        database_sld_revision_retention_days=180,
+        database_sld_revision_keep_count=50,
+        database_test_evidence_retention_days=2555,
+        database_size_warning_gb=20.0,
     )
     monkeypatch.setattr(database_retention, "get_settings", lambda: settings)
     monkeypatch.setattr(database_retention, "_try_acquire_lock", lambda _db: _acquired())
@@ -45,7 +56,7 @@ def test_retention_dry_run_counts_only_configured_operational_tables(monkeypatch
 
     session = FakeSession()
     result = asyncio.run(database_retention.run_database_retention_once(
-        session,  # type: ignore[arg-type]
+        cast(AsyncSession, cast(object, session)),
         now=datetime(2026, 9, 21, tzinfo=timezone.utc),
         dry_run=True,
     ))
@@ -53,7 +64,14 @@ def test_retention_dry_run_counts_only_configured_operational_tables(monkeypatch
     assert result.processed_jobs == 4
     assert result.diagnostics_acknowledgements == 2
     assert result.hardware_command_intents == 3
-    assert result.total == 9
+    assert result.runtime_events == 5
+    assert result.allocation_events == 6
+    assert result.scl_imports == 7
+    assert result.signal_revisions == 8
+    assert result.sld_revisions == 9
+    assert result.test_evidence == 46
+    assert result.sequence_runs == 14
+    assert result.total == 104
     assert result.dry_run is True
     assert session.execute_calls == 0
     assert session.commit_calls == 0
