@@ -245,6 +245,7 @@ const editMode = ref(readLocalSetting<SldWorkMode>(
   { validate: (value) => value === "edit" || value === "operate" ? value : null },
 ) === "edit")
 const selectionPanelExpanded = ref(false)
+const overlapSelectionCycle = ref<{ key: string; ids: string[]; index: number } | null>(null)
 const svgPointerProps = pointer.getSvgPointerProps()
 const renderedViewport = computed(() => {
   const current = viewport.viewport.value
@@ -378,11 +379,18 @@ const selectedSwitchgearType = computed<SwitchgearType | null>(() => {
   return typeof node?.metadata?.switchgearType === "string" ? node.metadata.switchgearType as SwitchgearType : null
 })
 const selectedTextCount = computed(() => selectedTextIds.value.length)
-const maxSwitchgearZIndex = computed(() => Math.max(0, ...[...diagram.scene.value.entities.nodesById.values()].map(node => Number(node.metadata?.zIndex) || 0)))
+const maxSwitchgearZIndex = computed(() => {
+  const values = [...diagram.scene.value.entities.nodesById.values()]
+    .map(node => Number(node.metadata?.zIndex))
+    .filter(Number.isFinite)
+  return values.length > 0 ? Math.max(...values) : 0
+})
 const edgesBelowSwitchgears = computed(() => visible.projection.value.edges.filter(edge => !isEdgeAboveSwitchgears(edge.id)))
 const edgesAboveSwitchgears = computed(() => visible.projection.value.edges.filter(edge => isEdgeAboveSwitchgears(edge.id)))
 const shapesBelowSwitchgears = computed(() => visible.projection.value.shapes.filter(shape => !isShapeAboveSwitchgears(shape.id)))
 const shapesAboveSwitchgears = computed(() => visible.projection.value.shapes.filter(shape => isShapeAboveSwitchgears(shape.id)))
+const textsBelowSwitchgears = computed(() => visible.projection.value.texts.filter(text => !isTextAboveSwitchgears(text.id)))
+const textsAboveSwitchgears = computed(() => visible.projection.value.texts.filter(text => isTextAboveSwitchgears(text.id)))
 const browserObjects = computed<BrowserObject[]>(() => [
   ...diagram.scene.value.order.edgeIds.map((id, index) => ({
     id,
@@ -1143,6 +1151,55 @@ function hitTestCanvasEntity(point: { x: number; y: number }, radius: number) {
   })[0] ?? null
 }
 
+function collectOverlappingEntityIds(event: PointerEvent): string[] {
+  if (typeof document === "undefined") {
+    return []
+  }
+  const stage = stageRef.value
+  if (!stage) {
+    return []
+  }
+  const ids: string[] = []
+  for (const element of document.elementsFromPoint(event.clientX, event.clientY)) {
+    const entity = element.closest<SVGElement>("[data-sld-entity-id]")
+    if (!entity || !stage.contains(entity)) {
+      continue
+    }
+    const id = entity.dataset.sldEntityId
+    if (id && !ids.includes(id)) {
+      ids.push(id)
+    }
+  }
+  return ids
+}
+
+function cycleOverlappingSelection(event: PointerEvent): void {
+  if (event.shiftKey || event.metaKey || event.ctrlKey) {
+    overlapSelectionCycle.value = null
+    return
+  }
+  const ids = collectOverlappingEntityIds(event)
+  if (ids.length < 2) {
+    overlapSelectionCycle.value = null
+    return
+  }
+  const pointKey = `${Math.round(event.clientX / 4)}:${Math.round(event.clientY / 4)}`
+  const key = `${pointKey}:${ids.join(",")}`
+  const currentId = selection.selection.value.primaryId
+  const previous = overlapSelectionCycle.value
+  if (!previous || previous.key !== key) {
+    overlapSelectionCycle.value = {
+      key,
+      ids,
+      index: Math.max(0, currentId ? ids.indexOf(currentId) : 0),
+    }
+    return
+  }
+  const index = (previous.index + 1) % ids.length
+  overlapSelectionCycle.value = { key, ids, index }
+  selection.setSelection([ids[index] as string], ids[index] as string)
+}
+
 function openContextMenu(event: MouseEvent, kind: ContextMenuState["kind"], nodeId?: string) {
   const stage = stageRef.value
   if (!stage) {
@@ -1341,6 +1398,7 @@ function onStagePointerUp(event: PointerEvent) {
     movedEdges.value = null
   }
   const selectionDrag = selectionDragSnap.value
+  const movedSelection = Boolean(selectionDrag && (selectionDrag.delta.x !== 0 || selectionDrag.delta.y !== 0))
   if (selectionDrag?.pointerId === event.pointerId) {
     if (snapEnabled.value) {
       commitSnappedSelection(selectionDrag)
@@ -1352,6 +1410,13 @@ function onStagePointerUp(event: PointerEvent) {
     panObjectPointerId.value = null
   }
   restoreSelectionAfterPointerRelease(selectedIdsBeforeRelease, primaryIdBeforeRelease)
+  if (!drag || (drag.delta.x === 0 && drag.delta.y === 0)) {
+    if (!movedSelection && activeTool.value === "select") {
+      cycleOverlappingSelection(event)
+    }
+  } else {
+    overlapSelectionCycle.value = null
+  }
 }
 
 function moveEdgesWithHistory(ids: string[], delta: { x: number; y: number }) {
@@ -3000,6 +3065,11 @@ function isShapeAboveSwitchgears(id: string) {
   return Number(shape?.metadata?.zIndex) > maxSwitchgearZIndex.value
 }
 
+function isTextAboveSwitchgears(id: string) {
+  const text = diagram.scene.value.entities.textsById.get(id)
+  return Number(text?.metadata?.zIndex) > maxSwitchgearZIndex.value
+}
+
 function isBrokenEdge(id: string) {
   const edge = diagram.scene.value.entities.edgesById.get(id)
   return edge?.metadata?.startBindingValid === false || edge?.metadata?.endBindingValid === false
@@ -3198,6 +3268,8 @@ function resolveTransformerCircleOffset(id: string): number {
           v-for="edge in edgesBelowSwitchgears"
           :key="edge.id"
           class="switchgear-sld-package-canvas__edge"
+          data-sld-entity-kind="edge"
+          :data-sld-entity-id="edge.id"
           v-bind="getSvgEntityProps(edge)"
           :transform="resolveSelectionPreviewTransform(edge.id)"
           fill="none"
@@ -3247,7 +3319,7 @@ function resolveTransformerCircleOffset(id: string): number {
           pointer-events="none"
         />
 
-        <g v-for="shape in shapesBelowSwitchgears" :key="shape.id" class="switchgear-sld-package-canvas__static" :transform="resolveSelectionPreviewTransform(shape.id)">
+        <g v-for="shape in shapesBelowSwitchgears" :key="shape.id" class="switchgear-sld-package-canvas__static" data-sld-entity-kind="shape" :data-sld-entity-id="shape.id" :transform="resolveSelectionPreviewTransform(shape.id)">
           <g
             v-if="resolveStaticMeta(shape.id).kind === 'transformer'"
             @contextmenu.stop.prevent="openStaticContextMenu($event, shape.id)"
@@ -3282,11 +3354,32 @@ function resolveTransformerCircleOffset(id: string): number {
           </g>
         </g>
 
+        <text
+          v-for="text in textsBelowSwitchgears"
+          :key="`${text.id}:below-switchgears`"
+          v-bind="getSvgEntityProps(text)"
+          data-sld-entity-kind="text"
+          :data-sld-entity-id="text.id"
+          :x="text.geometry.bounds.x + text.geometry.bounds.width / 2"
+          :y="text.geometry.bounds.y + text.geometry.bounds.height / 2"
+          class="switchgear-sld-package-canvas__text-entity"
+          :transform="resolveSelectionPreviewTransform(text.id)"
+          :class="resolveTextClass(text.id)"
+          :style="{ fontSize: `${resolveTextFontSize(text.id)}px`, fontWeight: resolveTextBold(text.id) ? 700 : 500 }"
+          text-anchor="middle"
+          dominant-baseline="middle"
+          @contextmenu.stop.prevent="openTextContextMenu($event, text.id)"
+        >
+          {{ diagram.scene.value.entities.textsById.get(text.id)?.text }}
+        </text>
+
         <rect
           v-for="node in visible.projection.value.nodes"
           :key="node.id"
           v-bind="getSvgEntityProps(node)"
           class="switchgear-sld-package-canvas__node"
+          data-sld-entity-kind="node"
+          :data-sld-entity-id="node.id"
           :transform="resolveSelectionPreviewTransform(node.id)"
           rx="8"
           fill="transparent"
@@ -3339,7 +3432,7 @@ function resolveTransformerCircleOffset(id: string): number {
           {{ resolveNodeLabel(node.id) }}
         </text>
 
-        <g v-for="shape in shapesAboveSwitchgears" :key="`${shape.id}:above-switchgears`" class="switchgear-sld-package-canvas__static" :transform="resolveSelectionPreviewTransform(shape.id)">
+        <g v-for="shape in shapesAboveSwitchgears" :key="`${shape.id}:above-switchgears`" class="switchgear-sld-package-canvas__static" data-sld-entity-kind="shape" :data-sld-entity-id="shape.id" :transform="resolveSelectionPreviewTransform(shape.id)">
           <g
             v-if="resolveStaticMeta(shape.id).kind === 'transformer'"
             @contextmenu.stop.prevent="openStaticContextMenu($event, shape.id)"
@@ -3378,6 +3471,8 @@ function resolveTransformerCircleOffset(id: string): number {
           v-for="edge in edgesAboveSwitchgears"
           :key="`${edge.id}:above-switchgears`"
           class="switchgear-sld-package-canvas__edge"
+          data-sld-entity-kind="edge"
+          :data-sld-entity-id="edge.id"
           v-bind="getSvgEntityProps(edge)"
           :transform="resolveSelectionPreviewTransform(edge.id)"
           fill="none"
@@ -3393,9 +3488,11 @@ function resolveTransformerCircleOffset(id: string): number {
         />
 
         <text
-          v-for="text in visible.projection.value.texts"
+          v-for="text in textsAboveSwitchgears"
           :key="text.id"
           v-bind="getSvgEntityProps(text)"
+          data-sld-entity-kind="text"
+          :data-sld-entity-id="text.id"
           :x="text.geometry.bounds.x + text.geometry.bounds.width / 2"
           :y="text.geometry.bounds.y + text.geometry.bounds.height / 2"
           class="switchgear-sld-package-canvas__text-entity"
