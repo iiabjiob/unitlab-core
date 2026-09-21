@@ -702,7 +702,7 @@ function persistDocument(state: StoredDiagramState, changeKind: "edit" | "import
     <UiModal
       :open="transferImportModalOpen"
       title="Import SLD"
-      max-width="lg"
+      max-width="xl"
       :content-scroll="false"
       @close="closeTransferImport"
     >
