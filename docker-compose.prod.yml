@@ -309,7 +309,6 @@ services:
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
       BACKUP_MIN_FREE_GB: ${BACKUP_MIN_FREE_GB:-5}
       BACKUP_MAX_AGE_HOURS: ${BACKUP_MAX_AGE_HOURS:-48}
-      BACKUP_RESTORE_CHECK_INTERVAL_SECONDS: ${BACKUP_RESTORE_CHECK_INTERVAL_SECONDS:-2592000}
       PGHOST: db
       PGPORT: 5432
     depends_on:
@@ -326,22 +325,6 @@ services:
       - |
         while true; do
           if /usr/local/bin/backup-postgres.sh; then
-            last_restore_check="/var/lib/unitlab/backups/postgres/.last-restore-check"
-            last_restore_epoch=0
-            if [[ -f "$$last_restore_check" ]]; then
-              last_restore_epoch="$$(cat "$$last_restore_check")"
-            fi
-            current_epoch="$$(date +%s)"
-            if ! [[ "$$last_restore_epoch" =~ ^[0-9]+$$ ]]; then
-              last_restore_epoch=0
-            fi
-            if (( current_epoch - last_restore_epoch >= $${BACKUP_RESTORE_CHECK_INTERVAL_SECONDS:-2592000} )); then
-              if VERIFY_RESTORE_DATABASE=1 /usr/local/bin/verify-postgres-backup.sh; then
-                printf '%s\n' "$$current_epoch" > "$$last_restore_check"
-              else
-                echo "[unitlab-backup] WARNING: restore verification failed"
-              fi
-            fi
             sleep "$${BACKUP_INTERVAL_SECONDS:-86400}"
           else
             sleep "$${BACKUP_FAILURE_RETRY_SECONDS:-900}"

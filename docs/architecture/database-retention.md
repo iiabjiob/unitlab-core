@@ -22,8 +22,6 @@ The worker also logs database size, filesystem free space, and the largest Postg
 
 Production Compose runs a separate `db_backup` service. It creates a PostgreSQL custom-format dump every 24 hours by default, validates it with `pg_restore --list`, writes a SHA-256 sidecar, and publishes it atomically into the `db_backups` volume. Archives older than 30 days are removed only after a new archive has been validated. `BACKUP_INTERVAL_SECONDS`, `BACKUP_RETENTION_DAYS`, and `BACKUP_MIN_FREE_GB` can be overridden in the deployment environment.
 
-After a successful backup, the service performs a full restore verification into a temporary database once every 30 days by default. The check is isolated from the production database and does not replace the normal backup freshness check.
-
 The operator can run `sudo unitlab backup-check` to validate the newest archive and its age. `sudo unitlab backup-check --restore` additionally restores it into a temporary database and removes that database after the check; this should be run during a low-activity maintenance window, for example monthly. A production restore requires the explicit `restore-postgres.sh --confirm <backup.dump>` command and a maintenance window. The backup volume is separate from the PostgreSQL data volume, but it is still on the same host; deployments that must survive host loss need an additional off-host copy.
 
 Deployments create a safety backup before migrations and before the explicit destructive database reset. Successful deployments retain the active and previous release directories and remove only dangling Docker image layers. Docker logs are bounded by the Compose `json-file` limits; no retention job removes test evidence or reports.
