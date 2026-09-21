@@ -316,7 +316,7 @@ function mergeImportedDiagram(current: StoredDiagramState, imported: StoredDiagr
   }))
   const remappedStatics = (imported.staticElements ?? []).map(item => ({ ...item, id: staticIdMap.get(item.id) ?? item.id }))
   const remappedTexts = (imported.textElements ?? []).map(item => ({ ...item, id: textIdMap.get(item.id) ?? item.id }))
-  const remapRecord = (record: Record<string, number> | undefined) => Object.fromEntries(Object.entries(record ?? {}).flatMap(([id, value]) => {
+  const remapRecord = <T,>(record: Record<string, T> | undefined): Record<string, T> => Object.fromEntries(Object.entries(record ?? {}).flatMap(([id, value]) => {
     if (id.startsWith("switchgear:")) {
       const target = switchgearIdMap.get(id)
       return target == null ? [] : [[`switchgear:${target}`, value]]
@@ -326,7 +326,7 @@ function mergeImportedDiagram(current: StoredDiagramState, imported: StoredDiagr
       return target == null ? [] : [[`static:${target}`, value]]
     }
     return [[edgeIdMap.get(id) ?? textIdMap.get(id) ?? id, value]]
-  }))
+  })) as Record<string, T>
   const remapRotation = (record: StoredDiagramState["rotationById"]) => remapRecord(record)
   const remappedLayout = Object.fromEntries(Object.entries(imported.layoutById ?? {}).flatMap(([id, layout]) => {
     const target = switchgearIdMap.get(`switchgear:${id}`)

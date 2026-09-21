@@ -22,7 +22,7 @@ describe("switchgear SLD transfer", () => {
         name: "Q1",
         bindings: [{ id: 1, role: "do_open", channel_id: 10, delay_ms: 5 }],
       }],
-      channels: [{ id: 10, device_id: 7, index: 2, type: "do", name: "", resolved_name: "" }],
+      channels: [{ id: 10, device_id: 7, index: 2, type: "do", name: "", resolved_name: "", state: false }],
       resolveUnitId: () => "PLC-01",
     })
 

@@ -228,9 +228,9 @@ const pointer = useDiagramPointerController(diagram, {
 const textEditor = useDiagramTextEditor(diagram, { viewport: viewport.viewport })
 
 watch(
-  () => props.model.scene.nodes.map(node => `${node.id}:${String(node.metadata?.switchgearType ?? "")}`).join("|"),
+  () => (props.model.scene.nodes ?? []).map(node => `${node.id}:${String(node.metadata?.switchgearType ?? "")}`).join("|"),
   () => {
-    const nextTypes = new Map(props.model.scene.nodes.map(node => [node.id, node.metadata?.switchgearType]))
+    const nextTypes = new Map((props.model.scene.nodes ?? []).map(node => [node.id, node.metadata?.switchgearType]))
     const current = diagram.engine.serialize()
     let changed = false
     const nodes = current.nodes.map(node => {
@@ -3155,7 +3155,6 @@ function isSwitchgearConfigured(id: string) {
     const channelId = binding?.channel_id
     return channelId !== null
       && channelId !== undefined
-      && channelId !== ""
       && Number.isFinite(Number(channelId))
   })
 }

@@ -353,6 +353,7 @@ function serializeEdge(
 ): LegacyDiagramEdge {
   const start = resolveSerializedEndpoint(edge.source, portsById, asPortBinding(edge.metadata?.startBinding))
   const end = resolveSerializedEndpoint(edge.target, portsById, asPortBinding(edge.metadata?.endBinding))
+  const edgeWidth = Number(edge.metadata?.edgeWidth)
   return {
     id: edge.id,
     x1: Math.round(start.point.x),
@@ -361,7 +362,7 @@ function serializeEdge(
     y2: Math.round(end.point.y),
     kind: edge.metadata?.edgeKind === "arrow" ? "arrow" : "line",
     weight: edge.metadata?.edgeWeight === "bold" ? "bold" : "normal",
-    width: Number.isFinite(Number(edge.metadata?.edgeWidth)) ? Number(edge.metadata.edgeWidth) : undefined,
+    width: Number.isFinite(edgeWidth) ? edgeWidth : undefined,
     style: edge.metadata?.edgeStyle === "dashed" || edge.metadata?.edgeStyle === "dotted" ? edge.metadata.edgeStyle : "solid",
     startBinding: start.binding ?? asPortBinding(edge.metadata?.startBinding),
     endBinding: end.binding ?? asPortBinding(edge.metadata?.endBinding),
