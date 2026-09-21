@@ -363,12 +363,6 @@
   color: var(--color-neutral-200) !important;
 }
 
-.dark .switchgear-sld-package-canvas__toolbar .switchgear-sld-package-canvas__mode-label {
-  border-color: var(--color-neutral-800) !important;
-  background: var(--color-neutral-950) !important;
-  color: var(--color-neutral-300) !important;
-}
-
 .dark .switchgear-sld-package-canvas__toolbar button {
   border-color: var(--color-neutral-700) !important;
   background: var(--color-neutral-900) !important;

@@ -4,7 +4,7 @@
   --font-mono: "JetBrains Mono", "SFMono-Regular", "Consolas", "Liberation Mono", monospace;
 
   /* Set once to adjust the application typography density. */
-  --text-scale: 0.9;
+  --text-scale: 1;
   --text-3xs: calc(0.5625rem * var(--text-scale));
   --text-2xs: calc(0.625rem * var(--text-scale));
   --text-compact: calc(0.6875rem * var(--text-scale));

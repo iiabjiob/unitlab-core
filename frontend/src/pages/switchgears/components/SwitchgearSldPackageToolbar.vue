@@ -95,6 +95,7 @@ function onAlignmentChange(value: string | number | null) {
     >
       <span aria-hidden="true">{{ props.editMode ? '🔓' : '🔒' }}</span>
     </SldToolbarButton>
+    <span v-if="props.editMode" class="switchgear-sld-package-canvas__toolbar-divider" role="separator" aria-orientation="vertical" />
     <div v-if="props.editMode" class="switchgear-sld-package-canvas__actions">
       <div class="switchgear-sld-package-canvas__tool-tabs" role="group" aria-label="Canvas tool">
         <SldToolbarButton size="xs" variant="toolbar" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': props.activeTool === 'select' }" :aria-pressed="props.activeTool === 'select'" title="Select and move objects (V)" aria-label="Select tool" @click="props.actions.setTool('select')">↖</SldToolbarButton>
@@ -114,6 +115,9 @@ function onAlignmentChange(value: string | number | null) {
       <SldToolbarButton size="xs" variant="toolbar" title="Add ground symbol" aria-label="Add ground symbol" @click="props.actions.addStatic('ground')">⏚</SldToolbarButton>
       <SldToolbarButton size="xs" variant="toolbar" title="Add transformer symbol" aria-label="Add transformer symbol" @click="props.actions.addStatic('transformer')"><svg class="switchgear-sld-package-canvas__toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="5" /><circle cx="12" cy="16" r="5" /></svg></SldToolbarButton>
       </div>
+      <span class="switchgear-sld-package-canvas__toolbar-divider" role="separator" aria-orientation="vertical" />
+      <SldToolbarButton size="xs" variant="toolbar" :disabled="!props.canUndo" title="Undo last change (Ctrl/Cmd+Z)" aria-label="Undo" @click="props.actions.undo">↶</SldToolbarButton>
+      <SldToolbarButton size="xs" variant="toolbar" :disabled="!props.canRedo" title="Redo last change (Ctrl/Cmd+Shift+Z)" aria-label="Redo" @click="props.actions.redo">↷</SldToolbarButton>
       <div v-if="props.selectedStaticCount > 0 && !props.editMode" class="switchgear-sld-package-canvas__tool-tabs" role="group" aria-label="Symbol size">
         <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': props.selectedStaticSize === 'sm' }" :aria-pressed="props.selectedStaticSize === 'sm'" title="Small symbol" @click="props.actions.setStaticSize('sm')">S</button>
         <button type="button" class="switchgear-sld-package-canvas__tool-tab" :class="{ 'is-active': props.selectedStaticSize === 'md' }" :aria-pressed="props.selectedStaticSize === 'md'" title="Medium symbol" @click="props.actions.setStaticSize('md')">M</button>
@@ -149,16 +153,17 @@ function onAlignmentChange(value: string | number | null) {
         <SldToolbarButton size="xs" variant="toolbar" title="Send to back" aria-label="Send to back" @click="props.actions.sendToBack"><svg class="switchgear-sld-package-canvas__toolbar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5h14M5 10h14M5 15h9" /><path d="m16 17 3 3 3-3M19 20V11" /></svg></SldToolbarButton>
       </div>
       <span class="switchgear-sld-package-canvas__toolbar-divider" role="separator" aria-orientation="vertical" />
-      <SldToolbarButton size="xs" variant="toolbar" :disabled="!props.canUndo" title="Undo last change (Ctrl/Cmd+Z)" aria-label="Undo" @click="props.actions.undo">↶</SldToolbarButton>
-      <SldToolbarButton size="xs" variant="toolbar" :disabled="!props.canRedo" title="Redo last change (Ctrl/Cmd+Shift+Z)" aria-label="Redo" @click="props.actions.redo">↷</SldToolbarButton>
-      <span class="switchgear-sld-package-canvas__toolbar-divider" role="separator" aria-orientation="vertical" />
       <span class="switchgear-sld-package-canvas__toolbar-spacer" aria-hidden="true" />
       <SldToolbarButton size="xs" variant="toolbar" title="Export SLD" aria-label="Export SLD" @click="props.actions.exportSld('full')">⇩</SldToolbarButton>
       <SldToolbarButton size="xs" variant="toolbar" :disabled="props.selectionCount === 0" title="Export selected SLD objects" aria-label="Export selected SLD objects" @click="props.actions.exportSld('selection')">⇩*</SldToolbarButton>
       <SldToolbarButton size="xs" variant="toolbar" title="Import SLD" aria-label="Import SLD" @click="props.actions.importSld">⇧</SldToolbarButton>
+      <span class="switchgear-sld-package-canvas__toolbar-divider" role="separator" aria-orientation="vertical" />
       <SldToolbarButton size="xs" variant="toolbar" :class="{ 'switchgear-sld-package-canvas__snap-toggle--active': props.objectBrowserOpen }" title="Show or hide objects" aria-label="Show or hide objects" :aria-pressed="props.objectBrowserOpen" @click="props.actions.toggleObjectBrowser">☷</SldToolbarButton>
     </div>
-    <span class="switchgear-sld-package-canvas__mode-label">
+    <span
+      class="switchgear-sld-package-canvas__mode-label"
+      :class="props.editMode ? 'is-edit-mode' : 'is-operate-mode'"
+    >
       {{ props.editMode ? 'Edit mode' : 'Operate mode' }}
     </span>
   </div>
@@ -215,6 +220,18 @@ function onAlignmentChange(value: string | number | null) {
   font-size: var(--text-xs);
   font-weight: 600;
   white-space: nowrap;
+}
+
+.switchgear-sld-package-canvas__mode-label.is-operate-mode {
+  border-color: var(--color-green-300);
+  background: var(--color-green-100);
+  color: var(--color-green-800);
+}
+
+.switchgear-sld-package-canvas__mode-label.is-edit-mode {
+  border-color: var(--color-yellow-300);
+  background: var(--color-yellow-100);
+  color: var(--color-yellow-800);
 }
 
 .switchgear-sld-package-canvas__actions,
@@ -377,6 +394,7 @@ function onAlignmentChange(value: string | number | null) {
 }
 
 .switchgear-sld-package-canvas__toolbar-divider {
+  align-self: center;
   width: 1px;
   height: 1.75rem;
   margin-inline: 0.15rem;
@@ -411,12 +429,6 @@ function onAlignmentChange(value: string | number | null) {
   color: var(--color-neutral-300);
 }
 
-:global(.dark) .switchgear-sld-package-canvas__mode-label {
-  border-color: var(--color-neutral-800);
-  background: var(--color-neutral-950);
-  color: var(--color-neutral-400);
-}
-
 :global(.dark) .switchgear-sld-package-canvas__mode-toggle.is-active {
   border-color: var(--color-neutral-600);
   background: var(--color-neutral-800);
@@ -444,16 +456,16 @@ function onAlignmentChange(value: string | number | null) {
   color: var(--color-neutral-200) !important;
 }
 
-:global(html.dark) .switchgear-sld-package-canvas__mode-label {
-  border-color: var(--color-neutral-800) !important;
-  background: var(--color-neutral-950) !important;
-  color: var(--color-neutral-300) !important;
+:global(.dark) .switchgear-sld-package-canvas__mode-label.is-operate-mode {
+  border-color: var(--color-green-800) !important;
+  background: var(--color-green-900) !important;
+  color: var(--color-green-300) !important;
 }
 
-:global(html.dark) .switchgear-sld-package-canvas__toolbar .switchgear-sld-package-canvas__mode-label {
-  border-color: rgb(63 63 70) !important;
-  background: rgb(24 24 27) !important;
-  color: rgb(212 212 216) !important;
+:global(.dark) .switchgear-sld-package-canvas__mode-label.is-edit-mode {
+  border-color: var(--color-yellow-800) !important;
+  background: var(--color-yellow-900) !important;
+  color: var(--color-yellow-300) !important;
 }
 
 :global(.dark .switchgear-sld-package-canvas__mode-toggle:not(.is-active)) {

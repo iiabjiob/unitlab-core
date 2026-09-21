@@ -209,6 +209,30 @@ let pendingPersistedStateFingerprint: string | null = null
 let suppressNextViewportPersistence = false
 const initialFitDone = ref(false)
 const EDGE_HIT_TOLERANCE_PX = 8
+const AUTO_SCROLL_EDGE_ZONE_PX = 72
+const AUTO_SCROLL_MAX_SPEED_PX = 18
+
+type AutoScrollPointer = {
+  pointerId: number
+  clientX: number
+  clientY: number
+  shiftKey: boolean
+}
+
+let autoScrollFrame: number | null = null
+let autoScrollPointer: AutoScrollPointer | null = null
+const autoScrollEngaged = ref(false)
+
+const LONG_PRESS_DELAY_MS = 550
+const LONG_PRESS_MOVE_TOLERANCE_PX = 8
+let longPressTimer: ReturnType<typeof setTimeout> | null = null
+let longPressPointer: {
+  pointerId: number
+  clientX: number
+  clientY: number
+  kind: ContextMenuState['kind']
+  id: string
+} | null = null
 
 const diagram = useDiagramEngine(props.model.scene)
 const viewport = useDiagramViewport(diagram, { element: stageRef })
@@ -530,7 +554,10 @@ const selectionPreviewDelta = computed(() => {
   if (snapshot.tool !== "drag-selection" || !snapshot.active || !snapshot.previewDelta) {
     return null
   }
-  return snapSelectionDelta(snapshot.previewDelta)
+  // While the viewport is moving, applying grid snap to the continuously
+  // changing world point can alternate between two adjacent grid cells.
+  // Keep the preview raw and apply the final snap once on pointerup.
+  return autoScrollEngaged.value ? snapshot.previewDelta : snapSelectionDelta(snapshot.previewDelta)
 })
 const canvasCursorClass = computed(() => {
   if (minimapDrag.value) return "is-minimap-dragging"
@@ -772,6 +799,8 @@ watch(() => props.fitRequestKey, (next, previous) => {
 })
 
 onBeforeUnmount(() => {
+  stopAutoScroll()
+  clearLongPress()
   flushPersistedState()
 })
 
@@ -1146,6 +1175,120 @@ function closeContextMenu() {
   contextMenu.value = null
 }
 
+function clearLongPress() {
+  if (longPressTimer !== null) {
+    clearTimeout(longPressTimer)
+    longPressTimer = null
+  }
+  longPressPointer = null
+}
+
+function resolveEntityTarget(target: EventTarget | null) {
+  const element = target instanceof Element
+    ? target.closest<HTMLElement>('[data-sld-entity-kind][data-sld-entity-id]')
+    : null
+  if (!element) {
+    return null
+  }
+  const kind = element.dataset.sldEntityKind
+  const id = element.dataset.sldEntityId
+  if (!id || !kind || !['edge', 'shape', 'text', 'node'].includes(kind)) {
+    return null
+  }
+  return { element, id, kind: kind as ContextMenuState['kind'] | 'shape' }
+}
+
+function resolveEntityAtPointer(event: Pick<PointerEvent, 'clientX' | 'clientY'> & { target?: EventTarget | null }) {
+  const target = resolveEntityTarget(event.target ?? null)
+  if (target) {
+    return {
+      id: target.id,
+      kind: target.kind === 'shape' ? 'static' as const : target.kind,
+    }
+  }
+  const zoom = viewport.viewport.value.zoom > 0 ? viewport.viewport.value.zoom : 1
+  const hit = hitTestCanvasEntity(
+    mapPointerToWorld(event),
+    Math.max(EDGE_HIT_TOLERANCE_PX, TEXT_HIT_TOLERANCE_PX) / zoom,
+  )
+  if (!hit) {
+    return null
+  }
+  if (hit.kind === 'port') {
+    return null
+  }
+  return {
+    id: hit.id,
+    kind: hit.kind === 'shape' ? 'static' as const : hit.kind,
+  }
+}
+
+function selectEntityForContextMenu(kind: ContextMenuState['kind'], id: string) {
+  const ids = kind === 'edge'
+    ? selectedEdgeIds.value
+    : kind === 'static'
+      ? selectedShapeIds.value
+      : kind === 'text'
+        ? selectedTextIds.value
+        : selectedNodeIds.value
+  if (!ids.includes(id)) {
+    selection.setSelection([id], id)
+  }
+}
+
+function openEntityContextMenu(event: MouseEvent, kind: ContextMenuState['kind'], id: string) {
+  if (!editMode.value && kind !== 'node') {
+    return
+  }
+  selectEntityForContextMenu(kind, id)
+  closeTextEditorIfNeeded()
+  openContextMenu(event, kind, kind === 'node' ? id : undefined)
+}
+
+function scheduleLongPress(event: PointerEvent) {
+  clearLongPress()
+  if (!editMode.value || (event.pointerType !== 'touch' && event.pointerType !== 'pen')) {
+    return
+  }
+  const entity = resolveEntityAtPointer(event)
+  if (!entity) {
+    return
+  }
+  longPressPointer = {
+    pointerId: event.pointerId,
+    clientX: event.clientX,
+    clientY: event.clientY,
+    kind: entity.kind,
+    id: entity.id,
+  }
+  longPressTimer = setTimeout(() => {
+    const current = longPressPointer
+    longPressTimer = null
+    if (!current || current.pointerId !== event.pointerId) {
+      return
+    }
+    openEntityContextMenu(
+      new MouseEvent('contextmenu', {
+        bubbles: true,
+        clientX: current.clientX,
+        clientY: current.clientY,
+      }),
+      current.kind,
+      current.id,
+    )
+  }, LONG_PRESS_DELAY_MS)
+}
+
+function handleStageContextMenu(event: MouseEvent) {
+  clearLongPress()
+  const entity = resolveEntityAtPointer(event)
+  if (!entity) {
+    closeContextMenu()
+    return
+  }
+  openEntityContextMenu(event, entity.kind, entity.id)
+}
+
 function hitTestCanvasEntity(point: { x: number; y: number }, radius: number) {
   const candidates = (["node", "edge", "shape", "text"] as const)
     .map((kind) => diagram.engine.hitTest(point, { radius, kinds: [kind] }))
@@ -1221,15 +1364,18 @@ function openContextMenu(event: MouseEvent, kind: ContextMenuState["kind"], node
     return
   }
   const rect = stage.getBoundingClientRect()
+  const menuWidth = 232
+  const menuHeight = kind === "node" ? 280 : 340
   contextMenu.value = {
-    x: Math.max(12, Math.min(rect.width - 188, event.clientX - rect.left)),
-    y: Math.max(12, Math.min(rect.height - 176, event.clientY - rect.top)),
+    x: Math.max(12, Math.min(Math.max(12, rect.width - menuWidth - 12), event.clientX - rect.left)),
+    y: Math.max(12, Math.min(Math.max(12, rect.height - menuHeight - 12), event.clientY - rect.top)),
     kind,
     nodeId,
   }
 }
 
 function handleStagePointerDownCapture(event: PointerEvent) {
+  scheduleLongPress(event)
   const target = event.target as HTMLElement | null
   if (target?.closest(".switchgear-sld-object-browser, .switchgear-sld-package-canvas__selected-controls, .switchgear-sld-selection-panel, .switchgear-sld-package-canvas__canvas-controls, .switchgear-sld-package-canvas__context-menu, .switchgear-sld-package-canvas__minimap, .switchgear-sld-package-canvas__edge-handle")) {
     return
@@ -1311,7 +1457,139 @@ function handleStagePointerDownCapture(event: PointerEvent) {
   event.stopPropagation()
 }
 
+function isAutoScrollActive() {
+  const snapshot = pointer.state.value
+  return editMode.value
+    && activeTool.value === "select"
+    && (
+      (snapshot.active && snapshot.tool === "drag-selection")
+      || movedEdges.value !== null
+      || draggedEdge.value !== null
+      || labelDrag.value !== null
+    )
+}
+
+function autoScrollSpeed(distanceFromEdge: number, edgeSize: number) {
+  if (distanceFromEdge >= edgeSize) {
+    return 0
+  }
+  const intensity = Math.min(1, Math.max(0, (edgeSize - distanceFromEdge) / edgeSize))
+  return AUTO_SCROLL_MAX_SPEED_PX * intensity * intensity
+}
+
+function scheduleAutoScroll(event: PointerEvent) {
+  autoScrollPointer = {
+    pointerId: event.pointerId,
+    clientX: event.clientX,
+    clientY: event.clientY,
+    shiftKey: event.shiftKey,
+  }
+  if (autoScrollFrame === null && isAutoScrollActive()) {
+    autoScrollFrame = requestAnimationFrame(runAutoScroll)
+  }
+}
+
+function stopAutoScroll() {
+  if (autoScrollFrame !== null) {
+    cancelAnimationFrame(autoScrollFrame)
+    autoScrollFrame = null
+  }
+  autoScrollPointer = null
+  autoScrollEngaged.value = false
+}
+
+function runAutoScroll() {
+  autoScrollFrame = null
+  const pointerPosition = autoScrollPointer
+  const stage = stageRef.value
+  if (!pointerPosition || !stage || !isAutoScrollActive()) {
+    stopAutoScroll()
+    return
+  }
+
+  const rect = stage.getBoundingClientRect()
+  const deltaX = autoScrollSpeed(rect.right - pointerPosition.clientX, AUTO_SCROLL_EDGE_ZONE_PX)
+    - autoScrollSpeed(pointerPosition.clientX - rect.left, AUTO_SCROLL_EDGE_ZONE_PX)
+  const deltaY = autoScrollSpeed(rect.bottom - pointerPosition.clientY, AUTO_SCROLL_EDGE_ZONE_PX)
+    - autoScrollSpeed(pointerPosition.clientY - rect.top, AUTO_SCROLL_EDGE_ZONE_PX)
+
+  autoScrollEngaged.value = deltaX !== 0 || deltaY !== 0
+
+  if (deltaX !== 0 || deltaY !== 0) {
+    const current = viewport.viewport.value
+    const zoom = current.zoom > 0 ? current.zoom : 1
+    viewport.setViewport({
+      x: current.x + deltaX / zoom,
+      y: current.y + deltaY / zoom,
+    })
+
+    const pointerEvent = {
+      clientX: pointerPosition.clientX,
+      clientY: pointerPosition.clientY,
+    }
+    const point = mapPointerToWorld(pointerEvent)
+    pointer.interaction.pointerMove({
+      id: pointerPosition.pointerId,
+      point,
+      shiftKey: pointerPosition.shiftKey,
+    })
+    updateCustomDragFromPointer(pointerEvent, pointerPosition.pointerId, pointerPosition.shiftKey)
+  }
+
+  if (isAutoScrollActive()) {
+    autoScrollFrame = requestAnimationFrame(runAutoScroll)
+  } else {
+    autoScrollPointer = null
+  }
+}
+
+function updateCustomDragFromPointer(
+  event: Pick<PointerEvent, "clientX" | "clientY">,
+  pointerId: number,
+  shiftKey = false,
+) {
+  const pointerPoint = mapPointerToWorld(event)
+  const edgeMove = movedEdges.value
+  if (edgeMove && edgeMove.pointerId === pointerId) {
+    edgeMove.delta = snapEdgeMoveDelta(edgeMove.edgeIds, {
+      x: pointerPoint.x - edgeMove.startPoint.x,
+      y: pointerPoint.y - edgeMove.startPoint.y,
+    })
+  }
+
+  const edgeDrag = draggedEdge.value
+  if (edgeDrag && edgeDrag.pointerId === pointerId) {
+    const edge = diagram.scene.value.entities.edgesById.get(edgeDrag.edgeId)
+    const anchor = edge
+      ? resolveEdgeEndpointPosition(edgeDrag.endpoint === "source" ? edge.target : edge.source)
+      : null
+    draggedEdge.value = {
+      ...edgeDrag,
+      draft: anchor
+        ? resolveLineDraftEndpoint(anchor, pointerPoint, shiftKey, edgeDrag.edgeId)
+        : snapDraftEndpoint(pointerPoint, edgeDrag.edgeId),
+    }
+  }
+
+  const label = labelDrag.value
+  if (label && label.pointerId === pointerId) {
+    labelDrag.value = {
+      ...label,
+      currentX: clampLabelOffset(label.originX + pointerPoint.x - label.startX),
+      currentY: clampLabelOffset(label.originY + pointerPoint.y - label.startY),
+    }
+  }
+}
+
 function onStagePointerMove(event: PointerEvent) {
+  if (longPressPointer?.pointerId === event.pointerId) {
+    const movedX = event.clientX - longPressPointer.clientX
+    const movedY = event.clientY - longPressPointer.clientY
+    if (Math.hypot(movedX, movedY) > LONG_PRESS_MOVE_TOLERANCE_PX) {
+      clearLongPress()
+    }
+  }
+  scheduleAutoScroll(event)
   const snapshot = pointer.state.value
   if (snapshot.active && snapshot.tool === "drag-selection" && snapshot.previewDelta) {
     const primaryId = selection.selection.value.ids[0]
@@ -1333,11 +1611,7 @@ function onStagePointerMove(event: PointerEvent) {
   if (!drag || drag.pointerId !== event.pointerId) {
     return
   }
-  const rawDelta = {
-    x: mapPointerToWorld(event).x - drag.startPoint.x,
-    y: mapPointerToWorld(event).y - drag.startPoint.y,
-  }
-  drag.delta = snapEdgeMoveDelta(drag.edgeIds, rawDelta)
+  updateCustomDragFromPointer(event, event.pointerId, event.shiftKey)
 }
 
 function snapSelectionDelta(delta: { x: number; y: number }) {
@@ -1400,6 +1674,10 @@ function snapEdgeMoveDelta(ids: string[], delta: { x: number; y: number }) {
 }
 
 function onStagePointerUp(event: PointerEvent) {
+  if (longPressPointer?.pointerId === event.pointerId) {
+    clearLongPress()
+  }
+  stopAutoScroll()
   const selectedIdsBeforeRelease = [...selection.selection.value.ids]
   const primaryIdBeforeRelease = selection.selection.value.primaryId
   const drag = movedEdges.value
@@ -1469,6 +1747,9 @@ function moveEdgesWithHistory(ids: string[], delta: { x: number; y: number }) {
 }
 
 function onStagePointerCancel(event: PointerEvent) {
+  if (longPressPointer?.pointerId === event.pointerId) {
+    clearLongPress()
+  }
   if (movedEdges.value?.pointerId !== event.pointerId) {
     return
   }
@@ -1501,44 +1782,22 @@ function handleBrowserSelect(id: string, event: MouseEvent) {
   focusStage()
 }
 
-function openEdgeContextMenu(event: MouseEvent, edgeId: string) {
-  event.preventDefault()
-  event.stopPropagation()
-  if (!selectedEdgeIds.value.includes(edgeId)) {
-    selection.setSelection([edgeId], edgeId)
-  }
-  closeTextEditorIfNeeded()
-  openContextMenu(event, "edge")
-}
-
 function openStaticContextMenu(event: MouseEvent, shapeId: string) {
   event.preventDefault()
   event.stopPropagation()
-  if (!selectedShapeIds.value.includes(shapeId)) {
-    selection.setSelection([shapeId], shapeId)
-  }
-  closeTextEditorIfNeeded()
-  openContextMenu(event, "static")
+  openEntityContextMenu(event, "static", shapeId)
 }
 
 function openTextContextMenu(event: MouseEvent, textId: string) {
   event.preventDefault()
   event.stopPropagation()
-  if (!selectedTextIds.value.includes(textId)) {
-    selection.setSelection([textId], textId)
-  }
-  closeTextEditorIfNeeded()
-  openContextMenu(event, "text")
+  openEntityContextMenu(event, "text", textId)
 }
 
 function openNodeContextMenu(event: MouseEvent, nodeId: string) {
   event.preventDefault()
   event.stopPropagation()
-  if (!selectedNodeIds.value.includes(nodeId)) {
-    selection.setSelection([nodeId], nodeId)
-  }
-  closeTextEditorIfNeeded()
-  openContextMenu(event, "node", nodeId)
+  openEntityContextMenu(event, "node", nodeId)
 }
 
 function openNodeDetail(nodeId: string) {
@@ -1548,15 +1807,6 @@ function openNodeDetail(nodeId: string) {
     return
   }
   void router.push({ name: "switchgears.detail", params: { id: switchgearId } })
-}
-
-function requestSwitchgearBindingsEdit(nodeId: string) {
-  const switchgearId = resolveSwitchgearId(nodeId)
-  closeContextMenu()
-  if (switchgearId == null) {
-    return
-  }
-  emit("editSwitchgearBindings", switchgearId)
 }
 
 function closeTextEditorIfNeeded() {
@@ -2498,6 +2748,7 @@ function onSvgPointerUp(event: PointerEvent) {
 }
 
 function cancelPointerInteraction(event: PointerEvent) {
+  stopAutoScroll()
   const target = event.currentTarget as Element | null
   target?.releasePointerCapture?.(event.pointerId)
   if (draggedEdge.value?.pointerId === event.pointerId) {
@@ -2728,48 +2979,21 @@ function updateEdgeEndpoints(updates: Array<{
   if (updates.length === 0) {
     return
   }
-  const updatesById = new Map(updates.map(update => [update.edgeId, update]))
-  diagram.engine.transact(() => {
-    const serialized = diagram.engine.serialize()
-    return {
-      ...serialized,
-      edges: serialized.edges.map((edge) => {
-        const update = updatesById.get(edge.id)
-        if (!update) {
-          return edge
-        }
-        const bindingKey = update.endpoint === "source" ? "startBinding" : "endBinding"
-        return {
-          ...edge,
-          [update.endpoint]: toEdgeEndpoint(update.draft),
-          metadata: {
-            ...edge.metadata,
-            [bindingKey]: update.draft.portId
-              ? resolvePortBinding(update.draft.portId)
-              : null,
-          },
-        }
-      }),
-    }
-  })
+  for (const update of updates) {
+    diagram.dispatch({
+      type: "moveEdgeEndpoint",
+      id: update.edgeId,
+      endpoint: update.endpoint,
+      point: update.draft.point,
+      historyKey: "resize-edge-endpoints",
+    })
+  }
 }
 
 function toEdgeEndpoint(draft: DraftEndpoint) {
   return draft.portId
     ? { kind: "port" as const, portId: draft.portId }
     : { kind: "point" as const, point: draft.point }
-}
-
-function resolvePortBinding(portId: string) {
-  const port = diagram.scene.value.entities.portsById.get(portId)
-  if (port?.metadata?.ownerType !== "node") {
-    return null
-  }
-  const ownerId = Number(port.metadata.ownerId)
-  const boundPortId = typeof port.metadata.portId === "string" ? port.metadata.portId : ""
-  return Number.isFinite(ownerId) && boundPortId
-    ? { ownerType: "node" as const, ownerId, portId: boundPortId }
-    : null
 }
 
 function snapDraftEndpoint(point: { x: number; y: number }, excludedEdgeId?: string, allowExternalSnap = true): DraftEndpoint {
@@ -2953,7 +3177,7 @@ function clampZoom(value: number) {
   return Math.max(0.05, Math.min(2.2, value))
 }
 
-function mapPointerToWorld(event: PointerEvent) {
+function mapPointerToWorld(event: Pick<PointerEvent, "clientX" | "clientY">) {
   const current = viewport.viewport.value
   const pointerSnapshot = pointer.state.value
   const panGestureActive = activeTool.value === "pan"
@@ -3328,6 +3552,7 @@ function resolveTransformerCircleOffset(id: string): number {
       @pointerup="onStagePointerUp"
       @pointercancel="onStagePointerCancel"
       @wheel.prevent="onWheel"
+      @contextmenu.capture.prevent="handleStageContextMenu"
     >
       <SwitchgearSldObjectBrowser
         v-if="objectBrowserOpen"
@@ -3360,7 +3585,7 @@ function resolveTransformerCircleOffset(id: string): number {
         <SldToolbarButton size="xs" variant="toolbar" class="switchgear-sld-package-canvas__icon-action" title="Zoom in" aria-label="Zoom in" @click="toolbarActions.zoom(0.1)">+</SldToolbarButton>
       </div>
       <SwitchgearSldSelectionPanel
-        v-if="editMode && selectionPanelKind && !pointer.state.value.active && !movedEdges && !draggedEdge && !labelDrag"
+        v-if="editMode && selectionPanelKind && !contextMenu && !pointer.state.value.active && !movedEdges && !draggedEdge && !labelDrag"
         class="switchgear-sld-package-canvas__selection-panel-anchor"
         :style="selectionPanelStyle"
         :kind="selectionPanelKind"
@@ -3443,7 +3668,7 @@ function resolveTransformerCircleOffset(id: string): number {
           :opacity="previewedEdgeIds.has(edge.id) ? 0.2 : edge.selected ? 1 : 0.92"
           :marker-end="resolveEdgeKind(edge.id) === 'arrow' ? 'url(#switchgear-sld-package-arrow)' : undefined"
           :style="resolveEdgeKind(edge.id) === 'arrow' ? { color: resolveEdgeStroke(edge.id) } : undefined"
-          @contextmenu.stop.prevent="openEdgeContextMenu($event, edge.id)"
+          @contextmenu.stop.prevent
         />
 
         <polyline
@@ -3488,6 +3713,22 @@ function resolveTransformerCircleOffset(id: string): number {
             @contextmenu.stop.prevent="openStaticContextMenu($event, shape.id)"
             :transform="`translate(${shape.geometry.bounds.x + shape.geometry.bounds.width / 2} ${shape.geometry.bounds.y + shape.geometry.bounds.height / 2}) rotate(${resolveStaticMeta(shape.id).rotation})`"
           >
+            <circle
+              :cx="-resolveTransformerCircleOffset(shape.id)"
+              cy="0"
+              :r="resolveTransformerCircleRadius(shape.id)"
+              fill="var(--sld-symbol-background)"
+              stroke="none"
+              stroke-width="2"
+            />
+            <circle
+              :cx="resolveTransformerCircleOffset(shape.id)"
+              cy="0"
+              :r="resolveTransformerCircleRadius(shape.id)"
+              fill="var(--sld-symbol-background)"
+              stroke="none"
+              stroke-width="2"
+            />
             <circle
               :cx="-resolveTransformerCircleOffset(shape.id)"
               cy="0"
@@ -3605,6 +3846,22 @@ function resolveTransformerCircleOffset(id: string): number {
               :cx="-resolveTransformerCircleOffset(shape.id)"
               cy="0"
               :r="resolveTransformerCircleRadius(shape.id)"
+              fill="var(--sld-symbol-background)"
+              stroke="none"
+              stroke-width="2"
+            />
+            <circle
+              :cx="resolveTransformerCircleOffset(shape.id)"
+              cy="0"
+              :r="resolveTransformerCircleRadius(shape.id)"
+              fill="var(--sld-symbol-background)"
+              stroke="none"
+              stroke-width="2"
+            />
+            <circle
+              :cx="-resolveTransformerCircleOffset(shape.id)"
+              cy="0"
+              :r="resolveTransformerCircleRadius(shape.id)"
               fill="none"
               stroke="var(--sld-symbol-stroke)"
               stroke-width="2"
@@ -3647,7 +3904,7 @@ function resolveTransformerCircleOffset(id: string): number {
           :opacity="previewedEdgeIds.has(edge.id) ? 0.2 : edge.selected ? 1 : 0.92"
           :marker-end="resolveEdgeKind(edge.id) === 'arrow' ? 'url(#switchgear-sld-package-arrow)' : undefined"
           :style="resolveEdgeKind(edge.id) === 'arrow' ? { color: resolveEdgeStroke(edge.id) } : undefined"
-          @contextmenu.stop.prevent="openEdgeContextMenu($event, edge.id)"
+          @contextmenu.stop.prevent
         />
 
         <text
@@ -3723,8 +3980,20 @@ function resolveTransformerCircleOffset(id: string): number {
             <span>Rotate {{ edgeContextLabel }} 90°</span>
             <span class="switchgear-sld-package-canvas__context-shortcut">R</span>
           </button>
+          <button type="button" class="switchgear-sld-package-canvas__context-item" @click="void handleCopySelection(); closeContextMenu()">
+            Copy {{ edgeContextLabel }}
+          </button>
+          <button type="button" class="switchgear-sld-package-canvas__context-item" @click="void handlePasteSelection(); closeContextMenu()">
+            Paste
+          </button>
           <button type="button" class="switchgear-sld-package-canvas__context-item" @click="duplicateSelection()">
             Duplicate {{ edgeContextLabel }}
+          </button>
+          <button type="button" class="switchgear-sld-package-canvas__context-item" @click="changeSelectionLayer('front'); closeContextMenu()">
+            Bring to front
+          </button>
+          <button type="button" class="switchgear-sld-package-canvas__context-item" @click="changeSelectionLayer('back'); closeContextMenu()">
+            Send to back
           </button>
           <button type="button" class="switchgear-sld-package-canvas__context-item switchgear-sld-package-canvas__context-item--danger" @click="deleteSelection()">
             <span>Remove {{ edgeContextLabel }}</span>
@@ -3744,8 +4013,20 @@ function resolveTransformerCircleOffset(id: string): number {
             <span>Rotate {{ staticContextLabel }} 90°</span>
             <span class="switchgear-sld-package-canvas__context-shortcut">R</span>
           </button>
+          <button type="button" class="switchgear-sld-package-canvas__context-item" @click="void handleCopySelection(); closeContextMenu()">
+            Copy {{ staticContextLabel }}
+          </button>
+          <button type="button" class="switchgear-sld-package-canvas__context-item" @click="void handlePasteSelection(); closeContextMenu()">
+            Paste
+          </button>
           <button type="button" class="switchgear-sld-package-canvas__context-item" @click="duplicateSelection()">
             Duplicate {{ staticContextLabel }}
+          </button>
+          <button type="button" class="switchgear-sld-package-canvas__context-item" @click="changeSelectionLayer('front'); closeContextMenu()">
+            Bring to front
+          </button>
+          <button type="button" class="switchgear-sld-package-canvas__context-item" @click="changeSelectionLayer('back'); closeContextMenu()">
+            Send to back
           </button>
           <button type="button" class="switchgear-sld-package-canvas__context-item switchgear-sld-package-canvas__context-item--danger" @click="deleteSelection()">
             <span>Remove {{ staticContextLabel }}</span>
@@ -3757,8 +4038,20 @@ function resolveTransformerCircleOffset(id: string): number {
             <span>Edit text</span>
             <span class="switchgear-sld-package-canvas__context-shortcut">Enter</span>
           </button>
+          <button type="button" class="switchgear-sld-package-canvas__context-item" @click="void handleCopySelection(); closeContextMenu()">
+            Copy {{ textContextLabel }}
+          </button>
+          <button type="button" class="switchgear-sld-package-canvas__context-item" @click="void handlePasteSelection(); closeContextMenu()">
+            Paste
+          </button>
           <button type="button" class="switchgear-sld-package-canvas__context-item" @click="duplicateSelection()">
             Duplicate {{ textContextLabel }}
+          </button>
+          <button type="button" class="switchgear-sld-package-canvas__context-item" @click="changeSelectionLayer('front'); closeContextMenu()">
+            Bring to front
+          </button>
+          <button type="button" class="switchgear-sld-package-canvas__context-item" @click="changeSelectionLayer('back'); closeContextMenu()">
+            Send to back
           </button>
           <button type="button" class="switchgear-sld-package-canvas__context-item switchgear-sld-package-canvas__context-item--danger" @click="deleteSelection()">
             <span>Remove {{ textContextLabel }}</span>
@@ -3777,9 +4070,6 @@ function resolveTransformerCircleOffset(id: string): number {
           </button>
           <button v-if="selectedNodeCount > 1" type="button" class="switchgear-sld-package-canvas__context-item" @click="alignSelectedNodesBottom(); closeContextMenu()">
             Align selected bottom
-          </button>
-          <button type="button" class="switchgear-sld-package-canvas__context-item" @click="contextMenu.nodeId && requestSwitchgearBindingsEdit(contextMenu.nodeId)">
-            Edit bindings
           </button>
           <button type="button" class="switchgear-sld-package-canvas__context-item" @click="contextMenu.nodeId && openNodeDetail(contextMenu.nodeId)">
             Open detail
@@ -4232,7 +4522,9 @@ function resolveTransformerCircleOffset(id: string): number {
   z-index: 3;
   display: grid;
   min-width: 13rem;
+  max-height: calc(100% - 1.5rem);
   gap: 0.125rem;
+  overflow-y: auto;
   padding: 0.35rem;
   border: 1px solid color-mix(in srgb, var(--color-neutral-300) 82%, transparent);
   border-radius: var(--radius-card);
