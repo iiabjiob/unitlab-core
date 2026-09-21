@@ -357,6 +357,7 @@ import {
 } from "@/pages/signals/utils/runtimeProjection"
 import { useAffinoDataGridTheme } from "@/components/ui/affinoDataGridTheme"
 import "@/components/ui/affinoDataGridNative.css"
+import { useViewport } from "@/composables/useViewport"
 import ConfirmModal from "@/components/ui/ConfirmModal.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import UiModal from "@/components/ui/UiModal.vue"
@@ -418,6 +419,8 @@ let externalIedDetailsTreeRequestId = 0
 const rowSelectionState = ref<RowSelectionSnapshot | null>(null)
 const rowSelectionProjectionRevision = ref(0)
 const pendingSignalsGridSavedView = ref<string | DataGridSavedViewSnapshot<GridRow> | null>(null)
+type SignalsGridPins = NonNullable<DataGridSavedViewSnapshot<GridRow>["state"]["columns"]["pins"]>
+const desktopSignalsGridPins = ref<SignalsGridPins | null>(null)
 const restoringSignalsGridState = ref(false)
 const signalsGridStatePersistenceReady = ref(false)
 const refreshingSignalsStatic = ref(false)
@@ -439,6 +442,7 @@ const activeAoSubmittingSignalId = ref<number | null>(null)
 const aoCommandStatusBySignalId = ref(new Map<number, "ok" | "error">())
 const controlCellRenderVersion = computed(() => `${activeAoControlSignalId.value ?? "idle"}:${activeAoSubmittingSignalId.value ?? "idle"}`)
 const { gridLines, theme } = useAffinoDataGridTheme()
+const { isMobile } = useViewport()
 
 const SIGNAL_GRID_SKELETON_FIXED_HEIGHT = 88
 const SIGNAL_GRID_SKELETON_ROW_HEIGHT = 36
@@ -490,6 +494,7 @@ const SIGNAL_GRID_ROW_SELECTION = { enabled: true, columnWidth: 44 } satisfies N
 
 const SIGNALS_GRID_LEGACY_STORAGE_KEY_PREFIX = "unitlab.signals-grid"
 const REMOVED_SIGNAL_GRID_COLUMN_KEYS = new Set(["allocation_status", "allocation_health", "iec61850_address", "internal_signal_type"])
+const DEFAULT_SIGNALS_GRID_PINNED_KEYS = ["channel_select", "test_status", "tested_at", "control"] as const
 const SIGNAL_GRID_PATCH_COLUMNS = ["channel_select", "test_status", "tested_at"] as const
 const signalAllocationProjectionCache = createSignalAllocationProjectionCache()
 const signalAllocationProjectionVersion = ref(0)
@@ -1281,7 +1286,7 @@ function persistSignalsGridState() {
     return
   }
 
-  writeDataGridSavedViewToStorage(signalsGridSavedViewStorage, storageKey, savedView)
+  persistSignalsGridSavedView(savedView)
 }
 
 function persistSignalsGridSavedView(savedView: DataGridSavedViewSnapshot<GridRow>) {
@@ -1289,7 +1294,27 @@ function persistSignalsGridSavedView(savedView: DataGridSavedViewSnapshot<GridRo
   if (!storageKey) {
     return
   }
-  writeDataGridSavedViewToStorage(signalsGridSavedViewStorage, storageKey, savedView)
+
+  if (!isMobile.value) {
+    desktopSignalsGridPins.value = savedView.state.columns.pins ?? resolveDefaultDesktopSignalsGridPins()
+  }
+
+  writeDataGridSavedViewToStorage(
+    signalsGridSavedViewStorage,
+    storageKey,
+    isMobile.value && desktopSignalsGridPins.value
+      ? {
+        ...savedView,
+        state: {
+          ...savedView.state,
+          columns: {
+            ...savedView.state.columns,
+            pins: desktopSignalsGridPins.value,
+          },
+        },
+      }
+      : savedView,
+  )
 }
 
 function withClearedSignalsGridSelection(
@@ -1471,6 +1496,54 @@ function filterSignalsGridColumnRecordForCurrentView<T>(
   ) as Record<string, T>
 }
 
+function resolveDefaultDesktopSignalsGridPins(): SignalsGridPins {
+  return Object.fromEntries(
+    DEFAULT_SIGNALS_GRID_PINNED_KEYS.map(key => [key, "right"]),
+  ) as SignalsGridPins
+}
+
+function withResponsiveSignalsGridPins(
+  savedView: DataGridSavedViewSnapshot<GridRow>,
+): DataGridSavedViewSnapshot<GridRow> {
+  const columns = savedView.state.columns
+  if (!isMobile.value) {
+    if (!desktopSignalsGridPins.value) {
+      return savedView
+    }
+    return {
+      ...savedView,
+      state: {
+        ...savedView.state,
+        columns: {
+          ...columns,
+          pins: desktopSignalsGridPins.value,
+        },
+      },
+    }
+  }
+
+  const currentColumnKeys = getResolvedSignalsGridColumnKeys()
+  const savedColumnKeys = new Set([
+    ...currentColumnKeys,
+    ...Object.keys(columns.pins ?? {}),
+    ...columns.order,
+  ])
+  const pins = Object.fromEntries(
+    [...savedColumnKeys].map(key => [key, key === "control" ? "right" : "none"]),
+  ) as SignalsGridPins
+
+  return {
+    ...savedView,
+    state: {
+      ...savedView.state,
+      columns: {
+        ...columns,
+        pins,
+      },
+    },
+  }
+}
+
 function filterSignalsGridColumnsForCurrentView(
   savedView: DataGridSavedViewSnapshot<GridRow>,
 ): DataGridSavedViewSnapshot<GridRow> {
@@ -1544,7 +1617,13 @@ function tryApplyPendingSignalsGridSavedView() {
     return
   }
 
-  const compatibleSavedView = filterSignalsGridColumnsForCurrentView(migratedSavedView)
+  if (!desktopSignalsGridPins.value) {
+    desktopSignalsGridPins.value = migratedSavedView.state.columns.pins ?? resolveDefaultDesktopSignalsGridPins()
+  }
+
+  const compatibleSavedView = withResponsiveSignalsGridPins(
+    filterSignalsGridColumnsForCurrentView(migratedSavedView),
+  )
 
   rowSelectionState.value = compatibleSavedView.state.rowSelection ?? null
 
@@ -1566,6 +1645,7 @@ function restoreSignalsGridState() {
 
   const storageKey = getSignalsGridStorageKey(workspaceStore.activeWorkspaceId)
   if (!storageKey) {
+    desktopSignalsGridPins.value = resolveDefaultDesktopSignalsGridPins()
     rowSelectionState.value = null
     pendingSignalsGridSavedView.value = null
     markSignalsGridStateRestored()
@@ -1574,6 +1654,7 @@ function restoreSignalsGridState() {
 
   const raw = signalsGridSavedViewStorage.getItem(storageKey)
   if (!raw) {
+    desktopSignalsGridPins.value = resolveDefaultDesktopSignalsGridPins()
     rowSelectionState.value = null
     pendingSignalsGridSavedView.value = null
     markSignalsGridStateRestored()
@@ -3541,7 +3622,7 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
       key: "channel_select",
       label: "Unit/Channel",
       minWidth: 136,
-      initialState: { width: 190, pin: "right" },
+      initialState: { width: 190, pin: isMobile.value ? "none" : "right" },
       presentation: { align: "left", headerAlign: "left" },
       capabilities: { editable: false, sortable: false },
       cellRenderer: ({ row }) => {
@@ -3567,7 +3648,7 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
       key: "test_status",
       label: "Test Result",
       minWidth: 112,
-      initialState: { width: 132, pin: "right" },
+      initialState: { width: 132, pin: isMobile.value ? "none" : "right" },
       presentation: {
         align: "left",
         headerAlign: "left",
@@ -3580,7 +3661,7 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
       label: "Tested At",
       dataType: "datetime",
       minWidth: 128,
-      initialState: { width: 176, pin: "right" },
+      initialState: { width: 176, pin: isMobile.value ? "none" : "right" },
       presentation: {
         align: "left",
         headerAlign: "left",
@@ -3777,6 +3858,25 @@ watch(
 watch(
   [allocationGridRef, sourceHeaders, loading],
   () => {
+    tryApplyPendingSignalsGridSavedView()
+  },
+  { flush: "post" },
+)
+
+watch(
+  isMobile,
+  () => {
+    if (!signalsGridStatePersistenceReady.value || restoringSignalsGridState.value || loading.value) {
+      return
+    }
+    const savedView = allocationGridRef.value?.getSavedView?.()
+    if (!savedView) {
+      return
+    }
+
+    restoringSignalsGridState.value = true
+    signalsGridStatePersistenceReady.value = false
+    pendingSignalsGridSavedView.value = withResponsiveSignalsGridPins(savedView)
     tryApplyPendingSignalsGridSavedView()
   },
   { flush: "post" },
