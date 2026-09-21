@@ -128,7 +128,6 @@ async function confirmSelectedDelete() {
       }
     }
     await deletion
-    toastStore.success(ids.length === 1 ? "Instruction deleted" : `${ids.length} instructions deleted`)
   } catch (error) {
     toastStore.error(error instanceof Error ? error.message : "Failed to delete instructions")
   } finally {

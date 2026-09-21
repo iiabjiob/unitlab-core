@@ -280,7 +280,7 @@ export const useDeviceStore = defineStore("deviceStore", () => {
       return
     }
 
-    toastStore.info(`${displayName} went offline`)
+    toastStore.warning(`${displayName} went offline`)
   }
 
   return {

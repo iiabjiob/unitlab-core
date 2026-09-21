@@ -184,7 +184,6 @@ function exportSld(scope: "full" | "selection") {
   const transfer = canvasRef.value?.getTransferState()
   if (!transfer || !workspaceId.value) return
   if (scope === "selection" && transfer.selectedIds.length === 0) {
-    toastStore.info("Select SLD objects to export")
     return
   }
   const payload = createSwitchgearSldTransfer(
@@ -197,7 +196,6 @@ function exportSld(scope: "full" | "selection") {
     scope === "selection" ? transfer.selectedIds : undefined,
   )
   downloadJson(payload, `${scope === "selection" ? "sld-selection" : "sld"}_${workspaceId.value}.json`)
-  toastStore.success(scope === "selection" ? "Selected SLD objects exported" : "SLD exported")
 }
 
 async function handleTransferFileSelected(event: Event) {
@@ -267,7 +265,9 @@ async function applyTransferImport() {
     requestedSelectionIds.value = importedNodeIds
     selectionRequestKey.value += 1
     closeTransferImport()
-    toastStore.success(`Imported ${payload.kind === "selection" ? "selected SLD objects" : "SLD"}${detachedBindingCount > 0 ? `; detached ${detachedBindingCount} unavailable binding${detachedBindingCount === 1 ? "" : "s"}` : ""}`)
+    if (detachedBindingCount > 0) {
+      toastStore.warning(`Detached ${detachedBindingCount} unavailable binding${detachedBindingCount === 1 ? "" : "s"} during SLD import`)
+    }
   } catch (error) {
     transferImportError.value = error instanceof Error ? error.message : "Unable to apply SLD transfer"
   } finally {
@@ -441,12 +441,9 @@ async function applyScdImportPreview() {
     fitRequestKey.value += 1
     resetScdImportPreview()
     if ((preview.adapterResult.diagram.edges ?? preview.adapterResult.diagram.lines ?? []).length > 0 || createdIds.length > 0) {
-      toastStore.success(createdIds.length > 0
-        ? `Imported SLD overlay and created ${createdIds.length} switchgear record${createdIds.length > 1 ? "s" : ""}`
-        : "Imported SLD overlay")
       return
     }
-    toastStore.info("SCD import did not change the diagram overlay")
+    toastStore.warning("SCD import did not change the diagram overlay")
   } catch (error) {
     scdImportError.value = error instanceof Error ? error.message : "Unable to apply SCD import"
   } finally {

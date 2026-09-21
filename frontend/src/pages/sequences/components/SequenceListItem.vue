@@ -160,7 +160,6 @@ async function exportSequence() {
     link.click()
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
-    toastStore.success("Instruction exported")
   } catch (error) {
     toastStore.error(error instanceof Error ? error.message : "Failed to export instruction")
   }

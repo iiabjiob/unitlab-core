@@ -236,10 +236,8 @@ async function handleDeleteConfirm() {
 
   isDeleting.value = true
   try {
-    const workspaceName = workspaceStore.activeWorkspace?.name ?? "Workspace"
     await workspaceStore.deleteWorkspace(workspaceId)
     deleteModalOpen.value = false
-    toastStore.success(`${workspaceName} deleted`)
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to delete workspace"
     toastStore.error(message)

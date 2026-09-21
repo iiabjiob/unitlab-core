@@ -249,7 +249,6 @@ async function stopInstruction() {
   actionLoading.value = "stop"
   try {
     await sequenceStore.stopSequence(props.sequence.id)
-    toastStore.success("Stop requested")
   } catch (err) {
     toastStore.error(toUserFacingErrorMessage(err, "Failed to stop instruction"))
   } finally {

@@ -1910,7 +1910,6 @@ function handleSignalListFileSelected(event: Event) {
   }
 
   if (!isSignalListFileAccepted(file)) {
-    toastStore.info("Choose an .xls, .xlsx, or .xlsm file to import a signal list.")
     return
   }
 
@@ -1939,7 +1938,6 @@ function isSignalListFileAccepted(file: File | null | undefined): boolean {
 
 function openImportModalWithDroppedFile(file: File | null) {
   if (!isSignalListFileAccepted(file)) {
-    toastStore.info("Drop an .xls, .xlsx, or .xlsm file to import a signal list.")
     return
   }
   openImportModalWithSeedFile(file)
@@ -1985,7 +1983,6 @@ async function onSignalListDrop(event: DragEvent) {
 function exportCableJournal(optionalColumnKeys: string[] = []) {
   const cableRows = allocatedCableRows.value
   if (!cableRows.length) {
-    toastStore.info("No allocated rows to export.")
     return
   }
 
@@ -2015,13 +2012,11 @@ function exportCableJournal(optionalColumnKeys: string[] = []) {
   const dateSuffix = generatedAt.toISOString().slice(0, 19).replace(/:/g, "-")
   const filename = `cable-schedule-ws-${workspaceFilePart}-${dateSuffix}.csv`
   downloadTextFile(csvContent, filename)
-  toastStore.success(`Cable schedule exported: ${rows.length} rows`)
 }
 
 function openExportModal() {
   if (workspaceMissing.value) return
   if (!allocatedCableRows.value.length) {
-    toastStore.info("No allocated rows to export.")
     return
   }
   exportModalOpen.value = true
@@ -2039,7 +2034,6 @@ function handleExportCableFromWizard(payload: { optionalColumnKeys: string[] }) 
 function exportSignalReport() {
   const reportRows = resolveRuntimeAllocationRows()
   if (!reportRows.length) {
-    toastStore.info("No signals to export.")
     return
   }
 
@@ -2072,7 +2066,6 @@ function exportSignalReport() {
   const dateSuffix = generatedAt.toISOString().slice(0, 19).replace(/:/g, "-")
   const filename = `signal-report-ws-${workspaceFilePart}-${dateSuffix}.csv`
   downloadTextFile(csvContent, filename)
-  toastStore.success(`Report exported: tested ${tested}, remaining ${remaining}, total ${total}`)
 }
 
 function normalizedChannelType(raw: string | null | undefined): "di" | "do" | "ai" | "ao" | null {
@@ -2378,14 +2371,6 @@ async function handleAllocationChannelPicked(channelId: number | null) {
       await signalSheetStore.reassignAllocation(signalId, channelId)
     }
 
-    if (channelId === null) {
-      toastStore.success(`Cleared allocation for ${row.signal_name || row.signal_key}.`)
-    } else {
-      const nextChannel = allocationChannelPickerChannels.value.find(channel => channel.id === channelId)
-      const nextLabel = nextChannel ? `${nextChannel.unitId}/${nextChannel.channelLabel}` : resolveSignalAllocationDisplayLabel(row)
-      const verb = ownerSignalId !== null && ownerSignalId !== signalId ? "Swapped" : "Assigned"
-      toastStore.success(`${verb} ${row.signal_name || row.signal_key} to ${nextLabel}.`)
-    }
     shouldClosePicker = true
   } catch (pickerError) {
     const message = pickerError instanceof Error ? pickerError.message : String(pickerError)
@@ -2445,8 +2430,6 @@ async function handleDeleteSelected(signalIds: readonly number[]) {
 
     if (failedTotal > 0) {
       toastStore.warning(`Deleted ${deletedTotal} signal(s), failed to delete ${failedTotal}.`)
-    } else {
-      toastStore.success(`Deleted ${deletedTotal} signal(s).`)
     }
   } catch (deleteError) {
     toastStore.error(deleteError instanceof Error ? deleteError.message : String(deleteError))
@@ -2462,7 +2445,7 @@ async function allocateSelectedUnassigned() {
   if (!selectedUnassignedSignalIds.value.length) return
   const targetSignalIds = resolveSelectedUnassignedSignalIdsInSelectionOrder()
   if (!targetSignalIds.length) {
-    toastStore.info("No free compatible channels available for selected rows.")
+    toastStore.warning("No free compatible channels available for selected rows.")
     return
   }
   const workspaceId = workspaceStore.activeWorkspaceId
@@ -2787,7 +2770,7 @@ async function startTestRunJob(options?: { resumeFromCursor?: boolean; resumeJob
 
   const queue = selectedVisibleAllocatedPhysicalRows.value.filter(row => canControl(row))
   if (!queue.length) {
-    toastStore.info("Selected rows have no controllable channels.")
+    toastStore.warning("Selected rows have no controllable channels.")
     return
   }
 
@@ -3420,7 +3403,6 @@ async function refreshSelectedExternalIedDiscovery() {
   try {
     await externalIedStore.refreshDiscovery(endpoint.ip, endpoint.port)
     externalIedDetailsTreeError.value = null
-    toastStore.success("Discovery refresh queued")
   } catch (err) {
     toastStore.error(normalizeHttpError(err, "Failed to queue discovery refresh").message)
   } finally {

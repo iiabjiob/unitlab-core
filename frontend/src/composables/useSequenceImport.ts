@@ -21,9 +21,7 @@ export function useSequenceImport() {
 
 		importing.value = true
 		try {
-			const imported = await store.importSequencesFile(file)
-			const count = imported.length
-			toast.success(count === 1 ? "Instruction imported" : `Imported ${count} instructions`)
+			await store.importSequencesFile(file)
 		} catch (error) {
 			toast.error(error instanceof Error ? error.message : "Failed to import instructions")
 		} finally {

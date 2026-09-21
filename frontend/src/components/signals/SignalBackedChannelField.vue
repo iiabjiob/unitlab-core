@@ -358,7 +358,7 @@ async function handleSignalConfirm(rows: SignalAllocationRow[]) {
   const resolved = signalSheetStore.allocationRows.find(row => row.signal_id === picked.signal_id) ?? picked
   const resolvedChannelId = Number.isFinite(resolved.channel_id as number) ? Number(resolved.channel_id) : null
   if (resolvedChannelId === null) {
-    toastStore.info("No free compatible channel available for this signal")
+    toastStore.warning("No free compatible channel available for this signal")
     return
   }
 

@@ -869,7 +869,6 @@ async function toggleSelectedReportEnabled() {
       },
       targetEnabled,
     )
-    toastStore.success(`Report ${targetEnabled ? "enabled" : "disabled"}.`)
   } catch (error) {
     toastStore.error(normalizeHttpError(error, `Failed to ${targetEnabled ? "enable" : "disable"} report`).message)
   } finally {

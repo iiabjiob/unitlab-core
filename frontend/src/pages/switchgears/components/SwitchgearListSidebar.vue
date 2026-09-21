@@ -166,7 +166,6 @@ async function confirmSelectedDelete() {
       }
     }
     await deletion
-    toastStore.success(ids.length === 1 ? "Switchgear deleted" : `${ids.length} switchgears deleted`)
   } catch (error) {
     toastStore.error(error instanceof Error ? error.message : "Failed to delete switchgears")
   } finally {

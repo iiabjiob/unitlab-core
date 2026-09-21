@@ -247,7 +247,6 @@ function buildClipboardPayload(stepsToCopy: SequenceStepCreate[]) {
 async function handleCopySelectedSteps() {
   const sourceSteps = selectedStepsInOrder()
   if (!sourceSteps.length) {
-    toastStore.info("Select at least one step to copy")
     return
   }
 
@@ -258,9 +257,7 @@ async function handleCopySelectedSteps() {
     if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(buildClipboardPayload(drafts))
     }
-    toastStore.success(`Copied ${drafts.length} step${drafts.length > 1 ? "s" : ""}`)
   } catch {
-    toastStore.success(`Copied ${drafts.length} step${drafts.length > 1 ? "s" : ""}`)
   }
 }
 
@@ -294,7 +291,6 @@ async function resolveClipboardDrafts() {
 async function handlePasteSteps(insertAfterStepId?: number | null) {
   const drafts = await resolveClipboardDrafts()
   if (!drafts?.length) {
-    toastStore.info("Nothing to paste")
     return
   }
 
@@ -307,7 +303,6 @@ async function handlePasteSteps(insertAfterStepId?: number | null) {
     const insertedIds = inserted.map((step) => step.id)
     const nextActiveId = insertedIds[insertedIds.length - 1] ?? null
     applySelection(insertedIds, nextActiveId, nextActiveId)
-    toastStore.success(`Pasted ${inserted.length} step${inserted.length > 1 ? "s" : ""}`)
   } catch (error) {
     console.error("Failed to paste steps", error)
     toastStore.error("Failed to paste steps")
@@ -326,7 +321,6 @@ async function deleteSelectedSteps() {
       : []
 
   if (!idsToDelete.length) {
-    toastStore.info("Select at least one step to delete")
     return
   }
 

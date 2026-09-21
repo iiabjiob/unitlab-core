@@ -1093,7 +1093,6 @@ async function confirmSwitchgearDeletion() {
     if (selectionStore.lastSwitchgearId != null && ids.includes(selectionStore.lastSwitchgearId)) {
       selectionStore.selectSwitchgear(null)
     }
-    toastStore.success(ids.length === 1 ? "Switchgear deleted" : `${ids.length} switchgears deleted`)
     switchgearDeleteConfirmOpen.value = false
     pendingSwitchgearDeleteIds.value = []
   } catch (error) {
@@ -1106,11 +1105,6 @@ async function confirmSwitchgearDeletion() {
 function duplicateSelection() {
   closeContextMenu()
   if (!canDuplicateSelection.value) {
-    if (selectedNodeIds.value.length > 0) {
-      toastStore.info('Switchgear duplicate is not supported yet. Select lines, symbols, or text to duplicate.')
-      return
-    }
-    toastStore.info('Select at least one line, symbol, or text to duplicate')
     return
   }
   diagram.dispatch({
@@ -1641,15 +1635,6 @@ function parseDiagramClipboardPayload(rawText: string): DiagramClipboardSelectio
   }
 }
 
-function formatClipboardSelectionLabel(selection: DiagramClipboardSelection) {
-  const parts = [
-    selection.edges.length > 0 ? `${selection.edges.length} line${selection.edges.length > 1 ? 's' : ''}` : null,
-    selection.staticElements.length > 0 ? `${selection.staticElements.length} symbol${selection.staticElements.length > 1 ? 's' : ''}` : null,
-    selection.textElements.length > 0 ? `${selection.textElements.length} text` : null,
-  ].filter((value): value is string => Boolean(value))
-  return parts.join(', ')
-}
-
 async function handleCopySelection() {
   const selectionData: DiagramClipboardSelection = {
     edges: selectedEdgeIds.value.flatMap((id) => {
@@ -1699,11 +1684,6 @@ async function handleCopySelection() {
   }
 
   if (selectionData.edges.length === 0 && selectionData.staticElements.length === 0 && selectionData.textElements.length === 0) {
-    if (selectedNodeIds.value.length > 0) {
-      toastStore.info('Switchgear copy is not supported yet. Select lines, symbols, or text to copy.')
-      return
-    }
-    toastStore.info('Select at least one line, symbol, or text to copy')
     return
   }
 
@@ -1713,9 +1693,7 @@ async function handleCopySelection() {
     if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(buildDiagramClipboardPayload(selectionData))
     }
-    toastStore.success(`Copied ${formatClipboardSelectionLabel(selectionData)}`)
   } catch {
-    toastStore.success(`Copied ${formatClipboardSelectionLabel(selectionData)}`)
   }
 }
 
@@ -1737,7 +1715,6 @@ async function resolveClipboardSelection() {
 async function handlePasteSelection() {
   const source = await resolveClipboardSelection()
   if (!source || (source.edges.length === 0 && source.staticElements.length === 0 && source.textElements.length === 0)) {
-    toastStore.info('Nothing to paste')
     return
   }
   const offset = COPY_PASTE_OFFSET * (clipboardPasteCount.value + 1)
@@ -1807,7 +1784,6 @@ async function handlePasteSelection() {
     historyKey: 'paste-selection',
   })
   clipboardPasteCount.value += 1
-  toastStore.success(`Pasted ${formatClipboardSelectionLabel(source)}`)
   focusStage()
 }
 
@@ -2025,7 +2001,7 @@ function rotateEdges90(edgeIds: ReadonlyArray<string>, historyKey: string) {
     return Boolean(edge?.metadata?.startBinding || edge?.metadata?.endBinding)
   })
   if (hasBindings) {
-    toastStore.info("Unbind selected lines before rotating them")
+    toastStore.warning("Unbind selected lines before rotating them")
     return false
   }
   for (const edgeId of edgeIds) {
@@ -2595,7 +2571,6 @@ function restoreSelectionAfterPointerRelease(ids: string[], primaryId: string | 
 
 function createLine(start: DraftEndpoint, end: DraftEndpoint) {
   if (Math.hypot(end.point.x - start.point.x, end.point.y - start.point.y) < 1) {
-    toastStore.info("Line needs two different points")
     return null
   }
   const seed = createEntityId("edge")

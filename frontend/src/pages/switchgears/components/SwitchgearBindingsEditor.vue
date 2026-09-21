@@ -325,7 +325,6 @@ async function applySignalSelection() {
     }
 
     await updateBindings(nextBindings)
-    toastStore.success("Signal selection applied")
   } catch (err) {
     error.value = err instanceof Error ? err.message : "Failed to apply selected signals"
   } finally {
@@ -357,7 +356,6 @@ async function resetAll() {
     syncSignalSelectionsFromBindings(next)
     selectedSignalRows.value = []
     error.value = null
-    toastStore.success("Bindings reset")
   } catch (err) {
     error.value = err instanceof Error ? err.message : "Failed to reset bindings"
   }

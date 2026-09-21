@@ -1184,7 +1184,6 @@ async function confirmDeleteSelectedPreset() {
       selectedPresetId.value = null
     }
     deletePresetOpen.value = false
-    toastStore.success("Preset deleted")
   } catch (err) {
     toastStore.error(err instanceof Error ? err.message : String(err))
   }
@@ -1534,7 +1533,6 @@ async function restorePreviousNetwork() {
     await delay(NETWORK_POLL_DELAY_MS)
     await coreNetworkStore.refreshState({ force: true })
     networkProgress.value = "Previous network configuration restore requested."
-    toastStore.success("Previous network configuration restore requested")
   } catch (err) {
     networkError.value = err instanceof Error ? err.message : String(err)
   } finally {
