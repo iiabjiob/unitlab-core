@@ -17,6 +17,7 @@ const doChannels = computed(() =>
 const hasDo = computed(() => doChannels.value.length > 0)
 const allOn = computed(() => hasDo.value && doChannels.value.every(ch => !!ch.state))
 const allOff = computed(() => hasDo.value && doChannels.value.every(ch => !ch.state))
+const commandPending = computed(() => channelStore.hasPendingCommandForUnit(props.unitId))
 
 function setAll(state: boolean) {
   if (!hasDo.value || props.disabled) return
@@ -36,7 +37,7 @@ function toggleAll() {
     <UiButton
       size="xs"
       variant="secondary"
-      :disabled="props.disabled || !hasDo || allOn"
+      :disabled="props.disabled || commandPending || !hasDo || allOn"
       @click="setAll(true)"
     >
       All [ON]
@@ -44,7 +45,7 @@ function toggleAll() {
     <UiButton
       size="xs"
       variant="secondary"
-      :disabled="props.disabled || !hasDo || allOff"
+      :disabled="props.disabled || commandPending || !hasDo || allOff"
       @click="setAll(false)"
     >
       All [OFF]
@@ -52,7 +53,7 @@ function toggleAll() {
     <UiButton
       size="xs"
       variant="secondary"
-      :disabled="props.disabled || !hasDo"
+      :disabled="props.disabled || commandPending || !hasDo"
       @click="toggleAll"
     >
       All [TOGGLE]

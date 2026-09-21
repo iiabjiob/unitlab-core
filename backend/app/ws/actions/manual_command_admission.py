@@ -32,6 +32,7 @@ from uuid import uuid4
 settings = get_settings()
 MANUAL_COMMAND_ACK_TIMEOUT_MS = 3000
 MANUAL_READBACK_TIMEOUT_MS = 2000
+MANUAL_BULK_READBACK_ATTEMPT_MS = 250
 
 
 class _ManualRedis(Protocol):
@@ -87,6 +88,37 @@ async def _wait_for_manual_readback(
                 bitmask = None
             matched = fresh and bitmask is not None and (1 if bitmask & (1 << int(channel_index)) else 0) == int(expected_value)
         if matched:
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        await asyncio.sleep(0.05)
+
+
+async def _wait_for_manual_bitmask_readback(
+    redis: _ManualRedis,
+    *,
+    unit_id: str,
+    expected_bitmask: int,
+    channel_count: int,
+    timeout_ms: int,
+    packet_id: int,
+) -> bool:
+    if not 1 <= int(channel_count) <= 32:
+        return False
+
+    scope_mask = 0xFFFFFFFF if channel_count == 32 else (1 << channel_count) - 1
+    expected = int(expected_bitmask) & scope_mask
+    deadline = time.monotonic() + max(100, int(timeout_ms)) / 1000
+    while True:
+        try:
+            fresh = _to_int(await redis.get(f"device:{unit_id}:last_state_packet_id")) == int(packet_id)
+        except (TypeError, ValueError):
+            fresh = False
+        try:
+            actual = _to_int(await redis.get(f"device:{unit_id}:bitmask")) & scope_mask
+        except (TypeError, ValueError):
+            actual = None
+        if fresh and actual == expected:
             return True
         if time.monotonic() >= deadline:
             return False
@@ -263,10 +295,13 @@ async def _enqueue_manual(
                 execution_reason = "hardware_ack_timeout"
             elif execution == "acknowledged":
                 readback_targets: list[tuple[int, float | int]] = []
+                readback_scope_present = False
+                readback_ok = False
                 if action in {"do_set", "ao_set"}:
                     channel_index = payload.get("ch")
                     expected_value = payload.get("value")
                     if channel_index is not None and expected_value is not None:
+                        readback_scope_present = True
                         readback_targets.append(
                             (
                                 _to_int(channel_index),
@@ -277,10 +312,29 @@ async def _enqueue_manual(
                     bitmask = _to_int(payload["bitmask"])
                     raw_channel_ids = payload.get("channel_ids")
                     channel_count = len(cast(list[object], raw_channel_ids)) if isinstance(raw_channel_ids, list) else 0
-                    readback_targets.extend(
-                        (index, 1 if bitmask & (1 << index) else 0)
-                        for index in range(channel_count)
-                    )
+                    readback_scope_present = 1 <= channel_count <= 32
+                    if readback_scope_present:
+                        readback_deadline = time.monotonic() + MANUAL_READBACK_TIMEOUT_MS / 1000
+                        attempt = 0
+                        while not readback_ok and time.monotonic() < readback_deadline:
+                            attempt += 1
+                            remaining_ms = max(100, int((readback_deadline - time.monotonic()) * 1000))
+                            try:
+                                readback_packet_id = await enqueue_request_state(
+                                    unit_id=unit_id,
+                                    mode=State.REQ_ALL_BIT,
+                                    correlation_id=f"manual:{command_id}:readback:all:{attempt}",
+                                )
+                                readback_ok = await _wait_for_manual_bitmask_readback(
+                                    redis,
+                                    unit_id=unit_id,
+                                    expected_bitmask=bitmask,
+                                    channel_count=channel_count,
+                                    timeout_ms=min(MANUAL_BULK_READBACK_ATTEMPT_MS, remaining_ms),
+                                    packet_id=readback_packet_id,
+                                )
+                            except Exception:  # noqa: BLE001
+                                readback_ok = False
                 elif action == "do_pair" and payload.get("state2b") is not None:
                     state2b = _to_int(payload["state2b"]) & 0b11
                     pair_indexes = (payload.get("chA"), payload.get("chB"))
@@ -290,13 +344,16 @@ async def _enqueue_manual(
                         for index, target in zip(pair_indexes, pair_targets)
                         if index is not None
                     )
+                    readback_scope_present = bool(readback_targets)
                 elif action == "do_pulse":
                     channel_index = payload.get("ch")
                     expected_value = payload.get("value")
                     if channel_index is not None and expected_value is not None:
+                        readback_scope_present = True
                         readback_targets.append((_to_int(channel_index), _to_int(expected_value)))
 
-                readback_ok = bool(readback_targets)
+                if readback_targets:
+                    readback_ok = True
                 for target_index, target_value in readback_targets:
                     try:
                         readback_packet_id = await enqueue_request_state(
@@ -339,7 +396,7 @@ async def _enqueue_manual(
                     except Exception:  # noqa: BLE001
                         readback_ok = False
                 if not readback_ok:
-                    execution_reason = "hardware_readback_timeout" if readback_targets else "readback_scope_missing"
+                    execution_reason = "hardware_readback_timeout" if readback_scope_present else "readback_scope_missing"
                     await mark_hardware_command_intent_delivery_failure(
                         session,
                         command_id=command_id,

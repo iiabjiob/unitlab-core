@@ -9,6 +9,7 @@ from typing import cast, final
 import pytest
 from fastapi import WebSocket
 
+from app.infrastructure.protocol.modes import State
 from app.schemas.ws.messages import SetAoCommandMessage, WSAction
 from app.ws.actions import manual_command_admission
 from app.ws.actions.manual_command_admission import _ManualRedis  # pyright: ignore[reportPrivateUsage]
@@ -120,6 +121,125 @@ def test_manual_readback_rejects_matching_value_from_old_packet() -> None:
             packet_id=42,
         )
     ) is False
+
+
+def test_manual_bitmask_readback_accepts_one_fresh_bulk_snapshot() -> None:
+    @final
+    class Redis:
+        async def get(self, key: str) -> str:
+            if key.endswith(":last_state_packet_id"):
+                return "42"
+            return str(0x80000005)
+
+    assert run_async(
+        manual_command_admission._wait_for_manual_bitmask_readback(  # pyright: ignore[reportPrivateUsage]
+            cast(_ManualRedis, cast(object, Redis())),
+            unit_id="unit-1",
+            expected_bitmask=0x80000005,
+            channel_count=32,
+            timeout_ms=100,
+            packet_id=42,
+        )
+    ) is True
+
+
+def test_manual_bitmask_readback_rejects_matching_mask_from_old_packet() -> None:
+    @final
+    class Redis:
+        async def get(self, key: str) -> str:
+            if key.endswith(":last_state_packet_id"):
+                return "41"
+            return "5"
+
+    assert run_async(
+        manual_command_admission._wait_for_manual_bitmask_readback(  # pyright: ignore[reportPrivateUsage]
+            cast(_ManualRedis, cast(object, Redis())),
+            unit_id="unit-1",
+            expected_bitmask=5,
+            channel_count=3,
+            timeout_ms=100,
+            packet_id=42,
+        )
+    ) is False
+
+
+def test_manual_do_all_retries_only_bulk_readback(monkeypatch: pytest.MonkeyPatch) -> None:
+    requests: list[dict[str, object]] = []
+    readback_attempts: list[int] = []
+    completed: list[str] = []
+
+    @final
+    class Session:
+        async def __aenter__(self) -> "Session":
+            return self
+
+        async def __aexit__(self, exc_type: object, exc: BaseException | None, tb: object) -> bool:
+            return False
+
+        async def commit(self) -> None:
+            return None
+
+    @final
+    class Admission:
+        def __init__(self, redis: object) -> None:
+            del redis
+
+        async def acquire_many(self, **_kwargs: object) -> list[SimpleNamespace]:
+            return [SimpleNamespace(fencing_epoch=1, lease_id="lease-1")]
+
+        async def release(self, _lease: object) -> bool:
+            return True
+
+    async def wait_for_acks(*_args: object, **kwargs: object) -> dict[object, str]:
+        return {cast(list[object], kwargs["command_ids"])[0]: "acknowledged"}
+
+    async def enqueue_state(**kwargs: object) -> int:
+        requests.append(kwargs)
+        return 42
+
+    async def bulk_readback(*_args: object, **kwargs: object) -> bool:
+        assert kwargs["expected_bitmask"] == 5
+        assert kwargs["channel_count"] == 3
+        assert kwargs["packet_id"] == 42
+        readback_attempts.append(cast(int, kwargs["packet_id"]))
+        return len(readback_attempts) == 2
+
+    async def unexpected_single_readback(*_args: object, **_kwargs: object) -> bool:
+        raise AssertionError("DO ALL must not issue per-channel readbacks")
+
+    async def mark_completed(*_args: object, **kwargs: object) -> None:
+        completed.append(cast(str, kwargs["command_id"]))
+
+    monkeypatch.setattr(manual_command_admission, "AsyncSessionLocal", lambda: Session())
+    monkeypatch.setattr(manual_command_admission, "RedisManager", SimpleNamespace(get_instance=lambda: object()))
+    monkeypatch.setattr(manual_command_admission, "HardwareCommandAdmission", Admission)
+    monkeypatch.setattr(manual_command_admission, "record_hardware_command_intent", _done)
+    monkeypatch.setattr(manual_command_admission, "mark_hardware_command_intent_queued", _done)
+    monkeypatch.setattr(manual_command_admission, "mark_hardware_command_intent_completed", mark_completed)
+    monkeypatch.setattr(manual_command_admission, "wait_for_hardware_command_acks", wait_for_acks)
+    monkeypatch.setattr(manual_command_admission, "enqueue_request_state", enqueue_state)
+    monkeypatch.setattr(manual_command_admission, "_wait_for_manual_bitmask_readback", bulk_readback)
+    monkeypatch.setattr(manual_command_admission, "_wait_for_manual_readback", unexpected_single_readback)
+    monkeypatch.setattr(manual_command_admission, "_result", _done)
+
+    _ = run_async(
+        manual_command_admission._enqueue_manual(  # pyright: ignore[reportPrivateUsage]
+            cast(WebSocket, object()),
+            workspace_id=7,
+            channel_ids=[17, 18, 19],
+            unit_id="unit-1",
+            device_id=23,
+            action="do_all",
+            payload={"bitmask": 5, "channel_ids": [17, 18, 19]},
+            sender=_done_sender,
+        )
+    )
+
+    assert len(requests) == 2
+    assert all(request["mode"] == State.REQ_ALL_BIT for request in requests)
+    assert str(requests[0]["correlation_id"]).endswith(":readback:all:1")
+    assert str(requests[1]["correlation_id"]).endswith(":readback:all:2")
+    assert completed and len(completed) == 1
 
 
 def test_manual_command_marks_intent_queued_after_publish(monkeypatch: pytest.MonkeyPatch) -> None:

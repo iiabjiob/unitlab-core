@@ -11,7 +11,6 @@ import { CHANNEL_TYPES, type Channel, type DoChannel } from "@/types/channel"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 
 const AO_STATE_REFRESH_FALLBACK_MS = 100
-const DO_BULK_STATE_RECONCILE_MS = 120
 
 type LoggerLike = {
   info: (message: string) => void
@@ -35,7 +34,6 @@ type Params = {
   findDoChannel: (deviceId: number, chIndex: number) => DoChannel | undefined
   enqueueAction: (deviceId: number) => string
   enterDoPendingState: (channel: DoChannel, target: boolean, actionId?: string) => void
-  resetDoUiState: (channel: DoChannel) => void
   scheduleDoStateRefreshIfPending: (deviceId: number, commandIssuedAt: number) => void
   requestStates: RequestStatesFn
   registerAoAction: (deviceId: number, chIndex: number, actionId: string) => void
@@ -133,22 +131,20 @@ export function createChannelTransportActions(params: Params) {
       return
     }
 
+    const commandIssuedAt = Date.now()
+    const actionId = params.enqueueAction(device.id)
     doChannels.forEach(ch => {
       const target = ((mask >>> ch.index) & 1) === 1
-      params.resetDoUiState(ch)
-      applyOptimisticDoState(ch, target)
+      params.enterDoPendingState(ch, target, actionId)
     })
-
-    setTimeout(() => {
-      params.requestStates(device.id, { includeDiagnostics: false, silent: true })
-    }, DO_BULK_STATE_RECONCILE_MS)
+    params.scheduleDoStateRefreshIfPending(device.id, commandIssuedAt)
 
     params.logger.info(`➡️ DO ALL cmd ${unitId} targets → ${maskSummary}`)
 
     params.pushDeviceLog(device.id, {
       type: "cmd",
-      message: `User requested DO ALL (${maskSummary})`,
-    })
+      message: `User requested DO ALL (${maskSummary})${params.formatPendingSuffix(true)}`,
+    }, actionId)
   }
 
   function sendDoPairCommand(
