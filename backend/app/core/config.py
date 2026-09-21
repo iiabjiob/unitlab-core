@@ -108,6 +108,15 @@ class Settings(BaseSettings):
     worker_health_interval: int = 10
     worker_health_ttl: int = 30
 
+    # ---- Database retention ----
+    database_retention_enabled: bool = True
+    database_retention_interval_seconds: int = 86400
+    database_retention_batch_size: int = 1000
+    database_retention_dry_run: bool = False
+    database_processed_job_retention_days: int = 30
+    database_diagnostics_ack_retention_days: int = 90
+    database_hardware_command_retention_days: int = 365
+
     # ---- Signal Import ----
     signal_import_max_rows: int = 20000
 

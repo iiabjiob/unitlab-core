@@ -32,6 +32,7 @@ from app.services.core_ntp_event_forwarder import forward_core_ntp_events
 from app.services.core_diag_event_forwarder import forward_core_diag_events
 from app.services.core_provision_event_forwarder import forward_core_provision_events
 from app.services.hardware_command_intent import reconcile_orphaned_manual_hardware_command_intents
+from app.services.database_retention import run_database_retention_worker
 
 from app.core.config import get_settings
 from app.core.logger import get_logger
@@ -78,6 +79,7 @@ async def lifespan(_app: FastAPI):
     core_diag_forwarder_task = asyncio.create_task(forward_core_diag_events())
     core_provision_forwarder_task = asyncio.create_task(forward_core_provision_events())
     worker_health_task = asyncio.create_task(run_worker_health_aggregator())
+    database_retention_task = asyncio.create_task(run_database_retention_worker())
     logger.info("✅ WS forwarder started")
     logger.info("✅ Sequence event forwarder started")
     logger.info("✅ Core network event forwarder started")
@@ -85,6 +87,7 @@ async def lifespan(_app: FastAPI):
     logger.info("✅ Core diagnostics event forwarder started")
     logger.info("✅ Core provisioning event forwarder started")
     logger.info("✅ Worker health aggregator started")
+    logger.info("✅ Database retention worker started")
     try:
         yield
     finally:
@@ -112,6 +115,9 @@ async def lifespan(_app: FastAPI):
         _ = worker_health_task.cancel()
         with suppress(asyncio.CancelledError):
             await worker_health_task
+        _ = database_retention_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await database_retention_task
 
         # Stop infrastructure services
         await RedisManager.stop()
